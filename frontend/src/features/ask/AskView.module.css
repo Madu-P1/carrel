@@ -72,6 +72,43 @@
   padding: var(--space-4);
 }
 
+/*
+ * Prose — shared styling for markdown-rendered tutor output.
+ * Resets browser defaults, inherits font from the feature context, and gives
+ * paragraphs + lists the right rhythm so an answer reads like one piece of
+ * writing instead of a stack of disconnected Text nodes.
+ */
+.prose {
+  color: var(--color-text-primary);
+  font: var(--text-body);
+}
+.prose > *:first-child { margin-top: 0; }
+.prose > *:last-child { margin-bottom: 0; }
+.prose p { margin: 0 0 var(--space-3) 0; }
+.prose p:last-child { margin-bottom: 0; }
+.prose ul,
+.prose ol {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+}
+.prose li { margin: 0 0 var(--space-1) 0; }
+.prose li:last-child { margin-bottom: 0; }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-1);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+.prose strong { font-weight: var(--weight-semibold); }
+.prose em { font-style: italic; }
+
+/* Claim prose carries the medium weight accent that the old
+ * <Text weight="medium"> gave the whole block. */
+.claimProse { font-weight: var(--weight-medium); }
+.claimProse strong { font-weight: var(--weight-bold); }
+
 .citationRow {
   display: flex;
   flex-wrap: wrap;

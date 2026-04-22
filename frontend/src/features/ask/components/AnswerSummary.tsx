@@ -1,5 +1,6 @@
 import { Card, Stack, Text } from "@/design-system";
 
+import { renderMarkdown } from "@/lib/markdown";
 import styles from "../AskView.module.css";
 
 interface AnswerSummaryProps {
@@ -17,7 +18,7 @@ export function AnswerSummary({ summary }: AnswerSummaryProps) {
         <Text as="h2" variant="h1" weight="bold">
           Grounded answer
         </Text>
-        <Text>{summary}</Text>
+        <div className={styles.prose}>{renderMarkdown(summary)}</div>
       </Stack>
     </Card>
   );

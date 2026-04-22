@@ -1,5 +1,6 @@
-import { Stack, Text } from "@/design-system";
+import { Stack } from "@/design-system";
 
+import { renderMarkdown } from "@/lib/markdown";
 import type { CitationRecord, ClaimRecord } from "../types";
 import { CitationChip } from "./CitationChip";
 import styles from "../AskView.module.css";
@@ -26,7 +27,9 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
             style={{ animationDelay: `${claimDelay}ms` }}
           >
           <Stack gap={3}>
-            <Text weight="medium">{claim.text}</Text>
+            <div className={[styles.prose, styles.claimProse].join(" ")}>
+              {renderMarkdown(claim.text)}
+            </div>
             <div className={styles.citationRow}>
               {claim.citations.map((citation) => {
                 runningIndex += 1;

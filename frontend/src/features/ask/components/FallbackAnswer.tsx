@@ -1,5 +1,6 @@
 import { Badge, Stack, Text } from "@/design-system";
 
+import { renderMarkdown } from "@/lib/markdown";
 import type { ClaimRecord } from "../types";
 import { friendlyErrorFor } from "../errorMessages";
 import styles from "../AskView.module.css";
@@ -33,7 +34,7 @@ export function FallbackAnswer({ claims, error }: FallbackAnswerProps) {
         <ol className={styles.fallbackClaims}>
           {claims.map((claim) => (
             <li key={claim.text}>
-              <Text>{claim.text}</Text>
+              <div className={styles.prose}>{renderMarkdown(claim.text)}</div>
             </li>
           ))}
         </ol>
