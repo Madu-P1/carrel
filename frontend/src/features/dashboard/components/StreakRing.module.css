@@ -1,0 +1,60 @@
+.wrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: inline-block;
+}
+
+.svg {
+  display: block;
+}
+
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.value {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
+.valueReached {
+  color: var(--accent);
+}
+
+.unit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+}
+
+.emptyLabel {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.15;
+}
+
+.emptyHint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+  margin-top: 2px;
+}

@@ -1,0 +1,94 @@
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  font: var(--text-body);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-instant) var(--ease-swift);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.size-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.size-md {
+  padding: 6px 14px;
+}
+
+.size-lg {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+.variant-primary {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+}
+
+.variant-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.variant-secondary {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.variant-secondary:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.variant-ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.variant-ghost:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.variant-danger {
+  background: var(--color-danger);
+  color: var(--color-text-inverse);
+}
+
+.variant-danger:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.leading,
+.label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.loading .label {
+  opacity: 0.7;
+}

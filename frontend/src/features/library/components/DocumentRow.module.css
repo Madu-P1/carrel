@@ -1,0 +1,67 @@
+.row {
+  width: 100%;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-4);
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.row:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-border-default);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, var(--color-accent) 8%);
+}
+
+/* On light surfaces, 8% accent mix reads as mint. Drop to 4% and let the
+ * shadow carry the lift signal instead. */
+:global(html.theme-light) .row:hover {
+  background: color-mix(in srgb, var(--color-bg-elevated) 96%, var(--color-accent) 4%);
+  box-shadow: var(--shadow-card);
+}
+
+.row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.header,
+.meta,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.titleGroup {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.meta {
+  justify-content: flex-start;
+}
+
+/*
+ * Filename + metadata row uses the mono voice (third type voice). Tells the
+ * user visually: this is identifying metadata, not prose.
+ */
+.meta :global(.meta-token),
+.filename {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-mono);
+}
+
+.actions {
+  justify-content: flex-end;
+}

@@ -1,0 +1,26 @@
+@import "./design-system/tokens.css";
+@import "./design-system/themes.css";
+@import "./design-system/reset.css";
+@import "./design-system/animations.css";
+
+:root {
+  color: var(--color-text-primary);
+  background: var(--color-bg-base);
+}
+
+/*
+ * Body stays on a clean single surface. Atmospheric depth (the single radial
+ * "moonlight" gradient) is rendered on .app-shell::before in dark mode only.
+ * The previous version layered a teal-tinted radial + a darker top band here,
+ * which meant light theme got a persistent mint-green wash across every view.
+ * See docs/einstein-ui-prompt.md §3.2 — there's exactly ONE depth gradient
+ * and it lives on the shell, not on body.
+ */
+body {
+  min-height: 100vh;
+  background: var(--color-bg-base);
+}
+
+a {
+  color: inherit;
+}

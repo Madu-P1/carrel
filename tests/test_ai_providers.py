@@ -1,0 +1,148 @@
+"""Tests for `ai/providers.py`. Provider selection + null fallback semantics."""
+
+from __future__ import annotations
+
+import os
+import unittest
+from unittest import mock
+
+from ai.ollama import OllamaClient
+from ai.providers import (
+    AIProvider,
+    NullProvider,
+    get_default_provider,
+    reset_default_provider,
+    select_provider,
+)
+from ai.router import ClaudeCallResult, ClaudeRouter
+
+
+class SelectProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_default_provider()
+
+    def tearDown(self) -> None:
+        reset_default_provider()
+
+    def test_explicit_off_returns_null_provider(self) -> None:
+        with mock.patch.dict(os.environ, {"EINSTEIN_AI_PROVIDER": "off"}, clear=False):
+            provider = select_provider()
+        self.assertIsInstance(provider, NullProvider)
+        self.assertFalse(provider.ai_enabled())
+
+    def test_explicit_claude_returns_claude_router_regardless_of_key(self) -> None:
+        with mock.patch.dict(os.environ, {"EINSTEIN_AI_PROVIDER": "claude"}, clear=False):
+            if "ANTHROPIC_API_KEY" in os.environ:
+                del os.environ["ANTHROPIC_API_KEY"]
+            provider = select_provider()
+        # User explicitly asked for Claude. Surface visibly on missing key at
+        # call time rather than silently substituting Ollama.
+        self.assertIsInstance(provider, ClaudeRouter)
+
+    def test_explicit_ollama_returns_ollama_client(self) -> None:
+        with mock.patch.dict(os.environ, {"EINSTEIN_AI_PROVIDER": "ollama"}, clear=False):
+            provider = select_provider()
+        self.assertIsInstance(provider, OllamaClient)
+
+    def test_auto_prefers_claude_when_key_present(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"EINSTEIN_AI_PROVIDER": "auto", "ANTHROPIC_API_KEY": "sk-test-abc"},
+            clear=False,
+        ):
+            provider = select_provider()
+        self.assertIsInstance(provider, ClaudeRouter)
+
+    def test_auto_falls_back_to_ollama_when_no_key(self) -> None:
+        # Remove ANTHROPIC_API_KEY via patched env.
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["EINSTEIN_AI_PROVIDER"] = "auto"
+        with mock.patch.dict(os.environ, env, clear=True):
+            provider = select_provider()
+        self.assertIsInstance(provider, OllamaClient)
+
+    def test_unknown_value_falls_back_to_auto(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"EINSTEIN_AI_PROVIDER": "totally-bogus", "ANTHROPIC_API_KEY": "sk-x"},
+            clear=False,
+        ):
+            provider = select_provider()
+        self.assertIsInstance(provider, ClaudeRouter)
+
+
+class NullProviderContractTests(unittest.TestCase):
+    def test_null_provider_request_text_returns_visible_failure(self) -> None:
+        null = NullProvider()
+        result = null.request_text(request_kind="test", system="", prompt="")
+        self.assertIsInstance(result, ClaudeCallResult)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "ai_disabled")
+        self.assertIsNone(result.text)
+        self.assertIsNone(result.json_payload)
+
+    def test_null_provider_request_json_honours_fallback(self) -> None:
+        null = NullProvider()
+        result = null.request_json(
+            request_kind="test",
+            system="",
+            prompt="",
+            fallback={"ok": False},
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.json_payload, {"ok": False})
+
+    def test_null_provider_request_tool_call_visible(self) -> None:
+        null = NullProvider()
+        result = null.request_tool_call(
+            request_kind="test",
+            system="",
+            prompt="",
+            tool={"name": "x", "description": "", "input_schema": {}},
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "ai_disabled")
+
+
+class ProviderProtocolTests(unittest.TestCase):
+    """Structural check: every backend satisfies AIProvider at runtime."""
+
+    def test_claude_router_is_ai_provider(self) -> None:
+        self.assertIsInstance(ClaudeRouter(), AIProvider)
+
+    def test_ollama_client_is_ai_provider(self) -> None:
+        self.assertIsInstance(OllamaClient(), AIProvider)
+
+    def test_null_provider_is_ai_provider(self) -> None:
+        self.assertIsInstance(NullProvider(), AIProvider)
+
+
+class DefaultProviderSingletonTests(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_default_provider()
+
+    def tearDown(self) -> None:
+        reset_default_provider()
+
+    def test_default_provider_caches_until_reset(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"EINSTEIN_AI_PROVIDER": "ollama"},
+            clear=False,
+        ):
+            first = get_default_provider()
+            second = get_default_provider()
+        self.assertIs(first, second)
+        reset_default_provider()
+        with mock.patch.dict(
+            os.environ,
+            {"EINSTEIN_AI_PROVIDER": "off"},
+            clear=False,
+        ):
+            third = get_default_provider()
+        self.assertIsNot(first, third)
+        self.assertIsInstance(third, NullProvider)
+
+
+if __name__ == "__main__":
+    unittest.main()

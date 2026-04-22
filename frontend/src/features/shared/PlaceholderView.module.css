@@ -1,0 +1,15 @@
+.wrap {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.hero {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.bullets {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+}

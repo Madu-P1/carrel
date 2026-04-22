@@ -1,0 +1,3993 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Einstein Learning OS</title>
+    <style>
+      :root {
+        --n-0: #07080b;
+        --n-1: #0b0d12;
+        --n-2: #0f1219;
+        --n-3: #141822;
+        --n-4: #1a1f2b;
+        --n-5: #222836;
+        --n-6: #2c3343;
+        --n-7: #3a4253;
+        --n-8: #565d6e;
+        --n-9: #858b99;
+        --n-10: #b1b6c2;
+        --n-11: #d9dce3;
+        --n-12: #f4f5f8;
+        --a: #e8b86b;
+        --a-hi: #f0c87e;
+        --a-lo: #8a6a3b;
+        --a-deep: #4a3a22;
+        --a-glow: rgba(232, 184, 107, 0.2);
+        --a-glow-hi: rgba(232, 184, 107, 0.35);
+        --c: #7aa5c9;
+        --c-lo: #2a3d4e;
+        --c-glow: rgba(122, 165, 201, 0.18);
+        --success: #6faa7a;
+        --warning: #d4a574;
+        --danger: #c9776b;
+        --danger-glow: rgba(201, 119, 107, 0.18);
+        --b: rgba(255, 255, 255, 0.055);
+        --b-hi: rgba(255, 255, 255, 0.09);
+        --b-hi2: rgba(255, 255, 255, 0.14);
+        --b-focus: rgba(232, 184, 107, 0.45);
+        --e-1: 0 1px 0 rgba(255, 255, 255, 0.025) inset,
+          0 1px 2px rgba(0, 0, 0, 0.35);
+        --e-2: 0 1px 0 rgba(255, 255, 255, 0.035) inset,
+          0 4px 14px rgba(0, 0, 0, 0.38);
+        --e-3: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+          0 10px 28px rgba(0, 0, 0, 0.48);
+        --e-4: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+          0 20px 56px rgba(0, 0, 0, 0.6);
+        --e-enter: cubic-bezier(0.22, 1, 0.36, 1);
+        --e-micro: cubic-bezier(0.2, 0.8, 0.2, 1);
+        --e-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --d-1: 120ms;
+        --d-2: 180ms;
+        --d-3: 260ms;
+        --d-4: 380ms;
+        --d-5: 600ms;
+        --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+          sans-serif;
+        --font-serif: "Iowan Old Style", "Palatino", "Georgia", serif;
+        --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+        --r-1: 5px;
+        --r-2: 8px;
+        --r-3: 12px;
+        --r-4: 16px;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+      }
+
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      *::-webkit-scrollbar-thumb {
+        background: var(--n-5);
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--n-11);
+        background: var(--n-0);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+
+      body {
+        overflow: hidden;
+        position: relative;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      body::before {
+        background:
+          radial-gradient(
+            ellipse 80% 50% at 20% 0%,
+            rgba(232, 184, 107, 0.055),
+            transparent 60%
+          ),
+          radial-gradient(
+            ellipse 60% 40% at 100% 100%,
+            rgba(122, 165, 201, 0.04),
+            transparent 60%
+          ),
+          var(--n-0);
+      }
+
+      body::after {
+        inset: -50%;
+        background:
+          radial-gradient(circle at 30% 30%, rgba(232, 184, 107, 0.025), transparent 40%),
+          radial-gradient(circle at 70% 70%, rgba(122, 165, 201, 0.02), transparent 40%);
+        opacity: 0.6;
+        animation: ambientRotate 60s linear infinite;
+      }
+
+      @keyframes ambientRotate {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        background: none;
+        border: none;
+      }
+
+      a {
+        color: var(--a);
+        text-decoration: none;
+      }
+
+      .eyebrow {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--n-8);
+      }
+
+      .caption {
+        font-size: 12px;
+        color: var(--n-9);
+      }
+
+      .metadata {
+        font-size: 11px;
+        color: var(--n-8);
+        letter-spacing: 0.02em;
+        font-family: var(--font-mono);
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 244px 1fr 360px;
+        grid-template-rows: 56px 1fr;
+        height: min(980px, calc(100vh - 8px));
+        min-height: 860px;
+        width: 100%;
+        position: relative;
+      }
+
+      .topbar {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--b);
+        background: linear-gradient(
+          180deg,
+          rgba(11, 13, 18, 0.9),
+          rgba(11, 13, 18, 0.7)
+        );
+        backdrop-filter: blur(24px) saturate(140%);
+        z-index: 20;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        width: 224px;
+        flex-shrink: 0;
+      }
+
+      .brand-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: linear-gradient(
+          135deg,
+          rgba(232, 184, 107, 0.18),
+          rgba(138, 106, 59, 0.12)
+        );
+        display: grid;
+        place-items: center;
+        box-shadow: 0 0 0 1px var(--b), 0 4px 14px var(--a-glow);
+        color: var(--a);
+        font-family: var(--font-serif);
+        font-size: 17px;
+        font-weight: 600;
+      }
+
+      .brand-name {
+        font-family: var(--font-serif);
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--n-12);
+        letter-spacing: -0.015em;
+        line-height: 1;
+      }
+
+      .brand-sub {
+        font-size: 9.5px;
+        color: var(--n-8);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        margin-top: 3px;
+        font-weight: 600;
+      }
+
+      .topbar-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+      }
+
+      .cmd-trigger {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px 7px 12px;
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: 9px;
+        color: var(--n-9);
+        font-size: 12px;
+        min-width: 360px;
+        transition: all var(--d-2) var(--e-micro);
+      }
+
+      .cmd-trigger:hover {
+        border-color: var(--b-hi2);
+        color: var(--n-10);
+        background: var(--n-3);
+      }
+
+      .cmd-trigger .kbd {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--n-9);
+        padding: 2px 6px;
+        background: var(--n-3);
+        border-radius: 4px;
+        border: 1px solid var(--b);
+      }
+
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .top-chip {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 11px;
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: 7px;
+        font-size: 11px;
+        color: var(--n-10);
+      }
+
+      .top-chip .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--a);
+        box-shadow: 0 0 8px var(--a-glow-hi);
+        animation: pulseDot 2.4s ease-in-out infinite;
+      }
+
+      @keyframes pulseDot {
+        0%,
+        100% {
+          box-shadow: 0 0 4px var(--a-glow);
+          transform: scale(1);
+        }
+        50% {
+          box-shadow: 0 0 12px var(--a-glow-hi);
+          transform: scale(1.15);
+        }
+      }
+
+      .rail-left {
+        border-right: 1px solid var(--b);
+        background: linear-gradient(180deg, var(--n-1) 0%, var(--n-0) 100%);
+        overflow-y: auto;
+        padding: 20px 0;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+
+      .rail-section {
+        padding: 0 12px;
+        margin-bottom: 22px;
+        position: relative;
+      }
+
+      .rail-section-title {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--n-8);
+        padding: 0 10px 10px;
+      }
+
+      .rail-active-pill {
+        position: absolute;
+        left: 0;
+        width: 3px;
+        height: 22px;
+        background: linear-gradient(180deg, var(--a-hi), var(--a-lo));
+        border-radius: 0 3px 3px 0;
+        box-shadow: 0 0 14px var(--a-glow-hi), 0 0 4px var(--a);
+        transition:
+          top var(--d-3) var(--e-spring),
+          opacity var(--d-3) var(--e-enter);
+        opacity: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      .rail-active-pill.visible {
+        opacity: 1;
+      }
+
+      .rail-item {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        width: 100%;
+        padding: 8px 11px;
+        border-radius: 8px;
+        color: var(--n-10);
+        font-size: 13px;
+        font-weight: 500;
+        transition: all var(--d-2) var(--e-micro);
+        text-align: left;
+        border: 1px solid transparent;
+        position: relative;
+      }
+
+      .rail-item:hover {
+        background: var(--n-2);
+        color: var(--n-12);
+        transform: translateX(1px);
+      }
+
+      .rail-item.active {
+        background: linear-gradient(90deg, var(--n-3), var(--n-2));
+        color: var(--n-12);
+        border-color: var(--b);
+        box-shadow: var(--e-1), inset 0 0 0 1px var(--b-hi);
+      }
+
+      .rail-item .icon {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        color: var(--n-8);
+      }
+
+      .rail-item.active .icon {
+        color: var(--a);
+      }
+
+      .rail-item .count {
+        margin-left: auto;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--n-8);
+        padding: 1px 6px;
+        background: var(--n-3);
+        border-radius: 10px;
+        min-width: 22px;
+        text-align: center;
+      }
+
+      .rail-item.active .count {
+        background: var(--a-deep);
+        color: var(--a);
+      }
+
+      .rail-footer {
+        margin-top: auto;
+        padding: 16px 12px;
+        border-top: 1px solid var(--b);
+      }
+
+      .focus-ring-compact {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px;
+        border-radius: 9px;
+        background: var(--n-2);
+        border: 1px solid var(--b);
+      }
+
+      .focus-ring-compact.live {
+        background: linear-gradient(135deg, var(--n-3), var(--n-2));
+        border-color: var(--a-lo);
+        box-shadow: 0 0 20px var(--a-glow);
+      }
+
+      .focus-ring-svg {
+        width: 34px;
+        height: 34px;
+        flex-shrink: 0;
+      }
+
+      .focus-ring-text {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .focus-ring-title {
+        font-size: 11px;
+        color: var(--n-11);
+        font-weight: 600;
+      }
+
+      .focus-ring-sub {
+        font-size: 10px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+        margin-top: 2px;
+      }
+
+      .canvas {
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 36px 40px 80px;
+      }
+
+      .view {
+        display: none;
+        opacity: 0;
+      }
+
+      .view.active {
+        display: block;
+        animation: viewEnter var(--d-4) var(--e-enter) forwards;
+      }
+
+      @keyframes viewEnter {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+          filter: blur(4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+          filter: blur(0);
+        }
+      }
+
+      .view-header {
+        margin-bottom: 28px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid var(--b);
+        position: relative;
+      }
+
+      .view-header::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 60px;
+        height: 1px;
+        background: linear-gradient(90deg, var(--a), transparent);
+      }
+
+      .view-eyebrow {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--a);
+        margin-bottom: 10px;
+      }
+
+      .view-title {
+        font-family: var(--font-serif);
+        font-size: 34px;
+        font-weight: 500;
+        color: var(--n-12);
+        letter-spacing: -0.025em;
+        line-height: 1.08;
+        margin-bottom: 8px;
+      }
+
+      .view-subtitle {
+        font-size: 14px;
+        color: var(--n-9);
+        max-width: 720px;
+        line-height: 1.6;
+      }
+
+      .rail-right {
+        border-left: 1px solid var(--b);
+        background: linear-gradient(180deg, var(--n-1), var(--n-0));
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .rail-right-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--b);
+      }
+
+      .rail-right-title {
+        font-family: var(--font-serif);
+        font-size: 15px;
+        color: var(--n-12);
+        font-weight: 500;
+      }
+
+      .rail-right-badge {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--n-8);
+        padding: 3px 9px;
+        background: var(--n-3);
+        border-radius: 10px;
+        border: 1px solid var(--b);
+      }
+
+      .evidence-card {
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 14px;
+        transition: all var(--d-3) var(--e-micro);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .evidence-card:hover {
+        border-color: var(--b-hi2);
+        background: var(--n-3);
+        transform: translateY(-2px);
+        box-shadow: var(--e-2);
+      }
+
+      .evidence-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .source-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px;
+        background: var(--c-lo);
+        color: var(--c);
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+      }
+
+      .source-pill.primary {
+        background: var(--a-deep);
+        color: var(--a);
+        box-shadow: 0 0 10px var(--a-glow);
+      }
+
+      .confidence-track {
+        flex: 1;
+        height: 3px;
+        background: var(--n-4);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .confidence-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--a-lo), var(--a));
+        border-radius: 2px;
+        box-shadow: 0 0 8px var(--a-glow);
+      }
+
+      .evidence-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--n-12);
+        margin-bottom: 6px;
+      }
+
+      .evidence-excerpt {
+        font-size: 12px;
+        color: var(--n-10);
+        line-height: 1.65;
+        font-family: var(--font-serif);
+        font-style: italic;
+        border-left: 2px solid var(--a-lo);
+        padding-left: 10px;
+        margin: 8px 0;
+      }
+
+      .evidence-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+      }
+
+      .evidence-empty,
+      .empty {
+        text-align: center;
+        padding: 32px 20px;
+        color: var(--n-9);
+        border: 1px dashed var(--b-hi);
+        border-radius: var(--r-3);
+        background: radial-gradient(ellipse at center, var(--n-2), transparent 70%);
+      }
+
+      .empty-title {
+        font-family: var(--font-serif);
+        font-size: 17px;
+        color: var(--n-11);
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+
+      .empty-sub {
+        font-size: 12px;
+        color: var(--n-8);
+        line-height: 1.6;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        transition:
+          transform var(--d-1) var(--e-micro),
+          background var(--d-2) var(--e-micro),
+          border-color var(--d-2) var(--e-micro),
+          box-shadow var(--d-2) var(--e-micro),
+          color var(--d-2) var(--e-micro);
+        border: 1px solid transparent;
+      }
+
+      .btn:focus-visible {
+        outline: 2px solid var(--b-focus);
+        outline-offset: 2px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(180deg, var(--a-hi), var(--a-lo));
+        color: var(--n-0);
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.25) inset,
+          0 1px 2px rgba(0, 0, 0, 0.4),
+          0 4px 14px var(--a-glow);
+        font-weight: 600;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.3) inset,
+          0 2px 5px rgba(0, 0, 0, 0.5),
+          0 10px 28px var(--a-glow-hi);
+      }
+
+      .btn-ghost {
+        background: var(--n-2);
+        color: var(--n-11);
+        border-color: var(--b);
+      }
+
+      .btn-ghost:hover {
+        background: var(--n-3);
+        border-color: var(--b-hi2);
+        color: var(--n-12);
+      }
+
+      .btn-subtle {
+        background: transparent;
+        color: var(--n-10);
+      }
+
+      .btn-subtle:hover {
+        background: var(--n-2);
+        color: var(--n-12);
+      }
+
+      .btn-danger {
+        background: transparent;
+        color: var(--danger);
+        border-color: rgba(201, 119, 107, 0.22);
+      }
+
+      .btn-danger:hover {
+        background: rgba(201, 119, 107, 0.1);
+        border-color: rgba(201, 119, 107, 0.4);
+      }
+
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+
+      .btn-lg {
+        padding: 12px 22px;
+        font-size: 14px;
+        border-radius: 10px;
+      }
+
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      .input,
+      .select,
+      .textarea {
+        width: 100%;
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: 9px;
+        padding: 10px 12px;
+        font-size: 13px;
+        color: var(--n-12);
+        transition:
+          border-color var(--d-2) var(--e-micro),
+          box-shadow var(--d-2) var(--e-micro),
+          background var(--d-2) var(--e-micro);
+      }
+
+      .input:hover,
+      .select:hover,
+      .textarea:hover {
+        border-color: var(--b-hi);
+        background: var(--n-3);
+      }
+
+      .input:focus,
+      .select:focus,
+      .textarea:focus {
+        outline: none;
+        border-color: var(--a-lo);
+        box-shadow: 0 0 0 3px var(--a-glow), 0 0 24px var(--a-glow);
+        background: var(--n-3);
+      }
+
+      .textarea {
+        resize: vertical;
+        min-height: 90px;
+      }
+
+      .input::placeholder,
+      .textarea::placeholder {
+        color: var(--n-8);
+      }
+
+      .field {
+        margin-bottom: 14px;
+      }
+
+      .field-label {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--n-9);
+        margin-bottom: 6px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .panel {
+        background: var(--n-1);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 22px;
+        position: relative;
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--b-hi2), transparent);
+        opacity: 0.5;
+        border-radius: inherit;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--n-12);
+        letter-spacing: -0.01em;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .stat {
+        background: var(--n-1);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 18px 20px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stat::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--b-hi2), transparent);
+      }
+
+      .stat-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--n-8);
+        margin-bottom: 10px;
+      }
+
+      .stat-value {
+        font-family: var(--font-serif);
+        font-size: 34px;
+        font-weight: 500;
+        color: var(--n-12);
+        letter-spacing: -0.025em;
+        line-height: 1;
+      }
+
+      .stat-delta {
+        font-size: 11px;
+        color: var(--n-9);
+        margin-top: 8px;
+        font-family: var(--font-mono);
+        letter-spacing: 0.02em;
+      }
+
+      .row {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 12px 14px;
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: 10px;
+        margin-bottom: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .row::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--a);
+        transform: scaleY(0);
+        transform-origin: center;
+        transition: transform var(--d-3) var(--e-spring);
+      }
+
+      .row:hover,
+      .row.active {
+        background: var(--n-3);
+        border-color: var(--b-hi);
+      }
+
+      .row:hover::before,
+      .row.active::before {
+        transform: scaleY(1);
+      }
+
+      .row-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .row-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--n-12);
+        margin-bottom: 3px;
+      }
+
+      .row-sub {
+        font-size: 11px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+      }
+
+      .row-actions {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 9.5px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .badge-urgent {
+        background: rgba(201, 119, 107, 0.15);
+        color: var(--danger);
+        border: 1px solid rgba(201, 119, 107, 0.28);
+      }
+
+      .badge-soon {
+        background: rgba(212, 165, 116, 0.13);
+        color: var(--warning);
+        border: 1px solid rgba(212, 165, 116, 0.25);
+      }
+
+      .badge-later {
+        background: rgba(122, 165, 201, 0.1);
+        color: var(--c);
+        border: 1px solid rgba(122, 165, 201, 0.22);
+      }
+
+      .badge-fresh {
+        background: rgba(111, 170, 122, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(111, 170, 122, 0.22);
+      }
+
+      .badge-stale {
+        background: rgba(201, 119, 107, 0.1);
+        color: var(--danger);
+        border: 1px solid rgba(201, 119, 107, 0.2);
+      }
+
+      .state-card {
+        background: linear-gradient(135deg, var(--n-1), var(--n-2));
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 20px;
+      }
+
+      .state-card-head {
+        font-family: var(--font-serif);
+        font-size: 18px;
+        color: var(--n-12);
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        margin-bottom: 4px;
+      }
+
+      .state-card-sub {
+        font-size: 11px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+        letter-spacing: 0.04em;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+      }
+
+      .state-card-copy {
+        font-size: 13px;
+        color: var(--n-10);
+        line-height: 1.65;
+      }
+
+      .state-card-chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .state-mini-chip {
+        font-size: 10.5px;
+        font-family: var(--font-mono);
+        padding: 3px 9px;
+        background: var(--n-3);
+        border: 1px solid var(--b);
+        border-radius: 5px;
+        color: var(--n-10);
+      }
+
+      .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .quick-tile {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--n-1);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 14px 16px;
+        text-align: left;
+      }
+
+      .quick-tile:hover {
+        border-color: var(--a-lo);
+        background: var(--n-2);
+        transform: translateY(-2px);
+      }
+
+      .quick-tile-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: var(--n-3);
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--b);
+      }
+
+      .quick-tile:hover .quick-tile-icon {
+        background: var(--a-deep);
+        color: var(--a);
+      }
+
+      .quick-tile-label {
+        font-size: 13px;
+        color: var(--n-11);
+        font-weight: 600;
+      }
+
+      .quick-tile-sub {
+        font-size: 10.5px;
+        color: var(--n-8);
+        margin-top: 2px;
+        font-family: var(--font-mono);
+      }
+
+      .session-hero {
+        background: linear-gradient(180deg, var(--n-1), var(--n-2));
+        border: 1px solid var(--b);
+        border-radius: var(--r-4);
+        padding: 36px;
+        display: flex;
+        align-items: center;
+        gap: 36px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .session-hero::before {
+        content: "";
+        position: absolute;
+        top: -40%;
+        right: -20%;
+        width: 480px;
+        height: 480px;
+        background: radial-gradient(circle, var(--a-glow), transparent 60%);
+        opacity: 0.5;
+      }
+
+      .session-hero.live {
+        border-color: var(--a-lo);
+        box-shadow: 0 0 0 1px var(--a-lo), 0 0 60px var(--a-glow);
+      }
+
+      .session-ring-wrap {
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .session-ring {
+        width: 200px;
+        height: 200px;
+        transform: rotate(-90deg);
+      }
+
+      .session-ring-bg {
+        fill: none;
+        stroke: var(--n-3);
+        stroke-width: 3;
+      }
+
+      .session-ring-fg {
+        fill: none;
+        stroke: url(#ringGrad);
+        stroke-width: 4;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 400ms ease;
+        filter: drop-shadow(0 0 8px var(--a-glow-hi));
+      }
+
+      .session-ring-time {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-serif);
+        font-weight: 500;
+        color: var(--n-12);
+        letter-spacing: -0.025em;
+      }
+
+      .session-ring-time-main {
+        font-size: 42px;
+        line-height: 1;
+      }
+
+      .session-ring-time-sub {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--n-8);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-top: 6px;
+      }
+
+      .session-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .session-course-tag {
+        display: inline-block;
+        padding: 4px 11px;
+        background: var(--c-lo);
+        color: var(--c);
+        border-radius: 5px;
+        font-size: 10px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+      }
+
+      .session-hero.live .session-course-tag {
+        background: var(--a-deep);
+        color: var(--a);
+      }
+
+      .session-objective {
+        font-family: var(--font-serif);
+        font-size: 26px;
+        color: var(--n-12);
+        margin-bottom: 10px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+
+      .session-controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 22px;
+      }
+
+      .session-status {
+        font-size: 11px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+        margin-top: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .tutor-stage {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        min-height: 220px;
+      }
+
+      .msg {
+        display: flex;
+        gap: 14px;
+      }
+
+      .msg-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+        font-size: 11px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+      }
+
+      .msg.user .msg-avatar {
+        background: var(--n-4);
+        color: var(--n-11);
+        box-shadow: var(--e-1);
+      }
+
+      .msg.ai .msg-avatar {
+        background: linear-gradient(135deg, var(--a), var(--a-lo));
+        color: var(--n-0);
+        box-shadow: 0 0 14px var(--a-glow-hi);
+      }
+
+      .msg-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .msg-role {
+        font-size: 10px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--n-8);
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .msg-body {
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--n-11);
+        white-space: pre-wrap;
+      }
+
+      .msg.ai .msg-body {
+        font-family: var(--font-serif);
+        font-size: 15px;
+        color: var(--n-12);
+      }
+
+      .tutor-input-dock {
+        position: sticky;
+        bottom: -12px;
+        background: linear-gradient(180deg, transparent 0%, var(--n-0) 50%);
+        padding: 40px 0 12px;
+        margin-top: 24px;
+        z-index: 10;
+      }
+
+      .tutor-input-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: linear-gradient(180deg, var(--n-2), var(--n-1));
+        border: 1px solid var(--b-hi);
+        border-radius: 16px;
+        padding: 16px 18px;
+        box-shadow: var(--e-2);
+      }
+
+      .tutor-input-wrap:focus-within {
+        border-color: var(--a-lo);
+        box-shadow: 0 0 0 3px var(--a-glow), var(--e-3);
+      }
+
+      .tutor-textarea {
+        background: transparent;
+        border: none;
+        resize: none;
+        min-height: 30px;
+        max-height: 200px;
+        color: var(--n-12);
+        font-size: 14px;
+        line-height: 1.55;
+        width: 100%;
+      }
+
+      .tutor-textarea:focus {
+        outline: none;
+      }
+
+      .tutor-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 10px;
+        border-top: 1px solid var(--b);
+        flex-wrap: wrap;
+      }
+
+      .tutor-quick {
+        display: flex;
+        gap: 4px;
+        flex: 1;
+        flex-wrap: wrap;
+      }
+
+      .note-card {
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 18px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .note-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 2px;
+        height: 100%;
+        background: linear-gradient(180deg, var(--a), transparent);
+      }
+
+      .note-title {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--n-12);
+        margin-bottom: 8px;
+      }
+
+      .note-body {
+        font-size: 12.5px;
+        color: var(--n-10);
+        line-height: 1.65;
+      }
+
+      .note-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--b);
+      }
+
+      .artifact-tile {
+        background: var(--n-2);
+        border: 1px solid var(--b);
+        border-radius: var(--r-3);
+        padding: 18px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .artifact-kind {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        background: var(--a-deep);
+        color: var(--a);
+        border-radius: 4px;
+        font-size: 9.5px;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+      }
+
+      .artifact-title {
+        font-family: var(--font-serif);
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--n-12);
+        margin-bottom: 8px;
+      }
+
+      .artifact-meta {
+        font-size: 10.5px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+      }
+
+      .artifact-preview {
+        font-size: 12px;
+        color: var(--n-10);
+        line-height: 1.65;
+        margin-top: 10px;
+      }
+
+      .split-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 1.05fr 1fr;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .mini-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--n-8);
+        font-family: var(--font-mono);
+      }
+
+      .footer-copy {
+        margin-top: 14px;
+        font-size: 12px;
+        color: var(--n-9);
+      }
+
+      @media (max-width: 1180px) {
+        .app {
+          grid-template-columns: 72px 1fr;
+        }
+
+        .rail-right {
+          display: none;
+        }
+
+        .rail-section-title,
+        .rail-item span:not(.icon):not(.count) {
+          display: none;
+        }
+
+        .rail-item {
+          justify-content: center;
+          padding: 10px;
+        }
+
+        .rail-active-pill {
+          display: none;
+        }
+
+        .brand-name,
+        .brand-sub {
+          display: none;
+        }
+
+        .brand {
+          width: 44px;
+          justify-content: center;
+        }
+
+        .focus-ring-text {
+          display: none;
+        }
+      }
+
+      @media (max-width: 840px) {
+        .app {
+          min-height: 920px;
+        }
+
+        .canvas {
+          padding: 28px 20px 80px;
+        }
+
+        .view-title {
+          font-size: 28px;
+        }
+
+        .grid-4,
+        .grid-2,
+        .split-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .session-hero {
+          flex-direction: column;
+          padding: 28px;
+          gap: 24px;
+        }
+
+        .top-chip {
+          display: none;
+        }
+
+        .cmd-trigger {
+          min-width: auto;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">E</div>
+          <div>
+            <div class="brand-name">Einstein</div>
+            <div class="brand-sub">Learning OS</div>
+          </div>
+        </div>
+        <div class="topbar-center">
+          <button class="cmd-trigger" id="refreshButton" type="button" data-busy-key="refresh">
+            <svg
+              class="cmd-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M20 11a8 8 0 1 0 2 5.3" />
+              <path d="M20 4v7h-7" />
+            </svg>
+            <span>Refresh full learning state</span>
+            <span class="kbd">hydrate</span>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <div class="top-chip" id="statusChip">
+            <span class="dot"></span>
+            <span>Waiting</span>
+          </div>
+          <div class="top-chip">
+            <span class="dot"></span>
+            <span id="topGoal">No goal</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="fullscreenButton" type="button">
+            Fullscreen
+          </button>
+        </div>
+      </header>
+
+      <aside class="rail-left">
+        <div class="rail-active-pill" id="railPill"></div>
+
+        <div class="rail-section">
+          <div class="rail-section-title">Workspace</div>
+          <button class="rail-item active" data-view="dashboard" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <rect x="3" y="3" width="7" height="9" />
+              <rect x="14" y="3" width="7" height="5" />
+              <rect x="14" y="12" width="7" height="9" />
+              <rect x="3" y="16" width="7" height="5" />
+            </svg>
+            <span>Dashboard</span>
+          </button>
+          <button class="rail-item" data-view="session" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span>Session</span>
+          </button>
+          <button class="rail-item" data-view="tutor" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path
+                d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"
+              />
+            </svg>
+            <span>Tutor</span>
+          </button>
+        </div>
+
+        <div class="rail-section">
+          <div class="rail-section-title">Library</div>
+          <button class="rail-item" data-view="materials" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <span>Sources</span>
+            <span class="count" id="materialCount">0</span>
+          </button>
+          <button class="rail-item" data-view="notes" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z" />
+            </svg>
+            <span>Notes</span>
+            <span class="count" id="noteCount">0</span>
+          </button>
+          <button class="rail-item" data-view="artifacts" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M9 21V9" />
+            </svg>
+            <span>Artifacts</span>
+            <span class="count" id="artifactCount">0</span>
+          </button>
+        </div>
+
+        <div class="rail-footer">
+          <div class="focus-ring-compact" id="railFocusRing">
+            <svg class="focus-ring-svg" viewBox="0 0 36 36">
+              <circle
+                cx="18"
+                cy="18"
+                r="15"
+                fill="none"
+                stroke="var(--n-3)"
+                stroke-width="3"
+              />
+              <circle
+                id="railRing"
+                cx="18"
+                cy="18"
+                r="15"
+                fill="none"
+                stroke="var(--a)"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-dasharray="94.25"
+                stroke-dashoffset="94.25"
+                transform="rotate(-90 18 18)"
+              />
+            </svg>
+            <div class="focus-ring-text">
+              <div class="focus-ring-title" id="railRingTitle">No active session</div>
+              <div class="focus-ring-sub" id="railRingSub">Hydrate to start</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="canvas">
+        <section id="dashboard" class="view active">
+          <div class="view-header">
+            <div class="view-eyebrow" id="greetingEyebrow">Today</div>
+            <h1 class="view-title" id="greetingTitle">Learning overview</h1>
+            <p class="view-subtitle" id="greetingSub">
+              Einstein is ready to show your next best action, grounded tutor context,
+              due review, and recent work.
+            </p>
+          </div>
+
+          <div class="panel" style="margin-bottom: 24px">
+            <div class="card-head">
+              <h3 class="card-title">Goal and momentum</h3>
+              <div class="eyebrow" id="dashboardStatusEyebrow">Pending hydrate</div>
+            </div>
+            <div class="grid grid-2">
+              <div>
+                <div class="field">
+                  <label class="field-label" for="goalInput">Current goal</label>
+                  <input
+                    class="input"
+                    id="goalInput"
+                    placeholder="Set a study target for this thread"
+                    autocomplete="off"
+                  />
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                  <button
+                    class="btn btn-primary"
+                    id="goalButton"
+                    type="button"
+                    data-busy-key="goal"
+                  >
+                    Save goal
+                  </button>
+                  <button class="btn btn-ghost" type="button" data-jump="tutor">
+                    Ask from this goal
+                  </button>
+                </div>
+                <p class="footer-copy" id="dashboardErrorCopy"></p>
+              </div>
+              <div class="state-card">
+                <div class="state-card-head" id="momentumHeadline">Workspace not loaded</div>
+                <div class="state-card-sub" id="nextActionTitle">No next action yet</div>
+                <div class="state-card-copy" id="momentumReason">
+                  Refresh to load Einstein's current workspace summary.
+                </div>
+                <div class="state-card-chips" id="dashboardStateChips"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="quick-actions">
+            <button class="quick-tile" type="button" data-jump="session">
+              <div class="quick-tile-icon">S</div>
+              <div>
+                <div class="quick-tile-label">Start session</div>
+                <div class="quick-tile-sub">Create a focused study block</div>
+              </div>
+            </button>
+            <button class="quick-tile" type="button" data-jump="tutor">
+              <div class="quick-tile-icon">T</div>
+              <div>
+                <div class="quick-tile-label">Ask tutor</div>
+                <div class="quick-tile-sub">Grounded answer with evidence</div>
+              </div>
+            </button>
+            <button class="quick-tile" type="button" data-jump="notes">
+              <div class="quick-tile-icon">N</div>
+              <div>
+                <div class="quick-tile-label">Capture note</div>
+                <div class="quick-tile-sub">Turn momentum into retention</div>
+              </div>
+            </button>
+            <button class="quick-tile" type="button" data-jump="artifacts">
+              <div class="quick-tile-icon">A</div>
+              <div>
+                <div class="quick-tile-label">Generate artifact</div>
+                <div class="quick-tile-sub">Produce a study guide or quiz</div>
+              </div>
+            </button>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom: 24px">
+            <div class="stat">
+              <div class="stat-label">Sources</div>
+              <div class="stat-value" id="statSources">0</div>
+              <div class="stat-delta">documents available</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Notes</div>
+              <div class="stat-value" id="statNotes">0</div>
+              <div class="stat-delta">captured insights</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Artifacts</div>
+              <div class="stat-value" id="statArtifacts">0</div>
+              <div class="stat-delta">generated outputs</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Review</div>
+              <div class="stat-value" id="statReview">0</div>
+              <div class="stat-delta">due items right now</div>
+            </div>
+          </div>
+
+          <div class="split-grid" style="margin-bottom: 24px">
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Due review</h3>
+                <div class="eyebrow" id="reviewDueLabel">No cards due</div>
+              </div>
+              <div id="dashboardReviewList"></div>
+            </div>
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Recent sources</h3>
+                <button class="btn btn-subtle btn-sm" type="button" data-jump="materials">
+                  Open sources
+                </button>
+              </div>
+              <div id="dashboardDocumentsList"></div>
+            </div>
+          </div>
+
+          <div class="split-grid">
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Recent notes</h3>
+                <button class="btn btn-subtle btn-sm" type="button" data-jump="notes">
+                  Open notes
+                </button>
+              </div>
+              <div id="dashboardNotesList"></div>
+            </div>
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Recent artifacts</h3>
+                <button class="btn btn-subtle btn-sm" type="button" data-jump="artifacts">
+                  Open artifacts
+                </button>
+              </div>
+              <div id="dashboardArtifactsList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="session" class="view">
+          <div class="view-header">
+            <div class="view-eyebrow">Session engine</div>
+            <h1 class="view-title">Enter deep work</h1>
+            <p class="view-subtitle">
+              Start a focused Einstein session, then complete it when you want the
+              post-session recommendations and refreshed queue.
+            </p>
+          </div>
+
+          <div class="session-hero" id="sessionHero">
+            <svg width="0" height="0" style="position: absolute">
+              <defs>
+                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#f0c87e"></stop>
+                  <stop offset="100%" stop-color="#d4a574"></stop>
+                </linearGradient>
+              </defs>
+            </svg>
+            <div class="session-ring-wrap">
+              <svg class="session-ring" viewBox="0 0 200 200">
+                <circle class="session-ring-bg" cx="100" cy="100" r="90"></circle>
+                <circle
+                  id="sessionRing"
+                  class="session-ring-fg"
+                  cx="100"
+                  cy="100"
+                  r="90"
+                  stroke-dasharray="565.49"
+                  stroke-dashoffset="565.49"
+                ></circle>
+              </svg>
+              <div class="session-ring-time">
+                <div class="session-ring-time-main" id="timerDisplay">Ready</div>
+                <div class="session-ring-time-sub" id="timerModeLabel">idle</div>
+              </div>
+            </div>
+            <div class="session-info">
+              <div class="session-course-tag" id="sessionTag">No session active</div>
+              <div class="session-objective" id="sessionObjective">
+                Configure your next session below
+              </div>
+              <div class="session-status" id="timerStatus">
+                Hydrate or start a new session to populate this hero.
+              </div>
+              <div class="session-controls">
+                <button
+                  class="btn btn-primary btn-lg"
+                  id="sessionButton"
+                  type="button"
+                  data-busy-key="session"
+                >
+                  Begin session
+                </button>
+                <button
+                  class="btn btn-danger btn-lg"
+                  id="completeSessionButton"
+                  type="button"
+                  data-busy-key="completeSession"
+                >
+                  Complete current session
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: 24px">
+            <h3 class="card-title" style="margin-bottom: 14px">Session setup</h3>
+            <div class="grid grid-2">
+              <div class="field">
+                <label class="field-label" for="sessionMode">Mode</label>
+                <select class="select" id="sessionMode">
+                  <option value="focus_sprint">Focus sprint</option>
+                  <option value="review">Review</option>
+                  <option value="tutor">Tutor</option>
+                  <option value="exam_prep">Exam prep</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="sessionDuration">Minutes</label>
+                <select class="select" id="sessionDuration">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                  <option value="60">60</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="sessionObjectiveInput">Objective</label>
+              <input
+                class="input"
+                id="sessionObjectiveInput"
+                placeholder="What do you want to understand by the end of this session?"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: 24px">
+            <div class="card-head">
+              <h3 class="card-title">Recent sessions</h3>
+              <div class="eyebrow">From workspace</div>
+            </div>
+            <div id="sessionList"></div>
+          </div>
+        </section>
+
+        <section id="tutor" class="view">
+          <div class="view-header">
+            <div class="view-eyebrow">Grounded tutor</div>
+            <h1 class="view-title">Ask Einstein</h1>
+            <p class="view-subtitle">
+              Each answer comes from your current study context and the evidence rail
+              updates in place after every exchange.
+            </p>
+          </div>
+
+          <div id="tutorChat" class="tutor-stage"></div>
+
+          <div class="tutor-input-dock">
+            <div class="tutor-input-wrap">
+              <textarea
+                class="tutor-textarea"
+                id="tutorInput"
+                placeholder="Ask anything about your sources, notes, or weak areas..."
+                rows="1"
+              ></textarea>
+              <div class="tutor-toolbar">
+                <div class="tutor-quick">
+                  <button class="btn btn-subtle btn-sm" type="button" data-prompt="Quiz me on my weakest concept.">
+                    Weak concept
+                  </button>
+                  <button class="btn btn-subtle btn-sm" type="button" data-prompt="Explain the main idea using my uploaded sources.">
+                    Explain source
+                  </button>
+                  <button class="btn btn-subtle btn-sm" type="button" data-prompt="Give me a 3-step study plan for this goal.">
+                    Study plan
+                  </button>
+                </div>
+                <button class="btn btn-primary btn-sm" id="askButton" type="button" data-busy-key="ask">
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="materials" class="view">
+          <div class="view-header">
+            <div class="view-eyebrow">Source ingestion</div>
+            <h1 class="view-title">Sources</h1>
+            <p class="view-subtitle">
+              Browse the current source library, inspect a source in detail, and pull
+              graph or concept comparisons on demand.
+            </p>
+          </div>
+
+          <div class="split-grid">
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Source library</h3>
+                <button class="btn btn-subtle btn-sm" id="loadDocumentsButton" type="button">
+                  Refresh list
+                </button>
+              </div>
+              <div id="documentsList"></div>
+            </div>
+
+            <div class="panel">
+              <div class="card-head">
+                <h3 class="card-title">Selected source</h3>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  id="graphButton"
+                  type="button"
+                  data-busy-key="conceptGraph"
+                >
+                  Load concept graph
+                </button>
+              </div>
+              <div id="documentDetail"></div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: 24px">
+            <div class="card-head">
+              <h3 class="card-title">Concept graph and compare</h3>
+              <div class="eyebrow">View-specific tools</div>
+            </div>
+            <div class="split-grid">
+              <div>
+                <div id="conceptGraphSummary"></div>
+              </div>
+              <div>
+                <div class="field">
+                  <label class="field-label" for="compareLeftSelect">Left concept</label>
+                  <select class="select" id="compareLeftSelect"></select>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="compareRightSelect">Right concept</label>
+                  <select class="select" id="compareRightSelect"></select>
+                </div>
+                <button
+                  class="btn btn-primary"
+                  id="compareButton"
+                  type="button"
+                  data-busy-key="compare"
+                >
+                  Compare concepts
+                </button>
+                <div id="compareResult" style="margin-top: 16px"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="notes" class="view">
+          <div class="view-header">
+            <div class="view-eyebrow">Workbench</div>
+            <h1 class="view-title">Notes</h1>
+            <p class="view-subtitle">
+              Save a grounded note into Einstein and refresh the workbench without
+              hydrating the whole app again.
+            </p>
+          </div>
+
+          <div class="panel" style="margin-bottom: 24px">
+            <div class="grid grid-2">
+              <div class="field">
+                <label class="field-label" for="noteDocSelect">Source</label>
+                <select class="select" id="noteDocSelect"></select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="noteConceptSelect">Concept</label>
+                <select class="select" id="noteConceptSelect"></select>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="noteTitleInput">Title</label>
+              <input
+                class="input"
+                id="noteTitleInput"
+                placeholder="Short title for this note"
+                autocomplete="off"
+              />
+            </div>
+            <div class="field">
+              <label class="field-label" for="noteBodyInput">Note</label>
+              <textarea
+                class="textarea"
+                id="noteBodyInput"
+                placeholder="Capture the idea in your own words..."
+                style="min-height: 140px"
+              ></textarea>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button class="btn btn-primary" id="noteButton" type="button" data-busy-key="note">
+                Save note
+              </button>
+              <button class="btn btn-ghost" id="loadNotesButton" type="button">
+                Refresh notes
+              </button>
+            </div>
+          </div>
+
+          <div id="notesList" class="grid grid-2"></div>
+        </section>
+
+        <section id="artifacts" class="view">
+          <div class="view-header">
+            <div class="view-eyebrow">Artifact studio</div>
+            <h1 class="view-title">Generate</h1>
+            <p class="view-subtitle">
+              Turn a source into a study guide, outline, quiz, or glossary using the
+              lighter artifact tools.
+            </p>
+          </div>
+
+          <div class="panel" style="margin-bottom: 24px">
+            <div class="grid grid-2">
+              <div class="field">
+                <label class="field-label" for="artifactSourceSelect">Source</label>
+                <select class="select" id="artifactSourceSelect"></select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="artifactKindSelect">Artifact kind</label>
+                <select class="select" id="artifactKindSelect">
+                  <option value="study_guide">Study guide</option>
+                  <option value="summary">Summary</option>
+                  <option value="outline">Outline</option>
+                  <option value="quiz">Quiz</option>
+                  <option value="glossary">Glossary</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="artifactPromptInput">Prompt</label>
+              <textarea
+                class="textarea"
+                id="artifactPromptInput"
+                placeholder="Optional focus area or instruction..."
+                style="min-height: 100px"
+              ></textarea>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button
+                class="btn btn-primary"
+                id="artifactButton"
+                type="button"
+                data-busy-key="artifact"
+              >
+                Generate artifact
+              </button>
+              <button class="btn btn-ghost" id="loadArtifactsButton" type="button">
+                Refresh artifacts
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="card-head">
+              <h3 class="card-title">Your artifacts</h3>
+              <div class="eyebrow">Latest outputs</div>
+            </div>
+            <div id="artifactList"></div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="rail-right">
+        <div class="rail-right-header">
+          <div class="rail-right-title">Evidence</div>
+          <div class="rail-right-badge" id="evidenceCount">0</div>
+        </div>
+        <div id="evidenceList"></div>
+      </aside>
+    </div>
+
+    <script type="module">
+      const sampleLearningState = {
+        workspace: {
+          scope: { surface: "tutor" },
+          goal: "Master valuation logic before Friday",
+          momentum: {
+            headline: "Turn free cash flow into a 3-bullet note",
+            reason:
+              "Einstein sees source coverage and an open tutor thread, but not yet a compressed note you can review later.",
+            focus_concept_name: "Free Cash Flow",
+          },
+          next_action: {
+            label: "Ask a grounded tutor question",
+            type: "tutor",
+            concept_id: "concept-free-cash-flow",
+          },
+          mastery: [
+            {
+              id: "concept-free-cash-flow",
+              name: "Free Cash Flow",
+              mastery: 0.24,
+              band: "Building",
+              due_cards: 3,
+            },
+          ],
+          left_rail: {
+            sources: [
+              {
+                id: "doc-finance",
+                filename: "Finance_Week_4.pdf",
+                subject_name: "Finance",
+                status: "ready",
+                concept_count: 8,
+                question_count: 5,
+                summary:
+                  "Lecture notes covering discounted cash flow, enterprise value, and stock valuation assumptions.",
+              },
+            ],
+            notes: [
+              {
+                id: "note-preview",
+                title: "DCF hinges on assumptions",
+                content:
+                  "Discounted cash flow is highly sensitive to discount rate, growth, and terminal value assumptions.",
+                note_type: "saved_insight",
+                document_name: "Finance_Week_4.pdf",
+                concept_name: "Free Cash Flow",
+                updated_at: "2026-04-18T16:15:00Z",
+              },
+            ],
+            artifacts: [
+              {
+                id: "artifact-preview",
+                artifact_kind: "study_guide",
+                status: "ready",
+                stale: false,
+                preview:
+                  "A short study guide covering discounted cash flow, enterprise value, and terminal value.",
+                created_at: "2026-04-18T16:30:00Z",
+              },
+            ],
+            sessions: [],
+          },
+          center_canvas: {
+            surface: "tutor",
+            payload: {
+              active_exchange: {
+                question: "What is discounted cash flow in simple language?",
+                answer:
+                  "Discounted cash flow estimates what a business is worth by adding up the cash it can generate in the future and discounting that back to today.",
+                model_confidence: 0.91,
+              },
+              recent_exchanges: [
+                {
+                  question: "What is discounted cash flow in simple language?",
+                  answer:
+                    "Discounted cash flow estimates what a business is worth by adding up future cash and discounting it back to the present.",
+                },
+              ],
+            },
+          },
+          right_rail: {
+            confidence: {
+              model: 0.91,
+              learner: 62,
+              evidence_count: 1,
+            },
+            evidence: [
+              {
+                id: "evidence-preview",
+                label: "Finance_Week_4.pdf - Section 12",
+                document_name: "Finance_Week_4.pdf",
+                page_num: 12,
+                anchor_text:
+                  "Discounted cash flow methods incorporate specific assumptions about cost of capital and future growth.",
+                confidence: 0.84,
+              },
+            ],
+            next_actions: [
+              {
+                label: "Capture a note",
+                type: "note",
+                concept_id: "concept-free-cash-flow",
+              },
+            ],
+          },
+          compatibility: {
+            compareOptions: [
+              {
+                id: "concept-free-cash-flow",
+                name: "Free Cash Flow",
+                document_name: "Finance_Week_4.pdf",
+              },
+              {
+                id: "concept-enterprise-value",
+                name: "Enterprise Value",
+                document_name: "Finance_Week_4.pdf",
+              },
+            ],
+          },
+        },
+        documents: [
+          {
+            id: "doc-finance",
+            filename: "Finance_Week_4.pdf",
+            subject_name: "Finance",
+            status: "ready",
+            concept_count: 8,
+            question_count: 5,
+            summary:
+              "Lecture notes covering discounted cash flow, enterprise value, and stock valuation assumptions.",
+          },
+        ],
+        notes: [
+          {
+            id: "note-preview",
+            title: "DCF hinges on assumptions",
+            content:
+              "Discounted cash flow is highly sensitive to discount rate, growth, and terminal value assumptions.",
+            note_type: "saved_insight",
+            document_name: "Finance_Week_4.pdf",
+            concept_name: "Free Cash Flow",
+            updated_at: "2026-04-18T16:15:00Z",
+          },
+        ],
+        artifacts: [
+          {
+            id: "artifact-preview",
+            artifact_kind: "study_guide",
+            status: "ready",
+            stale: false,
+            preview:
+              "A short study guide covering discounted cash flow, enterprise value, and terminal value.",
+            created_at: "2026-04-18T16:30:00Z",
+          },
+        ],
+        review: [
+          {
+            id: "card-preview",
+            concept_name: "Free Cash Flow",
+            source_name: "Finance_Week_4.pdf",
+            state: "new",
+            due_date: "2026-04-18",
+            missed_recently: false,
+          },
+        ],
+        evidence: [
+          {
+            id: "evidence-preview",
+            label: "Finance_Week_4.pdf - Section 12",
+            document_name: "Finance_Week_4.pdf",
+            page_num: 12,
+            anchor_text:
+              "Discounted cash flow methods incorporate specific assumptions about cost of capital and future growth.",
+            confidence: 0.84,
+          },
+        ],
+        concept_options: [
+          {
+            id: "concept-free-cash-flow",
+            name: "Free Cash Flow",
+            document_name: "Finance_Week_4.pdf",
+          },
+          {
+            id: "concept-enterprise-value",
+            name: "Enterprise Value",
+            document_name: "Finance_Week_4.pdf",
+          },
+        ],
+      };
+
+      const busyKeys = [
+        "refresh",
+        "goal",
+        "ask",
+        "session",
+        "completeSession",
+        "documentDetail",
+        "conceptGraph",
+        "compare",
+        "note",
+        "artifact",
+        "review",
+      ];
+
+      const state = {
+        preview: window.parent === window,
+        activeView: "dashboard",
+        data: JSON.parse(JSON.stringify(sampleLearningState)),
+        tutor: null,
+        session: null,
+        documentDetail: null,
+        comparison: null,
+        conceptGraph: null,
+        reviewResult: null,
+        completion: null,
+        error: null,
+        busy: Object.fromEntries(busyKeys.map((key) => [key, false])),
+        drafts: {
+          goal: "",
+          question: "",
+          sessionObjective: "",
+          noteTitle: "",
+          noteBody: "",
+          artifactPrompt: "",
+        },
+        selections: {
+          selectedDocumentId: "doc-finance",
+          noteDocId: "doc-finance",
+          noteConceptId: "concept-free-cash-flow",
+          artifactSourceId: "doc-finance",
+          compareLeftId: "concept-free-cash-flow",
+          compareRightId: "concept-enterprise-value",
+        },
+      };
+
+      const els = {
+        refreshButton: document.getElementById("refreshButton"),
+        fullscreenButton: document.getElementById("fullscreenButton"),
+        statusChip: document.getElementById("statusChip"),
+        topGoal: document.getElementById("topGoal"),
+        railPill: document.getElementById("railPill"),
+        materialCount: document.getElementById("materialCount"),
+        noteCount: document.getElementById("noteCount"),
+        artifactCount: document.getElementById("artifactCount"),
+        railRing: document.getElementById("railRing"),
+        railRingTitle: document.getElementById("railRingTitle"),
+        railRingSub: document.getElementById("railRingSub"),
+        railFocusRing: document.getElementById("railFocusRing"),
+        greetingEyebrow: document.getElementById("greetingEyebrow"),
+        greetingTitle: document.getElementById("greetingTitle"),
+        greetingSub: document.getElementById("greetingSub"),
+        dashboardStatusEyebrow: document.getElementById("dashboardStatusEyebrow"),
+        dashboardErrorCopy: document.getElementById("dashboardErrorCopy"),
+        goalInput: document.getElementById("goalInput"),
+        goalButton: document.getElementById("goalButton"),
+        momentumHeadline: document.getElementById("momentumHeadline"),
+        nextActionTitle: document.getElementById("nextActionTitle"),
+        momentumReason: document.getElementById("momentumReason"),
+        dashboardStateChips: document.getElementById("dashboardStateChips"),
+        statSources: document.getElementById("statSources"),
+        statNotes: document.getElementById("statNotes"),
+        statArtifacts: document.getElementById("statArtifacts"),
+        statReview: document.getElementById("statReview"),
+        reviewDueLabel: document.getElementById("reviewDueLabel"),
+        dashboardReviewList: document.getElementById("dashboardReviewList"),
+        dashboardDocumentsList: document.getElementById("dashboardDocumentsList"),
+        dashboardNotesList: document.getElementById("dashboardNotesList"),
+        dashboardArtifactsList: document.getElementById("dashboardArtifactsList"),
+        sessionHero: document.getElementById("sessionHero"),
+        sessionTag: document.getElementById("sessionTag"),
+        sessionObjective: document.getElementById("sessionObjective"),
+        timerDisplay: document.getElementById("timerDisplay"),
+        timerModeLabel: document.getElementById("timerModeLabel"),
+        timerStatus: document.getElementById("timerStatus"),
+        sessionRing: document.getElementById("sessionRing"),
+        sessionMode: document.getElementById("sessionMode"),
+        sessionDuration: document.getElementById("sessionDuration"),
+        sessionObjectiveInput: document.getElementById("sessionObjectiveInput"),
+        sessionButton: document.getElementById("sessionButton"),
+        completeSessionButton: document.getElementById("completeSessionButton"),
+        sessionList: document.getElementById("sessionList"),
+        tutorChat: document.getElementById("tutorChat"),
+        tutorInput: document.getElementById("tutorInput"),
+        askButton: document.getElementById("askButton"),
+        loadDocumentsButton: document.getElementById("loadDocumentsButton"),
+        documentsList: document.getElementById("documentsList"),
+        documentDetail: document.getElementById("documentDetail"),
+        graphButton: document.getElementById("graphButton"),
+        conceptGraphSummary: document.getElementById("conceptGraphSummary"),
+        compareLeftSelect: document.getElementById("compareLeftSelect"),
+        compareRightSelect: document.getElementById("compareRightSelect"),
+        compareButton: document.getElementById("compareButton"),
+        compareResult: document.getElementById("compareResult"),
+        noteDocSelect: document.getElementById("noteDocSelect"),
+        noteConceptSelect: document.getElementById("noteConceptSelect"),
+        noteTitleInput: document.getElementById("noteTitleInput"),
+        noteBodyInput: document.getElementById("noteBodyInput"),
+        noteButton: document.getElementById("noteButton"),
+        loadNotesButton: document.getElementById("loadNotesButton"),
+        notesList: document.getElementById("notesList"),
+        artifactSourceSelect: document.getElementById("artifactSourceSelect"),
+        artifactKindSelect: document.getElementById("artifactKindSelect"),
+        artifactPromptInput: document.getElementById("artifactPromptInput"),
+        artifactButton: document.getElementById("artifactButton"),
+        loadArtifactsButton: document.getElementById("loadArtifactsButton"),
+        artifactList: document.getElementById("artifactList"),
+        evidenceCount: document.getElementById("evidenceCount"),
+        evidenceList: document.getElementById("evidenceList"),
+      };
+
+      const viewToSurface = {
+        dashboard: "tutor",
+        session: "session",
+        tutor: "tutor",
+        materials: "tutor",
+        notes: "notes",
+        artifacts: "tutor",
+      };
+
+      function safeArray(value) {
+        return Array.isArray(value) ? value : [];
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function truncate(value, limit = 180) {
+        const text = String(value ?? "").trim();
+        if (!text) return "";
+        if (text.length <= limit) return text;
+        return `${text.slice(0, limit - 1)}...`;
+      }
+
+      function formatDate(value) {
+        if (!value) return "No date";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        });
+      }
+
+      function formatDateTime(value) {
+        if (!value) return "No timestamp";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+
+      function currentWorkspace() {
+        return state.data?.workspace || null;
+      }
+
+      function currentDocuments() {
+        const documents = safeArray(state.data?.documents);
+        return documents.length
+          ? documents
+          : safeArray(currentWorkspace()?.left_rail?.sources);
+      }
+
+      function currentNotes() {
+        const notes = safeArray(state.data?.notes);
+        return notes.length ? notes : safeArray(currentWorkspace()?.left_rail?.notes);
+      }
+
+      function currentArtifacts() {
+        const artifacts = safeArray(state.data?.artifacts);
+        return artifacts.length
+          ? artifacts
+          : safeArray(currentWorkspace()?.left_rail?.artifacts);
+      }
+
+      function currentReviewQueue() {
+        return safeArray(state.data?.review);
+      }
+
+      function currentConceptOptions() {
+        const options = safeArray(state.data?.concept_options);
+        return options.length
+          ? options
+          : safeArray(currentWorkspace()?.compatibility?.compareOptions);
+      }
+
+      function currentEvidence() {
+        const evidence = safeArray(state.data?.evidence);
+        if (evidence.length) return evidence;
+        const workspaceEvidence = safeArray(currentWorkspace()?.right_rail?.evidence);
+        if (workspaceEvidence.length) return workspaceEvidence;
+        return safeArray(state.tutor?.evidence);
+      }
+
+      function currentSessions() {
+        return safeArray(currentWorkspace()?.left_rail?.sessions);
+      }
+
+      function activeSession() {
+        return (
+          state.session ||
+          currentSessions().find((item) => item.status === "active") ||
+          currentWorkspace()?.center_canvas?.payload?.session ||
+          null
+        );
+      }
+
+      function recentExchanges() {
+        const recent = safeArray(currentWorkspace()?.center_canvas?.payload?.recent_exchanges);
+        if (state.tutor) {
+          return [state.tutor, ...recent].slice(0, 4);
+        }
+        return recent;
+      }
+
+      function nextAction() {
+        return (
+          currentWorkspace()?.next_action ||
+          currentWorkspace()?.right_rail?.next_actions?.[0] ||
+          null
+        );
+      }
+
+      function ensureSelections() {
+        const documents = currentDocuments();
+        const concepts = currentConceptOptions();
+        const sessions = currentSessions();
+
+        if (!state.selections.selectedDocumentId && documents[0]?.id) {
+          state.selections.selectedDocumentId = documents[0].id;
+        }
+        if (
+          state.selections.selectedDocumentId &&
+          !documents.some((item) => item.id === state.selections.selectedDocumentId)
+        ) {
+          state.selections.selectedDocumentId = documents[0]?.id || "";
+        }
+
+        if (!state.selections.noteDocId) {
+          state.selections.noteDocId = state.selections.selectedDocumentId || documents[0]?.id || "";
+        }
+        if (!state.selections.artifactSourceId) {
+          state.selections.artifactSourceId =
+            state.selections.selectedDocumentId || documents[0]?.id || "";
+        }
+
+        if (!state.selections.noteConceptId) {
+          state.selections.noteConceptId =
+            currentWorkspace()?.momentum?.focus_concept_id || concepts[0]?.id || "";
+        }
+
+        if (
+          state.selections.noteConceptId &&
+          !concepts.some((item) => item.id === state.selections.noteConceptId)
+        ) {
+          state.selections.noteConceptId = concepts[0]?.id || "";
+        }
+
+        if (!state.selections.compareLeftId) {
+          state.selections.compareLeftId = concepts[0]?.id || "";
+        }
+        if (!state.selections.compareRightId) {
+          state.selections.compareRightId = concepts[1]?.id || concepts[0]?.id || "";
+        }
+
+        if (
+          state.selections.compareLeftId &&
+          !concepts.some((item) => item.id === state.selections.compareLeftId)
+        ) {
+          state.selections.compareLeftId = concepts[0]?.id || "";
+        }
+        if (
+          state.selections.compareRightId &&
+          !concepts.some((item) => item.id === state.selections.compareRightId)
+        ) {
+          state.selections.compareRightId = concepts[1]?.id || concepts[0]?.id || "";
+        }
+
+        if (!state.drafts.goal) {
+          state.drafts.goal = currentWorkspace()?.goal || "";
+        }
+
+        if (!state.drafts.sessionObjective && activeSession()?.objective) {
+          state.drafts.sessionObjective = activeSession().objective;
+        }
+
+        if (!sessions.length && state.session?.status === "active") {
+          state.session = null;
+        }
+      }
+
+      function syncSelectOptions(select, options, selectedValue, placeholderLabel = "None") {
+        const html = [
+          `<option value="">${escapeHtml(placeholderLabel)}</option>`,
+          ...options.map((item) => {
+            const label =
+              item.label ||
+              item.name ||
+              item.filename ||
+              item.title ||
+              item.document_name ||
+              item.id;
+            const meta = item.document_name || item.subject_name || "";
+            const suffix = meta ? ` - ${meta}` : "";
+            return `<option value="${escapeHtml(item.id)}">${escapeHtml(label + suffix)}</option>`;
+          }),
+        ].join("");
+
+        if (select.innerHTML !== html) {
+          select.innerHTML = html;
+        }
+        select.value = selectedValue || "";
+      }
+
+      function saveWidgetState() {
+        if (!window.openai?.setWidgetState) return;
+        window.openai.setWidgetState({
+          activeView: state.activeView,
+          data: state.data,
+          tutor: state.tutor,
+          session: state.session,
+          documentDetail: state.documentDetail,
+          comparison: state.comparison,
+          conceptGraph: state.conceptGraph,
+          reviewResult: state.reviewResult,
+          completion: state.completion,
+          error: state.error,
+          drafts: state.drafts,
+          selections: state.selections,
+        });
+      }
+
+      function restoreWidgetState() {
+        const persisted = window.openai?.widgetState;
+        if (!persisted) return;
+        state.activeView = persisted.activeView || state.activeView;
+        state.data = persisted.data || state.data;
+        state.tutor = persisted.tutor || state.tutor;
+        state.session = persisted.session || state.session;
+        state.documentDetail = persisted.documentDetail || state.documentDetail;
+        state.comparison = persisted.comparison || state.comparison;
+        state.conceptGraph = persisted.conceptGraph || state.conceptGraph;
+        state.reviewResult = persisted.reviewResult || state.reviewResult;
+        state.completion = persisted.completion || state.completion;
+        state.error = persisted.error || state.error;
+        state.drafts = { ...state.drafts, ...(persisted.drafts || {}) };
+        state.selections = { ...state.selections, ...(persisted.selections || {}) };
+      }
+
+      function notifyIntrinsicHeight() {
+        window.openai?.notifyIntrinsicHeight?.(document.documentElement.scrollHeight);
+      }
+
+      function setBusy(key, value) {
+        state.busy[key] = value;
+        document
+          .querySelectorAll(`[data-busy-key="${key}"]`)
+          .forEach((el) => {
+            el.disabled = value;
+          });
+      }
+
+      function renderEmpty(title, subtitle) {
+        return `
+          <div class="empty">
+            <div class="empty-title">${escapeHtml(title)}</div>
+            <div class="empty-sub">${escapeHtml(subtitle)}</div>
+          </div>
+        `;
+      }
+
+      function renderStatusChip() {
+        let label = "Connected";
+        if (state.error) label = state.error.message || "Error";
+        else if (state.preview) label = "Preview mode";
+
+        els.statusChip.innerHTML = `
+          <span class="dot"></span>
+          <span>${escapeHtml(label)}</span>
+        `;
+      }
+
+      function renderTopbar() {
+        const workspace = currentWorkspace();
+        const active = activeSession();
+        els.topGoal.textContent = truncate(workspace?.goal || "No goal", 28) || "No goal";
+
+        const progress = active ? 0.72 : 0;
+        const circumference = 94.25;
+        els.railRing.style.strokeDashoffset = String(
+          circumference - circumference * progress
+        );
+        els.railRingTitle.textContent = active
+          ? truncate(active.objective || "Active session", 28)
+          : "No active session";
+        els.railRingSub.textContent = active
+          ? `${active.mode || "focus"} - ${active.duration_minutes || "?"} min`
+          : "Start one anytime";
+        els.railFocusRing.classList.toggle("live", Boolean(active));
+
+        renderStatusChip();
+      }
+
+      function renderCounts() {
+        els.materialCount.textContent = String(currentDocuments().length);
+        els.noteCount.textContent = String(currentNotes().length);
+        els.artifactCount.textContent = String(currentArtifacts().length);
+      }
+
+      function renderDashboard() {
+        const workspace = currentWorkspace();
+        const momentum = workspace?.momentum || {};
+        const review = currentReviewQueue();
+        const documents = currentDocuments();
+        const notes = currentNotes();
+        const artifacts = currentArtifacts();
+        const action = nextAction();
+        const hour = new Date().getHours();
+
+        let greeting = "Learning overview";
+        if (hour < 12) greeting = "Good morning";
+        else if (hour < 18) greeting = "Good afternoon";
+        else greeting = "Good evening";
+
+        els.greetingEyebrow.textContent = momentum.focus_concept_name
+          ? `Focus: ${momentum.focus_concept_name}`
+          : "Today";
+        els.greetingTitle.textContent = greeting;
+        els.greetingSub.textContent = workspace?.goal
+          ? `Goal: ${workspace.goal}. Einstein can route you into tutor, session, notes, and artifact workflows without losing context.`
+          : "Einstein can route you into tutor, session, notes, and artifact workflows without losing context.";
+        els.dashboardStatusEyebrow.textContent = state.preview
+          ? "Preview data"
+          : currentWorkspace()
+            ? `Hydrated ${formatDateTime(state.data?.hydrated_at)}`
+            : "Pending hydrate";
+        els.dashboardErrorCopy.textContent = state.error
+          ? state.error.message || "Something went wrong."
+          : "";
+
+        els.momentumHeadline.textContent =
+          momentum.headline || "Workspace not loaded";
+        els.nextActionTitle.textContent =
+          action?.label || "No next action";
+        els.momentumReason.textContent =
+          momentum.reason ||
+          "Refresh to load Einstein's current workspace summary.";
+        els.dashboardStateChips.innerHTML = [
+          `<span class="state-mini-chip">${escapeHtml(
+            `${documents.length} sources`
+          )}</span>`,
+          `<span class="state-mini-chip">${escapeHtml(
+            `${notes.length} notes`
+          )}</span>`,
+          `<span class="state-mini-chip">${escapeHtml(
+            `${artifacts.length} artifacts`
+          )}</span>`,
+          `<span class="state-mini-chip">${escapeHtml(
+            `${review.length} due`
+          )}</span>`,
+        ].join("");
+
+        els.statSources.textContent = String(documents.length);
+        els.statNotes.textContent = String(notes.length);
+        els.statArtifacts.textContent = String(artifacts.length);
+        els.statReview.textContent = String(review.length);
+        els.reviewDueLabel.textContent = review.length
+          ? `${review.length} items due`
+          : "No cards due";
+
+        els.dashboardReviewList.innerHTML = review.length
+          ? review
+              .slice(0, 4)
+              .map((item) => {
+                const badgeClass = item.missed_recently
+                  ? "badge-urgent"
+                  : item.state === "new"
+                    ? "badge-soon"
+                    : "badge-later";
+                return `
+                  <div class="row">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(item.concept_name || "Review item")}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.source_name || "Source"} - due ${item.due_date || "now"}`
+                      )}</div>
+                    </div>
+                    <div class="row-actions">
+                      <span class="badge ${badgeClass}">${escapeHtml(item.state || "due")}</span>
+                      <button class="btn btn-ghost btn-sm" type="button" data-review-id="${escapeHtml(
+                        item.id
+                      )}" data-rating="good">Good</button>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
+          : renderEmpty(
+              "No review due",
+              "Einstein will surface due cards here after hydrate or after you complete a session."
+            );
+
+        els.dashboardDocumentsList.innerHTML = documents.length
+          ? documents
+              .slice(0, 4)
+              .map(
+                (item) => `
+                  <button class="row" type="button" data-doc-id="${escapeHtml(item.id)}">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(item.filename || "Untitled source")}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.subject_name || "General"} - ${item.concept_count || 0} concepts - ${item.question_count || 0} questions`
+                      )}</div>
+                    </div>
+                    <span class="badge badge-fresh">${escapeHtml(item.status || "ready")}</span>
+                  </button>
+                `
+              )
+              .join("")
+          : renderEmpty("No sources yet", "Hydrate to pull the current source library.");
+
+        els.dashboardNotesList.innerHTML = notes.length
+          ? notes
+              .slice(0, 3)
+              .map(
+                (item) => `
+                  <div class="row">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(item.title || "Untitled note")}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.concept_name || "General"} - ${formatDate(item.updated_at || item.created_at)}`
+                      )}</div>
+                    </div>
+                  </div>
+                `
+              )
+              .join("")
+          : renderEmpty("No notes yet", "Write one from the notes workbench.");
+
+        els.dashboardArtifactsList.innerHTML = artifacts.length
+          ? artifacts
+              .slice(0, 3)
+              .map(
+                (item) => `
+                  <div class="row">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(item.artifact_kind || "artifact")}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.status || "ready"} - ${item.stale ? "stale" : "fresh"}`
+                      )}</div>
+                    </div>
+                  </div>
+                `
+              )
+              .join("")
+          : renderEmpty("No artifacts yet", "Generate one from a source in the artifacts view.");
+      }
+
+      function renderSession() {
+        const session = activeSession();
+        const sessions = currentSessions();
+        const circumference = 565.49;
+        const progress = state.completion ? 1 : session ? 0.72 : 0;
+
+        els.sessionHero.classList.toggle("live", Boolean(session));
+        els.sessionTag.textContent = session
+          ? `${session.mode || "session"} active`
+          : "No session active";
+        els.sessionObjective.textContent = session
+          ? truncate(session.objective || "Active session", 72)
+          : "Configure your next session below";
+        els.timerDisplay.textContent = session
+          ? `${session.duration_minutes || "?"}m`
+          : state.completion
+            ? "Done"
+            : "Ready";
+        els.timerModeLabel.textContent = session
+          ? session.mode || "focus"
+          : state.completion
+            ? "complete"
+            : "idle";
+        els.timerStatus.textContent = session
+          ? `Session id ${session.id || "unknown"}`
+          : state.completion?.revision_recommendation
+            ? truncate(state.completion.revision_recommendation, 80)
+            : "Hydrate or start a new session to populate this hero.";
+        els.sessionRing.style.strokeDashoffset = String(
+          circumference - circumference * progress
+        );
+        els.completeSessionButton.disabled = !session || state.busy.completeSession;
+
+        els.sessionList.innerHTML = sessions.length
+          ? sessions
+              .slice(0, 6)
+              .map((item) => {
+                const badgeClass =
+                  item.status === "active" ? "badge-soon" : "badge-later";
+                return `
+                  <div class="row ${item.id === session?.id ? "active" : ""}">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(
+                        item.objective || "Session"
+                      )}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.mode || "focus"} - ${item.duration_minutes || "?"} min`
+                      )}</div>
+                    </div>
+                    <span class="badge ${badgeClass}">${escapeHtml(item.status || "planned")}</span>
+                  </div>
+                `;
+              })
+              .join("")
+          : renderEmpty("No sessions yet", "Start a session to seed this timeline.");
+      }
+
+      function renderTutor() {
+        const exchanges = recentExchanges();
+        const workspace = currentWorkspace();
+        const action = nextAction();
+
+        els.tutorChat.innerHTML = exchanges.length
+          ? exchanges
+              .slice(0, 3)
+              .map((item) => {
+                const question = item.question || "What should I study next?";
+                const answer = item.answer || "No answer yet.";
+                return `
+                  <div class="msg user">
+                    <div class="msg-avatar">You</div>
+                    <div class="msg-content">
+                      <div class="msg-role">Prompt</div>
+                      <div class="msg-body">${escapeHtml(question)}</div>
+                    </div>
+                  </div>
+                  <div class="msg ai">
+                    <div class="msg-avatar">AI</div>
+                    <div class="msg-content">
+                      <div class="msg-role">Einstein</div>
+                      <div class="msg-body">${escapeHtml(answer)}</div>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
+          : renderEmpty(
+              "No tutor exchanges yet",
+              action?.label
+                ? `Next action: ${action.label}. Ask Einstein something grounded to get started.`
+                : workspace?.goal
+                  ? `Goal loaded: ${workspace.goal}. Ask Einstein to explain, compare, or quiz you.`
+                  : "Hydrate and ask Einstein something grounded."
+            );
+      }
+
+      function renderMaterials() {
+        const documents = currentDocuments();
+        const detail = state.documentDetail;
+        const selectedId = state.selections.selectedDocumentId;
+
+        els.documentsList.innerHTML = documents.length
+          ? documents
+              .map((item) => {
+                const activeClass = item.id === selectedId ? "active" : "";
+                return `
+                  <button class="row ${activeClass}" type="button" data-doc-id="${escapeHtml(
+                    item.id
+                  )}">
+                    <div class="row-content">
+                      <div class="row-title">${escapeHtml(item.filename || "Untitled source")}</div>
+                      <div class="row-sub">${escapeHtml(
+                        `${item.subject_name || "General"} - ${item.concept_count || 0} concepts - ${item.question_count || 0} questions`
+                      )}</div>
+                    </div>
+                    <span class="badge badge-fresh">${escapeHtml(item.status || "ready")}</span>
+                  </button>
+                `;
+              })
+              .join("")
+          : renderEmpty("No sources loaded", "Use hydrate or refresh list to populate sources.");
+
+        if (detail?.document?.id === selectedId) {
+          els.documentDetail.innerHTML = `
+            <div class="stack">
+              <div class="state-card">
+                <div class="state-card-head">${escapeHtml(
+                  detail.document.filename || "Selected source"
+                )}</div>
+                <div class="state-card-sub">${escapeHtml(
+                  `${detail.document.subject_name || "General"} - ${detail.document.page_count || 0} pages - ${detail.document.status || "ready"}`
+                )}</div>
+                <div class="state-card-copy">${escapeHtml(
+                  detail.summary || "No summary available."
+                )}</div>
+                <div class="state-card-chips">
+                  <span class="state-mini-chip">${escapeHtml(
+                    `${detail.counts?.concepts || 0} concepts`
+                  )}</span>
+                  <span class="state-mini-chip">${escapeHtml(
+                    `${detail.counts?.questions || 0} questions`
+                  )}</span>
+                  <span class="state-mini-chip">${escapeHtml(
+                    `${detail.counts?.chunks || 0} chunks`
+                  )}</span>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="card-head">
+                  <h3 class="card-title">Concepts in this source</h3>
+                  <div class="eyebrow">Detail tool</div>
+                </div>
+                <div class="mini-list">
+                  ${
+                    safeArray(detail.concepts).length
+                      ? safeArray(detail.concepts)
+                          .map(
+                            (item) => `
+                              <div class="row">
+                                <div class="row-content">
+                                  <div class="row-title">${escapeHtml(item.name || "Concept")}</div>
+                                  <div class="row-sub">${escapeHtml(
+                                    `mastery ${Math.round((item.mastery || 0) * 100)}%`
+                                  )}</div>
+                                </div>
+                              </div>
+                            `
+                          )
+                          .join("")
+                      : renderEmpty(
+                          "No concept detail",
+                          "This source detail did not include concept rows."
+                        )
+                  }
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (selectedId) {
+          els.documentDetail.innerHTML = renderEmpty(
+            "Select a source",
+            "Click a source on the left to load full detail with the view-specific tool."
+          );
+        } else {
+          els.documentDetail.innerHTML = renderEmpty(
+            "No source selected",
+            "Hydrate to load the source library first."
+          );
+        }
+
+        if (state.conceptGraph) {
+          const graph = state.conceptGraph;
+          els.conceptGraphSummary.innerHTML = `
+            <div class="state-card">
+              <div class="state-card-head">Concept graph loaded</div>
+              <div class="state-card-sub">${escapeHtml(
+                `${safeArray(graph.nodes).length} nodes - ${safeArray(graph.edges).length} edges`
+              )}</div>
+              <div class="state-card-copy">
+                ${escapeHtml(
+                  safeArray(graph.nodes)
+                    .slice(0, 4)
+                    .map((item) => item.label || item.raw_label || item.name || item.id)
+                    .join(", ") || "No nodes available."
+                )}
+              </div>
+            </div>
+          `;
+        } else {
+          els.conceptGraphSummary.innerHTML = renderEmpty(
+            "Graph not loaded",
+            "Use the concept graph button to fetch a lighter graph payload for the selected source."
+          );
+        }
+
+        if (state.comparison) {
+          els.compareResult.innerHTML = `
+            <div class="state-card">
+              <div class="state-card-head">${escapeHtml(
+                `${state.comparison.left?.name || "Left"} vs ${state.comparison.right?.name || "Right"}`
+              )}</div>
+              <div class="state-card-sub">Comparison ready</div>
+              <div class="state-card-copy">
+                ${escapeHtml(
+                  safeArray(state.comparison.similarities).length
+                    ? `Similarities: ${safeArray(state.comparison.similarities).join(", ")}`
+                    : "No similarity list returned."
+                )}
+              </div>
+              <div class="footer-copy">${escapeHtml(
+                truncate(state.comparison.study_prompt || "", 180) ||
+                  "No study prompt returned."
+              )}</div>
+            </div>
+          `;
+        } else {
+          els.compareResult.innerHTML = renderEmpty(
+            "No comparison yet",
+            "Select two concepts and compare them without refreshing the full widget."
+          );
+        }
+      }
+
+      function renderNotes() {
+        const documents = currentDocuments();
+        const concepts = currentConceptOptions();
+        const notes = currentNotes();
+
+        syncSelectOptions(els.noteDocSelect, documents, state.selections.noteDocId, "Any source");
+        syncSelectOptions(
+          els.noteConceptSelect,
+          concepts,
+          state.selections.noteConceptId,
+          "Any concept"
+        );
+
+        els.notesList.innerHTML = notes.length
+          ? notes
+              .map(
+                (item) => `
+                  <div class="note-card">
+                    <div class="note-title">${escapeHtml(item.title || "Untitled note")}</div>
+                    <div class="note-body">${escapeHtml(
+                      truncate(item.content || item.source_snippet || "", 220)
+                    )}</div>
+                    <div class="note-footer">
+                      <span class="metadata">${escapeHtml(
+                        item.concept_name || item.document_name || "General"
+                      )}</span>
+                      <span class="metadata">${escapeHtml(
+                        formatDate(item.updated_at || item.created_at)
+                      )}</span>
+                    </div>
+                  </div>
+                `
+              )
+              .join("")
+          : renderEmpty("No notes yet", "Save a note from the form above.");
+      }
+
+      function renderArtifacts() {
+        const documents = currentDocuments();
+        const artifacts = currentArtifacts();
+
+        syncSelectOptions(
+          els.artifactSourceSelect,
+          documents,
+          state.selections.artifactSourceId,
+          "Any source"
+        );
+
+        els.artifactList.innerHTML = artifacts.length
+          ? artifacts
+              .map((item) => {
+                const freshnessClass = item.stale ? "badge-stale" : "badge-fresh";
+                const freshnessLabel = item.stale ? "stale" : "fresh";
+                return `
+                  <div class="artifact-tile">
+                    <div class="artifact-kind">${escapeHtml(item.artifact_kind || "artifact")}</div>
+                    <div class="artifact-title">${escapeHtml(
+                      `${item.artifact_kind || "Artifact"} - ${item.status || "ready"}`
+                    )}</div>
+                    <div class="artifact-meta">
+                      <span class="badge ${freshnessClass}">${escapeHtml(freshnessLabel)}</span>
+                      <span style="margin-left: 8px">${escapeHtml(
+                        formatDate(item.updated_at || item.created_at)
+                      )}</span>
+                    </div>
+                    <div class="artifact-preview">${escapeHtml(
+                      truncate(item.preview || "", 220) || "No preview available."
+                    )}</div>
+                  </div>
+                `;
+              })
+              .join("")
+          : renderEmpty(
+              "No artifacts yet",
+              "Generate one from a selected source using the form above."
+            );
+      }
+
+      function renderEvidenceRail() {
+        const evidence = currentEvidence();
+        els.evidenceCount.textContent = String(evidence.length);
+        els.evidenceList.innerHTML = evidence.length
+          ? evidence
+              .slice(0, 8)
+              .map((item) => {
+                const confidence = Math.max(
+                  8,
+                  Math.min(100, Math.round((item.confidence || 0.5) * 100))
+                );
+                const detail = [item.document_name, item.page_num ? `p${item.page_num}` : ""]
+                  .filter(Boolean)
+                  .join(" - ");
+                return `
+                  <div class="evidence-card">
+                    <div class="evidence-head">
+                      <span class="source-pill primary">${escapeHtml(
+                        item.label || item.document_name || "Evidence"
+                      )}</span>
+                      <div class="confidence-track">
+                        <div class="confidence-fill" style="width: ${confidence}%"></div>
+                      </div>
+                    </div>
+                    <div class="evidence-title">${escapeHtml(
+                      detail || "Grounded excerpt"
+                    )}</div>
+                    <div class="evidence-excerpt">${escapeHtml(
+                      truncate(item.anchor_text || item.excerpt || "", 220)
+                    )}</div>
+                    <div class="evidence-meta">
+                      <span>${escapeHtml(detail || item.document_name || "Einstein source")}</span>
+                      <span>${escapeHtml(`${confidence}%`)}</span>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
+          : `
+              <div class="evidence-empty">
+                <div class="empty-title">No evidence loaded</div>
+                <div class="empty-sub">
+                  Tutor answers and workspace context will surface supporting excerpts here.
+                </div>
+              </div>
+            `;
+      }
+
+      function positionRailPill() {
+        const activeButton = document.querySelector(`.rail-item[data-view="${state.activeView}"]`);
+        if (!activeButton) {
+          els.railPill.classList.remove("visible");
+          return;
+        }
+        const parentRect = activeButton.closest(".rail-left").getBoundingClientRect();
+        const buttonRect = activeButton.getBoundingClientRect();
+        els.railPill.style.top = `${buttonRect.top - parentRect.top + 8}px`;
+        els.railPill.classList.add("visible");
+      }
+
+      function updateActiveView() {
+        document.querySelectorAll(".view").forEach((view) => {
+          view.classList.toggle("active", view.id === state.activeView);
+        });
+
+        document.querySelectorAll(".rail-item[data-view]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.view === state.activeView);
+        });
+
+        positionRailPill();
+      }
+
+      function render() {
+        ensureSelections();
+
+        els.goalInput.value = state.drafts.goal;
+        els.sessionObjectiveInput.value = state.drafts.sessionObjective;
+        els.tutorInput.value = state.drafts.question;
+        els.noteTitleInput.value = state.drafts.noteTitle;
+        els.noteBodyInput.value = state.drafts.noteBody;
+        els.artifactPromptInput.value = state.drafts.artifactPrompt;
+
+        renderTopbar();
+        renderCounts();
+        renderDashboard();
+        renderSession();
+        renderTutor();
+        renderMaterials();
+        renderNotes();
+        renderArtifacts();
+        renderEvidenceRail();
+        updateActiveView();
+        saveWidgetState();
+        requestAnimationFrame(notifyIntrinsicHeight);
+      }
+
+      function mergeWorkspace(workspace) {
+        if (!workspace) return;
+        state.data = state.data || {};
+        state.data.workspace = workspace;
+        if (safeArray(workspace.right_rail?.evidence).length) {
+          state.data.evidence = safeArray(workspace.right_rail?.evidence);
+        }
+        if (safeArray(workspace.compatibility?.compareOptions).length) {
+          state.data.concept_options = safeArray(workspace.compatibility.compareOptions);
+        }
+        if (!safeArray(state.data.documents).length) {
+          state.data.documents = safeArray(workspace.left_rail?.sources);
+        }
+        if (!safeArray(state.data.notes).length || state.activeView === "notes") {
+          state.data.notes = safeArray(workspace.left_rail?.notes);
+        }
+        if (!safeArray(state.data.artifacts).length || state.activeView === "artifacts") {
+          state.data.artifacts = safeArray(workspace.left_rail?.artifacts);
+        }
+        if (workspace.center_canvas?.payload?.session) {
+          state.session = workspace.center_canvas.payload.session;
+        }
+      }
+
+      function applyToolPayload(response) {
+        const widgetMeta = response?._meta?.widget || {};
+
+        state.error = widgetMeta.error || null;
+
+        if (widgetMeta.learning_os_state) {
+          state.data = widgetMeta.learning_os_state;
+        }
+        if (widgetMeta.workspace) {
+          mergeWorkspace(widgetMeta.workspace);
+        }
+        if (widgetMeta.documents) {
+          state.data.documents = widgetMeta.documents;
+        }
+        if (widgetMeta.notes) {
+          state.data.notes = widgetMeta.notes;
+        }
+        if (widgetMeta.artifacts) {
+          state.data.artifacts = widgetMeta.artifacts;
+        }
+        if (widgetMeta.review_queue) {
+          state.data.review = widgetMeta.review_queue;
+        }
+        if (widgetMeta.tutor) {
+          state.tutor = widgetMeta.tutor;
+          if (widgetMeta.workspace?.right_rail?.evidence) {
+            state.data.evidence = safeArray(widgetMeta.workspace.right_rail.evidence);
+          }
+        }
+        if (widgetMeta.session) {
+          state.session = widgetMeta.session;
+        }
+        if (widgetMeta.document_detail) {
+          state.documentDetail = widgetMeta.document_detail;
+          state.selections.selectedDocumentId =
+            widgetMeta.document_detail.document?.id || state.selections.selectedDocumentId;
+        }
+        if (widgetMeta.comparison) {
+          state.comparison = widgetMeta.comparison;
+        }
+        if (widgetMeta.concept_graph) {
+          state.conceptGraph = widgetMeta.concept_graph;
+        }
+        if (widgetMeta.review_result) {
+          state.reviewResult = widgetMeta.review_result;
+        }
+        if (widgetMeta.completion) {
+          state.completion = widgetMeta.completion;
+          state.session = null;
+        }
+        if (widgetMeta.goal?.goal) {
+          state.drafts.goal = widgetMeta.goal.goal;
+        }
+        if (widgetMeta.note) {
+          state.drafts.noteTitle = "";
+          state.drafts.noteBody = "";
+        }
+        if (widgetMeta.artifact) {
+          state.drafts.artifactPrompt = "";
+        }
+
+        render();
+      }
+
+      let rpcId = 0;
+      const pendingRequests = new Map();
+
+      function rpcNotify(method, params) {
+        window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+      }
+
+      function rpcRequest(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = ++rpcId;
+          pendingRequests.set(id, { resolve, reject });
+          window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+        });
+      }
+
+      async function callTool(name, args = {}) {
+        if (state.preview) {
+          state.error = {
+            message:
+              "This widget is in preview mode. Connect it through ChatGPT to call real Einstein tools.",
+          };
+          render();
+          return null;
+        }
+
+        state.error = null;
+        const response = await rpcRequest("tools/call", {
+          name,
+          arguments: args,
+        });
+        applyToolPayload(response);
+        return response;
+      }
+
+      window.addEventListener(
+        "message",
+        (event) => {
+          if (event.source !== window.parent) return;
+          const message = event.data;
+          if (!message || message.jsonrpc !== "2.0") return;
+
+          if (typeof message.id === "number") {
+            const pending = pendingRequests.get(message.id);
+            if (!pending) return;
+            pendingRequests.delete(message.id);
+            if (message.error) {
+              pending.reject(message.error);
+              return;
+            }
+            pending.resolve(message.result);
+            return;
+          }
+
+          if (typeof message.method !== "string") return;
+          if (message.method === "ui/notifications/tool-result") {
+            applyToolPayload(message.params);
+          }
+        },
+        { passive: true }
+      );
+
+      async function initializeBridge() {
+        restoreWidgetState();
+
+        if (state.preview) {
+          render();
+          return;
+        }
+
+        await rpcRequest("ui/initialize", {
+          appInfo: { name: "einstein-widget", version: "0.2.1" },
+          appCapabilities: {},
+          protocolVersion: "2026-01-26",
+        });
+        rpcNotify("ui/notifications/initialized", {});
+        render();
+      }
+
+      const bridgeReady = initializeBridge();
+
+      async function refreshWorkspace() {
+        setBusy("refresh", true);
+        try {
+          await bridgeReady;
+          await callTool("get_learning_os_state", {
+            surface: viewToSurface[state.activeView] || "tutor",
+          });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to refresh the learning state.",
+          };
+          render();
+        } finally {
+          setBusy("refresh", false);
+        }
+      }
+
+      async function saveGoal() {
+        const goal = state.drafts.goal.trim();
+        if (!goal) return;
+        setBusy("goal", true);
+        try {
+          await bridgeReady;
+          await callTool("set_learning_goal", { goal });
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to save goal." };
+          render();
+        } finally {
+          setBusy("goal", false);
+        }
+      }
+
+      async function askEinstein() {
+        const question = state.drafts.question.trim();
+        if (!question) return;
+        setBusy("ask", true);
+        try {
+          await bridgeReady;
+          await callTool("ask_einstein", {
+            question,
+            response_mode: "standard",
+            learner_confidence: 62,
+          });
+          state.drafts.question = "";
+          render();
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to ask Einstein." };
+          render();
+        } finally {
+          setBusy("ask", false);
+        }
+      }
+
+      async function startStudySession() {
+        const objective = state.drafts.sessionObjective.trim();
+        if (!objective) return;
+        setBusy("session", true);
+        try {
+          await bridgeReady;
+          await callTool("start_study_session", {
+            objective,
+            mode: els.sessionMode.value,
+            duration_minutes: Number(els.sessionDuration.value || 20),
+          });
+          state.activeView = "session";
+          render();
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to start the study session.",
+          };
+          render();
+        } finally {
+          setBusy("session", false);
+        }
+      }
+
+      async function completeStudySession() {
+        const session = activeSession();
+        if (!session?.id) return;
+        setBusy("completeSession", true);
+        try {
+          await bridgeReady;
+          await callTool("complete_study_session", {
+            session_id: session.id,
+          });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to complete the session.",
+          };
+          render();
+        } finally {
+          setBusy("completeSession", false);
+        }
+      }
+
+      async function loadDocumentDetail(docId) {
+        if (!docId) return;
+        state.selections.selectedDocumentId = docId;
+        render();
+        if (state.documentDetail?.document?.id === docId) return;
+        setBusy("documentDetail", true);
+        try {
+          await bridgeReady;
+          await callTool("get_document_detail", { doc_id: docId });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to load document detail.",
+          };
+          render();
+        } finally {
+          setBusy("documentDetail", false);
+        }
+      }
+
+      async function loadConceptGraph() {
+        const docId = state.selections.selectedDocumentId;
+        setBusy("conceptGraph", true);
+        try {
+          await bridgeReady;
+          await callTool("get_concept_graph", docId ? { doc_id: docId } : {});
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to load the concept graph.",
+          };
+          render();
+        } finally {
+          setBusy("conceptGraph", false);
+        }
+      }
+
+      async function compareConceptsAction() {
+        const leftId = state.selections.compareLeftId;
+        const rightId = state.selections.compareRightId;
+        if (!leftId || !rightId) return;
+        setBusy("compare", true);
+        try {
+          await bridgeReady;
+          await callTool("compare_concepts", {
+            left_id: leftId,
+            right_id: rightId,
+          });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to compare concepts.",
+          };
+          render();
+        } finally {
+          setBusy("compare", false);
+        }
+      }
+
+      async function saveNote() {
+        const content = state.drafts.noteBody.trim();
+        if (!content) return;
+        setBusy("note", true);
+        try {
+          await bridgeReady;
+          await callTool("save_note", {
+            title: state.drafts.noteTitle.trim() || null,
+            content,
+            doc_id: state.selections.noteDocId || null,
+            concept_id: state.selections.noteConceptId || null,
+            note_type: "saved_insight",
+          });
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to save note." };
+          render();
+        } finally {
+          setBusy("note", false);
+        }
+      }
+
+      async function generateArtifact() {
+        setBusy("artifact", true);
+        try {
+          await bridgeReady;
+          await callTool("generate_artifact", {
+            artifact_kind: els.artifactKindSelect.value,
+            source_scope: state.selections.artifactSourceId
+              ? [state.selections.artifactSourceId]
+              : [],
+            custom_prompt: state.drafts.artifactPrompt.trim() || null,
+          });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to generate artifact.",
+          };
+          render();
+        } finally {
+          setBusy("artifact", false);
+        }
+      }
+
+      async function reviewCard(cardId, rating) {
+        if (!cardId || !rating) return;
+        setBusy("review", true);
+        try {
+          await bridgeReady;
+          await callTool("review_card", {
+            card_id: cardId,
+            rating,
+          });
+        } catch (error) {
+          state.error = {
+            message: error?.message || "Failed to save the review result.",
+          };
+          render();
+        } finally {
+          setBusy("review", false);
+        }
+      }
+
+      async function loadNotes() {
+        try {
+          await bridgeReady;
+          await callTool("list_notes", { limit: 50 });
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to load notes." };
+          render();
+        }
+      }
+
+      async function loadArtifacts() {
+        try {
+          await bridgeReady;
+          await callTool("list_artifacts", { limit: 12 });
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to load artifacts." };
+          render();
+        }
+      }
+
+      async function loadDocuments() {
+        try {
+          await bridgeReady;
+          await callTool("list_documents", {});
+        } catch (error) {
+          state.error = { message: error?.message || "Failed to load sources." };
+          render();
+        }
+      }
+
+      async function switchView(view) {
+        state.activeView = view;
+        render();
+
+        if (view === "materials" && state.selections.selectedDocumentId) {
+          if (state.documentDetail?.document?.id !== state.selections.selectedDocumentId) {
+            await loadDocumentDetail(state.selections.selectedDocumentId);
+          }
+        }
+      }
+
+      function autosizeTutorInput() {
+        els.tutorInput.style.height = "0px";
+        els.tutorInput.style.height = `${Math.min(els.tutorInput.scrollHeight, 200)}px`;
+      }
+
+      document.addEventListener("click", async (event) => {
+        const nav = event.target.closest("[data-view]");
+        if (nav) {
+          await switchView(nav.dataset.view);
+          return;
+        }
+
+        const jump = event.target.closest("[data-jump]");
+        if (jump) {
+          await switchView(jump.dataset.jump);
+          return;
+        }
+
+        const prompt = event.target.closest("[data-prompt]");
+        if (prompt) {
+          state.activeView = "tutor";
+          state.drafts.question = prompt.dataset.prompt || "";
+          render();
+          autosizeTutorInput();
+          els.tutorInput.focus();
+          return;
+        }
+
+        const documentRow = event.target.closest("[data-doc-id]");
+        if (documentRow) {
+          await switchView("materials");
+          await loadDocumentDetail(documentRow.dataset.docId);
+          return;
+        }
+
+        const reviewButton = event.target.closest("[data-review-id]");
+        if (reviewButton) {
+          await reviewCard(reviewButton.dataset.reviewId, reviewButton.dataset.rating);
+        }
+      });
+
+      els.refreshButton.addEventListener("click", refreshWorkspace);
+      els.fullscreenButton.addEventListener("click", async () => {
+        if (window.openai?.requestDisplayMode) {
+          await window.openai.requestDisplayMode({ mode: "fullscreen" }).catch(() => {});
+          return;
+        }
+        state.error = {
+          message:
+            "Fullscreen is only available inside a ChatGPT host that exposes the Apps bridge.",
+        };
+        render();
+      });
+      els.goalButton.addEventListener("click", saveGoal);
+      els.sessionButton.addEventListener("click", startStudySession);
+      els.completeSessionButton.addEventListener("click", completeStudySession);
+      els.askButton.addEventListener("click", askEinstein);
+      els.loadDocumentsButton.addEventListener("click", loadDocuments);
+      els.graphButton.addEventListener("click", loadConceptGraph);
+      els.compareButton.addEventListener("click", compareConceptsAction);
+      els.noteButton.addEventListener("click", saveNote);
+      els.loadNotesButton.addEventListener("click", loadNotes);
+      els.artifactButton.addEventListener("click", generateArtifact);
+      els.loadArtifactsButton.addEventListener("click", loadArtifacts);
+
+      els.goalInput.addEventListener("input", (event) => {
+        state.drafts.goal = event.target.value;
+      });
+      els.sessionObjectiveInput.addEventListener("input", (event) => {
+        state.drafts.sessionObjective = event.target.value;
+      });
+      els.tutorInput.addEventListener("input", (event) => {
+        state.drafts.question = event.target.value;
+        autosizeTutorInput();
+      });
+      els.tutorInput.addEventListener("keydown", async (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          await askEinstein();
+        }
+      });
+      els.noteTitleInput.addEventListener("input", (event) => {
+        state.drafts.noteTitle = event.target.value;
+      });
+      els.noteBodyInput.addEventListener("input", (event) => {
+        state.drafts.noteBody = event.target.value;
+      });
+      els.artifactPromptInput.addEventListener("input", (event) => {
+        state.drafts.artifactPrompt = event.target.value;
+      });
+      els.noteDocSelect.addEventListener("change", (event) => {
+        state.selections.noteDocId = event.target.value;
+      });
+      els.noteConceptSelect.addEventListener("change", (event) => {
+        state.selections.noteConceptId = event.target.value;
+      });
+      els.artifactSourceSelect.addEventListener("change", (event) => {
+        state.selections.artifactSourceId = event.target.value;
+      });
+      els.compareLeftSelect.addEventListener("change", (event) => {
+        state.selections.compareLeftId = event.target.value;
+      });
+      els.compareRightSelect.addEventListener("change", (event) => {
+        state.selections.compareRightId = event.target.value;
+      });
+
+      render();
+      autosizeTutorInput();
+
+      bridgeReady
+        .then(refreshWorkspace)
+        .catch(() => {
+          if (!state.preview) {
+            state.error = {
+              message:
+                "The widget could not initialize the ChatGPT Apps bridge. Refresh the draft app tools and try again.",
+            };
+            render();
+          }
+        });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,341 @@
+/*
+ * Dashboard layout.
+ *
+ * Three-voice typography enforced — serif for the big greeting, sans for
+ * prose, mono for metadata and numerals. Amber left-rail on the Next Best
+ * Action card is the single focal point above the fold; everything else
+ * sits at hairline weight to let that card breathe.
+ *
+ * All ratios lifted from the legacy dashboard the user liked, rebuilt
+ * against the new token set (teal accent, cool neutrals, no owl).
+ */
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* --- Header --- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.eyebrowDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--text-display);
+  letter-spacing: var(--tracking-serif);
+  line-height: 1.08;
+  color: var(--text-primary);
+}
+
+.subheading {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+
+/* --- Next Best Action --- */
+
+.nba {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--state-warn);
+  border-radius: var(--radius-4);
+  background: color-mix(in srgb, var(--state-warn) 4%, var(--surface-2));
+}
+
+.nbaEyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--state-warn);
+}
+
+.nbaTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.nbaReason {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 64ch;
+  line-height: 1.5;
+}
+
+.nbaActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
+}
+
+/* Primary action: warm amber fill to match the NBA card rail. Visually the
+ * only "click here right now" affordance on the dashboard. */
+.primaryAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 16px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--state-warn);
+  background: var(--state-warn);
+  color: oklch(0.14 0.012 265);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    transform var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.primaryAction:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--state-warn) 24%, transparent);
+}
+
+.primaryAction:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-warn) 32%, transparent);
+}
+
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.secondaryAction:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Quick Action Grid --- */
+
+.quickGrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.quickTile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-4);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.quickTile:hover {
+  transform: translateY(-2px);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.quickTile:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.quickIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-3);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-3));
+  color: var(--accent);
+}
+
+.quickTitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.quickMeta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+/* --- Stat Strip --- */
+
+.stats {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: auto repeat(auto-fit, minmax(140px, 1fr));
+  align-items: start;
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-4);
+  background: var(--surface-1);
+}
+
+/* On narrow screens the streak ring can't claim a whole column; stack. */
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statCell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.streakCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.statLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.statValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.statValue {
+  font-family: var(--font-serif);
+  font-size: var(--text-3xl);
+  font-weight: 400;
+  letter-spacing: var(--tracking-serif);
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.statSuffix {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+/* --- Skeleton + error states --- */
+
+.skeletonHeader {
+  height: 96px;
+  border-radius: var(--radius-4);
+  background: var(--surface-2);
+  opacity: 0.5;
+  animation: anim-shimmer 1.4s linear infinite;
+}
+
+.skeletonAction {
+  height: 180px;
+  border-radius: var(--radius-4);
+  background: var(--surface-2);
+  opacity: 0.5;
+  animation: anim-shimmer 1.4s linear infinite;
+}
+
+.errorCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--state-err) 40%, transparent);
+  border-radius: var(--radius-4);
+  background: color-mix(in srgb, var(--state-err) 6%, var(--surface-2));
+  color: var(--state-err);
+}
+
+.errorMessage {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-secondary);
+}
+
+.retryButton {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}

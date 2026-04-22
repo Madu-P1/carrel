@@ -1,0 +1,245 @@
+/*
+ * Active Session — status chip card.
+ * Renders only when there's active or completed session state to show.
+ * Teal rail on the left ties it to the provider-footer "we're doing
+ * something right now" language.
+ */
+
+.wrap {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-4);
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-2));
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: anim-session-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes anim-session-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.1); opacity: 0.82; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Button variant of .body — the whole middle column becomes a click
+ * target that navigates to /session. Hover lifts the objective text to
+ * primary so the affordance reads. */
+.bodyButton {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.bodyButton:hover .objective {
+  color: var(--accent);
+}
+
+.bodyButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-2);
+}
+
+.topRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.elapsed {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.elapsedOver {
+  color: var(--state-warn);
+}
+
+.objective {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+}
+
+.endButton {
+  padding: 7px 14px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.endButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.endButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --- Error state --- */
+
+.errorBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.errorText {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--state-err);
+}
+
+/* --- Completed summary --- */
+
+.completedBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.deltaChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  white-space: nowrap;
+}
+
+.deltaChipPos {
+  background: color-mix(in srgb, var(--state-ok) 18%, transparent);
+  color: var(--state-ok);
+}
+
+.deltaChipNeg {
+  background: color-mix(in srgb, var(--state-err) 18%, transparent);
+  color: var(--state-err);
+}
+
+.summaryLine {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.weakChip {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-mono);
+}
+
+.stretch {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.stretchLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.dismissButton {
+  align-self: flex-start;
+  padding: 6px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.dismissButton:hover {
+  color: var(--text-primary);
+}

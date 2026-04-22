@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+PyPDF2
+python-multipart
+anthropic
+python-dotenv
+python-docx
+python-pptx
+openpyxl
+ebooklib
+beautifulsoup4
+chardet
+striprtf
+sqlite-vec~=0.1
+fastembed~=0.4

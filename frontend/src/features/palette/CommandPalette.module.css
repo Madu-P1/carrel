@@ -1,0 +1,103 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: var(--z-dialog);
+  animation: palette-backdrop-fade var(--dur-fast) var(--ease-out);
+}
+
+@keyframes palette-backdrop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.palette {
+  width: min(560px, calc(100vw - var(--space-12)));
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-4);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: palette-slide-in var(--dur-medium) var(--ease-out);
+}
+
+@keyframes palette-slide-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  font-size: 14px;
+  line-height: 20px;
+}
+.input::placeholder { color: var(--color-text-tertiary); }
+
+.list {
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+  max-height: calc(60vh - 120px);
+}
+
+.groupLabel {
+  padding: var(--space-2) var(--space-5) var(--space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-2) var(--space-5);
+  background: transparent;
+  border: none;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+  text-align: left;
+}
+
+.rowActive {
+  background: var(--color-bg-hover);
+}
+
+.empty {
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+}
+
+.footer {
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-base);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .palette {
+    animation-duration: 60ms !important;
+  }
+}

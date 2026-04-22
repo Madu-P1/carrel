@@ -1,0 +1,150 @@
+/*
+ * Duplicate cleanup panel.
+ * Compact at rest (single row), expands inline to show the cluster plan.
+ * Uses warning tone lightly on the header to signal diagnostics, not alarm.
+ */
+
+.panel {
+  border-left: 2px solid var(--state-warn);
+  background: color-mix(in srgb, var(--state-warn) 4%, var(--surface-2));
+}
+
+/* --- Inline preview card (shows the first file pair at rest) --- */
+
+.previewCard {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-3);
+  background: color-mix(in srgb, var(--state-warn) 6%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--state-warn) 24%, transparent);
+}
+
+.previewHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.previewEyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.previewCount {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mono);
+}
+
+.previewPair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+}
+
+.previewKeep {
+  color: var(--text-primary);
+}
+
+.previewRemove {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--state-err) 80%, transparent);
+  text-decoration-thickness: 1px;
+  opacity: 0.85;
+}
+
+.header {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.groupList {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.group {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+
+.groupHeader {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+.groupHash {
+  color: var(--text-mono);
+}
+
+.groupCards {
+  opacity: 0.7;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
+}
+
+.rowRemove {
+  opacity: 0.82;
+}
+
+.rowTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  background: color-mix(in srgb, var(--state-ok) 18%, transparent);
+  color: var(--state-ok);
+  text-transform: lowercase;
+}
+
+.rowTagRemove {
+  background: color-mix(in srgb, var(--state-err) 18%, transparent);
+  color: var(--state-err);
+}
+
+.rowName {
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+  text-align: right;
+}

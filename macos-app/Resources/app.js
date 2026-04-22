@@ -1,0 +1,4102 @@
+
+let state = { courses:[], deadlines:[], goals:[], sessions:[], materials:[], flashcards:[], wellnessLogs:[], tutorChat:[], notes:[], artifacts:[], evidence:[], dailyStates:[], inactivityEvents:[], breakRecs:[], learnerSignals:[], flags:{} };
+let currentMode = 'pomodoro';
+let currentStudioPreset = 'summary';
+let currentArtifact = null;
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ----- Storage -----
+async function saveState() {
+  try { if (window.storage?.set) await window.storage.set('einstein:state', JSON.stringify(state)); }
+  catch(e) { console.error('Save failed:', e); }
+}
+async function loadState() {
+  try {
+    if (window.storage?.get) {
+      const r = await window.storage.get('einstein:state');
+      if (r?.value) state = { ...state, ...JSON.parse(r.value) };
+    }
+  } catch(e) { console.log('Fresh start'); }
+  try { renderAll(); } catch(e) { console.error(e); }
+  // Gate runs after load so we know today's check-in status
+  try { checkDailyStateGate(); } catch(e) { console.error('gate', e); }
+}
+
+// ============================================================================
+// STATE CAPTURE SERVICE — daily check-in, freshness, readiness scoring
+// ============================================================================
+
+const STATE_FRESH_MS = 6 * 3600 * 1000;   // <6h = fresh
+const STATE_SOFT_STALE_MS = 10 * 3600 * 1000; // 6-10h = soft stale
+// >10h or next calendar day = hard stale
+
+function todayKey() {
+  return new Date().toDateString();
+}
+
+function getLatestState() {
+  if (!state.dailyStates || state.dailyStates.length === 0) return null;
+  return state.dailyStates[state.dailyStates.length - 1];
+}
+
+function getStateFreshness() {
+  const s = getLatestState();
+  if (!s) return { status: 'missing', age_ms: Infinity };
+  const age = Date.now() - s.created_at;
+  const sameDay = new Date(s.created_at).toDateString() === todayKey();
+  if (!sameDay) return { status: 'hard_stale', age_ms: age };
+  if (age < STATE_FRESH_MS) return { status: 'fresh', age_ms: age };
+  if (age < STATE_SOFT_STALE_MS) return { status: 'soft_stale', age_ms: age };
+  return { status: 'hard_stale', age_ms: age };
+}
+
+function hasCheckedInToday() {
+  const s = getLatestState();
+  if (!s) return false;
+  return new Date(s.created_at).toDateString() === todayKey();
+}
+
+// Bounded, interpretable readiness score
+function computeReadiness(checkin) {
+  const mood = +checkin.mood || 3;
+  const energy = +checkin.energy || 3;
+  const stress = +checkin.stress || 3;
+  const sleep = +checkin.sleep_hours || 7;
+  const workload = +checkin.workload_pressure || 3;
+
+  // Each slider normalized to 0..1
+  const moodN = (mood - 1) / 4;
+  const energyN = (energy - 1) / 4;
+  const stressN = (stress - 1) / 4;
+  const workloadN = (workload - 1) / 4;
+
+  // Sleep component: optimal around 7-9h
+  let sleepComp = 0;
+  if (sleep >= 7 && sleep <= 9) sleepComp = 25;
+  else if (sleep >= 6 && sleep < 7) sleepComp = 18;
+  else if (sleep >= 5 && sleep < 6) sleepComp = 12;
+  else if (sleep >= 9 && sleep <= 10) sleepComp = 20;
+  else if (sleep < 5) sleepComp = 6;
+  else sleepComp = 14;
+
+  const energyComp = Math.round(energyN * 25);
+  const moodComp = Math.round(moodN * 15);
+  const stressPenalty = Math.round(stressN * 20);
+  const workloadPenalty = Math.round(workloadN * 10);
+
+  // Consistency bonus: check last 7 days of study
+  let consistencyBonus = 0;
+  const weekAgo = Date.now() - 7 * 86400000;
+  const recentDays = new Set();
+  state.sessions.forEach(s => {
+    if (s.endTime && s.endTime > weekAgo && (s.elapsed || 0) > 600) {
+      recentDays.add(new Date(s.endTime).toDateString());
+    }
+  });
+  if (recentDays.size >= 5) consistencyBonus = 5;
+  else if (recentDays.size >= 3) consistencyBonus = 3;
+  else if (recentDays.size >= 1) consistencyBonus = 1;
+
+  let score = sleepComp + energyComp + moodComp + consistencyBonus - stressPenalty - workloadPenalty;
+  score = Math.max(0, Math.min(100, score));
+
+  // Derived fields
+  let fatigue_risk = 'low';
+  if (sleep < 6 || energy <= 2) fatigue_risk = 'high';
+  else if (sleep < 7 || energy <= 3 || stress >= 4) fatigue_risk = 'medium';
+
+  let coaching_tone = 'neutral';
+  if (mood <= 2 || stress >= 4) coaching_tone = 'supportive';
+  else if (mood >= 4 && energy >= 4 && stress <= 2) coaching_tone = 'push';
+
+  let challenge_tolerance = 'medium';
+  if (score >= 70 && fatigue_risk === 'low') challenge_tolerance = 'high';
+  else if (score < 45 || fatigue_risk === 'high') challenge_tolerance = 'low';
+
+  let recommended_session_mode = 'pomodoro';
+  if (score < 40) recommended_session_mode = 'flashcards'; // guided review
+  else if (score < 55) recommended_session_mode = 'pomodoro';
+  else if (score >= 75 && challenge_tolerance === 'high') recommended_session_mode = 'flowtime';
+  else recommended_session_mode = 'pomodoro';
+
+  let max_focus_minutes = 25;
+  if (challenge_tolerance === 'high') max_focus_minutes = 50;
+  else if (challenge_tolerance === 'low') max_focus_minutes = 20;
+  else max_focus_minutes = 30;
+
+  let break_bias_minutes = 5;
+  if (fatigue_risk === 'high') break_bias_minutes = 15;
+  else if (fatigue_risk === 'medium') break_bias_minutes = 10;
+
+  let state_confidence = 'high';
+  if (checkin.source_type === 'rush') state_confidence = 'medium';
+  if (checkin.source_type === 'mini_refresh') state_confidence = 'medium';
+
+  const freshness_expires_at = checkin.created_at + STATE_FRESH_MS;
+
+  return {
+    readiness_score: score,
+    fatigue_risk,
+    coaching_tone,
+    challenge_tolerance,
+    recommended_session_mode,
+    max_focus_minutes,
+    break_bias_minutes,
+    state_confidence,
+    freshness_expires_at,
+    components: { sleepComp, energyComp, moodComp, stressPenalty, workloadPenalty, consistencyBonus }
+  };
+}
+
+async function saveDailyState(fields, sourceType = 'daily_open') {
+  const checkin = {
+    id: Date.now(),
+    local_date: todayKey(),
+    source_type: sourceType,
+    mood: fields.mood || null,
+    energy: fields.energy || null,
+    stress: fields.stress || null,
+    sleep_hours: fields.sleep_hours || null,
+    workload_pressure: fields.workload_pressure || null,
+    time_available_today_minutes: fields.time_available_today_minutes || null,
+    note: fields.note || '',
+    created_at: Date.now()
+  };
+  const summary = computeReadiness(checkin);
+  checkin.summary = summary;
+  state.dailyStates.push(checkin);
+  // Keep only last 60 days to bound storage
+  if (state.dailyStates.length > 180) state.dailyStates = state.dailyStates.slice(-180);
+  await saveState();
+  return checkin;
+}
+
+// Produce a compact structured context for AI prompts
+function buildStateContextForAI() {
+  const s = getLatestState();
+  const fresh = getStateFreshness();
+  if (!s) {
+    return {
+      state_present: false,
+      freshness: 'missing',
+      adaptation_hints: ['no_state_yet_use_neutral_tone']
+    };
+  }
+  const sum = s.summary || computeReadiness(s);
+  const hints = [];
+  if (sum.fatigue_risk === 'high') hints.push('shorter_chunked_responses', 'protect_recovery');
+  if (s.stress >= 4) hints.push('calmer_tone', 'one_thing_at_a_time');
+  if (s.mood <= 2) hints.push('supportive_not_patronizing', 'lead_with_small_win');
+  if (sum.challenge_tolerance === 'high') hints.push('allow_deeper_challenge');
+  if ((s.time_available_today_minutes || 999) <= 30) hints.push('shortest_high_yield_task');
+  if (sum.coaching_tone === 'push') hints.push('momentum_language');
+
+  return {
+    state_present: true,
+    freshness: fresh.status,
+    readiness_score: sum.readiness_score,
+    fatigue_risk: sum.fatigue_risk,
+    mood: s.mood,
+    energy: s.energy,
+    stress: s.stress,
+    sleep_hours: s.sleep_hours,
+    workload_pressure: s.workload_pressure,
+    time_available_today_minutes: s.time_available_today_minutes,
+    state_confidence: sum.state_confidence,
+    coaching_tone: sum.coaching_tone,
+    challenge_tolerance: sum.challenge_tolerance,
+    break_bias_minutes: sum.break_bias_minutes,
+    adaptation_hints: hints
+  };
+}
+
+// ============================================================================
+// STUDY ACTIVITY SERVICE — weighted activity scoring
+// ============================================================================
+
+function computeActivityScore(activity) {
+  // Returns a meaning score 0..10 for an activity
+  switch (activity.activity_type) {
+    case 'session':
+      if ((activity.duration_minutes || 0) >= 10 && activity.course) return 10;
+      if ((activity.duration_minutes || 0) >= 5) return 4;
+      return 2;
+    case 'flashcard_review':
+      if ((activity.count || 0) >= 10) return 8;
+      if ((activity.count || 0) >= 5) return 5;
+      return 3;
+    case 'tutor_exchange':
+      if ((activity.length || 0) > 200) return 7;
+      return 4;
+    case 'note_substantive':
+      if ((activity.length || 0) > 100) return 7;
+      return 3;
+    case 'artifact_used':
+      return 5;
+    default:
+      return 1;
+  }
+}
+
+function getLastMeaningfulActivityAt() {
+  let latest = 0;
+  // Sessions >= 10 min with course
+  state.sessions.forEach(s => {
+    if (s.endTime && s.course && (s.elapsed || 0) >= 600) latest = Math.max(latest, s.endTime);
+  });
+  // Flashcard reviews
+  state.flashcards.forEach(c => {
+    if (c.lastReviewed && (c.reviewCount || 0) >= 1) latest = Math.max(latest, c.lastReviewed);
+  });
+  // Tutor exchanges
+  state.tutorChat.forEach(m => {
+    if (m.role === 'user' && m.content && m.content.length > 20) latest = Math.max(latest, m.time || 0);
+  });
+  // Notes
+  state.notes.forEach(n => {
+    if (n.body && n.body.length > 100) latest = Math.max(latest, n.createdAt || 0);
+  });
+  return latest || null;
+}
+
+function computeBaselineStudyCadence() {
+  // Average daily study minutes over last 28 days (floored 10, capped 240)
+  const cutoff = Date.now() - 28 * 86400000;
+  const dayBuckets = {};
+  state.sessions.forEach(s => {
+    if (s.endTime && s.endTime > cutoff) {
+      const d = new Date(s.endTime).toDateString();
+      dayBuckets[d] = (dayBuckets[d] || 0) + (s.elapsed || 0) / 60;
+    }
+  });
+  const days = Object.values(dayBuckets);
+  if (days.length === 0) return { avg_minutes: 45, active_days: 0 }; // default goal
+  const avg = days.reduce((a,b) => a+b, 0) / Math.max(days.length, 1);
+  return {
+    avg_minutes: Math.max(10, Math.min(240, Math.round(avg))),
+    active_days: days.length,
+    days_span: 28
+  };
+}
+
+function getDeadlinePressure(courseName = null) {
+  const now = Date.now();
+  let urgency = 0;
+  let soonest = null;
+  state.deadlines.forEach(d => {
+    if (courseName && d.course !== courseName) return;
+    const dt = new Date(d.date).getTime();
+    if (dt < now) return;
+    const daysOut = (dt - now) / 86400000;
+    if (daysOut <= 3) urgency = Math.max(urgency, 3);
+    else if (daysOut <= 7) urgency = Math.max(urgency, 2);
+    else if (daysOut <= 14) urgency = Math.max(urgency, 1);
+    if (!soonest || dt < soonest.time) soonest = { title: d.title, course: d.course, date: d.date, time: dt, days: daysOut };
+  });
+  return { urgency, soonest };
+}
+
+// ============================================================================
+// INACTIVITY ENGINE
+// ============================================================================
+
+function computeInactivity() {
+  const last = getLastMeaningfulActivityAt();
+  const now = Date.now();
+  const baseline = computeBaselineStudyCadence();
+  const deadline = getDeadlinePressure();
+
+  if (!last) {
+    return {
+      severity: 'soft_gap',
+      gap_hours: null,
+      gap_days: null,
+      baseline_avg_minutes: baseline.avg_minutes,
+      deadline_urgency: deadline.urgency,
+      soonest_deadline: deadline.soonest,
+      next_actions: computeNextActions('soft_gap', deadline, baseline),
+      headline: 'Ready when you are',
+      subtext: 'No study history yet. One short session gets the engine running.'
+    };
+  }
+
+  const gapMs = now - last;
+  const gapHours = gapMs / 3600000;
+  const gapDays = gapMs / 86400000;
+
+  // Severity bands
+  let severity = 'on_track';
+  if (gapDays >= 4) severity = 'critical_gap';
+  else if (gapDays >= 2) severity = 'concerning_gap';
+  else if (gapHours >= 36) severity = 'soft_gap';
+  else severity = 'on_track';
+
+  // Escalate on deadline pressure
+  if (deadline.urgency >= 3 && gapHours >= 18) severity = 'critical_gap';
+  else if (deadline.urgency >= 2 && gapDays >= 2) severity = 'critical_gap';
+  else if (deadline.urgency >= 2 && gapHours >= 36) severity = 'concerning_gap';
+
+  // Demote if user has studied lightly but not meaningfully recently
+  // (covered by last meaningful only picking real activity)
+
+  const headline = {
+    on_track: 'Good rhythm',
+    soft_gap: 'Easing back in',
+    concerning_gap: 'Been a minute',
+    critical_gap: 'Long pause'
+  }[severity];
+
+  const subtext = {
+    on_track: `Last meaningful study ${formatRelative(last)}. Baseline ~${baseline.avg_minutes}min/day.`,
+    soft_gap: `Last study ${formatRelative(last)}. A short reset fits today.`,
+    concerning_gap: `${Math.floor(gapDays)} days since last real session. Low-friction restart works best.`,
+    critical_gap: `${Math.floor(gapDays)} days off. Pick one small thing and start there.`
+  }[severity];
+
+  return {
+    severity,
+    gap_hours: gapHours,
+    gap_days: gapDays,
+    baseline_avg_minutes: baseline.avg_minutes,
+    deadline_urgency: deadline.urgency,
+    soonest_deadline: deadline.soonest,
+    next_actions: computeNextActions(severity, deadline, baseline),
+    headline,
+    subtext
+  };
+}
+
+function formatRelative(ts) {
+  const diff = Date.now() - ts;
+  const h = diff / 3600000;
+  if (h < 1) return 'just now';
+  if (h < 24) return `${Math.floor(h)}h ago`;
+  const d = h / 24;
+  if (d < 7) return `${Math.floor(d)} day${Math.floor(d)===1?'':'s'} ago`;
+  return `${Math.floor(d/7)}w ago`;
+}
+
+function computeNextActions(severity, deadline, baseline) {
+  const actions = [];
+  if (severity === 'critical_gap' || severity === 'concerning_gap') {
+    actions.push({ label: 'Start a 15-min reset session', kind: 'reset_session', minutes: 15 });
+    actions.push({ label: 'Review weak points', kind: 'review_weak' });
+    if (deadline.soonest) {
+      actions.push({ label: `Plan for ${deadline.soonest.title}`, kind: 'plan_deadline', deadline: deadline.soonest });
+    }
+  } else if (severity === 'soft_gap') {
+    actions.push({ label: 'Warm up with 10 flashcards', kind: 'warmup_flashcards' });
+    actions.push({ label: 'Start a 25-min session', kind: 'standard_session', minutes: 25 });
+  } else {
+    actions.push({ label: 'Keep going', kind: 'standard_session', minutes: Math.min(50, baseline.avg_minutes || 25) });
+    actions.push({ label: 'Review flashcards', kind: 'review_flashcards' });
+  }
+  return actions;
+}
+
+function executeNextAction(kind, payload = {}) {
+  switch (kind) {
+    case 'reset_session':
+      switchView('session');
+      setTimeout(() => {
+        const pm = document.getElementById('pomodoroMinutes');
+        if (pm) pm.value = payload.minutes || 15;
+        toast('✓ 15-min reset session ready. Pick a course.', 'success');
+      }, 200);
+      break;
+    case 'standard_session':
+      switchView('session');
+      setTimeout(() => {
+        const pm = document.getElementById('pomodoroMinutes');
+        if (pm) pm.value = payload.minutes || 25;
+      }, 200);
+      break;
+    case 'review_weak':
+    case 'review_flashcards':
+    case 'warmup_flashcards':
+      switchView('review');
+      break;
+    case 'plan_deadline':
+      switchView('tutor');
+      setTimeout(() => {
+        const ti = document.getElementById('tutorInput');
+        if (ti && payload.deadline) {
+          ti.value = `Build a study plan for "${payload.deadline.title}" (${payload.deadline.course || ''}) due ${payload.deadline.date}. Consider my current state and time available.`;
+          sendTutorMessage();
+        }
+      }, 300);
+      break;
+  }
+}
+
+// ============================================================================
+// ADAPTIVE BREAK ENGINE
+// ============================================================================
+
+const ALLOWED_BREAK_MINUTES = [5, 10, 15, 20, 25, 30];
+const ALLOWED_BREAK_TYPES = ['hydrate', 'stretch', 'walk', 'breathing', 'eyes_off_screen', 'snack', 'reset'];
+
+function computeBreakRecommendation(session) {
+  const stateSum = getLatestState();
+  const sum = stateSum ? stateSum.summary : null;
+
+  const dur = (session.elapsed || 0) / 60; // minutes
+  const completedNormally = !!session.completed;
+
+  // Base
+  let base = 5;
+  if (dur >= 75) base = 15;
+  else if (dur >= 50) base = 10;
+  else if (dur >= 25) base = 5;
+  else base = 5;
+
+  // Modifiers
+  let add = 0;
+  const reasons = [];
+  if (dur >= 50) { add += 5; reasons.push(`long session (${Math.round(dur)}min) · +5`); }
+  if (dur >= 75) { add += 5; reasons.push('extended session · +5'); }
+
+  if (sum && stateSum) {
+    if ((stateSum.sleep_hours || 8) < 6) { add += 5; reasons.push(`sleep ${stateSum.sleep_hours}h · +5`); }
+    if ((stateSum.energy || 5) <= 2) { add += 5; reasons.push(`low energy (${stateSum.energy}/5) · +5`); }
+    if ((stateSum.stress || 1) >= 4) { add += 5; reasons.push(`high stress (${stateSum.stress}/5) · +5`); }
+    if (sum.fatigue_risk === 'high') { add += 5; reasons.push('fatigue risk high · +5'); }
+  }
+
+  // Consecutive sessions today
+  const todayStart = new Date(new Date().toDateString()).getTime();
+  const todaySessions = state.sessions.filter(s => s.endTime && s.endTime >= todayStart);
+  if (todaySessions.length >= 2) { add += 5; reasons.push(`${todaySessions.length} sessions today · +5`); }
+
+  // Break skip pattern
+  const recentBreaks = (state.breakRecs || []).slice(-5);
+  const skipped = recentBreaks.filter(b => b.skipped).length;
+  if (skipped >= 3) { add += 5; reasons.push('recent skip pattern · +5'); }
+
+  // Minor reduction for high readiness + short + low stress, but never below 5
+  let total = base + add;
+  if (sum && stateSum && sum.readiness_score >= 75 && dur < 30 && (stateSum.stress || 3) <= 2 && add === 0) {
+    total = Math.max(5, total);
+  }
+
+  // Clamp to allowed set
+  const clamped = ALLOWED_BREAK_MINUTES.reduce((prev, curr) =>
+    Math.abs(curr - total) < Math.abs(prev - total) ? curr : prev
+  );
+
+  // Break type
+  let type = 'hydrate';
+  if (stateSum && (stateSum.energy || 3) <= 2) type = 'walk';
+  else if (stateSum && (stateSum.stress || 3) >= 4) type = 'breathing';
+  else if (dur >= 45) type = 'eyes_off_screen';
+  else if (stateSum && (stateSum.mood || 3) <= 2) type = 'reset';
+  else if (dur >= 25) type = 'stretch';
+
+  // Urgency
+  let urgency = 'normal';
+  if (total >= 20 || (sum && sum.fatigue_risk === 'high')) urgency = 'protect_recovery';
+  else if (total <= 5) urgency = 'light';
+
+  const titles = {
+    walk: 'Step away and walk',
+    hydrate: 'Water and air',
+    breathing: 'Slow breathing',
+    stretch: 'Stretch it out',
+    eyes_off_screen: 'Eyes off screen',
+    reset: 'Soft reset',
+    snack: 'Refuel'
+  };
+  const bodies = {
+    walk: 'A short walk clears cognitive residue. Even 5 minutes helps.',
+    hydrate: 'Glass of water, fresh air if you can. Stand for a minute.',
+    breathing: 'Box breathing: 4 in, 4 hold, 4 out, 4 hold. Repeat 4 cycles.',
+    stretch: 'Roll your shoulders, stretch your neck, open your chest.',
+    eyes_off_screen: 'Look at something 20 feet away for 20 seconds. Repeat.',
+    reset: 'Short break, then one small win to build momentum back.',
+    snack: 'Small snack if overdue. Protein plus water.'
+  };
+
+  return {
+    session_id: session.id,
+    recommended_minutes: clamped,
+    break_type: type,
+    urgency_level: urgency,
+    rationale: reasons,
+    message_title: titles[type] || 'Take a break',
+    message_body: bodies[type] || 'Step away briefly.',
+    recommended_return_time: Date.now() + clamped * 60000,
+    base_minutes: base,
+    added_minutes: add,
+    final_minutes: total
+  };
+}
+
+async function logBreakOutcome(recId, outcome) {
+  const rec = state.breakRecs.find(b => b.id === recId);
+  if (!rec) return;
+  Object.assign(rec, outcome);
+  rec.updated_at = Date.now();
+  await saveState();
+}
+
+// ============================================================================
+// INACTIVITY CARD + BREAK MODAL UI
+// ============================================================================
+
+function renderInactivityCard() {
+  const box = document.getElementById('inactivityCard');
+  if (!box) return;
+  const inact = computeInactivity();
+
+  if (inact.severity === 'on_track' && !inact.gap_hours) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const severityColor = {
+    on_track: 'var(--success)',
+    soft_gap: 'var(--a)',
+    concerning_gap: 'var(--warning)',
+    critical_gap: 'var(--danger)'
+  }[inact.severity];
+
+  const actionsHtml = inact.next_actions.map(a =>
+    `<button class="btn btn-ghost btn-sm" data-action="${a.kind}" data-minutes="${a.minutes || ''}">${escapeHtml(a.label)}</button>`
+  ).join(' ');
+
+  box.innerHTML = `
+    <div class="panel" style="border-left:3px solid ${severityColor}; background:linear-gradient(90deg, rgba(${inact.severity === 'critical_gap' ? '201,119,107' : inact.severity === 'concerning_gap' ? '212,165,116' : '232,184,107'},0.05), var(--n-1));">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow" style="color:${severityColor}; margin-bottom:4px;">${inact.severity.replace('_', ' ').toUpperCase()}</div>
+          <h3 class="card-title" style="font-family:var(--font-serif); font-size:18px; font-weight:500; letter-spacing:-0.01em;">${escapeHtml(inact.headline)}</h3>
+        </div>
+      </div>
+      <div class="caption" style="margin-bottom:14px; color:var(--n-10); font-size:13px;">${escapeHtml(inact.subtext)}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">${actionsHtml}</div>
+    </div>`;
+
+  box.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.action;
+      const minutes = parseInt(btn.dataset.minutes) || undefined;
+      const action = inact.next_actions.find(a => a.kind === kind);
+      executeNextAction(kind, action || { minutes });
+    });
+  });
+}
+
+// Break modal
+let currentBreakRec = null;
+let breakCountdownInterval = null;
+
+function showBreakModal(rec) {
+  currentBreakRec = rec;
+  const modal = document.getElementById('breakModal');
+  const body = document.getElementById('breakModalBody');
+
+  const reasonsHtml = rec.rationale.length > 0
+    ? `<div style="margin-top:16px; padding:12px 14px; background:var(--n-3); border-radius:8px; border:1px solid var(--b);">
+         <div class="eyebrow" style="margin-bottom:8px;">Why this length</div>
+         ${rec.rationale.map(r => `<div style="font-size:12px; color:var(--n-10); font-family:var(--font-mono); margin-bottom:3px;">· ${escapeHtml(r)}</div>`).join('')}
+       </div>`
+    : '';
+
+  body.innerHTML = `
+    <div style="text-align:center; margin-bottom:20px;">
+      <div class="eyebrow" style="color:var(--a); margin-bottom:8px;">${rec.urgency_level.replace('_', ' ').toUpperCase()}</div>
+      <div style="font-family:var(--font-serif); font-size:48px; font-weight:500; color:var(--n-12); letter-spacing:-0.03em; line-height:1;">${rec.recommended_minutes}<span style="font-size:20px; color:var(--n-8); margin-left:4px;">min</span></div>
+      <div style="font-family:var(--font-serif); font-size:18px; color:var(--a); font-weight:500; margin-top:12px; letter-spacing:-0.01em;">${escapeHtml(rec.message_title)}</div>
+      <div style="font-size:13px; color:var(--n-10); margin-top:6px; line-height:1.6; max-width:340px; margin-left:auto; margin-right:auto;">${escapeHtml(rec.message_body)}</div>
+    </div>
+    ${reasonsHtml}
+    <div id="breakCountdown" style="display:none; text-align:center; margin-top:20px; padding:20px; background:var(--n-3); border-radius:10px; border:1px solid var(--b-hi);">
+      <div class="eyebrow">On break</div>
+      <div id="breakCountdownTime" style="font-family:var(--font-serif); font-size:42px; color:var(--a); margin:8px 0;"></div>
+      <button class="btn btn-ghost btn-sm" onclick="endBreakEarly()">Come back now</button>
+    </div>`;
+
+  document.getElementById('breakModalActions').innerHTML = `
+    <button class="btn btn-subtle btn-sm" onclick="skipBreak()">Skip</button>
+    <button class="btn btn-ghost btn-sm" onclick="shortenBreak()">Shorten (5m)</button>
+    <button class="btn btn-primary" onclick="startBreak()" style="margin-left:auto;">Start break</button>`;
+
+  modal.classList.add('active');
+}
+
+function startBreak() {
+  if (!currentBreakRec) return;
+  const mins = currentBreakRec.chosen_minutes || currentBreakRec.recommended_minutes;
+  currentBreakRec.accepted = true;
+  currentBreakRec.chosen_minutes = mins;
+  currentBreakRec.break_started_at = Date.now();
+  document.getElementById('breakCountdown').style.display = 'block';
+  document.getElementById('breakModalActions').innerHTML = '';
+
+  const until = Date.now() + mins * 60000;
+  breakCountdownInterval = setInterval(() => {
+    const left = Math.max(0, until - Date.now());
+    const m = Math.floor(left / 60000);
+    const s = Math.floor((left % 60000) / 1000);
+    const el = document.getElementById('breakCountdownTime');
+    if (el) el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    if (left <= 0) {
+      clearInterval(breakCountdownInterval);
+      breakCountdownInterval = null;
+      onBreakEnd();
+    }
+  }, 500);
+  saveState();
+}
+
+function endBreakEarly() {
+  if (breakCountdownInterval) { clearInterval(breakCountdownInterval); breakCountdownInterval = null; }
+  if (currentBreakRec) {
+    currentBreakRec.returned_early = true;
+    currentBreakRec.returned_at = Date.now();
+  }
+  onBreakEnd();
+}
+
+async function shortenBreak() {
+  if (!currentBreakRec) return;
+  const idx = ALLOWED_BREAK_MINUTES.indexOf(currentBreakRec.recommended_minutes);
+  const newMins = idx > 0 ? ALLOWED_BREAK_MINUTES[idx - 1] : 5;
+  currentBreakRec.chosen_minutes = newMins;
+  currentBreakRec.shortened = true;
+  toast(`✓ Break set to ${newMins} min`, 'success');
+  // Re-render the minutes display
+  const display = document.querySelector('#breakModalBody div > div:nth-child(2)');
+  if (display) display.innerHTML = `${newMins}<span style="font-size:20px; color:var(--n-8); margin-left:4px;">min</span>`;
+}
+
+async function skipBreak() {
+  if (!currentBreakRec) return;
+  currentBreakRec.skipped = true;
+  currentBreakRec.accepted = false;
+  await saveState();
+  closeBreakModal();
+  toast('Break skipped. Protect recovery when you can.', 'error');
+}
+
+async function onBreakEnd() {
+  if (!currentBreakRec) return;
+  currentBreakRec.returned_on_time = !currentBreakRec.returned_early;
+  await saveState();
+  const body = document.getElementById('breakModalBody');
+  body.innerHTML = `
+    <div style="text-align:center; padding:20px 0;">
+      <div style="font-family:var(--font-serif); font-size:26px; color:var(--n-12); font-weight:500; margin-bottom:8px;">Welcome back</div>
+      <div style="font-size:13px; color:var(--n-9); margin-bottom:20px;">What's next?</div>
+    </div>`;
+  document.getElementById('breakModalActions').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeBreakModal(); switchView('session');">Continue studying</button>
+    <button class="btn btn-ghost" onclick="closeBreakModal(); switchView('review');">Switch to review</button>
+    <button class="btn btn-subtle" onclick="closeBreakModal();" style="margin-left:auto;">Wrap up</button>`;
+}
+
+function closeBreakModal() {
+  if (breakCountdownInterval) { clearInterval(breakCountdownInterval); breakCountdownInterval = null; }
+  const m = document.getElementById('breakModal');
+  m.classList.add('closing');
+  setTimeout(() => { m.classList.remove('active', 'closing'); }, 260);
+  currentBreakRec = null;
+}
+
+// ============================================================================
+// POST-SESSION REFLECTION
+// ============================================================================
+
+let pendingSessionForReflection = null;
+
+function showPostSessionReflection(session) {
+  pendingSessionForReflection = session;
+  const modal = document.getElementById('reflectionModal');
+  const body = document.getElementById('reflectionModalBody');
+  body.innerHTML = `
+    <div class="caption" style="margin-bottom:18px;">
+      <strong style="color:var(--n-12);">${escapeHtml(session.topic)}</strong> · ${Math.round(session.elapsed/60)} min · ${escapeHtml(session.course)}
+    </div>
+    <div class="state-slider-row">
+      <div class="state-slider-head">
+        <label class="state-slider-label">Progress rating</label>
+        <span class="state-slider-val" id="refl_progress_val">3</span>
+      </div>
+      <input type="range" class="state-slider" id="refl_progress" min="1" max="5" step="1" value="3" oninput="document.getElementById('refl_progress_val').textContent = this.value">
+      <div class="state-slider-ends"><span>nothing</span><span>major</span></div>
+    </div>
+    <div class="state-slider-row">
+      <div class="state-slider-head">
+        <label class="state-slider-label">Fatigue now</label>
+        <span class="state-slider-val" id="refl_fatigue_val">3</span>
+      </div>
+      <input type="range" class="state-slider" id="refl_fatigue" min="1" max="5" step="1" value="3" oninput="document.getElementById('refl_fatigue_val').textContent = this.value">
+      <div class="state-slider-ends"><span>fresh</span><span>spent</span></div>
+    </div>
+    <div class="state-slider-row">
+      <div class="state-slider-head">
+        <label class="state-slider-label">Moments of confusion</label>
+        <span class="state-slider-val" id="refl_confusion_val">0</span>
+      </div>
+      <input type="range" class="state-slider" id="refl_confusion" min="0" max="10" step="1" value="0" oninput="document.getElementById('refl_confusion_val').textContent = this.value">
+      <div class="state-slider-ends"><span>none</span><span>many</span></div>
+    </div>`;
+  modal.classList.add('active');
+}
+
+async function submitReflection(skip = false) {
+  const session = pendingSessionForReflection;
+  if (session && !skip) {
+    session.reflection = {
+      progress: parseInt(document.getElementById('refl_progress').value),
+      fatigue: parseInt(document.getElementById('refl_fatigue').value),
+      confusion: parseInt(document.getElementById('refl_confusion').value),
+      captured_at: Date.now()
+    };
+    // Save signal
+    state.learnerSignals.push({
+      id: Date.now(),
+      type: 'session_reflection',
+      session_id: session.id,
+      course_id: session.course,
+      numeric_value: session.reflection.progress,
+      metadata: session.reflection,
+      created_at: Date.now()
+    });
+    await saveState();
+  }
+  closeReflectionModal();
+  if (session) {
+    // Produce break recommendation
+    const rec = computeBreakRecommendation(session);
+    rec.id = Date.now();
+    rec.created_at = Date.now();
+    state.breakRecs.push(rec);
+    await saveState();
+    setTimeout(() => showBreakModal(rec), 220);
+  }
+  pendingSessionForReflection = null;
+}
+
+function closeReflectionModal() {
+  const m = document.getElementById('reflectionModal');
+  m.classList.add('closing');
+  setTimeout(() => { m.classList.remove('active', 'closing'); }, 260);
+}
+
+function stateContextAsPromptText() {
+  const ctx = buildStateContextForAI();
+  if (!ctx.state_present) return '\n\nSTUDENT STATE: not yet captured today. Use a neutral supportive tone.\n';
+  const inact = computeInactivity();
+  return `\n\nSTUDENT STATE (respect these signals when replying):
+- Readiness: ${ctx.readiness_score}/100 (confidence: ${ctx.state_confidence}, freshness: ${ctx.freshness})
+- Mood ${ctx.mood}/5 · Energy ${ctx.energy}/5 · Stress ${ctx.stress}/5 · Sleep ${ctx.sleep_hours}h · Workload ${ctx.workload_pressure}/5
+- Time available today: ${ctx.time_available_today_minutes || 'unspecified'} min
+- Coaching tone: ${ctx.coaching_tone} · Challenge tolerance: ${ctx.challenge_tolerance} · Fatigue risk: ${ctx.fatigue_risk}
+- Activity: ${inact.severity}${inact.gap_days ? ` (${inact.gap_days.toFixed(1)} days since last real study)` : ''}
+- Adaptation hints: ${ctx.adaptation_hints.join(', ') || 'none'}
+Adapt tone, length, and depth accordingly. Do not mention this block verbatim.\n`;
+}
+
+// ============================================================================
+// STATE CAPTURE UI — Gate modal, rush path, mini refresh
+// ============================================================================
+
+let stateModalMode = 'full'; // 'full' | 'rush' | 'mini'
+let stateModalPending = null; // callback after completion
+
+function openStateModal(mode = 'full', afterCb = null) {
+  stateModalMode = mode;
+  stateModalPending = afterCb;
+  const prev = getLatestState();
+  // Prefill sliders with last known values
+  const defaults = prev || { mood: 3, energy: 3, stress: 3, sleep_hours: 7, workload_pressure: 3, time_available_today_minutes: 60 };
+  renderStateModal(mode, defaults);
+  document.getElementById('stateModal').classList.add('active');
+}
+
+function closeStateModal(skipped = false) {
+  const m = document.getElementById('stateModal');
+  m.classList.add('closing');
+  setTimeout(() => { m.classList.remove('active', 'closing'); }, 260);
+  if (skipped && stateModalPending) stateModalPending('skipped');
+  stateModalPending = null;
+}
+
+function renderStateModal(mode, d) {
+  const body = document.getElementById('stateModalBody');
+  const title = mode === 'mini' ? 'Quick refresh' : mode === 'rush' ? "Quick check-in" : 'How are you today?';
+  const sub = mode === 'mini'
+    ? 'Your state is getting stale. Two quick sliders and you can keep going.'
+    : mode === 'rush'
+      ? "Three sliders, fifteen seconds. You'll still get tailored sessions."
+      : 'A fast snapshot so Einstein can tailor today. Takes under 15 seconds.';
+  document.getElementById('stateModalTitle').textContent = title;
+  document.getElementById('stateModalSub').textContent = sub;
+
+  const slider = (id, label, min, max, val, step = 1, lo = '', hi = '') => `
+    <div class="state-slider-row">
+      <div class="state-slider-head">
+        <label class="state-slider-label">${label}</label>
+        <span class="state-slider-val" id="${id}_val">${val}</span>
+      </div>
+      <input type="range" class="state-slider" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" oninput="document.getElementById('${id}_val').textContent = this.value">
+      ${lo || hi ? `<div class="state-slider-ends"><span>${lo}</span><span>${hi}</span></div>` : ''}
+    </div>`;
+
+  let content = '';
+  if (mode === 'rush') {
+    content = `
+      ${slider('st_energy', 'Energy', 1, 5, d.energy, 1, 'drained', 'charged')}
+      ${slider('st_stress', 'Stress', 1, 5, d.stress, 1, 'calm', 'tense')}
+      <div class="state-slider-row">
+        <div class="state-slider-head">
+          <label class="state-slider-label">Time available today</label>
+          <span class="state-slider-val" id="st_time_val">${d.time_available_today_minutes || 60} min</span>
+        </div>
+        <input type="range" class="state-slider" id="st_time" min="15" max="240" step="15" value="${d.time_available_today_minutes || 60}" oninput="document.getElementById('st_time_val').textContent = this.value + ' min'">
+        <div class="state-slider-ends"><span>short</span><span>all day</span></div>
+      </div>`;
+  } else if (mode === 'mini') {
+    content = `
+      ${slider('st_energy', 'Energy now', 1, 5, d.energy, 1, 'drained', 'charged')}
+      ${slider('st_stress', 'Stress now', 1, 5, d.stress, 1, 'calm', 'tense')}`;
+  } else {
+    content = `
+      ${slider('st_mood', 'Mood', 1, 5, d.mood, 1, 'low', 'good')}
+      ${slider('st_energy', 'Energy', 1, 5, d.energy, 1, 'drained', 'charged')}
+      ${slider('st_stress', 'Stress', 1, 5, d.stress, 1, 'calm', 'tense')}
+      ${slider('st_workload', 'Workload pressure', 1, 5, d.workload_pressure, 1, 'light', 'heavy')}
+      <div class="state-slider-row">
+        <div class="state-slider-head">
+          <label class="state-slider-label">Sleep last night</label>
+          <span class="state-slider-val" id="st_sleep_val">${d.sleep_hours} h</span>
+        </div>
+        <input type="range" class="state-slider" id="st_sleep" min="0" max="12" step="0.5" value="${d.sleep_hours}" oninput="document.getElementById('st_sleep_val').textContent = this.value + ' h'">
+        <div class="state-slider-ends"><span>none</span><span>12h+</span></div>
+      </div>
+      <div class="state-slider-row">
+        <div class="state-slider-head">
+          <label class="state-slider-label">Time available today</label>
+          <span class="state-slider-val" id="st_time_val">${d.time_available_today_minutes || 60} min</span>
+        </div>
+        <input type="range" class="state-slider" id="st_time" min="15" max="240" step="15" value="${d.time_available_today_minutes || 60}" oninput="document.getElementById('st_time_val').textContent = this.value + ' min'">
+        <div class="state-slider-ends"><span>15 min</span><span>4 h+</span></div>
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label class="field-label">Short note (optional)</label>
+        <input type="text" class="input" id="st_note" placeholder="Anything on your mind..." value="${escapeAttr(d.note || '')}">
+      </div>`;
+  }
+
+  body.innerHTML = content;
+}
+
+async function submitStateCheckin() {
+  const mode = stateModalMode;
+  const prev = getLatestState() || {};
+  const read = (id, def) => {
+    const el = document.getElementById(id);
+    return el ? parseFloat(el.value) : def;
+  };
+  const fields = {
+    mood: read('st_mood', prev.mood || 3),
+    energy: read('st_energy', prev.energy || 3),
+    stress: read('st_stress', prev.stress || 3),
+    sleep_hours: read('st_sleep', prev.sleep_hours || 7),
+    workload_pressure: read('st_workload', prev.workload_pressure || 3),
+    time_available_today_minutes: read('st_time', prev.time_available_today_minutes || 60),
+    note: document.getElementById('st_note')?.value || ''
+  };
+  const sourceType = mode === 'rush' ? 'rush' : mode === 'mini' ? 'mini_refresh' : 'daily_open';
+  await saveDailyState(fields, sourceType);
+  closeStateModal(false);
+  renderStateChip();
+  renderDashboard();
+  toast('✓ State captured', 'success');
+  if (stateModalPending) {
+    const cb = stateModalPending;
+    stateModalPending = null;
+    cb('ok');
+  }
+}
+
+// Gate on app open — show modal if no check-in today
+function checkDailyStateGate() {
+  if (state.flags?.disable_state_gate) return;
+  if (!hasCheckedInToday()) {
+    setTimeout(() => openStateModal('full'), 600);
+  }
+}
+
+// Called before starting a session — request mini refresh if stale
+function ensureFreshStateForSession(onReady) {
+  const fresh = getStateFreshness();
+  if (fresh.status === 'fresh') { onReady(); return; }
+  if (fresh.status === 'soft_stale') {
+    openStateModal('mini', () => onReady());
+    return;
+  }
+  // hard_stale or missing — full check-in
+  openStateModal('full', () => onReady());
+}
+
+// ============================================================================
+// STATE CHIP — small summary on topbar
+// ============================================================================
+
+function renderStateChip() {
+  const chip = document.getElementById('stateChip');
+  if (!chip) return;
+  const s = getLatestState();
+  if (!s) {
+    chip.innerHTML = `<span class="dot"></span><span>Check in</span>`;
+    chip.onclick = () => openStateModal('full');
+    return;
+  }
+  const sum = s.summary;
+  const fresh = getStateFreshness();
+  const dotColor = fresh.status === 'fresh' ? 'var(--success)' : fresh.status === 'soft_stale' ? 'var(--warning)' : 'var(--danger)';
+  chip.innerHTML = `<span class="dot" style="background:${dotColor}; box-shadow:0 0 8px ${dotColor}"></span><span>${sum.readiness_score} · ${fresh.status === 'fresh' ? 'fresh' : fresh.status === 'soft_stale' ? 'stale' : 'refresh'}</span>`;
+  chip.onclick = () => openStateModal(fresh.status === 'fresh' ? 'mini' : 'full');
+}
+
+// ----- Nav -----
+const railPill = document.getElementById('railPill');
+function positionRailPill() {
+  const active = document.querySelector('.rail-item.active');
+  if (!active || !railPill) return;
+  const railRect = document.querySelector('.rail-left').getBoundingClientRect();
+  const r = active.getBoundingClientRect();
+  railPill.style.top = `${r.top - railRect.top + (r.height - 22) / 2}px`;
+  railPill.classList.add('visible');
+}
+document.querySelectorAll('.rail-item[data-view]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const target = document.getElementById(view);
+  if (target) { target.offsetHeight; target.classList.add('active'); }
+  document.querySelectorAll('.rail-item').forEach(r => r.classList.remove('active'));
+  const rb = document.querySelector(`.rail-item[data-view="${view}"]`);
+  if (rb) rb.classList.add('active');
+  positionRailPill();
+  if (view === 'review') renderFlashcardArea();
+  if (view === 'analytics') renderAnalytics();
+  if (view === 'notes') renderNotesList();
+  if (view === 'artifacts') renderArtifactLibrary();
+  if (view === 'studio') { renderArtifactList(); renderMaterialSelectForStudio(); }
+  if (view === 'integrations') { renderProviderSettings(); }
+}
+window.switchView = switchView;
+window.addEventListener('resize', positionRailPill);
+setTimeout(positionRailPill, 80);
+
+// ----- Modes -----
+document.querySelectorAll('.mode-tile').forEach(tile => {
+  tile.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tile').forEach(t => t.classList.remove('selected'));
+    tile.classList.add('selected');
+    currentMode = tile.dataset.mode;
+    updateModeUI();
+  });
+});
+function updateModeUI() {
+  const ps = document.getElementById('pomodoroSettings');
+  const sn = document.getElementById('summaryNotesSection');
+  if (ps) ps.style.display = currentMode === 'pomodoro' ? 'block' : 'none';
+  if (sn) sn.style.display = currentMode === 'summary' ? 'block' : 'none';
+}
+
+// ----- Studio presets -----
+document.querySelectorAll('#studioPresets .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#studioPresets .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentStudioPreset = chip.dataset.preset;
+  });
+});
+document.querySelectorAll('#artifactFilter button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#artifactFilter button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderArtifactList(btn.dataset.filter);
+  });
+});
+
+// ----- Timer -----
+let timerInterval=null, timerStart=null, timerElapsed=0, timerDuration=1500, timerRunning=false, currentSession=null;
+const RING_CIRC = 565.49;
+function formatTime(secs) {
+  const m = Math.floor(Math.abs(secs) / 60);
+  const s = Math.abs(secs) % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function updateRing(p) {
+  const ring = document.getElementById('sessionRing');
+  if (ring) ring.style.strokeDashoffset = RING_CIRC - (RING_CIRC * p);
+  const rr = document.getElementById('railRing');
+  if (rr) rr.style.strokeDashoffset = 94.25 - (94.25 * p);
+}
+function startTimer() {
+  const course = document.getElementById('sessionCourse').value;
+  const topic = document.getElementById('sessionTopic').value.trim();
+  if (!course) { toast('Select a course first', 'error'); shakeEl('sessionCourse'); return; }
+  if (!topic) { toast('Enter an objective first', 'error'); shakeEl('sessionTopic'); return; }
+  // Gate on state freshness before major workflow
+  const fresh = getStateFreshness();
+  if (fresh.status !== 'fresh' && !state.flags?.disable_state_gate) {
+    ensureFreshStateForSession(() => startTimerInner());
+    return;
+  }
+  startTimerInner();
+}
+
+function startTimerInner() {
+  const course = document.getElementById('sessionCourse').value;
+  const topic = document.getElementById('sessionTopic').value.trim();
+  if (currentMode === 'pomodoro') timerDuration = parseInt(document.getElementById('pomodoroMinutes').value) * 60;
+  if (!currentSession) currentSession = { id:Date.now(), course, topic, mode:currentMode, startTime:Date.now(), elapsed:0 };
+  timerRunning = true;
+  timerStart = Date.now();
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('pauseBtn').disabled = false;
+  document.getElementById('stopBtn').disabled = false;
+  document.getElementById('sessionTag').textContent = course;
+  document.getElementById('sessionObjective').textContent = topic;
+  document.getElementById('timerStatus').textContent = `In flow · ${currentMode.toUpperCase()}`;
+  document.getElementById('timerModeLabel').textContent = currentMode;
+  document.getElementById('railRingTitle').textContent = topic;
+  document.getElementById('railRingSub').textContent = course;
+  document.getElementById('sessionHero').classList.add('live');
+  document.getElementById('railFocusRing').classList.add('live');
+  timerInterval = setInterval(() => {
+    const since = Math.floor((Date.now() - timerStart) / 1000);
+    const total = timerElapsed + since;
+    if (currentMode === 'pomodoro') {
+      const rem = timerDuration - total;
+      document.getElementById('timerDisplay').textContent = formatTime(rem >= 0 ? rem : 0);
+      updateRing(Math.min(total / timerDuration, 1));
+      if (rem <= 0) { stopTimer(true); toast('🎉 Pomodoro complete. Break time.', 'success'); }
+    } else {
+      document.getElementById('timerDisplay').textContent = formatTime(total);
+      updateRing((total % 3600) / 3600);
+    }
+  }, 1000);
+}
+function pauseTimer() {
+  if (!timerRunning) return;
+  clearInterval(timerInterval);
+  timerElapsed += Math.floor((Date.now() - timerStart) / 1000);
+  timerRunning = false;
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('pauseBtn').disabled = true;
+  document.getElementById('timerStatus').textContent = 'Paused';
+  document.getElementById('sessionHero').classList.remove('live');
+}
+async function stopTimer(completed=false) {
+  if (timerInterval) clearInterval(timerInterval);
+  if (timerRunning) timerElapsed += Math.floor((Date.now() - timerStart) / 1000);
+  timerRunning = false;
+  let endedSession = null;
+  if (currentSession && timerElapsed > 30) {
+    currentSession.elapsed = timerElapsed;
+    currentSession.endTime = Date.now();
+    currentSession.completed = completed;
+    state.sessions.push(currentSession);
+    endedSession = currentSession;
+    await saveState();
+    toast(`✓ Session saved — ${Math.round(timerElapsed/60)} min on ${currentSession.topic}`, 'success');
+    renderDashboard();
+  }
+  currentSession = null;
+  timerElapsed = 0;
+  document.getElementById('timerDisplay').textContent = formatTime(timerDuration);
+  document.getElementById('timerModeLabel').textContent = 'ready';
+  document.getElementById('sessionTag').textContent = 'No session active';
+  document.getElementById('sessionObjective').textContent = 'Configure your session below';
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('pauseBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = true;
+  document.getElementById('timerStatus').textContent = '';
+  document.getElementById('railRingTitle').textContent = 'No active session';
+  document.getElementById('railRingSub').textContent = 'Start one anytime';
+  document.getElementById('sessionHero').classList.remove('live');
+  document.getElementById('railFocusRing').classList.remove('live');
+  updateRing(0);
+  // Post-session flow
+  if (endedSession && !state.flags?.disable_post_session) {
+    setTimeout(() => showPostSessionReflection(endedSession), 500);
+  }
+}
+function shakeEl(id) {
+  const el = document.getElementById(id);
+  if (!el || prefersReducedMotion) return;
+  el.animate([
+    {transform:'translateX(0)'},{transform:'translateX(-4px)'},
+    {transform:'translateX(4px)'},{transform:'translateX(-2px)'},{transform:'translateX(0)'}
+  ], {duration:280, easing:'ease-in-out'});
+}
+
+// ----- Courses -----
+async function addCourse() {
+  const name = document.getElementById('newCourseName').value.trim();
+  const term = document.getElementById('newCourseTerm').value.trim();
+  if (!name) { toast('Enter a course name', 'error'); shakeEl('newCourseName'); return; }
+  state.courses.push({ id:Date.now(), name, term, createdAt:Date.now() });
+  document.getElementById('newCourseName').value = '';
+  document.getElementById('newCourseTerm').value = '';
+  await saveState();
+  renderCourses(true);
+  renderCourseSelects();
+  bumpCount('courseCount');
+  toast(`✓ Added ${name}`, 'success');
+}
+async function deleteCourse(id) {
+  if (!confirm('Delete this course?')) return;
+  const row = document.querySelector(`[data-course-id="${id}"]`);
+  if (row) { row.classList.add('removing'); await new Promise(r => setTimeout(r, 260)); }
+  state.courses = state.courses.filter(c => c.id !== id);
+  await saveState();
+  renderCourses();
+  renderCourseSelects();
+}
+function renderCourses(opt=false) {
+  const list = document.getElementById('courseList');
+  if (!list) return;
+  if (state.courses.length === 0) { list.innerHTML = emptyState('◫', 'No courses yet', 'Add your first course above to begin building your workspace.'); return; }
+  list.innerHTML = state.courses.map((c,i) => {
+    const hrs = getHoursByCourse(c.name);
+    const sc = state.materials.filter(m => m.course === c.name).length;
+    const nc = state.notes.filter(n => n.course === c.name).length;
+    return `<div class="row ${opt && i === state.courses.length - 1 ? 'inserting' : ''}" data-course-id="${c.id}">
+      <div class="row-content">
+        <div class="row-title">${escapeHtml(c.name)}</div>
+        <div class="row-sub">${escapeHtml(c.term || 'no term')} · ${hrs.toFixed(1)}h studied · ${sc} sources · ${nc} notes</div>
+      </div>
+      <div class="row-actions"><button class="btn btn-danger btn-sm" onclick="deleteCourse(${c.id})">Delete</button></div>
+    </div>`;
+  }).join('');
+}
+function renderCourseSelects() {
+  ['sessionCourse','materialCourse','tutorCourse','dlCourse','newNoteCourse','studioCourse'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    const first = el.options[0] ? el.options[0].outerHTML : '<option value="">Select...</option>';
+    el.innerHTML = first + state.courses.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    if (cur) el.value = cur;
+  });
+  const cc = document.getElementById('courseCount');
+  if (cc) cc.textContent = state.courses.length;
+}
+
+// ----- Deadlines -----
+function openDeadlineModal() {
+  document.getElementById('deadlineModal').classList.add('active');
+  const d = new Date(); d.setDate(d.getDate() + 7);
+  document.getElementById('dlDate').value = d.toISOString().slice(0, 10);
+  setTimeout(() => document.getElementById('dlTitle').focus(), 120);
+}
+function closeDeadlineModal() {
+  const s = document.getElementById('deadlineModal');
+  s.classList.add('closing');
+  setTimeout(() => { s.classList.remove('active', 'closing'); }, 260);
+  document.getElementById('dlTitle').value = '';
+  document.getElementById('dlNotes').value = '';
+}
+async function saveDeadline() {
+  const title = document.getElementById('dlTitle').value.trim();
+  const course = document.getElementById('dlCourse').value;
+  const date = document.getElementById('dlDate').value;
+  const notes = document.getElementById('dlNotes').value.trim();
+  if (!title || !date) { toast('Title and date required', 'error'); return; }
+  state.deadlines.push({ id:Date.now(), title, course, date, notes });
+  await saveState();
+  closeDeadlineModal();
+  renderDashboard();
+  toast('✓ Deadline added', 'success');
+}
+async function deleteDeadline(id) {
+  const row = document.querySelector(`[data-deadline-id="${id}"]`);
+  if (row) { row.classList.add('removing'); await new Promise(r => setTimeout(r, 260)); }
+  state.deadlines = state.deadlines.filter(d => d.id !== id);
+  await saveState();
+  renderDashboard();
+}
+function renderDeadlines() {
+  const list = document.getElementById('deadlineList');
+  if (!list) return;
+  const active = state.deadlines.filter(d => new Date(d.date) >= new Date(new Date().toDateString())).sort((a,b) => new Date(a.date) - new Date(b.date));
+  if (active.length === 0) { list.innerHTML = emptyState('◇', 'Nothing scheduled', 'Add upcoming exams or deadlines.'); return; }
+  list.innerHTML = active.slice(0,5).map(d => {
+    const days = Math.ceil((new Date(d.date) - new Date()) / 86400000);
+    let badge = days <= 2 ? '<span class="badge badge-urgent">Urgent</span>' : days <= 7 ? '<span class="badge badge-soon">Soon</span>' : '<span class="badge badge-later">Later</span>';
+    return `<div class="row" data-deadline-id="${d.id}">
+      <div class="row-content"><div class="row-title">${escapeHtml(d.title)} ${badge}</div><div class="row-sub">${escapeHtml(d.course || 'unassigned')} · ${d.date} · in ${days} day${days===1?'':'s'}</div></div>
+      <div class="row-actions"><button class="btn btn-subtle btn-sm" onclick="deleteDeadline(${d.id})">✕</button></div>
+    </div>`;
+  }).join('');
+}
+
+// ----- Goals -----
+async function addGoal() {
+  const text = document.getElementById('newGoal').value.trim();
+  if (!text) return;
+  state.goals.push({ id:Date.now(), text, date:new Date().toDateString(), done:false });
+  document.getElementById('newGoal').value = '';
+  await saveState();
+  renderGoals();
+}
+async function toggleGoal(id) { const g = state.goals.find(g => g.id === id); if (g) g.done = !g.done; await saveState(); renderGoals(); }
+async function deleteGoal(id) { state.goals = state.goals.filter(g => g.id !== id); await saveState(); renderGoals(); }
+function renderGoals() {
+  const list = document.getElementById('goalList');
+  if (!list) return;
+  const today = new Date().toDateString();
+  const tg = state.goals.filter(g => g.date === today);
+  if (tg.length === 0) { list.innerHTML = '<div class="caption" style="padding:20px 0; text-align:center;">No goals yet for today.</div>'; return; }
+  list.innerHTML = tg.map(g => `
+    <div class="row" style="padding:8px 12px; margin-bottom:6px;">
+      <button class="btn btn-icon btn-sm" onclick="toggleGoal(${g.id})" style="color:${g.done?'var(--success)':'var(--n-8)'}; padding:4px;">${g.done?'●':'○'}</button>
+      <div class="row-content" style="${g.done?'text-decoration:line-through;opacity:0.5':''}"><div class="row-title" style="font-size:12px;">${escapeHtml(g.text)}</div></div>
+      <button class="btn btn-subtle btn-sm" onclick="deleteGoal(${g.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+// ----- Materials -----
+async function addMaterial() {
+  const course = document.getElementById('materialCourse').value;
+  const title = document.getElementById('materialTitle').value.trim();
+  let content = document.getElementById('materialContent').value.trim();
+  const file = document.getElementById('materialFile').files[0];
+  if (!title) { toast('Title required', 'error'); shakeEl('materialTitle'); return; }
+  if (file && !content) {
+    const name = file.name.toLowerCase();
+    const textExt = ['.txt','.md','.csv','.json','.xml','.html','.htm','.rtf','.tex','.log','.srt','.vtt'];
+    const isText = textExt.some(ext => name.endsWith(ext));
+    if (isText) { try { content = await file.text(); } catch(e) { toast('Could not read', 'error'); return; } }
+    else { toast('For binary files, paste text', 'error'); return; }
+  }
+  if (!content) { toast('Content required', 'error'); return; }
+  state.materials.push({ id:Date.now(), course, title, content, createdAt:Date.now(), version:1 });
+  state.artifacts.forEach(a => { if (a.course === course) a.stale = true; });
+  document.getElementById('materialTitle').value = '';
+  document.getElementById('materialContent').value = '';
+  document.getElementById('materialFile').value = '';
+  await saveState();
+  renderMaterials();
+  bumpCount('materialCount');
+  toast('✓ Source saved', 'success');
+}
+async function deleteMaterial(id) {
+  if (!confirm('Delete this source?')) return;
+  const row = document.querySelector(`[data-material-id="${id}"]`);
+  if (row) { row.classList.add('removing'); await new Promise(r => setTimeout(r, 260)); }
+  state.materials = state.materials.filter(m => m.id !== id);
+  await saveState();
+  renderMaterials();
+}
+function renderMaterials() {
+  const list = document.getElementById('materialList');
+  if (!list) return;
+  const mc = document.getElementById('materialCount');
+  if (mc) mc.textContent = state.materials.length;
+  if (state.materials.length === 0) { list.innerHTML = emptyState('▤', 'No sources yet', 'Paste lecture notes or upload a text file.'); return; }
+  list.innerHTML = state.materials.slice().reverse().map(m => `
+    <div class="row" data-material-id="${m.id}">
+      <div class="row-content"><div class="row-title">${escapeHtml(m.title)}</div><div class="row-sub">${escapeHtml(m.course || 'unassigned')} · ${m.content.length.toLocaleString()} chars · ${new Date(m.createdAt).toLocaleDateString()}</div></div>
+      <div class="row-actions">
+        <button class="btn btn-subtle btn-sm" onclick="summarizeMaterial(${m.id})">✦ Ask tutor</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMaterial(${m.id})">Delete</button>
+      </div>
+    </div>`).join('');
+}
+async function summarizeMaterial(id) {
+  const m = state.materials.find(x => x.id === id);
+  if (!m) return;
+  switchView('tutor');
+  document.getElementById('tutorInput').value = `Summarize "${m.title}" and list the 5 most important concepts.`;
+  setTimeout(() => sendTutorMessage(), 300);
+}
+async function generateFlashcardsFromMaterial() {
+  const course = document.getElementById('materialCourse').value;
+  const title = document.getElementById('materialTitle').value.trim() || 'General';
+  const content = document.getElementById('materialContent').value.trim();
+  if (!content) { toast('Paste content first', 'error'); return; }
+  toast('✦ Generating flashcards...');
+  try {
+    const p = `Generate 8 high-quality flashcards. Return ONLY valid JSON array: [{"q":"...","a":"..."}]. Material:\n\n${content.slice(0,3000)}`;
+    const r = await callClaude(p);
+    const cleaned = r.replace(/```json\s*/gi,'').replace(/```\s*$/g,'').trim();
+    const jm = cleaned.match(/\[[\s\S]*\]/);
+    if (!jm) throw new Error('No JSON');
+    const cards = JSON.parse(jm[0]);
+    let added = 0;
+    cards.forEach(c => { if (c?.q && c?.a) { state.flashcards.push({ id:Date.now()+Math.random(), course, topic:title, question:c.q, answer:c.a, createdAt:Date.now(), reviewCount:0, difficulty:0 }); added++; } });
+    await saveState();
+    renderCounts();
+    bumpCount('flashcardCount');
+    toast(`✓ Created ${added} flashcards`, 'success');
+  } catch(e) { console.error(e); toast(friendlyApiError(e), 'error'); }
+}
+
+// ----- Notes -----
+async function addNote() {
+  const course = document.getElementById('newNoteCourse').value;
+  const topic = document.getElementById('newNoteTopic').value.trim();
+  const body = document.getElementById('newNoteBody').value.trim();
+  if (!body) { toast('Write something first', 'error'); shakeEl('newNoteBody'); return; }
+  state.notes.push({ id:Date.now(), course, topic, body, createdAt:Date.now(), pinned:false });
+  document.getElementById('newNoteTopic').value = '';
+  document.getElementById('newNoteBody').value = '';
+  await saveState();
+  renderNotesList();
+  renderCounts();
+  bumpCount('noteCount');
+  toast('✓ Note saved', 'success');
+}
+async function deleteNote(id) {
+  const card = document.querySelector(`[data-note-id="${id}"]`);
+  if (card && !prefersReducedMotion) {
+    card.style.transition = 'all 280ms cubic-bezier(0.4,0,1,1)';
+    card.style.transform = 'scale(0.9) translateY(-10px)';
+    card.style.opacity = '0';
+    await new Promise(r => setTimeout(r, 280));
+  }
+  state.notes = state.notes.filter(n => n.id !== id);
+  await saveState();
+  renderNotesList();
+  renderCounts();
+}
+async function pinNote(id) { const n = state.notes.find(n => n.id === id); if (n) n.pinned = !n.pinned; await saveState(); renderNotesList(); }
+async function noteToFlashcards(id) {
+  const n = state.notes.find(n => n.id === id);
+  if (!n) return;
+  toast('✦ Transforming...');
+  try {
+    const p = `Turn this note into 5 flashcards. Return ONLY JSON: [{"q":"...","a":"..."}]. Note:\n\n${n.body}`;
+    const r = await callClaude(p);
+    const cleaned = r.replace(/```json\s*/gi,'').replace(/```\s*$/g,'').trim();
+    const jm = cleaned.match(/\[[\s\S]*\]/);
+    if (!jm) throw new Error('No JSON');
+    const cards = JSON.parse(jm[0]);
+    let added = 0;
+    cards.forEach(c => { if (c?.q && c?.a) { state.flashcards.push({ id:Date.now()+Math.random(), course:n.course, topic:n.topic, question:c.q, answer:c.a, createdAt:Date.now(), reviewCount:0, difficulty:0 }); added++; } });
+    await saveState();
+    renderCounts();
+    bumpCount('flashcardCount');
+    toast(`✓ Created ${added} flashcards`, 'success');
+  } catch(e) { toast(friendlyApiError(e), 'error'); }
+}
+function renderNotesList() {
+  const list = document.getElementById('notesList');
+  if (!list) return;
+  if (state.notes.length === 0) { list.innerHTML = `<div style="grid-column:1/-1;">${emptyState('✎', 'No notes yet', 'Capture ideas. Transform any note into flashcards.')}</div>`; return; }
+  const sorted = [...state.notes].sort((a,b) => (b.pinned?1:0) - (a.pinned?1:0) || b.createdAt - a.createdAt);
+  list.innerHTML = sorted.map(n => `
+    <div class="note-card ${n.pinned?'pinned':''}" data-note-id="${n.id}">
+      ${n.pinned ? '<div class="note-pin">◆</div>' : ''}
+      <div class="note-title">${escapeHtml(n.topic || 'Untitled')}</div>
+      <div class="note-body">${escapeHtml(n.body)}</div>
+      <div class="note-footer">
+        <div class="metadata">${escapeHtml(n.course || 'general')} · ${new Date(n.createdAt).toLocaleDateString()}</div>
+        <div style="display:flex; gap:4px;">
+          <button class="btn btn-subtle btn-sm" onclick="pinNote(${n.id})">${n.pinned?'Unpin':'Pin'}</button>
+          <button class="btn btn-subtle btn-sm" onclick="noteToFlashcards(${n.id})">→ Cards</button>
+          <button class="btn btn-subtle btn-sm" onclick="deleteNote(${n.id})">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ----- Flashcards -----
+let currentFlashcard = null;
+let flashcardFlipped = false;
+let flashcardDeck = []; // ordered list for current session
+let flashcardIndex = 0;
+let flashcardFilter = { course: 'all', topic: 'all' };
+let flashcardShuffle = false;
+
+function getFlashcardCourses() {
+  const set = new Set();
+  state.flashcards.forEach(c => { if (c.course) set.add(c.course); });
+  return Array.from(set).sort();
+}
+function getFlashcardTopics(course) {
+  const set = new Set();
+  state.flashcards.forEach(c => {
+    if (course === 'all' || c.course === course) {
+      if (c.topic) set.add(c.topic);
+    }
+  });
+  return Array.from(set).sort();
+}
+
+function buildFlashcardDeck() {
+  let deck = state.flashcards.filter(c => {
+    const courseOk = flashcardFilter.course === 'all' || c.course === flashcardFilter.course;
+    const topicOk = flashcardFilter.topic === 'all' || c.topic === flashcardFilter.topic;
+    return courseOk && topicOk;
+  });
+  if (flashcardShuffle) {
+    // Fisher-Yates
+    deck = deck.slice();
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+  } else {
+    // Default: least-reviewed first
+    deck = deck.slice().sort((a, b) => (a.reviewCount || 0) - (b.reviewCount || 0));
+  }
+  flashcardDeck = deck;
+  if (flashcardIndex >= flashcardDeck.length) flashcardIndex = 0;
+}
+
+function renderFlashcardArea() {
+  const area = document.getElementById('flashcardArea');
+  if (!area) return;
+  if (state.flashcards.length === 0) {
+    area.innerHTML = emptyState('◧', 'No flashcards yet', 'Add a source and generate flashcards, or transform a note.');
+    return;
+  }
+
+  buildFlashcardDeck();
+
+  if (flashcardDeck.length === 0) {
+    area.innerHTML = renderFlashcardControls() + emptyState('◇', 'No cards match', 'Try a different course or topic filter.');
+    wireFlashcardControls();
+    return;
+  }
+
+  currentFlashcard = flashcardDeck[flashcardIndex];
+  flashcardFlipped = false;
+
+  const segCount = Math.min(flashcardDeck.length, 20);
+  const segs = Array.from({length: segCount}, (_, i) => {
+    const barIdx = Math.floor((i / segCount) * flashcardDeck.length);
+    const isDone = barIdx < flashcardIndex;
+    const isCurrent = barIdx === flashcardIndex;
+    return `<div class="flashcard-progress-seg ${isDone || isCurrent ? 'done' : ''}"></div>`;
+  }).join('');
+
+  area.innerHTML = `
+    ${renderFlashcardControls()}
+    <div class="flashcard-stage">
+      <div class="flashcard-progress">${segs}</div>
+      <div class="flashcard-3d" id="flashcard3d" onclick="flipFlashcard()">
+        <div class="flashcard-face flashcard-face-q">${escapeHtml(currentFlashcard.question)}</div>
+        <div class="flashcard-face flashcard-face-a">${escapeHtml(currentFlashcard.answer)}</div>
+      </div>
+      <div class="flashcard-hint">tap to reveal · ← → to navigate</div>
+    </div>
+    <div class="flashcard-rating hidden" id="flashcardRating">
+      <button class="rate-again" onclick="rateFlashcard(0)">Again</button>
+      <button class="rate-hard" onclick="rateFlashcard(1)">Hard</button>
+      <button class="rate-good" onclick="rateFlashcard(2)">Good</button>
+      <button class="rate-easy" onclick="rateFlashcard(3)">Easy</button>
+    </div>
+    <div style="text-align:center; margin-top:18px;"><span class="metadata">topic: ${escapeHtml(currentFlashcard.topic || 'general')}${currentFlashcard.course ? ' · ' + escapeHtml(currentFlashcard.course) : ''} · reviewed ${currentFlashcard.reviewCount || 0}×</span></div>`;
+
+  wireFlashcardControls();
+}
+
+function renderFlashcardControls() {
+  const courses = getFlashcardCourses();
+  const topics = getFlashcardTopics(flashcardFilter.course);
+  return `
+    <div class="flashcard-controls">
+      <div class="flashcard-counter">
+        <span class="flashcard-counter-current">${flashcardDeck.length > 0 ? flashcardIndex + 1 : 0}</span>
+        <span class="flashcard-counter-divider">/</span>
+        <span class="flashcard-counter-total">${flashcardDeck.length}</span>
+      </div>
+      <div class="flashcard-filter-group">
+        <div class="flashcard-filter-label">Course</div>
+        <select class="flashcard-deck-select" id="fcCourseSelect">
+          <option value="all">All courses (${state.flashcards.length})</option>
+          ${courses.map(c => {
+            const count = state.flashcards.filter(card => card.course === c).length;
+            return `<option value="${escapeHtml(c)}" ${flashcardFilter.course === c ? 'selected' : ''}>${escapeHtml(c)} (${count})</option>`;
+          }).join('')}
+        </select>
+      </div>
+      <div class="flashcard-filter-group">
+        <div class="flashcard-filter-label">Topic</div>
+        <select class="flashcard-deck-select" id="fcTopicSelect">
+          <option value="all">All topics</option>
+          ${topics.map(t => {
+            const count = state.flashcards.filter(card =>
+              (flashcardFilter.course === 'all' || card.course === flashcardFilter.course) && card.topic === t
+            ).length;
+            return `<option value="${escapeHtml(t)}" ${flashcardFilter.topic === t ? 'selected' : ''}>${escapeHtml(t)} (${count})</option>`;
+          }).join('')}
+        </select>
+      </div>
+      <button class="flashcard-shuffle-btn ${flashcardShuffle ? 'active' : ''}" id="fcShuffleBtn" title="Shuffle deck">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+        ${flashcardShuffle ? 'Shuffled' : 'Shuffle'}
+      </button>
+      <div class="flashcard-nav-buttons">
+        <button class="flashcard-nav-btn" id="fcPrevBtn" title="Previous card" ${flashcardIndex <= 0 ? 'disabled' : ''}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button class="flashcard-nav-btn" id="fcNextBtn" title="Next card" ${flashcardIndex >= flashcardDeck.length - 1 ? 'disabled' : ''}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>`;
+}
+
+function wireFlashcardControls() {
+  const cs = document.getElementById('fcCourseSelect');
+  const ts = document.getElementById('fcTopicSelect');
+  const sh = document.getElementById('fcShuffleBtn');
+  const pv = document.getElementById('fcPrevBtn');
+  const nx = document.getElementById('fcNextBtn');
+  if (cs) cs.addEventListener('change', e => {
+    flashcardFilter.course = e.target.value;
+    flashcardFilter.topic = 'all';
+    flashcardIndex = 0;
+    renderFlashcardArea();
+  });
+  if (ts) ts.addEventListener('change', e => {
+    flashcardFilter.topic = e.target.value;
+    flashcardIndex = 0;
+    renderFlashcardArea();
+  });
+  if (sh) sh.addEventListener('click', () => {
+    flashcardShuffle = !flashcardShuffle;
+    flashcardIndex = 0;
+    renderFlashcardArea();
+  });
+  if (pv) pv.addEventListener('click', () => navigateFlashcard(-1));
+  if (nx) nx.addEventListener('click', () => navigateFlashcard(1));
+}
+
+async function navigateFlashcard(dir) {
+  const newIdx = flashcardIndex + dir;
+  if (newIdx < 0 || newIdx >= flashcardDeck.length) return;
+  const stage = document.querySelector('.flashcard-stage');
+  if (stage && !prefersReducedMotion) {
+    stage.style.transition = 'transform 240ms cubic-bezier(0.4,0,1,1), opacity 240ms';
+    stage.style.transform = dir > 0 ? 'translateX(-30px)' : 'translateX(30px)';
+    stage.style.opacity = '0';
+    await new Promise(r => setTimeout(r, 240));
+  }
+  flashcardIndex = newIdx;
+  renderFlashcardArea();
+}
+
+function flipFlashcard() {
+  flashcardFlipped = !flashcardFlipped;
+  const card = document.getElementById('flashcard3d');
+  const rating = document.getElementById('flashcardRating');
+  if (!card || !rating) return;
+  card.classList.toggle('flipped', flashcardFlipped);
+  if (flashcardFlipped) rating.classList.remove('hidden'); else rating.classList.add('hidden');
+}
+
+async function rateFlashcard(score) {
+  if (!currentFlashcard) return;
+  const card = state.flashcards.find(c => c.id === currentFlashcard.id);
+  if (!card) return;
+  card.reviewCount = (card.reviewCount || 0) + 1;
+  card.difficulty = score;
+  card.lastReviewed = Date.now();
+  if (score === 0) card.reviewCount = Math.max(0, card.reviewCount - 1);
+  const stage = document.querySelector('.flashcard-stage');
+  if (stage && !prefersReducedMotion) {
+    stage.style.transition = 'transform 300ms cubic-bezier(0.4,0,1,1), opacity 300ms';
+    stage.style.transform = 'translateX(-30px)';
+    stage.style.opacity = '0';
+    await new Promise(r => setTimeout(r, 300));
+  }
+  await saveState();
+  // Advance to next card
+  if (flashcardIndex < flashcardDeck.length - 1) flashcardIndex++;
+  else flashcardIndex = 0;
+  renderFlashcardArea();
+}
+
+// Keyboard nav for flashcards
+document.addEventListener('keydown', e => {
+  const reviewView = document.getElementById('review');
+  if (!reviewView || !reviewView.classList.contains('active')) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); navigateFlashcard(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); navigateFlashcard(1); }
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipFlashcard(); }
+});
+
+// ----- Notes (session) -----
+async function saveSummaryNote() {
+  const course = document.getElementById('sessionCourse').value;
+  const topic = document.getElementById('sessionTopic').value.trim();
+  const content = document.getElementById('summaryNotesInput').value.trim();
+  if (!content) { toast('Write something first', 'error'); return; }
+  state.notes.push({ id:Date.now(), course, topic, body:content, createdAt:Date.now(), pinned:false });
+  document.getElementById('summaryNotesInput').value = '';
+  await saveState();
+  renderCounts();
+  toast('✓ Note saved', 'success');
+}
+async function expandNoteWithAI() {
+  const content = document.getElementById('summaryNotesInput').value.trim();
+  if (!content) { toast('Write a draft first', 'error'); return; }
+  toast('✦ Expanding...');
+  try {
+    const p = `Expand and improve these study notes. Add clarity, structure with headings, fill gaps.\n\n${content}`;
+    const r = await callClaude(p);
+    document.getElementById('summaryNotesInput').value = r;
+    toast('✓ Expanded', 'success');
+  } catch(e) { toast(friendlyApiError(e), 'error'); }
+}
+
+// ----- Wellness -----
+async function logWellness() {
+  const e = {
+    id:Date.now(), date:new Date().toDateString(),
+    water:parseInt(document.getElementById('wellWater').value)||0,
+    sleep:parseFloat(document.getElementById('wellSleep').value)||0,
+    exercise:parseInt(document.getElementById('wellExercise').value)||0,
+    stress:parseInt(document.getElementById('wellStress').value)||5,
+    mood:parseInt(document.getElementById('wellMood').value)||5,
+    meals:parseInt(document.getElementById('wellMeals').value)||0
+  };
+  state.wellnessLogs = state.wellnessLogs.filter(l => l.date !== e.date);
+  state.wellnessLogs.push(e);
+  await saveState();
+  renderWellness();
+  toast('✓ Wellness logged', 'success');
+}
+function renderWellness() {
+  const list = document.getElementById('wellnessHistory');
+  if (!list) return;
+  if (state.wellnessLogs.length === 0) { list.innerHTML = emptyState('❤', 'No logs yet', 'Log today above to start building insights.'); return; }
+  const recent = state.wellnessLogs.slice(-7).reverse();
+  list.innerHTML = recent.map(w => `
+    <div class="row">
+      <div class="row-content"><div class="row-title">${w.date}</div><div class="row-sub">💧 ${w.water} · 😴 ${w.sleep}h · 🏃 ${w.exercise}min · stress ${w.stress} · mood ${w.mood} · 🍽 ${w.meals}</div></div>
+    </div>`).join('');
+}
+
+// ----- Einstein Mascot (user-uploaded image) -----
+// ── Einstein SVG mascot ────────────────────────────────────────────────────
+// Three states: 'idle' | 'thinking' | 'aha'
+// scale: number (1 = 200×240 viewBox units)
+function einsteinSVG(state = 'idle', scale = 1) {
+  const w = 200, h = 240;
+  const isThinking = state === 'thinking';
+  const isAha      = state === 'aha';
+  const isIdle     = state === 'idle';
+
+  // ── animation declarations (inlined so they're self-contained) ──
+  const defs = `<defs>
+    <radialGradient id="eSkingGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#f9d8a8"/>
+      <stop offset="100%" stop-color="#e8b87a"/>
+    </radialGradient>
+    <radialGradient id="eBulbGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#fff9c4"/>
+      <stop offset="100%" stop-color="#ffe066"/>
+    </radialGradient>
+    <filter id="eShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(0,0,0,0.22)"/>
+    </filter>
+    <filter id="eGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <style>
+      .ce-root { animation: ceIdleBob 4s ease-in-out infinite; transform-origin: 100px 220px; }
+      .ce-root.is-aha { animation: ceAhaBounce 0.7s ease-out 1 forwards, ceIdleBob 4s ease-in-out 0.7s infinite; }
+      .ce-h1 { animation: ceHair1 3.8s ease-in-out infinite; transform-origin: 68px 40px; transform-box: fill-box; }
+      .ce-h2 { animation: ceHair2 4.3s ease-in-out infinite; transform-origin: 132px 34px; transform-box: fill-box; }
+      .ce-h3 { animation: ceHair3 5s ease-in-out infinite; transform-origin: 100px 24px; transform-box: fill-box; }
+      .ce-eye { animation: ceBlink 5s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+      .ce-eye.r { animation-delay: 0.05s; }
+      .ce-eye.think { animation: ceEyeThink 3s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+      .ce-brow { transform-box: fill-box; transform-origin: 50% 50%; }
+      .ce-brow.think { animation: ceBrowThink 3s ease-in-out infinite; }
+      .ce-mous { animation: ceMoustache 4s ease-in-out infinite; transform-origin: 100px 104px; transform-box: fill-box; }
+      .ce-arm  { animation: ceArmIdle 3.5s ease-in-out infinite; transform-origin: 145px 155px; transform-box: fill-box; }
+      .ce-arm.think { animation: ceArmThink 1.5s ease-in-out infinite; transform-origin: 58px 160px; transform-box: fill-box; }
+      .ce-cheek { animation: ceCheek 4s ease-in-out infinite; }
+      /* Bulb */
+      .ce-bulb-off { animation: ceBulbOff 3s ease-in-out infinite; }
+      .ce-bulb-on  { animation: ceBulbOn  1.8s ease-in-out infinite; }
+      .ce-halo { transform-origin: 160px 38px; transform-box: fill-box; animation: ceBulbHalo 1.8s ease-in-out infinite; }
+      .ce-sp1 { --sx:-10px; --sy:-8px; animation: ceSpark 2.4s ease-in-out 0.0s infinite; }
+      .ce-sp2 { --sx: 10px; --sy:-10px; animation: ceSpark 2.4s ease-in-out 0.6s infinite; }
+      .ce-sp3 { --sx:-12px; --sy: 4px; animation: ceSpark 2.4s ease-in-out 1.2s infinite; }
+      .ce-sp4 { --sx: 8px;  --sy: 6px; animation: ceSpark 2.4s ease-in-out 1.8s infinite; }
+      /* Thinking question marks */
+      .ce-qm1 { animation: ceQmark 2.2s ease-in-out 0.0s infinite; transform-origin: 50px 70px; transform-box: fill-box; }
+      .ce-qm2 { animation: ceQmark 2.2s ease-in-out 0.7s infinite; transform-origin: 32px 80px; transform-box: fill-box; }
+      .ce-qm3 { animation: ceQmark 2.2s ease-in-out 1.4s infinite; transform-origin: 22px 90px; transform-box: fill-box; }
+    </style>
+  </defs>`;
+
+  // ── body / coat ──
+  const body = `
+    <!-- Coat body -->
+    <ellipse cx="100" cy="205" rx="52" ry="30" fill="#e8e8e8" opacity="0.9"/>
+    <rect x="60" y="160" width="80" height="60" rx="14" fill="#d0d0d0"/>
+    <rect x="60" y="160" width="38" height="60" rx="0" fill="#c8c8c8" opacity="0.7"/>
+    <!-- Tie -->
+    <polygon points="100,162 94,175 100,200 106,175" fill="#c0392b" opacity="0.9"/>
+    <!-- White shirt collar -->
+    <polygon points="86,160 100,172 114,160 108,154 100,158 92,154" fill="#f5f5f5"/>
+  `;
+
+  // ── head ──
+  const head = `
+    <!-- Head -->
+    <ellipse cx="100" cy="112" rx="46" ry="50" fill="url(#eSkingGrad)" filter="url(#eShadow)"/>
+    <!-- Ear left -->
+    <ellipse cx="55" cy="115" rx="7" ry="10" fill="#e8b87a"/>
+    <ellipse cx="55" cy="115" rx="4" ry="7" fill="#e0a86a"/>
+    <!-- Ear right -->
+    <ellipse cx="145" cy="115" rx="7" ry="10" fill="#e8b87a"/>
+    <ellipse cx="145" cy="115" rx="4" ry="7" fill="#e0a86a"/>
+    <!-- Cheeks -->
+    <ellipse class="ce-cheek" cx="74" cy="125" rx="11" ry="7" fill="#f08070" opacity="0.5"/>
+    <ellipse class="ce-cheek" cx="126" cy="125" rx="11" ry="7" fill="#f08070" opacity="0.5"/>
+  `;
+
+  // ── hair (wild white Einstein hair) ──
+  const hair = `
+    <!-- Base hair mass -->
+    <ellipse cx="100" cy="72" rx="50" ry="28" fill="#f0f0f0"/>
+    <!-- Left side puff -->
+    <ellipse cx="60" cy="88" rx="16" ry="22" fill="#eeeeee"/>
+    <ellipse cx="58" cy="80" rx="13" ry="16" fill="#f5f5f5"/>
+    <!-- Right side puff -->
+    <ellipse cx="140" cy="88" rx="16" ry="22" fill="#eeeeee"/>
+    <ellipse cx="142" cy="80" rx="13" ry="16" fill="#f5f5f5"/>
+    <!-- Top wisps -->
+    <path class="ce-h1" d="M68 62 Q58 42 72 30 Q64 50 74 58" fill="#eeeeee"/>
+    <path class="ce-h2" d="M132 62 Q142 40 130 26 Q136 48 126 58" fill="#eeeeee"/>
+    <path class="ce-h3" d="M100 56 Q96 34 108 22 Q100 40 100 54" fill="#f0f0f0"/>
+    <path d="M82 58 Q78 42 88 34" fill="none" stroke="#e0e0e0" stroke-width="3" stroke-linecap="round"/>
+    <path d="M118 56 Q122 38 114 32" fill="none" stroke="#e0e0e0" stroke-width="3" stroke-linecap="round"/>
+    <!-- Eyebrows -->
+    <path class="ce-brow ${isThinking?'think':''}" d="M74 96 Q84 90 94 94" fill="none" stroke="#888" stroke-width="3.5" stroke-linecap="round"/>
+    <path class="ce-brow ${isThinking?'think':''}" d="M106 94 Q116 90 126 96" fill="none" stroke="#888" stroke-width="3.5" stroke-linecap="round" style="${isThinking?'animation-delay:0.05s':''}"/>
+  `;
+
+  // ── eyes ──
+  const eyeCls = isThinking ? 'ce-eye think' : 'ce-eye';
+  const eyes = `
+    <!-- Eye whites -->
+    <ellipse cx="84" cy="108" rx="11" ry="11" fill="white"/>
+    <ellipse cx="116" cy="108" rx="11" ry="11" fill="white"/>
+    <!-- Irises -->
+    <ellipse cx="84" cy="109" rx="7" ry="7" fill="#5b8dd9"/>
+    <ellipse cx="116" cy="109" rx="7" ry="7" fill="#5b8dd9"/>
+    <!-- Pupils -->
+    <ellipse class="${eyeCls}" cx="84" cy="110" rx="4.5" ry="4.5" fill="#1a1a2e"/>
+    <ellipse class="${eyeCls} r" cx="116" cy="110" rx="4.5" ry="4.5" fill="#1a1a2e"/>
+    <!-- Eye shine -->
+    <circle cx="86" cy="107" r="1.8" fill="white" opacity="0.9"/>
+    <circle cx="118" cy="107" r="1.8" fill="white" opacity="0.9"/>
+    <!-- Glasses -->
+    <circle cx="84" cy="108" r="13" fill="none" stroke="#888" stroke-width="2.2"/>
+    <circle cx="116" cy="108" r="13" fill="none" stroke="#888" stroke-width="2.2"/>
+    <line x1="97" y1="108" x2="103" y2="108" stroke="#888" stroke-width="2"/>
+    <line x1="71" y1="106" x2="62" y2="110" stroke="#888" stroke-width="2" stroke-linecap="round"/>
+    <line x1="129" y1="106" x2="138" y2="110" stroke="#888" stroke-width="2" stroke-linecap="round"/>
+  `;
+
+  // ── moustache ──
+  const moustache = `
+    <g class="ce-mous">
+      <path d="M82 122 Q90 118 100 122 Q110 118 118 122 Q108 130 100 126 Q92 130 82 122Z" fill="#d4d4d4"/>
+      <path d="M82 122 Q90 125 100 122" fill="none" stroke="#bbb" stroke-width="1.5"/>
+    </g>
+    <!-- Smile / expression -->
+    ${isThinking
+      ? `<path d="M88 138 Q100 136 112 138" fill="none" stroke="#c8956a" stroke-width="2.5" stroke-linecap="round"/>`
+      : isAha
+        ? `<path d="M86 136 Q100 148 114 136" fill="none" stroke="#c8956a" stroke-width="2.8" stroke-linecap="round"/>`
+        : `<path d="M88 136 Q100 144 112 136" fill="none" stroke="#c8956a" stroke-width="2.5" stroke-linecap="round"/>`
+    }
+  `;
+
+  // ── right arm + finger raised + bulb (idle/aha) ──
+  // ── left arm up to head (thinking) ──
+  const armRight = `
+    <g class="ce-arm${isThinking?' think':''}">
+      ${isThinking
+        ? `<!-- Left hand to temple -->
+           <path d="M62 158 Q44 148 40 132 Q44 124 52 128 Q54 140 62 148" fill="#e8b87a"/>
+           <ellipse cx="52" cy="128" rx="10" ry="10" fill="#e8b87a"/>
+           <!-- Finger on temple -->
+           <rect x="48" y="116" width="6" height="16" rx="3" fill="#e8b87a"/>
+           <!-- Sleeve -->
+           <rect x="58" y="148" width="20" height="18" rx="6" fill="#c8c8c8"/>`
+        : `<!-- Right arm raised -->
+           <path d="M138 158 Q152 148 158 132 Q156 122 148 126 Q146 138 138 148" fill="#e8b87a"/>
+           <ellipse cx="148" cy="126" rx="10" ry="10" fill="#e8b87a"/>
+           <!-- Index finger pointing up -->
+           <rect x="146" y="108" width="6" height="20" rx="3" fill="#e8b87a"/>
+           <!-- Other fingers curled hint -->
+           <path d="M152 124 Q158 120 156 128" fill="#e8b87a"/>
+           <!-- Sleeve -->
+           <rect x="122" y="148" width="20" height="18" rx="6" fill="#c8c8c8"/>`
+      }
+    </g>
+  `;
+
+  // ── lightbulb ──
+  const bulbX = isThinking ? 30 : 152, bulbY = 52;
+  const bulbOn = isAha || isIdle;
+  const bulbClass = bulbOn ? 'ce-bulb-on' : 'ce-bulb-off';
+
+  const bulb = isThinking
+    ? `<!-- No bulb while thinking — question marks instead -->
+       <text class="ce-qm1" x="44" y="78" font-size="18" fill="#a0b4d0" opacity="0.9" font-weight="bold">?</text>
+       <text class="ce-qm2" x="28" y="68" font-size="13" fill="#a0b4d0" opacity="0.7" font-weight="bold">?</text>
+       <text class="ce-qm3" x="18" y="90" font-size="10" fill="#a0b4d0" opacity="0.55" font-weight="bold">?</text>`
+    : `<!-- Lightbulb -->
+       <!-- Halo glow (only when on) -->
+       ${isAha ? `<circle class="ce-halo" cx="${bulbX}" cy="${bulbY}" r="20" fill="#ffe066" opacity="0.25" filter="url(#eGlow)"/>` : ''}
+       <!-- Sparks (only aha) -->
+       ${isAha ? `
+         <g class="ce-sp1"><circle cx="${bulbX-6}" cy="${bulbY-12}" r="3" fill="#ffc300"/></g>
+         <g class="ce-sp2"><circle cx="${bulbX+8}" cy="${bulbY-10}" r="2.5" fill="#ffe066"/></g>
+         <g class="ce-sp3"><circle cx="${bulbX-10}" cy="${bulbY+2}" r="2" fill="#ffd700"/></g>
+         <g class="ce-sp4"><circle cx="${bulbX+6}" cy="${bulbY+4}" r="2.5" fill="#ffc300"/></g>
+       ` : ''}
+       <!-- Bulb body -->
+       <g class="${bulbClass}">
+         <ellipse cx="${bulbX}" cy="${bulbY-4}" rx="13" ry="14" fill="${bulbOn?'url(#eBulbGrad)':'#888'}" opacity="${bulbOn?'1':'0.35'}"/>
+         <!-- Base -->
+         <rect x="${bulbX-6}" y="${bulbY+8}" width="12" height="5" rx="2" fill="${bulbOn?'#ccc':'#666'}" opacity="${bulbOn?'1':'0.4'}"/>
+         <rect x="${bulbX-5}" y="${bulbY+12}" width="10" height="4" rx="2" fill="${bulbOn?'#bbb':'#555'}" opacity="${bulbOn?'1':'0.4'}"/>
+         <!-- Filament lines -->
+         <line x1="${bulbX-4}" y1="${bulbY+4}" x2="${bulbX-4}" y2="${bulbY-8}" stroke="${bulbOn?'#ffa500':'#777'}" stroke-width="1.5" stroke-linecap="round" opacity="${bulbOn?'0.9':'0.4'}"/>
+         <line x1="${bulbX+4}" y1="${bulbY+4}" x2="${bulbX+4}" y2="${bulbY-8}" stroke="${bulbOn?'#ffa500':'#777'}" stroke-width="1.5" stroke-linecap="round" opacity="${bulbOn?'0.9':'0.4'}"/>
+       </g>`;
+
+  const rootCls = `ce-root${isAha ? ' is-aha' : ''}`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w*scale}" height="${h*scale}">
+    ${defs}
+    <g class="${rootCls}">
+      ${body}
+      ${armRight}
+      ${head}
+      ${hair}
+      ${eyes}
+      ${moustache}
+      ${bulb}
+    </g>
+  </svg>`;
+}
+
+// ── Public helpers used by the rest of the app ─────────────────────────────
+function einsteinHeroHTML() {
+  return `<div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
+    <div style="position:absolute;inset:-40px;background:radial-gradient(circle,rgba(232,184,107,0.25) 0%,transparent 65%);pointer-events:none;animation:emptyPulse 5s ease-in-out infinite;"></div>
+    ${einsteinSVG('idle', 1)}
+  </div>`;
+}
+
+function einsteinThinkingImgHTML() {
+  return einsteinSVG('thinking', 0.34);
+}
+
+function einsteinAvatarHTML() {
+  // tiny 28×28 avatar — just the head crop via viewBox override
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="54 60 92 110" width="28" height="28">
+    <defs>
+      <radialGradient id="eSkingGradAv" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stop-color="#f9d8a8"/>
+        <stop offset="100%" stop-color="#e8b87a"/>
+      </radialGradient>
+      <style>
+        .av-eye{animation:ceBlink 5s ease-in-out infinite;transform-box:fill-box;transform-origin:50% 50%}
+        .av-eye.r{animation-delay:0.05s}
+        .av-mous{animation:ceMoustache 4s ease-in-out infinite;transform-origin:100px 104px;transform-box:fill-box}
+      </style>
+    </defs>
+    <!-- Head -->
+    <ellipse cx="100" cy="112" rx="46" ry="50" fill="url(#eSkingGradAv)"/>
+    <!-- Ear left -->
+    <ellipse cx="55" cy="115" rx="7" ry="10" fill="#e8b87a"/>
+    <!-- Ear right -->
+    <ellipse cx="145" cy="115" rx="7" ry="10" fill="#e8b87a"/>
+    <!-- Hair top -->
+    <ellipse cx="100" cy="72" rx="50" ry="28" fill="#f0f0f0"/>
+    <ellipse cx="60" cy="88" rx="14" ry="20" fill="#eeeeee"/>
+    <ellipse cx="140" cy="88" rx="14" ry="20" fill="#eeeeee"/>
+    <!-- Brows -->
+    <path d="M74 96 Q84 90 94 94" fill="none" stroke="#888" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M106 94 Q116 90 126 96" fill="none" stroke="#888" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Eyes -->
+    <ellipse cx="84" cy="108" rx="11" ry="11" fill="white"/>
+    <ellipse cx="116" cy="108" rx="11" ry="11" fill="white"/>
+    <ellipse cx="84" cy="109" rx="7" ry="7" fill="#5b8dd9"/>
+    <ellipse cx="116" cy="109" rx="7" ry="7" fill="#5b8dd9"/>
+    <ellipse class="av-eye" cx="84" cy="110" rx="4.5" ry="4.5" fill="#1a1a2e"/>
+    <ellipse class="av-eye r" cx="116" cy="110" rx="4.5" ry="4.5" fill="#1a1a2e"/>
+    <circle cx="86" cy="107" r="1.8" fill="white" opacity="0.9"/>
+    <circle cx="118" cy="107" r="1.8" fill="white" opacity="0.9"/>
+    <!-- Glasses -->
+    <circle cx="84" cy="108" r="13" fill="none" stroke="#888" stroke-width="2.2"/>
+    <circle cx="116" cy="108" r="13" fill="none" stroke="#888" stroke-width="2.2"/>
+    <line x1="97" y1="108" x2="103" y2="108" stroke="#888" stroke-width="2"/>
+    <!-- Moustache -->
+    <g class="av-mous">
+      <path d="M82 122 Q90 118 100 122 Q110 118 118 122 Q108 130 100 126 Q92 130 82 122Z" fill="#d4d4d4"/>
+    </g>
+    <!-- Cheeks -->
+    <ellipse cx="74" cy="125" rx="11" ry="7" fill="#f08070" opacity="0.45"/>
+    <ellipse cx="126" cy="125" rx="11" ry="7" fill="#f08070" opacity="0.45"/>
+  </svg>`;
+}
+
+// Called when AI answer arrives — triggers aha animation on visible SVG
+function triggerEinsteinAha() {
+  // Replace any thinking einstein inline with aha version
+  document.querySelectorAll('.thinking-einstein-chibi').forEach(el => {
+    el.innerHTML = einsteinSVG('aha', 0.34);
+  });
+}
+
+function thinkingEinsteinHTML(label = 'Einstein is thinking', sub = 'scratching his chin') {
+  return `<div class="thinking-einstein">
+    <div class="thinking-einstein-chibi">${einsteinSVG('thinking', 0.34)}</div>
+    <div class="thinking-einstein-text">
+      <div class="thinking-einstein-label">${escapeHtml(label)}</div>
+      <div class="thinking-einstein-sub">${escapeHtml(sub)}<span class="typing-dots" style="margin-left:6px;"><span></span><span></span><span></span></span></div>
+    </div>
+  </div>`;
+}
+
+// Stubs kept for compat — no-op now
+function openEinsteinImageModal(){}
+function closeEinsteinImageModal(){}
+function updateEinsteinImagePreview(){}
+function saveEinsteinImage(){}
+function clearEinsteinImage(){}
+
+// ----- Tutor -----
+async function sendTutorMessage() {
+  const input = document.getElementById('tutorInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  const cc = document.getElementById('tutorCourse').value;
+  state.tutorChat.push({ role:'user', content:msg, time:Date.now() });
+  input.value = ''; input.style.height = 'auto';
+  renderTutorChat();
+  let materials = [];
+  let sys = `You are Einstein, a grounded academic tutor. Concise, accurate, editorial. Cite sources using [1], [2] etc.
+
+FORMATTING RULES:
+- Use LaTeX for ALL mathematical expressions, formulas, equations, and symbols. Never write math as plain text or ASCII.
+- Inline math: $x = 5$ or $\\alpha + \\beta$
+- Display math (for standalone equations): $P = \\sum_{t=1}^{n} \\frac{C}{(1+r)^t}$
+- Use \\frac{}{}, \\sum, \\int, \\sqrt{}, ^{}, _{}, \\alpha, \\beta, \\pi, \\infty, \\leq, \\geq, \\neq, \\times, \\cdot, etc.
+- Use markdown headings (## Heading), **bold**, *italic*, bullet lists, and \`inline code\` where appropriate.
+- Render code in fenced blocks with language tags: \`\`\`python\\ncode\\n\`\`\`\n- Never use HTML tags in your output — only markdown and LaTeX.`;
+  sys += stateContextAsPromptText();
+  if (cc) {
+    sys += ` Student is in ${cc}.`;
+    materials = state.materials.filter(m => m.course === cc).slice(-3);
+    if (materials.length > 0) sys += `\n\nSources:\n` + materials.map((m,i) => `[${i+1}] ${m.title}: ${m.content.slice(0,800)}`).join('\n\n');
+  }
+  state.evidence = materials.map((m,i) => ({ id:m.id, idx:i+1, title:m.title, excerpt:m.content.slice(0,220), course:m.course, confidence:0.7 + Math.random()*0.28, isPrimary:i===0 }));
+  renderEvidenceRail();
+  const chatBox = document.getElementById('tutorChat');
+  const lid = 'loading-' + Date.now();
+  chatBox.insertAdjacentHTML('beforeend', `
+    <div class="msg ai" id="${lid}">
+      <div class="msg-avatar">${einsteinAvatarHTML()}</div>
+      <div class="msg-content">
+        <div class="msg-role">Einstein</div>
+        <div class="msg-body">${thinkingEinsteinHTML('Thinking', 'putting it together')}</div>
+      </div>
+    </div>`);
+  chatBox.scrollTop = chatBox.scrollHeight;
+  try {
+    const messages = state.tutorChat.slice(-10).map(m => ({ role:m.role, content:m.content }));
+    const r = await callClaudeWithHistory(messages, sys);
+    triggerEinsteinAha();
+    await new Promise(res => setTimeout(res, 320)); // let aha play briefly
+    document.getElementById(lid)?.remove();
+    state.tutorChat.push({ role:'assistant', content:r, time:Date.now(), evidence:state.evidence });
+    await saveState();
+    renderTutorChat();
+    // Ensure KaTeX is loaded before attempting render on latest message
+    if (typeof window.katex === 'undefined') {
+      const waitKatex = setInterval(() => {
+        if (typeof window.katex !== 'undefined') {
+          clearInterval(waitKatex);
+          renderMathIn(document.getElementById('tutorChat'));
+        }
+      }, 100);
+      setTimeout(() => clearInterval(waitKatex), 5000);
+    }
+  } catch(e) {
+    console.error(e);
+    document.getElementById(lid)?.remove();
+    state.tutorChat.push({ role:'assistant', content:'⚠️ ' + friendlyApiError(e), time:Date.now() });
+    renderTutorChat();
+  }
+}
+function quickPrompt(t) { document.getElementById('tutorInput').value = t; sendTutorMessage(); }
+function renderTutorChat() {
+  const chat = document.getElementById('tutorChat');
+  if (!chat) return;
+  if (state.tutorChat.length === 0) {
+    chat.innerHTML = `
+      <div class="tutor-empty">
+        <div class="tutor-empty-chibi">${einsteinHeroHTML()}</div>
+        <div class="tutor-empty-title">Hey, I'm Einstein</div>
+        <div class="tutor-empty-sub">Ask me anything about your coursework. I'll ground every answer in your sources and cite them as you go.</div>
+        <div class="tutor-empty-suggestions">
+          <button class="tutor-empty-chip" onclick="quickPrompt('Explain a tough concept from my most recent source.')">Explain something tricky</button>
+          <button class="tutor-empty-chip" onclick="quickPrompt('Quiz me on my most recent material.')">Quiz me</button>
+          <button class="tutor-empty-chip" onclick="quickPrompt('What should I study next?')">What's next?</button>
+          <button class="tutor-empty-chip" onclick="quickPrompt('Summarize everything I have learned this week.')">Weekly summary</button>
+        </div>
+      </div>`;
+    return;
+  }
+  chat.innerHTML = state.tutorChat.slice(-20).map(m => `
+    <div class="msg ${m.role==='user'?'user':'ai'}">
+      <div class="msg-avatar">${m.role==='user' ? 'M' : einsteinAvatarHTML()}</div>
+      <div class="msg-content">
+        <div class="msg-role">${m.role==='user'?'You':'Einstein'}</div>
+        <div class="msg-body">${formatMsg(m.content)}</div>
+      </div>
+    </div>`).join('');
+  renderMathIn(chat);
+  chat.scrollTop = chat.scrollHeight;
+}
+function formatMsg(text) {
+  if (typeof text !== 'string') return '';
+
+  // Protect math blocks BEFORE escaping so $…$ and $…$ survive
+  const mathBlocks = [];
+  const mathInline = [];
+
+  // Step 1: extract $…$ (display math)
+  let s = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => {
+    mathBlocks.push(m);
+    return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+  });
+
+  // Also handle \[...\] as display math
+  s = s.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => {
+    mathBlocks.push(m);
+    return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+  });
+
+  // Step 2: extract $…$ (inline math) — avoid matching currency like $5
+  s = s.replace(/\$([^\$\n]+?)\$/g, (match, m) => {
+    // Heuristic: treat as math only if it contains TeX-like syntax
+    if (/\\[a-zA-Z]+|\^|_|\{|\}/.test(m)) {
+      mathInline.push(m);
+      return `@@MATH_INLINE_${mathInline.length - 1}@@`;
+    }
+    return match;
+  });
+
+  // Also handle \(...\) as inline math
+  s = s.replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => {
+    mathInline.push(m);
+    return `@@MATH_INLINE_${mathInline.length - 1}@@`;
+  });
+
+  // Step 3: protect fenced code blocks
+  const codeBlocks = [];
+  s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push({ lang: lang || '', code: code.replace(/\n$/, '') });
+    return `@@CODE_BLOCK_${codeBlocks.length - 1}@@`;
+  });
+
+  // Step 4: escape everything else
+  s = escapeHtml(s);
+
+  // Step 5: markdown transforms (now on escaped text)
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+  s = s.replace(/`([^`\n]+?)`/g, '<code>$1</code>');
+  s = s.replace(/\[(\d+)\]/g, '<span class="msg-cite">$1</span>');
+  s = s.replace(/^### (.+)$/gm, '<h3 style="margin-top:18px; margin-bottom:10px; font-family:var(--font-serif); font-size:16px; color:var(--n-12); font-weight:500;">$1</h3>');
+  s = s.replace(/^## (.+)$/gm, '<h2 style="margin-top:22px; margin-bottom:12px; font-family:var(--font-serif); font-size:18px; color:var(--n-12); font-weight:500;">$1</h2>');
+  s = s.replace(/^# (.+)$/gm, '<h2 style="margin-top:22px; margin-bottom:12px; font-family:var(--font-serif); font-size:20px; color:var(--n-12); font-weight:500;">$1</h2>');
+  s = s.replace(/(?:^|\n)((?:[-*] .+(?:\n|$))+)/g, (m, block) => {
+    const items = block.trim().split(/\n/).map(line => `<li>${line.replace(/^[-*] /, '')}</li>`).join('');
+    return `<ul style="margin:10px 0; padding-left:22px;">${items}</ul>`;
+  });
+  s = s.replace(/\n\n/g, '<br><br>');
+  s = s.replace(/\n/g, '<br>');
+
+  // Step 6: re-inject math and code (unescaped — KaTeX will render them)
+  s = s.replace(/@@MATH_BLOCK_(\d+)@@/g, (_, i) => {
+    const tex = mathBlocks[parseInt(i)];
+    return `<div class="math-display" data-tex="${escapeAttr(tex)}"></div>`;
+  });
+  s = s.replace(/@@MATH_INLINE_(\d+)@@/g, (_, i) => {
+    const tex = mathInline[parseInt(i)];
+    return `<span class="math-inline" data-tex="${escapeAttr(tex)}"></span>`;
+  });
+  s = s.replace(/@@CODE_BLOCK_(\d+)@@/g, (_, i) => {
+    const b = codeBlocks[parseInt(i)];
+    return `<pre><code class="lang-${escapeAttr(b.lang)}">${escapeHtml(b.code)}</code></pre>`;
+  });
+
+  return s;
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Render any math placeholders inside a container
+function renderMathIn(root) {
+  if (!root || typeof window.katex === 'undefined') return;
+  root.querySelectorAll('.math-display[data-tex]').forEach(el => {
+    try {
+      window.katex.render(el.dataset.tex, el, { displayMode: true, throwOnError: false, strict: 'ignore' });
+    } catch(e) { el.textContent = el.dataset.tex; }
+  });
+  root.querySelectorAll('.math-inline[data-tex]').forEach(el => {
+    try {
+      window.katex.render(el.dataset.tex, el, { displayMode: false, throwOnError: false, strict: 'ignore' });
+    } catch(e) { el.textContent = el.dataset.tex; }
+  });
+}
+
+// ----- Evidence -----
+function renderEvidenceRail() {
+  const list = document.getElementById('evidenceList');
+  const b = document.getElementById('evidenceCount');
+  if (!list) return;
+  if (b) b.textContent = state.evidence.length;
+  if (state.evidence.length === 0) {
+    list.innerHTML = `
+      <div class="evidence-empty">
+        <div style="font-size:22px; margin-bottom:10px; opacity:0.6; position:relative; z-index:1;">⟁</div>
+        <div style="font-family:var(--font-serif); font-size:14px; color:var(--n-11); margin-bottom:6px; position:relative; z-index:1;">No evidence yet</div>
+        <div style="font-size:11px; color:var(--n-8); position:relative; z-index:1;">Ask the tutor. Evidence appears here.</div>
+      </div>`;
+    return;
+  }
+  list.innerHTML = state.evidence.map(e => `
+    <div class="evidence-card" onclick="switchView('materials')">
+      <div class="evidence-head">
+        <span class="source-pill ${e.isPrimary?'primary':''}">[${e.idx}]</span>
+        <div class="confidence-track"><div class="confidence-fill" style="width:${Math.round(e.confidence*100)}%"></div></div>
+      </div>
+      <div class="evidence-title">${escapeHtml(e.title)}</div>
+      <div class="evidence-excerpt">${escapeHtml(e.excerpt)}...</div>
+      <div class="evidence-meta"><span>${escapeHtml(e.course || 'general')}</span><span>confidence ${Math.round(e.confidence*100)}%</span></div>
+    </div>`).join('');
+}
+
+// ----- Studio -----
+function renderMaterialSelectForStudio() {
+  const el = document.getElementById('studioMaterial');
+  if (!el) return;
+  const cur = el.value;
+  el.innerHTML = '<option value="">Pick material...</option>' + state.materials.map(m => `<option value="${m.id}">${escapeHtml(m.title)}</option>`).join('');
+  if (cur) el.value = cur;
+}
+async function generateArtifact() {
+  const course = document.getElementById('studioCourse').value;
+  const mid = document.getElementById('studioMaterial').value;
+  const customPrompt = document.getElementById('studioPrompt').value.trim();
+  const material = state.materials.find(m => m.id === parseInt(mid));
+  if (!material && currentStudioPreset !== 'custom') { toast('Pick source material', 'error'); return; }
+  if (currentStudioPreset === 'custom' && !customPrompt && !material) { toast('Provide prompt or source', 'error'); return; }
+  const presets = {
+    summary:'Create a structured executive summary: 3-sentence overview, 5 key takeaways, critical terms. Markdown headings.',
+    cheatsheet:'Dense cheat sheet: formulas, definitions, frameworks, pitfalls. Bullet lists.',
+    outline:'Hierarchical study outline: main topics, subtopics, one example per leaf.',
+    quiz:'10-question practice quiz: MCQ, short answer, one essay. Answer key included.',
+    exam:'60-minute mock exam: 5 MCQ, 3 short answer, 2 long-form. With rubric.',
+    glossary:'15 key terms, precise 1-2 sentence definitions, alphabetical.',
+    custom:customPrompt || 'Process helpfully.'
+  };
+  const base = presets[currentStudioPreset] || presets.custom;
+  const prompt = `${base}\n\n${customPrompt && currentStudioPreset !== 'custom' ? 'Extra: ' + customPrompt + '\n\n' : ''}${material ? 'Material:\n\n' + material.content.slice(0,6000) : ''}${stateContextAsPromptText()}`;
+  toast('✦ Generating artifact...');
+  try {
+    const r = await callClaude(prompt);
+    const a = {
+      id:Date.now(), kind:currentStudioPreset,
+      title:material ? `${currentStudioPreset} — ${material.title}` : 'Custom artifact',
+      content:r, course:course || (material && material.course) || '',
+      sourceId:material?material.id:null, sourceVersion:material?(material.version||1):null,
+      createdAt:Date.now(), stale:false
+    };
+    state.artifacts.push(a);
+    await saveState();
+    renderArtifactList();
+    renderCounts();
+    bumpCount('artifactCount');
+    openArtifact(a.id);
+    toast('✓ Artifact generated', 'success');
+  } catch(e) { console.error(e); toast(friendlyApiError(e), 'error'); }
+}
+function renderArtifactList(filter='all') {
+  const list = document.getElementById('artifactList');
+  if (!list) return;
+  let items = state.artifacts.slice().reverse();
+  if (filter === 'fresh') items = items.filter(a => !a.stale);
+  if (filter === 'stale') items = items.filter(a => a.stale);
+  if (items.length === 0) { list.innerHTML = emptyState('✦', 'No artifacts yet', 'Compose one above.'); return; }
+  list.innerHTML = `<div class="grid grid-2">${items.map(a => `
+    <div class="artifact-tile" onclick="openArtifact(${a.id})">
+      ${a.stale ? '<div class="artifact-stale-dot"></div>' : ''}
+      <div class="artifact-kind">${a.kind}</div>
+      <div class="artifact-title">${escapeHtml(a.title)}</div>
+      <div class="artifact-meta">${escapeHtml(a.course || 'general')} · ${new Date(a.createdAt).toLocaleDateString()}${a.stale ? ' · <span style="color:var(--danger)">stale</span>' : ''}</div>
+    </div>`).join('')}</div>`;
+}
+function renderArtifactLibrary() {
+  const list = document.getElementById('artifactLibraryList');
+  if (!list) return;
+  if (state.artifacts.length === 0) { list.innerHTML = emptyState('✦', 'No artifacts yet', 'Go to Studio to generate.'); return; }
+  list.innerHTML = `<div class="grid grid-3">${state.artifacts.slice().reverse().map(a => `
+    <div class="artifact-tile" onclick="openArtifact(${a.id})">
+      ${a.stale ? '<div class="artifact-stale-dot"></div>' : ''}
+      <div class="artifact-kind">${a.kind}</div>
+      <div class="artifact-title">${escapeHtml(a.title)}</div>
+      <div class="artifact-meta">${escapeHtml(a.course || 'general')} · ${new Date(a.createdAt).toLocaleDateString()}</div>
+    </div>`).join('')}</div>`;
+}
+function openArtifact(id) {
+  const a = state.artifacts.find(x => x.id === id);
+  if (!a) return;
+  currentArtifact = a;
+  document.getElementById('artifactModalTitle').textContent = a.title;
+  document.getElementById('artifactModalMeta').innerHTML = `<span class="artifact-kind">${a.kind}</span> ${escapeHtml(a.course || 'general')} · ${new Date(a.createdAt).toLocaleString()} ${a.stale ? '· <span class="badge badge-stale">stale</span>' : '· <span class="badge badge-fresh">fresh</span>'}`;
+  document.getElementById('artifactModalBody').innerHTML = formatMsg(a.content);
+  renderMathIn(document.getElementById('artifactModalBody'));
+  document.getElementById('artifactModal').classList.add('active');
+}
+function closeArtifactModal() {
+  const s = document.getElementById('artifactModal');
+  s.classList.add('closing');
+  setTimeout(() => { s.classList.remove('active', 'closing'); }, 260);
+  currentArtifact = null;
+}
+function copyArtifact() {
+  if (!currentArtifact) return;
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(currentArtifact.content).then(() => toast('✓ Copied','success'), () => toast('Copy failed','error'));
+  else { const ta = document.createElement('textarea'); ta.value = currentArtifact.content; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('✓ Copied','success'); } catch(e) {} ta.remove(); }
+}
+function downloadArtifact() {
+  if (!currentArtifact) return;
+  const blob = new Blob([currentArtifact.content], { type:'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${currentArtifact.title.replace(/[^a-z0-9]/gi,'-')}.md`; a.click();
+  URL.revokeObjectURL(url);
+}
+async function regenerateArtifact() {
+  if (!currentArtifact) return;
+  const m = state.materials.find(x => x.id === currentArtifact.sourceId);
+  if (!m) { toast('Source missing', 'error'); return; }
+  const preset = currentArtifact.kind;
+  closeArtifactModal();
+  switchView('studio');
+  setTimeout(() => {
+    currentStudioPreset = preset;
+    document.querySelectorAll('#studioPresets .chip').forEach(c => c.classList.toggle('active', c.dataset.preset === preset));
+    const sel = document.getElementById('studioMaterial');
+    if (sel) sel.value = m.id;
+    generateArtifact();
+  }, 280);
+}
+async function deleteCurrentArtifact() {
+  if (!currentArtifact) return;
+  if (!confirm('Delete this artifact?')) return;
+  state.artifacts = state.artifacts.filter(a => a.id !== currentArtifact.id);
+  await saveState();
+  closeArtifactModal();
+  renderArtifactList();
+  renderArtifactLibrary();
+  renderCounts();
+}
+
+// ============================================================================
+// PROVIDER ROUTER — Anthropic primary, OpenAI failover
+// NOTE: OpenAI calls require a user-provided API key. Anthropic calls use the
+// Claude.ai-injected auth context for artifacts.
+// ============================================================================
+
+const PROVIDER_DEFAULTS = {
+  primary: 'anthropic',
+  fallback_enabled: true,
+  openai_key: '', // user-provided
+  openai_model: 'gpt-4o-mini',
+  anthropic_model: 'claude-sonnet-4-20250514',
+  budget_warn_threshold_usd: 5,
+  failover_on: ['rate_limit', 'server_error', 'capacity']
+};
+
+function getProviderSettings() {
+  return { ...PROVIDER_DEFAULTS, ...(state.flags?.providers || {}) };
+}
+
+async function setProviderSettings(patch) {
+  state.flags = state.flags || {};
+  state.flags.providers = { ...getProviderSettings(), ...patch };
+  await saveState();
+}
+
+const ProviderHealth = {
+  anthropic: { status: 'unknown', last_error: null, last_success: null, consecutive_failures: 0 },
+  openai: { status: 'unknown', last_error: null, last_success: null, consecutive_failures: 0 }
+};
+
+function markProviderSuccess(provider) {
+  const h = ProviderHealth[provider];
+  if (!h) return;
+  h.status = 'healthy';
+  h.last_success = Date.now();
+  h.consecutive_failures = 0;
+}
+
+function markProviderFailure(provider, errorKind) {
+  const h = ProviderHealth[provider];
+  if (!h) return;
+  h.last_error = { kind: errorKind, at: Date.now() };
+  h.consecutive_failures++;
+  if (h.consecutive_failures >= 3) h.status = 'degraded';
+}
+
+// Normalize error types
+function classifyError(e) {
+  const msg = (e && e.message) || '';
+  if (msg === 'RATE_LIMIT' || msg.includes('429')) return 'rate_limit';
+  if (msg.includes('API_5')) return 'server_error';
+  if (msg.includes('API_401') || msg.includes('API_403')) return 'auth';
+  if (msg.includes('API_400')) return 'bad_request';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return 'network';
+  return 'unknown';
+}
+
+// Anthropic adapter
+async function anthropicAdapter(messages, systemPrompt, opts = {}) {
+  const settings = getProviderSettings();
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: opts.signal,
+    body: JSON.stringify({
+      model: opts.model || settings.anthropic_model,
+      max_tokens: opts.max_tokens || 2000,
+      system: systemPrompt,
+      messages: messages
+    })
+  });
+  if (r.status === 429) { const e = new Error('RATE_LIMIT'); e.status = 429; throw e; }
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`API_${r.status}:${t.slice(0, 100)}`); }
+  const d = await r.json();
+  if (!d.content) throw new Error('Bad shape');
+  const text = d.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  if (!text) throw new Error('Empty');
+  return { text, provider: 'anthropic', model: opts.model || settings.anthropic_model, usage: d.usage || null };
+}
+
+// OpenAI adapter (requires user-provided key)
+async function openaiAdapter(messages, systemPrompt, opts = {}) {
+  const settings = getProviderSettings();
+  if (!settings.openai_key) throw new Error('OPENAI_KEY_MISSING');
+
+  // OpenAI uses a single messages array with system as the first message
+  const oaMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(m => ({ role: m.role, content: m.content }))
+  ];
+
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${settings.openai_key}`
+    },
+    signal: opts.signal,
+    body: JSON.stringify({
+      model: opts.model || settings.openai_model,
+      max_tokens: opts.max_tokens || 2000,
+      messages: oaMessages
+    })
+  });
+  if (r.status === 429) { const e = new Error('RATE_LIMIT'); e.status = 429; throw e; }
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`API_${r.status}:${t.slice(0, 100)}`); }
+  const d = await r.json();
+  const text = d.choices?.[0]?.message?.content || '';
+  if (!text) throw new Error('Empty');
+  return { text, provider: 'openai', model: opts.model || settings.openai_model, usage: d.usage || null };
+}
+
+// Router: primary + fallback with single retry on rate limit
+async function routeModelCall(messages, systemPrompt, opts = {}) {
+  const settings = getProviderSettings();
+  const primary = settings.primary === 'openai' ? 'openai' : 'anthropic';
+  const secondary = primary === 'anthropic' ? 'openai' : 'anthropic';
+  const chain = [primary];
+  if (settings.fallback_enabled) chain.push(secondary);
+
+  let lastErr = null;
+  for (let i = 0; i < chain.length; i++) {
+    const provider = chain[i];
+    const adapter = provider === 'anthropic' ? anthropicAdapter : openaiAdapter;
+    try {
+      // Single in-provider retry on rate limit
+      try {
+        const res = await adapter(messages, systemPrompt, opts);
+        markProviderSuccess(provider);
+        return res;
+      } catch (e) {
+        const kind = classifyError(e);
+        if (kind === 'rate_limit' && i === chain.length - 1) {
+          // last provider, one retry
+          await new Promise(res => setTimeout(res, 1500));
+          const res2 = await adapter(messages, systemPrompt, opts);
+          markProviderSuccess(provider);
+          return res2;
+        }
+        throw e;
+      }
+    } catch (e) {
+      const kind = classifyError(e);
+      markProviderFailure(provider, kind);
+      lastErr = e;
+      const shouldFailover = settings.failover_on.includes(kind);
+      const hasNext = i < chain.length - 1;
+      if (!shouldFailover || !hasNext) {
+        if (e.message === 'OPENAI_KEY_MISSING' && hasNext) continue; // try next
+        throw e;
+      }
+      // Transparently notify of fallback for visibility
+      toast(`Switching to ${secondary}…`, 'error');
+    }
+  }
+  throw lastErr || new Error('ALL_PROVIDERS_FAILED');
+}
+
+// Backward-compatible wrappers — all calls go through the router
+async function callClaude(prompt) {
+  const res = await routeModelCall(
+    [{ role: 'user', content: prompt }],
+    'You are Einstein, a helpful academic tutor. Concise and accurate.'
+  );
+  return res.text;
+}
+
+async function callClaudeWithHistory(messages, systemPrompt) {
+  const res = await routeModelCall(messages, systemPrompt);
+  return res.text;
+}
+
+function friendlyApiError(e) {
+  const msg = e && e.message ? e.message : '';
+  if (msg === 'RATE_LIMIT' || msg.includes('429')) {
+    return 'Rate limited. Wait ~60 seconds and try again.';
+  }
+  if (msg.includes('API_5')) return 'Server error. Try again in a moment.';
+  if (msg.includes('API_401') || msg.includes('API_403')) return 'Authentication issue. Reload the page.';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return 'Network issue. Check connection.';
+  return 'Request failed. Please retry.';
+}
+
+// ----- Dashboard -----
+function renderDashboard() {
+  const streak = calculateStreak();
+  animateNum('statStreak', streak);
+  const ts = document.getElementById('topStreak');
+  if (ts) ts.textContent = `${streak} day streak`;
+  const ws = new Date(); ws.setDate(ws.getDate() - 7);
+  const sessions = state.sessions.filter(s => s.endTime && s.endTime > ws.getTime());
+  const secs = sessions.reduce((sum,s) => sum + (s.elapsed||0), 0);
+  animateNum('statHours', +(secs/3600).toFixed(1), 1);
+  const ad = state.deadlines.filter(d => new Date(d.date) >= new Date(new Date().toDateString())).length;
+  animateNum('statDeadlines', ad);
+  animateNum('statSessions', state.sessions.length);
+  const h = new Date().getHours();
+  const g = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  const gt = document.getElementById('greetingTitle');
+  if (gt) gt.textContent = `${g}, Madu`;
+  const ge = document.getElementById('greetingEyebrow');
+  if (ge) ge.textContent = new Date().toLocaleDateString('en', { weekday:'long', month:'long', day:'numeric' });
+  const due = state.flashcards.filter(c => !c.lastReviewed || (Date.now() - c.lastReviewed) > 86400000).length;
+  const rdl = document.getElementById('reviewDueLabel');
+  if (rdl) rdl.textContent = due > 0 ? `${due} card${due===1?'':'s'} due` : 'All caught up';
+  renderDeadlines();
+  renderGoals();
+  renderInsights();
+  renderCounts();
+  renderStateSummaryCard();
+  renderStateChip();
+  renderInactivityCard();
+  renderNextBestActionCard();
+}
+function animateNum(id, target, decimals=0) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (prefersReducedMotion) { el.textContent = decimals ? target.toFixed(decimals) : target; return; }
+  const start = parseFloat(el.textContent.replace(/,/g,'')) || 0;
+  const delta = target - start;
+  if (Math.abs(delta) < 0.01) { el.textContent = decimals ? target.toFixed(decimals) : target; return; }
+  const dur = 800;
+  const t0 = performance.now();
+  function step(t) {
+    const p = Math.min((t - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - p, 4);
+    const v = start + delta * e;
+    el.textContent = decimals ? v.toFixed(decimals) : Math.round(v);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function renderStateSummaryCard() {
+  const box = document.getElementById('stateSummaryCard');
+  if (!box) return;
+  const s = getLatestState();
+  const fresh = getStateFreshness();
+
+  if (!s) {
+    box.innerHTML = `
+      <div class="state-card">
+        <div class="state-card-body">
+          <div class="state-card-head">Capture today's state</div>
+          <div class="state-card-sub">Fifteen seconds. Tailors your whole day.</div>
+          <button class="btn btn-primary btn-sm" onclick="openStateModal('full')">Start check-in</button>
+          <button class="btn btn-subtle btn-sm" onclick="openStateModal('rush')" style="margin-left:6px;">Rush path</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const sum = s.summary;
+  const circ = 2 * Math.PI * 32; // r=32
+  const pct = sum.readiness_score / 100;
+  const offset = circ - (circ * pct);
+  const scoreColor = sum.readiness_score >= 70 ? 'var(--success)' : sum.readiness_score >= 45 ? 'var(--a)' : 'var(--danger)';
+
+  const chips = [];
+  chips.push(`<span class="state-mini-chip ${sum.fatigue_risk === 'high' ? 'alert' : sum.fatigue_risk === 'medium' ? 'warn' : 'good'}">fatigue: ${sum.fatigue_risk}</span>`);
+  chips.push(`<span class="state-mini-chip">mode: ${sum.recommended_session_mode}</span>`);
+  chips.push(`<span class="state-mini-chip">focus: ${sum.max_focus_minutes}m</span>`);
+  chips.push(`<span class="state-mini-chip">break bias: +${sum.break_bias_minutes - 5}m</span>`);
+  if (fresh.status !== 'fresh') {
+    chips.push(`<span class="state-mini-chip warn">needs refresh</span>`);
+  }
+  if (s.time_available_today_minutes) {
+    chips.push(`<span class="state-mini-chip">${s.time_available_today_minutes}min available</span>`);
+  }
+
+  box.innerHTML = `
+    <div class="state-card">
+      <div class="state-card-ring">
+        <svg viewBox="0 0 76 76" width="76" height="76">
+          <circle cx="38" cy="38" r="32" fill="none" stroke="var(--n-3)" stroke-width="5"/>
+          <circle cx="38" cy="38" r="32" fill="none" stroke="${scoreColor}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${offset}" style="transition:stroke-dashoffset 800ms cubic-bezier(0.22,1,0.36,1); filter:drop-shadow(0 0 6px ${scoreColor});"/>
+        </svg>
+        <div class="state-card-ring-num">${sum.readiness_score}</div>
+      </div>
+      <div class="state-card-body">
+        <div class="state-card-head">Readiness · ${sum.coaching_tone === 'supportive' ? 'be gentle with yourself' : sum.coaching_tone === 'push' ? 'ready for depth' : 'steady'}</div>
+        <div class="state-card-sub">mood ${s.mood}/5 · energy ${s.energy}/5 · stress ${s.stress}/5 · sleep ${s.sleep_hours}h</div>
+        <div class="state-card-chips">${chips.join('')}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <button class="btn btn-ghost btn-sm" onclick="openStateModal('mini')">Update</button>
+      </div>
+    </div>`;
+}
+
+function renderCounts() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('materialCount', state.materials.length);
+  set('noteCount', state.notes.length);
+  set('flashcardCount', state.flashcards.length);
+  set('artifactCount', state.artifacts.length);
+  set('courseCount', state.courses.length);
+}
+function bumpCount(id) {
+  const el = document.getElementById(id);
+  if (!el || prefersReducedMotion) return;
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+}
+function calculateStreak() {
+  if (state.sessions.length === 0) return 0;
+  const days = new Set();
+  state.sessions.forEach(s => { if (s.endTime) days.add(new Date(s.endTime).toDateString()); });
+  let streak = 0;
+  let chk = new Date();
+  while (days.has(chk.toDateString())) { streak++; chk.setDate(chk.getDate() - 1); }
+  return streak;
+}
+function getHoursByCourse(name) {
+  return state.sessions.filter(s => s.course === name).reduce((s,x) => s + (x.elapsed||0), 0) / 3600;
+}
+function renderInsights() {
+  const list = document.getElementById('insightsList');
+  if (!list) return;
+  const ins = [];
+  if (state.sessions.length === 0) { list.innerHTML = emptyState('◎', 'Insights emerge with use', 'Complete your first session.'); return; }
+  const ch = {};
+  state.sessions.forEach(s => { if (s.course) ch[s.course] = (ch[s.course]||0) + (s.elapsed||0); });
+  const top = Object.entries(ch).sort((a,b) => b[1]-a[1])[0];
+  if (top) ins.push(`◆ Most studied: <strong>${escapeHtml(top[0])}</strong> · ${(top[1]/3600).toFixed(1)} hours`);
+  const dwc = state.deadlines.filter(d => d.course && new Date(d.date) >= new Date());
+  const neg = dwc.find(d => !ch[d.course] || ch[d.course] < 3600);
+  if (neg) ins.push(`⚠ Low study time for <strong>${escapeHtml(neg.course)}</strong>, deadline ${escapeHtml(neg.date)}`);
+  const hc = {};
+  state.sessions.forEach(s => { if (s.startTime) { const h = new Date(s.startTime).getHours(); hc[h] = (hc[h]||0) + (s.elapsed||0); } });
+  const bh = Object.entries(hc).sort((a,b) => b[1]-a[1])[0];
+  if (bh) { const h = parseInt(bh[0]); const lbl = h < 12 ? `${h||12} AM` : h === 12 ? '12 PM' : `${h-12} PM`; ins.push(`⏰ Peak hour: <strong>${lbl}</strong>`); }
+  if (state.sessions.length >= 5) ins.push(`● ${state.sessions.length} sessions logged`);
+  if (state.wellnessLogs.length >= 3) {
+    const avg = state.wellnessLogs.reduce((s,w) => s + (w.sleep||0), 0) / state.wellnessLogs.length;
+    if (avg < 7) ins.push(`◐ Sleep averaging <strong>${avg.toFixed(1)}h</strong> — aim for 7+`);
+    else ins.push(`◉ Sleep averaging <strong>${avg.toFixed(1)}h</strong> — excellent`);
+  }
+  const stale = state.artifacts.filter(a => a.stale).length;
+  if (stale > 0) ins.push(`⚠ ${stale} artifact${stale===1?'':'s'} stale`);
+  if (ins.length === 0) { list.innerHTML = emptyState('◎', 'Keep going', 'More insights appear as you use Einstein.'); return; }
+  list.innerHTML = ins.map(i => `<div class="row"><div class="row-content" style="font-size:13px; color:var(--n-11);">${i}</div></div>`).join('');
+}
+
+// ----- Analytics -----
+function renderAnalytics() {
+  renderWeakPointsPanel();
+  const bd = document.getElementById('analyticsCourseBreakdown');
+  if (!bd) return;
+  if (state.sessions.length === 0) {
+    bd.innerHTML = emptyState('◉', 'No data yet', 'Complete sessions to populate analytics.');
+    document.getElementById('analyticsTimeline').innerHTML = '';
+    document.getElementById('analyticsIndicators').innerHTML = '';
+    document.getElementById('analyticsCorrelation').innerHTML = '';
+    return;
+  }
+  const ch = {};
+  state.sessions.forEach(s => { const k = s.course || 'Unassigned'; ch[k] = (ch[k]||0) + (s.elapsed||0); });
+  const tot = Object.values(ch).reduce((a,b) => a+b, 0);
+  bd.innerHTML = Object.entries(ch).sort((a,b) => b[1]-a[1]).map(([n,s]) => {
+    const p = tot > 0 ? (s/tot*100).toFixed(0) : 0;
+    return `<div style="margin-bottom:14px;"><div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;"><strong style="color:var(--n-12);">${escapeHtml(n)}</strong><span class="metadata">${(s/3600).toFixed(1)}h · ${p}%</span></div><div class="progress"><div class="progress-fill" style="width:${p}%"></div></div></div>`;
+  }).join('');
+
+  const tl = document.getElementById('analyticsTimeline');
+  const dt = {};
+  state.sessions.forEach(s => { if (s.endTime) { const d = new Date(s.endTime).toDateString(); dt[d] = (dt[d]||0) + (s.elapsed||0); } });
+  const l14 = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); l14.push({ label:d.toLocaleDateString('en',{month:'short',day:'numeric'}), secs:dt[d.toDateString()] || 0 }); }
+  const mx = Math.max(...l14.map(d => d.secs), 1);
+  tl.innerHTML = `<div class="timeline-chart">${l14.map(d => {
+    const h = d.secs > 0 ? Math.max((d.secs/mx*100), 4) : 2;
+    return `<div class="timeline-bar ${d.secs > 0 ? 'has-data' : ''}" style="height:${h}px;"><div class="timeline-bar-tip">${d.label}: ${(d.secs/60).toFixed(0)}min</div></div>`;
+  }).join('')}</div><div style="display:flex; justify-content:space-between;" class="metadata"><span>${l14[0].label}</span><span>today</span></div>`;
+
+  const avg = state.sessions.reduce((s,x) => s + (x.elapsed||0), 0) / state.sessions.length / 60;
+  const po = state.sessions.filter(s => s.mode === 'pomodoro' && s.completed).length;
+  const rv = state.flashcards.reduce((s,c) => s + (c.reviewCount||0), 0);
+  document.getElementById('analyticsIndicators').innerHTML = `
+    <div class="grid grid-4">
+      <div class="stat"><div class="stat-label">Avg session</div><div class="stat-value">${avg.toFixed(0)}</div><div class="stat-delta">minutes</div></div>
+      <div class="stat"><div class="stat-label">Pomodoros</div><div class="stat-value">${po}</div><div class="stat-delta">completed</div></div>
+      <div class="stat"><div class="stat-label">Sources</div><div class="stat-value">${state.materials.length}</div><div class="stat-delta">indexed</div></div>
+      <div class="stat"><div class="stat-label">Reviews</div><div class="stat-value">${rv}</div><div class="stat-delta">card taps</div></div>
+    </div>`;
+
+  const corr = document.getElementById('analyticsCorrelation');
+  if (state.wellnessLogs.length < 3) { corr.innerHTML = emptyState('❤', 'Not enough data', 'Log wellness for 3+ days.'); }
+  else {
+    const pairs = state.wellnessLogs.map(w => { const ds = state.sessions.filter(s => s.endTime && new Date(s.endTime).toDateString() === w.date).reduce((sum,s) => sum + (s.elapsed||0), 0); return { sleep:w.sleep, mood:w.mood, hours:ds/3600 }; }).filter(p => p.hours > 0);
+    if (pairs.length < 2) { corr.innerHTML = emptyState('◐', 'Almost there', 'Need more days.'); }
+    else {
+      const hi = pairs.filter(p => p.sleep >= 7), lo = pairs.filter(p => p.sleep < 7);
+      const ah = hi.reduce((s,p) => s + p.hours, 0) / Math.max(hi.length, 1);
+      const al = lo.reduce((s,p) => s + p.hours, 0) / Math.max(lo.length, 1);
+      const out = [];
+      if (ah > 0 && al > 0) { const d = ((ah - al) / Math.max(al, 0.1) * 100).toFixed(0); out.push(`◉ 7+ hours sleep: <strong>${ah.toFixed(1)}h</strong> studied. Less: <strong>${al.toFixed(1)}h</strong>. Delta: <strong>${d}%</strong>`); }
+      const am = pairs.reduce((s,p) => s + p.mood, 0) / pairs.length;
+      out.push(`◆ Avg mood on study days: <strong>${am.toFixed(1)}/10</strong>`);
+      corr.innerHTML = out.map(i => `<div class="row"><div class="row-content" style="font-size:13px;">${i}</div></div>`).join('');
+    }
+  }
+}
+
+// ----- Export / Reset -----
+function exportAllData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `einstein-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  URL.revokeObjectURL(url);
+  toast('✓ Data exported', 'success');
+}
+async function confirmReset() {
+  if (!confirm('This will delete ALL your data. Continue?')) return;
+  const c = prompt('Type YES to confirm:');
+  if (c !== 'YES') { toast('Cancelled'); return; }
+  state = { courses:[], deadlines:[], goals:[], sessions:[], materials:[], flashcards:[], wellnessLogs:[], tutorChat:[], notes:[], artifacts:[], evidence:[], dailyStates:[], inactivityEvents:[], breakRecs:[], learnerSignals:[], flags:{} };
+  await saveState();
+  renderAll();
+  toast('✓ All data reset', 'success');
+}
+
+// ============================================================================
+// WEAK-POINT ENGINE
+// ============================================================================
+
+function computeWeakPoints() {
+  const topicStats = {};
+  state.flashcards.forEach(c => {
+    const key = c.topic || 'general';
+    if (!topicStats[key]) topicStats[key] = { topic: key, course: c.course, reviews: 0, againCount: 0, hardCount: 0, goodCount: 0, easyCount: 0, totalDifficulty: 0, lastReviewed: 0, cards: 0 };
+    const t = topicStats[key];
+    t.cards++;
+    t.reviews += (c.reviewCount || 0);
+    const d = c.difficulty;
+    if (d === 0) t.againCount++;
+    else if (d === 1) t.hardCount++;
+    else if (d === 2) t.goodCount++;
+    else if (d === 3) t.easyCount++;
+    if (typeof d === 'number') t.totalDifficulty += d;
+    if (c.lastReviewed > t.lastReviewed) t.lastReviewed = c.lastReviewed;
+  });
+  const weak = [];
+  Object.values(topicStats).forEach(t => {
+    if (t.cards === 0) return;
+    const againRate = t.reviews > 0 ? t.againCount / Math.max(t.reviews, 1) : 0;
+    const hardRate = t.reviews > 0 ? t.hardCount / Math.max(t.reviews, 1) : 0;
+    let weaknessScore = 0;
+    weaknessScore += againRate * 50;
+    weaknessScore += hardRate * 20;
+    if (t.reviews === 0) weaknessScore += 30;
+    if (t.lastReviewed && (Date.now() - t.lastReviewed) > 5 * 86400000) weaknessScore += 10;
+    if (weaknessScore >= 25) {
+      weak.push({
+        topic: t.topic,
+        course: t.course,
+        weaknessScore: Math.round(weaknessScore),
+        cards: t.cards,
+        reviews: t.reviews,
+        againCount: t.againCount,
+        hardCount: t.hardCount,
+        lastReviewed: t.lastReviewed,
+        recommendation: againRate > 0.3 ? 'Focused re-study' : t.reviews === 0 ? 'Initial review' : 'Strengthen'
+      });
+    }
+  });
+  state.learnerSignals.filter(s => s.type === 'session_reflection' && s.metadata?.confusion >= 3).forEach(s => {
+    const existing = weak.find(w => w.course === s.course_id);
+    if (!existing) {
+      weak.push({
+        topic: 'session-reported confusion',
+        course: s.course_id,
+        weaknessScore: 40,
+        cards: 0,
+        reviews: 0,
+        confusion: s.metadata.confusion,
+        recommendation: 'Tutor clarification'
+      });
+    }
+  });
+  return weak.sort((a,b) => b.weaknessScore - a.weaknessScore).slice(0, 10);
+}
+
+// ============================================================================
+// NEXT-BEST-ACTION ENGINE
+// ============================================================================
+
+function computeNextBestAction() {
+  const now = Date.now();
+  const inact = computeInactivity();
+  const weak = computeWeakPoints();
+  const deadline = getDeadlinePressure();
+  const s = getLatestState();
+  const timeAvail = s?.time_available_today_minutes || 60;
+
+  // 1. Urgent deadline + course not studied recently
+  if (deadline.soonest && deadline.soonest.days <= 3) {
+    const courseLast = state.sessions.filter(x => x.course === deadline.soonest.course && x.endTime).sort((a,b) => b.endTime - a.endTime)[0];
+    const hoursSince = courseLast ? (now - courseLast.endTime) / 3600000 : 999;
+    if (hoursSince > 24) {
+      return {
+        primary_action: `Urgent: prep for ${deadline.soonest.title}`,
+        detail: `Due ${deadline.soonest.date} (${Math.ceil(deadline.soonest.days)} days). No study on ${deadline.soonest.course} in ${Math.floor(hoursSince)}h.`,
+        kind: 'urgent_study',
+        course: deadline.soonest.course,
+        minutes: Math.min(timeAvail, s?.summary?.max_focus_minutes || 45),
+        reason: 'deadline_pressure'
+      };
+    }
+  }
+
+  // 2. Critical inactivity
+  if (inact.severity === 'critical_gap') {
+    return {
+      primary_action: 'Start with a small reset',
+      detail: inact.subtext,
+      kind: 'reset_session',
+      minutes: 15,
+      reason: 'inactivity_critical'
+    };
+  }
+
+  // 3. Low readiness / fatigue
+  if (s && s.summary && (s.summary.fatigue_risk === 'high' || s.summary.readiness_score < 40)) {
+    return {
+      primary_action: 'Light flashcard review',
+      detail: 'Low readiness — retrieval practice works when focus is tough.',
+      kind: 'flashcards',
+      minutes: 15,
+      reason: 'low_readiness'
+    };
+  }
+
+  // 4. Weak points
+  if (weak.length > 0 && weak[0].weaknessScore >= 40) {
+    return {
+      primary_action: `Strengthen: ${weak[0].topic}`,
+      detail: `${weak[0].againCount || 0} "again" rating${weak[0].againCount === 1 ? '' : 's'} recently. ${weak[0].recommendation}.`,
+      kind: 'weak_point',
+      course: weak[0].course,
+      topic: weak[0].topic,
+      reason: 'weak_point_found'
+    };
+  }
+
+  // 5. Soft gap
+  if (inact.severity === 'soft_gap') {
+    return {
+      primary_action: '10-min warm-up',
+      detail: 'Short session to rebuild rhythm.',
+      kind: 'warmup',
+      minutes: 10,
+      reason: 'soft_gap'
+    };
+  }
+
+  // 6. High readiness + time
+  if (s && s.summary && s.summary.challenge_tolerance === 'high' && timeAvail >= 45) {
+    return {
+      primary_action: 'Deep work session',
+      detail: `Readiness ${s.summary.readiness_score}. Pick a harder topic or synthesize across sources.`,
+      kind: 'deep_work',
+      minutes: Math.min(timeAvail, s.summary.max_focus_minutes),
+      reason: 'high_readiness'
+    };
+  }
+
+  return {
+    primary_action: 'Standard Pomodoro',
+    detail: 'Steady as she goes. 25 minutes on one objective.',
+    kind: 'standard_session',
+    minutes: 25,
+    reason: 'default'
+  };
+}
+
+function renderNextBestActionCard() {
+  const box = document.getElementById('nextBestActionCard');
+  if (!box) return;
+  const nba = computeNextBestAction();
+  const payloadJson = encodeURIComponent(JSON.stringify(nba));
+  box.innerHTML = `
+    <div class="panel" style="border-left:3px solid var(--a); background:linear-gradient(90deg, var(--a-deep) -10%, var(--n-1) 40%);">
+      <div class="eyebrow" style="color:var(--a); margin-bottom:8px;">NEXT BEST ACTION</div>
+      <h3 style="font-family:var(--font-serif); font-size:20px; color:var(--n-12); font-weight:500; letter-spacing:-0.015em; margin-bottom:8px;">${escapeHtml(nba.primary_action)}</h3>
+      <div class="caption" style="margin-bottom:14px; line-height:1.6;">${escapeHtml(nba.detail)}</div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-primary btn-sm" data-nba-payload="${payloadJson}">Start now</button>
+        <button class="btn btn-ghost btn-sm" onclick="switchView('tutor')">Ask tutor</button>
+      </div>
+    </div>`;
+  const btn = box.querySelector('[data-nba-payload]');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const payload = JSON.parse(decodeURIComponent(btn.dataset.nbaPayload));
+      executeNBA(payload.kind, payload);
+    });
+  }
+}
+
+function executeNBA(kind, payload) {
+  switch (kind) {
+    case 'urgent_study':
+    case 'deep_work':
+    case 'standard_session':
+    case 'reset_session':
+    case 'warmup':
+      switchView('session');
+      setTimeout(() => {
+        const pm = document.getElementById('pomodoroMinutes');
+        if (pm && payload.minutes) pm.value = payload.minutes;
+        const sc = document.getElementById('sessionCourse');
+        if (sc && payload.course) sc.value = payload.course;
+      }, 200);
+      break;
+    case 'flashcards':
+      switchView('review');
+      break;
+    case 'weak_point':
+      switchView('tutor');
+      setTimeout(() => {
+        const ti = document.getElementById('tutorInput');
+        if (ti) {
+          ti.value = `I'm struggling with "${payload.topic}". Explain it clearly and quiz me on it.`;
+          sendTutorMessage();
+        }
+      }, 300);
+      break;
+  }
+}
+
+function renderWeakPointsPanel() {
+  const box = document.getElementById('analyticsWeakPoints');
+  if (!box) return;
+  const weak = computeWeakPoints();
+  if (weak.length === 0) {
+    box.innerHTML = `<div class="caption" style="padding:20px 0; text-align:center;">No weak points detected yet. Rate flashcards after reviewing to populate.</div>`;
+    return;
+  }
+  box.innerHTML = weak.map((w, i) => {
+    const payloadJson = encodeURIComponent(JSON.stringify({topic: w.topic, course: w.course}));
+    return `
+      <div class="row">
+        <div class="row-content">
+          <div class="row-title">${escapeHtml(w.topic)}</div>
+          <div class="row-sub">${escapeHtml(w.course || 'general')} · ${w.cards} cards · ${w.reviews} reviews · ${w.againCount || 0} "again"${w.hardCount ? ', ' + w.hardCount + ' hard' : ''}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:56px; height:4px; background:var(--n-4); border-radius:2px; overflow:hidden;">
+            <div style="height:100%; width:${Math.min(100, w.weaknessScore)}%; background:${w.weaknessScore > 60 ? 'var(--danger)' : 'var(--warning)'}; border-radius:2px;"></div>
+          </div>
+          <span class="metadata">${w.weaknessScore}</span>
+          <button class="btn btn-ghost btn-sm" data-wp-payload="${payloadJson}">Study</button>
+        </div>
+      </div>`;
+  }).join('');
+  box.querySelectorAll('[data-wp-payload]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = JSON.parse(decodeURIComponent(btn.dataset.wpPayload));
+      executeNBA('weak_point', p);
+    });
+  });
+}
+
+// ============================================================================
+// PROVIDER SETTINGS UI
+// ============================================================================
+
+function renderProviderSettings() {
+  const box = document.getElementById('providerSettings');
+  if (!box) return;
+  const s = getProviderSettings();
+  const anthropicHealth = ProviderHealth.anthropic.status;
+  const openaiHealth = ProviderHealth.openai.status;
+  const anthropicDot = anthropicHealth === 'healthy' ? 'var(--success)' : anthropicHealth === 'degraded' ? 'var(--danger)' : 'var(--n-7)';
+  const openaiDot = openaiHealth === 'healthy' ? 'var(--success)' : openaiHealth === 'degraded' ? 'var(--danger)' : 'var(--n-7)';
+  box.innerHTML = `
+    <div class="field">
+      <label class="field-label">Primary provider</label>
+      <div class="segmented" id="providerPrimarySeg">
+        <button class="${s.primary === 'anthropic' ? 'active' : ''}" data-p="anthropic">Anthropic (Claude)</button>
+        <button class="${s.primary === 'openai' ? 'active' : ''}" data-p="openai">OpenAI</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Enable failover</label>
+      <div class="segmented" id="providerFailoverSeg">
+        <button class="${s.fallback_enabled ? 'active' : ''}" data-v="true">On</button>
+        <button class="${!s.fallback_enabled ? 'active' : ''}" data-v="false">Off</button>
+      </div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field">
+        <label class="field-label">Anthropic model</label>
+        <input class="input" id="anthropicModelInput" value="${escapeAttr(s.anthropic_model)}">
+      </div>
+      <div class="field">
+        <label class="field-label">OpenAI model</label>
+        <input class="input" id="openaiModelInput" value="${escapeAttr(s.openai_model)}">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">OpenAI API key (stored locally, required for OpenAI routing)</label>
+      <input type="password" class="input" id="openaiKeyInput" value="${s.openai_key ? '••••••••••' + s.openai_key.slice(-4) : ''}" placeholder="sk-...">
+      <div class="caption" style="margin-top:6px;">Anthropic calls use Claude.ai's built-in auth. OpenAI requires your own key.</div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button class="btn btn-primary btn-sm" onclick="saveProviderSettings()">Save settings</button>
+      <button class="btn btn-ghost btn-sm" onclick="testProvider('anthropic')">Test Anthropic</button>
+      <button class="btn btn-ghost btn-sm" onclick="testProvider('openai')">Test OpenAI</button>
+    </div>
+    <div style="display:flex; gap:18px; margin-top:16px; padding-top:14px; border-top:1px solid var(--b);">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:${anthropicDot}; box-shadow:0 0 6px ${anthropicDot};"></span>
+        <span class="metadata">Anthropic: ${anthropicHealth}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:${openaiDot}; box-shadow:0 0 6px ${openaiDot};"></span>
+        <span class="metadata">OpenAI: ${openaiHealth}</span>
+      </div>
+    </div>`;
+  box.querySelectorAll('#providerPrimarySeg button').forEach(b => {
+    b.addEventListener('click', async () => { await setProviderSettings({ primary: b.dataset.p }); renderProviderSettings(); });
+  });
+  box.querySelectorAll('#providerFailoverSeg button').forEach(b => {
+    b.addEventListener('click', async () => { await setProviderSettings({ fallback_enabled: b.dataset.v === 'true' }); renderProviderSettings(); });
+  });
+}
+
+async function saveProviderSettings() {
+  const keyInput = document.getElementById('openaiKeyInput').value.trim();
+  const patch = {
+    anthropic_model: document.getElementById('anthropicModelInput').value.trim(),
+    openai_model: document.getElementById('openaiModelInput').value.trim()
+  };
+  if (keyInput && !keyInput.startsWith('••••')) patch.openai_key = keyInput;
+  await setProviderSettings(patch);
+  toast('✓ Provider settings saved', 'success');
+  renderProviderSettings();
+}
+
+async function testProvider(which) {
+  toast(`Testing ${which}…`);
+  try {
+    const adapter = which === 'anthropic' ? anthropicAdapter : openaiAdapter;
+    const res = await adapter(
+      [{ role: 'user', content: 'Reply with one word: ready' }],
+      'You are a test assistant. Reply with one word only.',
+      { max_tokens: 20 }
+    );
+    markProviderSuccess(which);
+    toast(`✓ ${which} working — "${res.text.slice(0, 40)}"`, 'success');
+  } catch (e) {
+    const kind = classifyError(e);
+    markProviderFailure(which, kind);
+    if (e.message === 'OPENAI_KEY_MISSING') toast('OpenAI key required. Paste one above.', 'error');
+    else toast(`✗ ${which} failed: ${kind}`, 'error');
+  }
+  renderProviderSettings();
+}
+
+// ============================================================================
+// SELF-TESTS
+// ============================================================================
+
+function runSelfTests() {
+  const results = [];
+  const assert = (name, cond, detail = '') => results.push({ name, pass: !!cond, detail });
+
+  const high = computeReadiness({ mood: 5, energy: 5, stress: 1, sleep_hours: 8, workload_pressure: 1 });
+  assert('Readiness: happy case', high.readiness_score >= 75, `got ${high.readiness_score}`);
+  const low = computeReadiness({ mood: 1, energy: 1, stress: 5, sleep_hours: 3, workload_pressure: 5 });
+  assert('Readiness: exhausted case', low.readiness_score < 40, `got ${low.readiness_score}`);
+  assert('Fatigue: low sleep → high', computeReadiness({ mood: 3, energy: 3, stress: 3, sleep_hours: 4, workload_pressure: 3 }).fatigue_risk === 'high');
+  assert('Fatigue: good rest → low', high.fatigue_risk === 'low');
+  assert('Tone: low mood → supportive', computeReadiness({ mood: 1, energy: 3, stress: 2, sleep_hours: 7, workload_pressure: 3 }).coaching_tone === 'supportive');
+  assert('Tone: energized → push', computeReadiness({ mood: 5, energy: 5, stress: 1, sleep_hours: 8, workload_pressure: 2 }).coaching_tone === 'push');
+
+  const savedStates = state.dailyStates;
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 2 * 3600000, local_date: todayKey(), summary: high }];
+  assert('Freshness: <6h fresh', getStateFreshness().status === 'fresh');
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 8 * 3600000, local_date: todayKey(), summary: high }];
+  assert('Freshness: 6-10h soft_stale', getStateFreshness().status === 'soft_stale');
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 25 * 3600000, local_date: new Date(Date.now() - 25*3600000).toDateString(), summary: high }];
+  assert('Freshness: prior day hard_stale', getStateFreshness().status === 'hard_stale');
+  state.dailyStates = savedStates;
+
+  const savedBreakRecs = state.breakRecs;
+  state.breakRecs = [];
+  const rec1 = computeBreakRecommendation({ id: 1, elapsed: 25 * 60, completed: true });
+  assert('Break: in allowed set', ALLOWED_BREAK_MINUTES.includes(rec1.recommended_minutes), `got ${rec1.recommended_minutes}`);
+  const rec2 = computeBreakRecommendation({ id: 2, elapsed: 90 * 60, completed: true });
+  assert('Break: long session ≥10', rec2.recommended_minutes >= 10);
+  assert('Break: never exceeds 30', rec2.recommended_minutes <= 30);
+  const rec3 = computeBreakRecommendation({ id: 3, elapsed: 5 * 60, completed: false });
+  assert('Break: min is 5', rec3.recommended_minutes >= 5);
+  state.breakRecs = savedBreakRecs;
+
+  const savedSessions = state.sessions;
+  state.sessions = [{ id: 1, endTime: Date.now() - 5 * 86400000, elapsed: 1800, course: 'Test' }];
+  assert('Inactivity: 5 days → critical_gap', computeInactivity().severity === 'critical_gap');
+  state.sessions = [{ id: 1, endTime: Date.now() - 30 * 60000, elapsed: 1800, course: 'Test' }];
+  assert('Inactivity: 30min ago → on_track', computeInactivity().severity === 'on_track');
+  state.sessions = savedSessions;
+
+  const savedCards = state.flashcards;
+  state.flashcards = [
+    { id: 1, topic: 'Bonds', course: 'Finance', reviewCount: 3, difficulty: 0, lastReviewed: Date.now() - 3600000 },
+    { id: 2, topic: 'Bonds', course: 'Finance', reviewCount: 2, difficulty: 0, lastReviewed: Date.now() - 3600000 },
+    { id: 3, topic: 'Derivatives', course: 'Finance', reviewCount: 5, difficulty: 3, lastReviewed: Date.now() - 3600000 }
+  ];
+  const weak = computeWeakPoints();
+  assert('Weak points: Bonds flagged', weak.some(w => w.topic === 'Bonds'));
+  assert('Weak points: Derivatives OK', !weak.some(w => w.topic === 'Derivatives'));
+  state.flashcards = savedCards;
+
+  const nba = computeNextBestAction();
+  assert('NBA: has primary_action', !!nba.primary_action);
+  assert('NBA: has kind', !!nba.kind);
+
+  assert('Error: 429→rate_limit', classifyError(new Error('RATE_LIMIT')) === 'rate_limit');
+  assert('Error: 500→server_error', classifyError(new Error('API_500:oops')) === 'server_error');
+  assert('Error: 401→auth', classifyError(new Error('API_401:bad')) === 'auth');
+
+  showTestResults(results);
+}
+
+function showTestResults(results) {
+  const pass = results.filter(r => r.pass).length;
+  const fail = results.filter(r => !r.pass).length;
+  const existing = document.getElementById('testResultsScrim');
+  if (existing) existing.remove();
+  const html = `
+    <div class="modal-scrim active" id="testResultsScrim" style="z-index:2500;">
+      <div class="modal" style="max-width:600px;">
+        <div class="modal-head">
+          <div>
+            <div class="modal-title">Self-tests</div>
+            <div class="caption" style="margin-top:4px; color:${fail > 0 ? 'var(--danger)' : 'var(--success)'}">${pass} passed · ${fail} failed</div>
+          </div>
+          <button class="btn btn-subtle btn-icon" onclick="document.getElementById('testResultsScrim').remove()">✕</button>
+        </div>
+        <div style="max-height:60vh; overflow-y:auto;">
+          ${results.map(r => `
+            <div style="display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid var(--b);">
+              <span style="color:${r.pass ? 'var(--success)' : 'var(--danger)'}; font-family:var(--font-mono); font-size:14px; flex-shrink:0;">${r.pass ? '✓' : '✗'}</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:12.5px; color:var(--n-11);">${escapeHtml(r.name)}</div>
+                ${r.detail ? `<div style="font-size:10.5px; color:var(--n-8); font-family:var(--font-mono); margin-top:2px;">${escapeHtml(r.detail)}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('testResultsScrim').addEventListener('click', e => {
+    if (e.target.id === 'testResultsScrim') e.target.remove();
+  });
+}
+
+// ============================================================================
+// INTEGRATIONS ARCHITECTURE DOC
+// ============================================================================
+
+function showIntegrationsArchitectureDoc() {
+  const existing = document.getElementById('archDocScrim');
+  if (existing) existing.remove();
+  const html = `
+    <div class="modal-scrim active" id="archDocScrim" style="z-index:2500;">
+      <div class="modal" style="max-width:720px; max-height:85vh; overflow-y:auto;">
+        <div class="modal-head">
+          <div class="modal-title">Integrations architecture</div>
+          <button class="btn btn-subtle btn-icon" onclick="document.getElementById('archDocScrim').remove()">✕</button>
+        </div>
+        <div class="msg-body" style="font-family:var(--font-sans); font-size:13px; line-height:1.7;">
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin-bottom:14px;">What's implemented</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li><strong>Anthropic adapter</strong> — calls Claude API using Claude.ai's injected auth.</li>
+            <li><strong>OpenAI adapter</strong> — calls OpenAI chat completions with a user-provided API key stored locally.</li>
+            <li><strong>Provider router</strong> — primary + fallback chain with rate-limit retry and typed error classification.</li>
+            <li><strong>Settings UI</strong> — primary toggle, failover toggle, model names, key entry, test buttons, health indicators.</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">What requires a backend</h2>
+          <p>Real LMS and Google Workspace integrations need a server for:</p>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li>OAuth redirect URIs and client secrets</li>
+            <li>Webhook endpoints (Gmail watch, Drive changes, Calendar channels)</li>
+            <li>Token refresh and encrypted long-lived storage</li>
+            <li>Background jobs for sync and channel renewal</li>
+            <li>Institution-approved Blackboard registration</li>
+            <li>LTI 1.3 handshake endpoints for deep linking</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">Server schema to build</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li><code>provider_accounts</code>: user_id, provider_type, encrypted_token, refresh_token, scopes</li>
+            <li><code>provider_sync_cursors</code>: resource_type, cursor, watch_channel_id, watch_expiration</li>
+            <li><code>external_source_mappings</code>: external_id, internal_source_id, last_modified_external</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">Minimum Google scopes</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li>Calendar: <code>calendar.events.readonly</code></li>
+            <li>Gmail: <code>gmail.readonly</code> with explicit label selection</li>
+            <li>Drive: <code>drive.file</code> (user picks specific files)</li>
+            <li>Docs: <code>documents.readonly</code></li>
+          </ul>
+          <p style="margin-top:20px; padding:14px; background:var(--n-3); border-radius:8px; border-left:3px solid var(--a); font-size:12px;">
+            <strong style="color:var(--a);">Reality check:</strong> ESCP Blackboard integration requires institutional IT approval. That's a multi-week process separate from product development.
+          </p>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('archDocScrim').addEventListener('click', e => {
+    if (e.target.id === 'archDocScrim') e.target.remove();
+  });
+}
+// ----- Command Palette with AI routing -----
+const COMMANDS = [
+  { label:'Go to Dashboard', icon:'▤', kind:'nav', keywords:'home overview', action:() => switchView('dashboard') },
+  { label:'Start a session', icon:'⏱', kind:'action', keywords:'focus pomodoro timer deep work study', action:() => switchView('session') },
+  { label:'Ask the tutor', icon:'◎', kind:'nav', keywords:'chat question help explain', action:() => switchView('tutor') },
+  { label:'Review flashcards', icon:'◧', kind:'nav', keywords:'cards memorize spaced repetition', action:() => switchView('review') },
+  { label:'Open Studio', icon:'✦', kind:'nav', keywords:'generate create summary quiz', action:() => switchView('studio') },
+  { label:'Courses', icon:'▢', kind:'nav', keywords:'classes subjects curriculum', action:() => switchView('courses') },
+  { label:'Sources', icon:'▤', kind:'nav', keywords:'materials upload documents notes text', action:() => switchView('materials') },
+  { label:'Notes', icon:'✎', kind:'nav', keywords:'annotations thoughts ideas', action:() => switchView('notes') },
+  { label:'Artifacts library', icon:'▦', kind:'nav', keywords:'generated summaries quizzes outlines', action:() => switchView('artifacts') },
+  { label:'Log wellness', icon:'❤', kind:'nav', keywords:'health sleep mood water exercise stress', action:() => switchView('wellness') },
+  { label:'View analytics', icon:'▮', kind:'nav', keywords:'stats patterns insights progress', action:() => switchView('analytics') },
+  { label:'Integrations', icon:'◉', kind:'nav', keywords:'connect tools external providers', action:() => switchView('integrations') },
+  { label:'Daily state check-in', icon:'◐', kind:'action', keywords:'mood energy stress sleep how am i feeling readiness checkin', action:() => openStateModal('full') },
+  { label:'Quick state refresh', icon:'◑', kind:'action', keywords:'update state mini refresh', action:() => openStateModal('mini') },
+  { label:'Add deadline', icon:'+', kind:'action', keywords:'exam due date schedule', action:() => { switchView('dashboard'); setTimeout(openDeadlineModal, 200); } },
+  { label:'Run self-tests', icon:'⚙', kind:'action', keywords:'test debug verify qa check', action:runSelfTests },
+  { label:'Integrations architecture doc', icon:'📐', kind:'action', keywords:'documentation blackboard google oauth backend architecture', action:showIntegrationsArchitectureDoc },
+  { label:'Export all data', icon:'↓', kind:'action', keywords:'backup download json', action:exportAllData }
+];
+
+let cmdAiTimeout = null;
+let cmdAiAbortController = null;
+let cmdCurrentAiResults = [];
+let cmdSelectedIdx = 0;
+
+function openCmdPalette() {
+  document.getElementById('cmdPalette').classList.add('active');
+  setTimeout(() => document.getElementById('cmdInput').focus(), 120);
+  renderCmdList('');
+}
+
+function closeCmdPalette() {
+  const s = document.getElementById('cmdPalette');
+  s.classList.add('closing');
+  setTimeout(() => {
+    s.classList.remove('active', 'closing');
+    document.getElementById('cmdInput').value = '';
+    document.getElementById('cmdInputWrap').classList.remove('thinking');
+    document.getElementById('cmdAiHint').classList.remove('visible');
+    cmdCurrentAiResults = [];
+    if (cmdAiAbortController) { cmdAiAbortController.abort(); cmdAiAbortController = null; }
+  }, 260);
+}
+
+function matchesCommand(cmd, q) {
+  const haystack = (cmd.label + ' ' + (cmd.keywords || '')).toLowerCase();
+  return haystack.includes(q);
+}
+
+function renderCmdList(query) {
+  const q = query.toLowerCase().trim();
+  const list = document.getElementById('cmdList');
+  const hint = document.getElementById('cmdAiHint');
+
+  // Static matches
+  const staticMatches = q ? COMMANDS.filter(c => matchesCommand(c, q)) : COMMANDS;
+
+  let html = '';
+
+  // AI section at the top if we have results
+  if (cmdCurrentAiResults.length > 0) {
+    html += `<div class="cmd-ai-divider">✦ AI suggestions</div>`;
+    cmdCurrentAiResults.forEach((r, i) => {
+      html += `
+        <div class="cmd-item cmd-ai-item ${i === 0 ? 'selected' : ''}" data-ai-idx="${i}">
+          <div class="cmd-item-icon">✦</div>
+          <div class="cmd-item-body">
+            <span>${escapeHtml(r.label)}</span>
+            ${r.sub ? `<span class="cmd-item-sub">${escapeHtml(r.sub)}</span>` : ''}
+          </div>
+          <span class="cmd-item-kind">${escapeHtml(r.kind || 'smart')}</span>
+        </div>`;
+    });
+  }
+
+  // Static commands
+  if (staticMatches.length > 0) {
+    if (cmdCurrentAiResults.length > 0) html += `<div class="cmd-ai-divider">Commands</div>`;
+    staticMatches.forEach((c, i) => {
+      const isSelected = cmdCurrentAiResults.length === 0 && i === 0;
+      html += `
+        <div class="cmd-item ${isSelected ? 'selected' : ''}" data-idx="${COMMANDS.indexOf(c)}">
+          <div class="cmd-item-icon">${c.icon}</div>
+          <div class="cmd-item-body"><span>${escapeHtml(c.label)}</span></div>
+          <span class="cmd-item-kind">${c.kind}</span>
+        </div>`;
+    });
+  } else if (cmdCurrentAiResults.length === 0 && q) {
+    // Nothing matches — hint at AI
+    html = `<div class="cmd-ai-empty">
+      No matching commands. Press <strong style="color:var(--a)">↵</strong> to ask Einstein to route your request.
+    </div>`;
+    hint.classList.add('visible');
+  }
+
+  list.innerHTML = html;
+
+  // Wire click handlers
+  list.querySelectorAll('.cmd-item[data-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      COMMANDS[parseInt(el.dataset.idx)].action();
+      closeCmdPalette();
+    });
+  });
+  list.querySelectorAll('.cmd-item[data-ai-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.getAttribute('data-ai-idx'));
+      const r = cmdCurrentAiResults[idx];
+      if (r && r.routeData) executeAiRoute(r.routeData);
+      closeCmdPalette();
+    });
+  });
+
+  // Show/hide AI hint
+  if (q && staticMatches.length === 0 && cmdCurrentAiResults.length === 0) {
+    hint.classList.add('visible');
+  } else {
+    hint.classList.remove('visible');
+  }
+}
+
+async function askAiToRoute(query) {
+  if (!query.trim()) return;
+  const wrap = document.getElementById('cmdInputWrap');
+  const list = document.getElementById('cmdList');
+  wrap.classList.add('thinking');
+  list.innerHTML = `<div class="cmd-ai-empty">
+    <div>Einstein is interpreting your request</div>
+    <div class="typing-dots"><span></span><span></span><span></span></div>
+  </div>`;
+
+  const courseList = state.courses.map(c => c.name).join(', ') || 'none';
+  const recentMaterials = state.materials.slice(-5).map(m => `"${m.title}" (${m.course || 'no course'})`).join(', ') || 'none';
+  const recentNotes = state.notes.slice(-5).map(n => `"${n.topic || 'untitled'}" (${n.course || 'general'})`).join(', ') || 'none';
+
+  const systemPrompt = `You are Einstein's routing assistant. Given a natural-language request, return ONLY a JSON array (no markdown, no fence) of 1-4 actions.
+
+VIEWS: dashboard, session, tutor, review, studio, courses, materials, notes, artifacts, wellness, analytics, integrations
+
+ACTIONS: openDeadlineModal, exportAllData, sendTutorQuery, generateArtifact, startSession
+
+USER WORKSPACE:
+- Courses: ${courseList}
+- Recent sources: ${recentMaterials}
+- Recent notes: ${recentNotes}
+
+Each item shape:
+{"label":"...","sub":"optional","kind":"navigate|ask|generate|start|open","type":"view|action","route":"view name","action":"action name","params":{}}
+
+Examples:
+"take me to finance notes" -> [{"label":"Open Notes","sub":"Filter: Finance","kind":"navigate","type":"view","route":"notes"}]
+"quiz me on bonds" -> [{"label":"Ask tutor to quiz on bonds","kind":"ask","type":"action","action":"sendTutorQuery","params":{"query":"Quiz me on bonds"}}]
+"i'm tired" -> [{"label":"Log wellness","sub":"Update sleep, mood","kind":"navigate","type":"view","route":"wellness"}]`;
+
+  let parsed = null;
+  try {
+    cmdAiAbortController = new AbortController();
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: cmdAiAbortController.signal,
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 800,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: query }]
+      })
+    });
+    if (response.status === 429) throw new Error('RATE_LIMIT');
+    if (!response.ok) throw new Error(`API_${response.status}`);
+    const data = await response.json();
+    const raw = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*$/g, '').trim();
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('NO_JSON');
+    parsed = JSON.parse(match[0]);
+    if (!Array.isArray(parsed)) throw new Error('NOT_ARRAY');
+  } catch(e) {
+    if (e.name === 'AbortError') { wrap.classList.remove('thinking'); cmdAiAbortController = null; return; }
+    console.error('AI route failed:', e && e.message);
+    const errMsg = e.message === 'RATE_LIMIT' ? 'Rate limited — try again shortly' : 'Ask the tutor instead';
+    const errSub = e.message === 'RATE_LIMIT' ? 'Wait ~60 seconds.' : `"${query}"`;
+    const isRateLimit = e.message === 'RATE_LIMIT';
+    cmdCurrentAiResults = [{
+      label: errMsg,
+      sub: errSub,
+      kind: isRateLimit ? 'wait' : 'fallback',
+      routeData: isRateLimit ? null : { type: 'fallback', query }
+    }];
+    wrap.classList.remove('thinking');
+    cmdAiAbortController = null;
+    renderCmdList(document.getElementById('cmdInput').value);
+    return;
+  }
+
+  wrap.classList.remove('thinking');
+  cmdAiAbortController = null;
+
+  if (!parsed) return;
+
+  // Store only serializable data; we execute via lookup
+  cmdCurrentAiResults = parsed.map(r => ({
+    label: r.label || 'Open',
+    sub: r.sub || '',
+    kind: r.kind || 'smart',
+    routeData: {
+      type: r.type,
+      route: r.route,
+      action: r.action,
+      params: r.params || {}
+    }
+  }));
+
+  renderCmdList(document.getElementById('cmdInput').value);
+}
+
+function executeAiRoute(routeData) {
+  if (!routeData) return;
+  if (routeData.type === 'fallback') {
+    switchView('tutor');
+    setTimeout(() => {
+      const ti = document.getElementById('tutorInput');
+      if (ti) ti.value = routeData.query || '';
+    }, 200);
+    return;
+  }
+  if (routeData.type === 'view' && routeData.route) {
+    switchView(routeData.route);
+    if (routeData.route === 'studio' && routeData.params && routeData.params.preset) {
+      setTimeout(() => {
+        const preset = routeData.params.preset;
+        currentStudioPreset = preset;
+        document.querySelectorAll('#studioPresets .chip').forEach(c =>
+          c.classList.toggle('active', c.dataset.preset === preset)
+        );
+      }, 300);
+    }
+    return;
+  }
+  if (routeData.type === 'action') {
+    switch (routeData.action) {
+      case 'openDeadlineModal':
+        switchView('dashboard');
+        setTimeout(openDeadlineModal, 200);
+        break;
+      case 'exportAllData':
+        exportAllData();
+        break;
+      case 'sendTutorQuery':
+        switchView('tutor');
+        setTimeout(() => {
+          const ti = document.getElementById('tutorInput');
+          if (ti && routeData.params && routeData.params.query) {
+            ti.value = routeData.params.query;
+            sendTutorMessage();
+          }
+        }, 300);
+        break;
+      case 'generateArtifact':
+        switchView('studio');
+        if (routeData.params && routeData.params.kind) {
+          setTimeout(() => {
+            currentStudioPreset = routeData.params.kind;
+            document.querySelectorAll('#studioPresets .chip').forEach(c =>
+              c.classList.toggle('active', c.dataset.preset === routeData.params.kind)
+            );
+          }, 300);
+        }
+        break;
+      case 'startSession':
+        switchView('session');
+        setTimeout(() => {
+          const sc = document.getElementById('sessionCourse');
+          const st = document.getElementById('sessionTopic');
+          if (sc && routeData.params && routeData.params.course) sc.value = routeData.params.course;
+          if (st && routeData.params && routeData.params.topic) st.value = routeData.params.topic;
+        }, 300);
+        break;
+    }
+  }
+}
+
+const cmdInput = document.getElementById('cmdInput');
+cmdInput.addEventListener('input', e => {
+  const q = e.target.value;
+  // Clear AI results when user edits query
+  if (cmdCurrentAiResults.length > 0) {
+    cmdCurrentAiResults = [];
+  }
+  // Abort any in-flight AI request
+  if (cmdAiAbortController) { cmdAiAbortController.abort(); cmdAiAbortController = null; }
+  if (cmdAiTimeout) { clearTimeout(cmdAiTimeout); cmdAiTimeout = null; }
+  renderCmdList(q);
+});
+
+cmdInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const q = cmdInput.value.trim();
+
+    // Check if there's a selected item first
+    const selected = document.querySelector('.cmd-item.selected');
+    if (selected) {
+      const aiIdx = selected.getAttribute('data-ai-idx');
+      const idx = selected.getAttribute('data-idx');
+      if (aiIdx !== null) {
+        const r = cmdCurrentAiResults[parseInt(aiIdx)];
+        if (r && r.routeData) { executeAiRoute(r.routeData); closeCmdPalette(); return; }
+      } else if (idx !== null) {
+        COMMANDS[parseInt(idx)].action();
+        closeCmdPalette();
+        return;
+      }
+    }
+
+    // No selection — only call AI if there are literally no matching static commands
+    if (q) {
+      const hasStatic = COMMANDS.some(c => matchesCommand(c, q.toLowerCase()));
+      if (!hasStatic) {
+        askAiToRoute(q);
+      }
+    }
+  }
+  if (e.key === 'Escape') closeCmdPalette();
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const items = document.querySelectorAll('.cmd-item');
+    if (items.length === 0) return;
+    let idx = -1;
+    items.forEach((el, i) => { if (el.classList.contains('selected')) idx = i; });
+    items.forEach(el => el.classList.remove('selected'));
+    if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+    else idx = (idx - 1 + items.length) % items.length;
+    items[idx].classList.add('selected');
+    items[idx].scrollIntoView({ block: 'nearest' });
+  }
+});
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); }
+  if (e.key === 'Escape') { closeCmdPalette(); closeArtifactModal(); closeDeadlineModal(); closeEinsteinImageModal(); closeStateModal(true); }
+});
+document.getElementById('cmdPalette').addEventListener('click', e => { if (e.target.id === 'cmdPalette') closeCmdPalette(); });
+document.getElementById('deadlineModal').addEventListener('click', e => { if (e.target.id === 'deadlineModal') closeDeadlineModal(); });
+document.getElementById('artifactModal').addEventListener('click', e => { if (e.target.id === 'artifactModal') closeArtifactModal(); });
+document.getElementById('einsteinImageModal').addEventListener('click', e => { if (e.target.id === 'einsteinImageModal') closeEinsteinImageModal(); });
+document.getElementById('stateModal').addEventListener('click', e => { if (e.target.id === 'stateModal') closeStateModal(true); });
+document.getElementById('breakModal').addEventListener('click', e => { if (e.target.id === 'breakModal') closeBreakModal(); });
+document.getElementById('reflectionModal').addEventListener('click', e => { if (e.target.id === 'reflectionModal') submitReflection(true); });
+
+// Live preview + Enter-to-save for Einstein image modal
+(function() {
+  const input = document.getElementById('einsteinImageInput');
+  if (!input) return;
+  let previewTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(updateEinsteinImagePreview, 300);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveEinsteinImage(); }
+    if (e.key === 'Escape') closeEinsteinImageModal();
+  });
+})();
+
+// ----- Utils -----
+function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+function toast(msg, kind='') {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => t.classList.add('out'), 2700);
+  setTimeout(() => { if (t.parentNode) t.remove(); }, 3100);
+}
+function emptyState(icon, title, sub) {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-title">${escapeHtml(title)}</div><div class="empty-sub">${escapeHtml(sub)}</div></div>`;
+}
+// ============================================================================
+// WEAK-POINT ENGINE — derives concept mastery from flashcard + reflection signals
+// ============================================================================
+
+function computeWeakPoints() {
+  // Aggregate signals per topic
+  const topicStats = {};
+  state.flashcards.forEach(c => {
+    const key = c.topic || 'general';
+    if (!topicStats[key]) topicStats[key] = { topic: key, course: c.course, reviews: 0, againCount: 0, hardCount: 0, goodCount: 0, easyCount: 0, totalDifficulty: 0, lastReviewed: 0, cards: 0 };
+    const t = topicStats[key];
+    t.cards++;
+    t.reviews += (c.reviewCount || 0);
+    // difficulty 0=again, 1=hard, 2=good, 3=easy
+    const d = c.difficulty;
+    if (d === 0) t.againCount++;
+    else if (d === 1) t.hardCount++;
+    else if (d === 2) t.goodCount++;
+    else if (d === 3) t.easyCount++;
+    if (typeof d === 'number') t.totalDifficulty += d;
+    if (c.lastReviewed > t.lastReviewed) t.lastReviewed = c.lastReviewed;
+  });
+
+  // Score each topic: lower = weaker
+  const weak = [];
+  Object.values(topicStats).forEach(t => {
+    if (t.cards === 0) return;
+    const avgDiff = t.reviews > 0 ? t.totalDifficulty / Math.max(t.reviews, 1) : null;
+    // Weakness = high again rate OR no reviews yet AND low average difficulty
+    const againRate = t.reviews > 0 ? t.againCount / Math.max(t.reviews, 1) : 0;
+    const hardRate = t.reviews > 0 ? t.hardCount / Math.max(t.reviews, 1) : 0;
+    let weaknessScore = 0;
+    weaknessScore += againRate * 50;   // 0-50
+    weaknessScore += hardRate * 20;    // 0-20
+    if (t.reviews === 0) weaknessScore += 30; // never reviewed
+    if (avgDiff !== null && avgDiff < 1.5) weaknessScore += 15;
+    // Stale: weakness rises if not reviewed in 5+ days
+    if (t.lastReviewed && (Date.now() - t.lastReviewed) > 5 * 86400000) weaknessScore += 10;
+    if (weaknessScore >= 25) {
+      weak.push({
+        topic: t.topic,
+        course: t.course,
+        weaknessScore: Math.round(weaknessScore),
+        cards: t.cards,
+        reviews: t.reviews,
+        againCount: t.againCount,
+        hardCount: t.hardCount,
+        lastReviewed: t.lastReviewed,
+        recommendation: againRate > 0.3 ? 'Focused re-study' : t.reviews === 0 ? 'Initial review' : 'Strengthen'
+      });
+    }
+  });
+
+  // Also factor in session reflections with high confusion
+  state.learnerSignals.filter(s => s.type === 'session_reflection' && s.metadata?.confusion >= 3).forEach(s => {
+    const existing = weak.find(w => w.course === s.course_id);
+    if (!existing) {
+      weak.push({
+        topic: 'session-reported confusion',
+        course: s.course_id,
+        weaknessScore: 40,
+        cards: 0,
+        reviews: 0,
+        confusion: s.metadata.confusion,
+        recommendation: 'Tutor clarification'
+      });
+    }
+  });
+
+  return weak.sort((a,b) => b.weaknessScore - a.weaknessScore).slice(0, 10);
+}
+
+// ============================================================================
+// NEXT-BEST-ACTION ENGINE
+// ============================================================================
+
+function computeNextBestAction() {
+  const now = Date.now();
+  const state_ctx = buildStateContextForAI();
+  const inact = computeInactivity();
+  const weak = computeWeakPoints();
+  const deadline = getDeadlinePressure();
+
+  // Decision tree, ordered by priority
+  const s = getLatestState();
+  const timeAvail = s?.time_available_today_minutes || 60;
+
+  // 1. Deadline within 72h + no study for that course in 24h → immediate study
+  if (deadline.soonest && deadline.soonest.days <= 3) {
+    const courseLast = state.sessions.filter(x => x.course === deadline.soonest.course && x.endTime).sort((a,b) => b.endTime - a.endTime)[0];
+    const hoursSince = courseLast ? (now - courseLast.endTime) / 3600000 : 999;
+    if (hoursSince > 24) {
+      return {
+        primary_action: `Urgent: prep for ${deadline.soonest.title}`,
+        detail: `Due ${deadline.soonest.date} (${Math.ceil(deadline.soonest.days)} days). No study on ${deadline.soonest.course} in ${Math.floor(hoursSince)}h.`,
+        kind: 'urgent_study',
+        course: deadline.soonest.course,
+        minutes: Math.min(timeAvail, s?.summary?.max_focus_minutes || 45),
+        reason: 'deadline_pressure'
+      };
+    }
+  }
+
+  // 2. Critical inactivity
+  if (inact.severity === 'critical_gap') {
+    return {
+      primary_action: 'Start with a small reset',
+      detail: inact.subtext,
+      kind: 'reset_session',
+      minutes: 15,
+      reason: 'inactivity_critical'
+    };
+  }
+
+  // 3. State is low / fatigue high → gentle review
+  if (s && s.summary && (s.summary.fatigue_risk === 'high' || s.summary.readiness_score < 40)) {
+    return {
+      primary_action: 'Light flashcard review',
+      detail: 'Low readiness — retrieval practice works when focus is tough.',
+      kind: 'flashcards',
+      minutes: 15,
+      reason: 'low_readiness'
+    };
+  }
+
+  // 4. Weak points exist → remediation
+  if (weak.length > 0 && weak[0].weaknessScore >= 40) {
+    return {
+      primary_action: `Strengthen: ${weak[0].topic}`,
+      detail: `${weak[0].againCount || 0} "again" rating${weak[0].againCount === 1 ? '' : 's'} recently. ${weak[0].recommendation}.`,
+      kind: 'weak_point',
+      course: weak[0].course,
+      topic: weak[0].topic,
+      reason: 'weak_point_found'
+    };
+  }
+
+  // 5. Soft gap → warm up
+  if (inact.severity === 'soft_gap') {
+    return {
+      primary_action: '10-min warm-up',
+      detail: 'Short session to rebuild rhythm.',
+      kind: 'warmup',
+      minutes: 10,
+      reason: 'soft_gap'
+    };
+  }
+
+  // 6. High readiness + time → deeper work
+  if (s && s.summary && s.summary.challenge_tolerance === 'high' && timeAvail >= 45) {
+    return {
+      primary_action: 'Deep work session',
+      detail: `Readiness ${s.summary.readiness_score}. Pick a harder topic or synthesize across sources.`,
+      kind: 'deep_work',
+      minutes: Math.min(timeAvail, s.summary.max_focus_minutes),
+      reason: 'high_readiness'
+    };
+  }
+
+  // 7. Default: standard pomodoro
+  return {
+    primary_action: 'Standard Pomodoro',
+    detail: 'Steady as she goes. 25 minutes on one objective.',
+    kind: 'standard_session',
+    minutes: 25,
+    reason: 'default'
+  };
+}
+
+function renderNextBestActionCard() {
+  const box = document.getElementById('nextBestActionCard');
+  if (!box) return;
+  const nba = computeNextBestAction();
+  box.innerHTML = `
+    <div class="panel" style="border-left:3px solid var(--a); background:linear-gradient(90deg, var(--a-deep) -10%, var(--n-1) 40%);">
+      <div class="eyebrow" style="color:var(--a); margin-bottom:8px;">NEXT BEST ACTION</div>
+      <h3 style="font-family:var(--font-serif); font-size:20px; color:var(--n-12); font-weight:500; letter-spacing:-0.015em; margin-bottom:8px;">${escapeHtml(nba.primary_action)}</h3>
+      <div class="caption" style="margin-bottom:14px; line-height:1.6;">${escapeHtml(nba.detail)}</div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-primary btn-sm" onclick="executeNBA('${nba.kind}', ${JSON.stringify(nba).replace(/'/g, "&#39;").replace(/"/g, '&quot;')})">Start now</button>
+        <button class="btn btn-ghost btn-sm" onclick="switchView('tutor')">Ask tutor</button>
+      </div>
+    </div>`;
+}
+
+function executeNBA(kind, payload) {
+  switch (kind) {
+    case 'urgent_study':
+    case 'deep_work':
+    case 'standard_session':
+    case 'reset_session':
+    case 'warmup':
+      switchView('session');
+      setTimeout(() => {
+        const pm = document.getElementById('pomodoroMinutes');
+        if (pm && payload.minutes) pm.value = payload.minutes;
+        const sc = document.getElementById('sessionCourse');
+        if (sc && payload.course) sc.value = payload.course;
+      }, 200);
+      break;
+    case 'flashcards':
+      switchView('review');
+      break;
+    case 'weak_point':
+      switchView('tutor');
+      setTimeout(() => {
+        const ti = document.getElementById('tutorInput');
+        if (ti) {
+          ti.value = `I'm struggling with "${payload.topic}". Explain it clearly and quiz me on it.`;
+          sendTutorMessage();
+        }
+      }, 300);
+      break;
+  }
+}
+
+// ============================================================================
+// WEAK-POINTS PANEL on Analytics
+// ============================================================================
+
+function renderWeakPointsPanel() {
+  const box = document.getElementById('analyticsWeakPoints');
+  if (!box) return;
+  const weak = computeWeakPoints();
+  if (weak.length === 0) {
+    box.innerHTML = `<div class="caption" style="padding:20px 0; text-align:center;">No weak points detected yet. Rate flashcards after reviewing to populate.</div>`;
+    return;
+  }
+  box.innerHTML = weak.map(w => `
+    <div class="row">
+      <div class="row-content">
+        <div class="row-title">${escapeHtml(w.topic)}</div>
+        <div class="row-sub">${escapeHtml(w.course || 'general')} · ${w.cards} cards · ${w.reviews} reviews · ${w.againCount || 0} "again"${w.hardCount ? ', ' + w.hardCount + ' hard' : ''}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:56px; height:4px; background:var(--n-4); border-radius:2px; overflow:hidden;">
+          <div style="height:100%; width:${Math.min(100, w.weaknessScore)}%; background:${w.weaknessScore > 60 ? 'var(--danger)' : 'var(--warning)'}; border-radius:2px;"></div>
+        </div>
+        <span class="metadata">${w.weaknessScore}</span>
+        <button class="btn btn-ghost btn-sm" onclick="executeNBA('weak_point', ${JSON.stringify({topic: w.topic, course: w.course}).replace(/'/g, '&#39;').replace(/"/g, '&quot;')})">Study</button>
+      </div>
+    </div>`).join('');
+}
+
+// ============================================================================
+// SELF-TESTS — run from command palette, verify core logic
+// ============================================================================
+
+function runSelfTests() {
+  const results = [];
+  const assert = (name, cond, detail = '') => {
+    results.push({ name, pass: !!cond, detail });
+  };
+
+  // Test 1: readiness scoring bounds
+  const high = computeReadiness({ mood: 5, energy: 5, stress: 1, sleep_hours: 8, workload_pressure: 1 });
+  assert('Readiness: happy case', high.readiness_score >= 75 && high.readiness_score <= 100, `got ${high.readiness_score}`);
+
+  const low = computeReadiness({ mood: 1, energy: 1, stress: 5, sleep_hours: 3, workload_pressure: 5 });
+  assert('Readiness: exhausted case', low.readiness_score >= 0 && low.readiness_score < 40, `got ${low.readiness_score}`);
+
+  const mid = computeReadiness({ mood: 3, energy: 3, stress: 3, sleep_hours: 7, workload_pressure: 3 });
+  assert('Readiness: neutral case', mid.readiness_score >= 40 && mid.readiness_score <= 75, `got ${mid.readiness_score}`);
+
+  // Test 2: fatigue risk
+  assert('Fatigue: low sleep → high risk', computeReadiness({ mood: 3, energy: 3, stress: 3, sleep_hours: 4, workload_pressure: 3 }).fatigue_risk === 'high');
+  assert('Fatigue: good rest → low risk', high.fatigue_risk === 'low');
+
+  // Test 3: coaching tone
+  assert('Tone: low mood → supportive', computeReadiness({ mood: 1, energy: 3, stress: 2, sleep_hours: 7, workload_pressure: 3 }).coaching_tone === 'supportive');
+  assert('Tone: energized → push', computeReadiness({ mood: 5, energy: 5, stress: 1, sleep_hours: 8, workload_pressure: 2 }).coaching_tone === 'push');
+
+  // Test 4: state freshness
+  const savedStates = state.dailyStates;
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 2 * 3600000, local_date: todayKey(), summary: high }];
+  assert('Freshness: <6h is fresh', getStateFreshness().status === 'fresh');
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 8 * 3600000, local_date: todayKey(), summary: high }];
+  assert('Freshness: 6-10h is soft_stale', getStateFreshness().status === 'soft_stale');
+  state.dailyStates = [{ id: 1, created_at: Date.now() - 25 * 3600000, local_date: new Date(Date.now() - 25*3600000).toDateString(), summary: high }];
+  assert('Freshness: prior day is hard_stale', getStateFreshness().status === 'hard_stale');
+  state.dailyStates = savedStates;
+
+  // Test 5: break recommendation bounds
+  const savedBreakRecs = state.breakRecs;
+  state.breakRecs = [];
+  const rec1 = computeBreakRecommendation({ id: 1, elapsed: 25 * 60, completed: true });
+  assert('Break: all in allowed set', ALLOWED_BREAK_MINUTES.includes(rec1.recommended_minutes), `got ${rec1.recommended_minutes}`);
+  assert('Break: short session → short break', rec1.recommended_minutes <= 10);
+
+  const rec2 = computeBreakRecommendation({ id: 2, elapsed: 90 * 60, completed: true });
+  assert('Break: long session → longer break', rec2.recommended_minutes >= 10);
+  assert('Break: never exceeds 30', rec2.recommended_minutes <= 30);
+
+  const rec3 = computeBreakRecommendation({ id: 3, elapsed: 5 * 60, completed: false });
+  assert('Break: min is 5', rec3.recommended_minutes >= 5);
+  state.breakRecs = savedBreakRecs;
+
+  // Test 6: inactivity severity
+  const savedSessions = state.sessions;
+  state.sessions = [];
+  const inact1 = computeInactivity();
+  assert('Inactivity: no history returns soft_gap', inact1.severity === 'soft_gap' || inact1.severity === 'on_track');
+
+  state.sessions = [{ id: 1, endTime: Date.now() - 5 * 86400000, elapsed: 1800, course: 'Test' }];
+  const inact2 = computeInactivity();
+  assert('Inactivity: 5 days → critical_gap', inact2.severity === 'critical_gap');
+
+  state.sessions = [{ id: 1, endTime: Date.now() - 30 * 60000, elapsed: 1800, course: 'Test' }];
+  const inact3 = computeInactivity();
+  assert('Inactivity: 30 min ago → on_track', inact3.severity === 'on_track');
+  state.sessions = savedSessions;
+
+  // Test 7: weak-point detection
+  const savedCards = state.flashcards;
+  state.flashcards = [
+    { id: 1, topic: 'Bonds', course: 'Finance', reviewCount: 3, difficulty: 0, lastReviewed: Date.now() - 3600000 },
+    { id: 2, topic: 'Bonds', course: 'Finance', reviewCount: 2, difficulty: 0, lastReviewed: Date.now() - 3600000 },
+    { id: 3, topic: 'Derivatives', course: 'Finance', reviewCount: 5, difficulty: 3, lastReviewed: Date.now() - 3600000 }
+  ];
+  const weak = computeWeakPoints();
+  assert('Weak points: Bonds flagged', weak.some(w => w.topic === 'Bonds'));
+  assert('Weak points: Derivatives not flagged (high difficulty)', !weak.some(w => w.topic === 'Derivatives'));
+  state.flashcards = savedCards;
+
+  // Test 8: NBA returns a valid decision
+  const nba = computeNextBestAction();
+  assert('NBA: produces primary_action', !!nba.primary_action);
+  assert('NBA: produces kind', !!nba.kind);
+  assert('NBA: produces reason', !!nba.reason);
+
+  // Test 9: provider classification
+  assert('Error classify: 429 → rate_limit', classifyError(new Error('RATE_LIMIT')) === 'rate_limit');
+  assert('Error classify: 500 → server_error', classifyError(new Error('API_500:oops')) === 'server_error');
+  assert('Error classify: 401 → auth', classifyError(new Error('API_401:bad')) === 'auth');
+
+  // Render result modal
+  showTestResults(results);
+}
+
+function showTestResults(results) {
+  const pass = results.filter(r => r.pass).length;
+  const fail = results.filter(r => !r.pass).length;
+  const html = `
+    <div class="modal-scrim active" id="testResultsScrim" style="z-index:2500;" onclick="if(event.target===this)this.remove()">
+      <div class="modal" style="max-width:600px;">
+        <div class="modal-head">
+          <div>
+            <div class="modal-title">Self-tests</div>
+            <div class="caption" style="margin-top:4px; color:${fail > 0 ? 'var(--danger)' : 'var(--success)'}">${pass} passed · ${fail} failed</div>
+          </div>
+          <button class="btn btn-subtle btn-icon" onclick="document.getElementById('testResultsScrim').remove()">✕</button>
+        </div>
+        <div style="max-height:60vh; overflow-y:auto;">
+          ${results.map(r => `
+            <div style="display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid var(--b);">
+              <span style="color:${r.pass ? 'var(--success)' : 'var(--danger)'}; font-family:var(--font-mono); font-size:14px; flex-shrink:0;">${r.pass ? '✓' : '✗'}</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:12.5px; color:var(--n-11);">${escapeHtml(r.name)}</div>
+                ${r.detail ? `<div style="font-size:10.5px; color:var(--n-8); font-family:var(--font-mono); margin-top:2px;">${escapeHtml(r.detail)}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// ============================================================================
+// ARCHITECTURE DOC — honest description of what a full integration needs
+// ============================================================================
+
+function showIntegrationsArchitectureDoc() {
+  const html = `
+    <div class="modal-scrim active" id="archDocScrim" style="z-index:2500;" onclick="if(event.target===this)this.remove()">
+      <div class="modal" style="max-width:720px; max-height:85vh; overflow-y:auto;">
+        <div class="modal-head">
+          <div class="modal-title">Integrations architecture</div>
+          <button class="btn btn-subtle btn-icon" onclick="document.getElementById('archDocScrim').remove()">✕</button>
+        </div>
+        <div class="msg-body" style="font-family:var(--font-sans); font-size:13px; line-height:1.7;">
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin-bottom:14px;">What's implemented here</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li><strong>Anthropic adapter</strong> — calls Claude API using the Claude.ai-injected auth context.</li>
+            <li><strong>OpenAI adapter</strong> — calls OpenAI chat completions with a user-provided API key stored in this browser's artifact storage.</li>
+            <li><strong>Provider router</strong> — primary + fallback chain, in-provider retry on rate limit, typed error classification, health tracking.</li>
+            <li><strong>Provider settings UI</strong> — primary/fallback toggle, model names, OpenAI key entry, test buttons, health indicators.</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">What requires a backend (not implementable in a single artifact)</h2>
+          <p>Real LMS, Google Workspace, and institutional integrations need a server because they require:</p>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li>OAuth 2.0 redirect URIs and client secrets (cannot live in browser code)</li>
+            <li>Webhook endpoints for push notifications (Gmail watch, Drive changes, Calendar channels)</li>
+            <li>Token refresh and long-lived encrypted storage</li>
+            <li>Background jobs for periodic sync and cursor/channel renewal</li>
+            <li>Rate-limit handling across users</li>
+            <li>Institution-approved OAuth apps for Blackboard (requires IT admin registration)</li>
+            <li>LTI 1.3 handshake endpoints if deep-linking Einstein inside Blackboard</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">Recommended server architecture if you build one</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li><code>provider_accounts</code>: user_id, provider_type, encrypted_token, refresh_token, scopes, status, last_sync_at</li>
+            <li><code>provider_sync_cursors</code>: resource_type, cursor, watch_channel_id, watch_expiration, error_count</li>
+            <li><code>external_source_mappings</code>: external_id, internal_source_id, provider, course_id, last_modified_external, last_imported_at</li>
+            <li>OAuth routes: <code>/auth/google/start</code>, <code>/auth/google/callback</code>, <code>/auth/blackboard/start</code>, <code>/auth/blackboard/callback</code></li>
+            <li>Webhook routes: <code>/webhooks/gmail</code>, <code>/webhooks/drive</code>, <code>/webhooks/calendar</code></li>
+            <li>Sync services: <code>CalendarSyncService</code>, <code>GmailSyncService</code>, <code>DriveSyncService</code>, <code>BlackboardSyncService</code></li>
+            <li>Scheduled jobs: daily inactivity evaluation, cursor renewal (12h before expiration), stale artifact detection</li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">Google Workspace scopes (minimal)</h2>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li>Calendar: <code>calendar.events.readonly</code></li>
+            <li>Gmail: <code>gmail.readonly</code> (user selects labels explicitly — never ingest broad mailbox)</li>
+            <li>Drive: <code>drive.file</code> (user picks specific files/folders)</li>
+            <li>Docs: <code>documents.readonly</code></li>
+          </ul>
+          <h2 style="font-family:var(--font-serif); font-size:20px; font-weight:500; margin:22px 0 14px;">Blackboard</h2>
+          <p>Two viable paths:</p>
+          <ul style="margin:10px 0; padding-left:22px;">
+            <li><strong>REST integration</strong>: register a 3-legged OAuth application via your institution's Blackboard admin. Requires <code>BLACKBOARD_APP_KEY</code>, <code>BLACKBOARD_APP_SECRET</code>, and learner consent.</li>
+            <li><strong>LTI 1.3 Advantage</strong>: register Einstein as an LTI tool. Requires issuer, client ID, deployment ID, JWK signing keys, and institution onboarding.</li>
+          </ul>
+          <p style="margin-top:20px; padding:14px; background:var(--n-3); border-radius:8px; border-left:3px solid var(--a); font-size:12px;">
+            <strong style="color:var(--a);">Reality check:</strong> ESCP Blackboard integration specifically requires institutional IT approval. That's a multi-week process that cannot be automated from this artifact.
+          </p>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function openTool(url) { window.open(url, '_blank'); }
+function renderAll() {
+  try {
+    const brandMark = document.getElementById('brandMark');
+    if (brandMark) brandMark.innerHTML = einsteinAvatarHTML();
+  } catch(e) { console.error('brand', e); }
+  try { renderCourses(); } catch(e) { console.error('courses', e); }
+  try { renderCourseSelects(); } catch(e) { console.error('selects', e); }
+  try { renderMaterials(); } catch(e) { console.error('materials', e); }
+  try { renderDashboard(); } catch(e) { console.error('dashboard', e); }
+  try { renderWellness(); } catch(e) { console.error('wellness', e); }
+  try { renderTutorChat(); } catch(e) { console.error('tutor', e); }
+  try { renderEvidenceRail(); } catch(e) { console.error('evidence', e); }
+  try { renderNotesList(); } catch(e) { console.error('notes', e); }
+  try { renderArtifactList(); } catch(e) { console.error('artifacts', e); }
+  try { renderCounts(); } catch(e) { console.error('counts', e); }
+  try { updateModeUI(); } catch(e) { console.error('mode', e); }
+  try { renderMaterialSelectForStudio(); } catch(e) { console.error('studio sel', e); }
+}
+
+// ----- Init -----
+try {
+  // Inject brand mark
+  const brandMark = document.getElementById('brandMark');
+  if (brandMark) brandMark.innerHTML = einsteinAvatarHTML();
+
+  const ti = document.getElementById('tutorInput');
+  if (ti) {
+    ti.addEventListener('input', () => { ti.style.height = 'auto'; ti.style.height = Math.min(ti.scrollHeight, 180) + 'px'; });
+    ti.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTutorMessage(); } });
+  }
+  const ng = document.getElementById('newGoal');
+  if (ng) ng.addEventListener('keypress', e => { if (e.key === 'Enter') addGoal(); });
+  const nc = document.getElementById('newCourseName');
+  if (nc) nc.addEventListener('keypress', e => { if (e.key === 'Enter') addCourse(); });
+} catch(e) { console.error('listener', e); }
+
+try { renderAll(); } catch(e) { console.error(e); }
+loadState();

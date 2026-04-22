@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  ".venv",
+  "chatgpt-app/node_modules",
+  "dist",
+  "handoff",
+  "macos-app/.build",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"main.py" = ["F401", "F811", "I001"]
+"routes/*.py" = ["F401", "I001"]
+"services/*.py" = ["F401", "F541", "I001"]
+"script/benchmark_phase0.py" = ["I001"]
+"tests/test_einstein_tutor.py" = ["I001"]

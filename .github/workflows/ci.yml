@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+jobs:
+  python-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy
+        run: mypy --config-file mypy.ini
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Maintained blocking test suites
+        run: |
+          python -m unittest \
+            tests.test_ai_router \
+            tests.test_einstein_tutor \
+            tests.test_evals_runner \
+            tests.test_phase0_foundation \
+            tests.test_phase0_batch_b \
+            tests.test_tutor_grounded \
+            -v
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck frontend
+        run: pnpm typecheck
+      - name: Lint frontend
+        run: pnpm lint
+      - name: Test frontend
+        run: pnpm test
+      - name: Build frontend
+        run: pnpm build
+
+  legacy-learning-os-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Advisory legacy LearningOS tests
+        run: python -m unittest tests.test_learning_os -v
+
+  evals-smoke-schema:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run blocking smoke evals
+        run: python -m evals.run_evals --suite smoke --mode smoke
+      - name: Upload eval smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-smoke
+          path: evals/reports/*
+
+  evals-full:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    continue-on-error: true
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run advisory full evals
+        run: python -m evals.run_evals --suite smoke --mode full
+      - name: Upload eval full reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-full
+          path: evals/reports/*
+
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run advisory benchmark smoke
+        run: |
+          python -m benchmarks.phase0 \
+            --output data/benchmarks/ci-latest.json \
+            --compare data/benchmarks/baseline.json \
+            --tolerance 0.25 \
+            --fail-on-regression
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-phase0
+          path: data/benchmarks/ci-latest.json

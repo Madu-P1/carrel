@@ -1,0 +1,208 @@
+/*
+ * Shortcuts cheat-sheet overlay — full-screen backdrop + centered sheet.
+ * Raycast / Notion / Linear idiom: dark blur behind, surface-2 card with
+ * hairline, grouped two-column layout, mono kbd keys.
+ *
+ * Motion: simple fade-in + slight scale. Respects prefers-reduced-motion.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--surface-0) 70%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: shortcutsFadeIn var(--dur-small) var(--ease-out);
+}
+
+@keyframes shortcutsFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sheet {
+  width: min(720px, 100%);
+  max-height: min(720px, calc(100vh - var(--space-8)));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-5);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  animation: shortcutsScaleIn var(--dur-medium) var(--ease-spring);
+}
+
+@keyframes shortcutsScaleIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .sheet {
+    animation: none;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin: 4px 0 0 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: border-color var(--dur-micro) var(--ease-out),
+              color var(--dur-micro) var(--ease-out);
+}
+
+.closeButton:hover {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.closeButton:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+@media (max-width: 600px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.groupTitle {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px var(--space-3);
+  padding: 6px 0;
+}
+
+.label {
+  grid-column: 1;
+  grid-row: 1;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.note {
+  grid-column: 1;
+  grid-row: 2;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+.keys {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-1);
+  color: var(--text-mono);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.footer {
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.footer .kbd {
+  margin: 0 4px;
+}

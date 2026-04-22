@@ -1,0 +1,84 @@
+/*
+ * Hero Ask — serif voice, low chrome.
+ * Not a button-heavy CTA. The whole row reads as "a place to type a
+ * question," which is the Dashboard's most magnetic action.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-4);
+  background: var(--surface-2);
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+
+.wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.inputRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-serif);
+  line-height: 1.2;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+
+.input::placeholder {
+  font-family: var(--font-serif);
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wrap:focus-within .submit:not(:disabled),
+.submit:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

@@ -1,0 +1,65 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.tone-neutral {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.tone-success {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.tone-warning {
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
+}
+
+.tone-danger {
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  color: var(--color-danger);
+}
+
+.tone-info {
+  background: color-mix(in srgb, var(--color-info) 18%, transparent);
+  color: var(--color-info);
+}
+
+/*
+ * Light-theme tint boost. 18% opacity of a saturated colour over a pure-white
+ * card surface reads weaker than the same mix over a dark surface; we bump to
+ * 26% and push the text darker so badges register as real affordances, not
+ * ghosts. Applies to every tone that uses an accent-family fill.
+ */
+:global(html.theme-light) .tone-info {
+  background: color-mix(in srgb, var(--color-info) 26%, transparent);
+  color: oklch(from var(--color-info) 0.38 c h);
+}
+
+:global(html.theme-light) .tone-success {
+  background: color-mix(in srgb, var(--color-success) 26%, transparent);
+  color: oklch(from var(--color-success) 0.34 c h);
+}
+
+:global(html.theme-light) .tone-warning {
+  background: color-mix(in srgb, var(--color-warning) 26%, transparent);
+  color: oklch(from var(--color-warning) 0.40 c h);
+}
+
+:global(html.theme-light) .tone-danger {
+  background: color-mix(in srgb, var(--color-danger) 26%, transparent);
+  color: oklch(from var(--color-danger) 0.40 c h);
+}

@@ -1,0 +1,14 @@
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+}
+
+.hero {
+  padding: var(--space-4) 0;
+}
+
+.progress {
+  justify-content: space-between;
+  padding: 0 var(--space-2);
+}

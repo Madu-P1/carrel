@@ -1,0 +1,279 @@
+import { useCallback, useEffect, useState } from "preact/hooks";
+
+import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
+import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
+import { useQuery } from "@/lib/query";
+
+import { ManageCardsView } from "./ManageCardsView";
+import styles from "./StudyView.module.css";
+
+type Phase = "intro" | "front" | "back" | "done" | "error";
+type Mode = "review" | "manage";
+
+function useDueCardsQuery() {
+  // Stable fetcher reference so the useQuery underlying createQuery doesn't
+  // remount every render. Per-view identity; not shared across routes.
+  const fetcher = useCallback(() => study.due(), []);
+  return useQuery<{ cards: SrsDueCard[] }>(fetcher);
+}
+
+const RATINGS: Array<{ rating: SrsRating; label: string; tone: "danger" | "warning" | "success" | "info"; key: string }> = [
+  { rating: "again", label: "Again", tone: "danger", key: "1" },
+  { rating: "hard", label: "Hard", tone: "warning", key: "2" },
+  { rating: "good", label: "Good", tone: "success", key: "3" },
+  { rating: "easy", label: "Easy", tone: "info", key: "4" }
+];
+
+export function StudyView() {
+  const { data, error, loading, refetch } = useDueCardsQuery();
+  const [mode, setMode] = useState<Mode>("review");
+  const [phase, setPhase] = useState<Phase>("intro");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  // When the user switches to Manage and back, we re-fetch due so any cards
+  // they deleted disappear from the next review session.
+  const enterManage = () => setMode("manage");
+  const enterReview = () => {
+    setMode("review");
+    void refetch();
+  };
+
+  if (mode === "manage") {
+    return (
+      <div className={styles.wrap}>
+        <Stack gap={3}>
+          <Stack direction="horizontal" gap={2}>
+            <Button variant="ghost" onClick={enterReview} leadingIcon={<Icon name="chevron-left" />}>
+              Back to review
+            </Button>
+          </Stack>
+          <ManageCardsView />
+        </Stack>
+      </div>
+    );
+  }
+
+  const cards = data.value?.cards ?? [];
+  const currentCard: SrsDueCard | undefined = cards[currentIndex];
+
+  const startSession = async () => {
+    setCompletedCount(0);
+    setCurrentIndex(0);
+    setLastError(null);
+    await refetch();
+    const count = data.value?.cards.length ?? 0;
+    setPhase(count === 0 ? "done" : "front");
+  };
+
+  const revealAnswer = () => {
+    if (phase === "front") setPhase("back");
+  };
+
+  const rateCard = async (rating: SrsRating) => {
+    if (!currentCard || submitting) return;
+    setSubmitting(true);
+    setLastError(null);
+    try {
+      await study.review(currentCard.id, rating);
+      const nextIndex = currentIndex + 1;
+      setCompletedCount((c) => c + 1);
+      if (nextIndex >= cards.length) {
+        setPhase("done");
+      } else {
+        setCurrentIndex(nextIndex);
+        setPhase("front");
+      }
+    } catch (e) {
+      setLastError((e as Error).message);
+      setPhase("error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Keyboard shortcuts during a session.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (phase === "front" && (event.code === "Space" || event.code === "Enter")) {
+        event.preventDefault();
+        revealAnswer();
+        return;
+      }
+      if (phase === "back") {
+        const hit = RATINGS.find((r) => r.key === event.key);
+        if (hit) {
+          event.preventDefault();
+          void rateCard(hit.rating);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentIndex, cards.length]);
+
+  if (loading.value && !data.value) {
+    return (
+      <div className={styles.wrap}>
+        <Stack align="center" gap={3}>
+          <Spinner size={24} />
+          <Text tone="secondary">Loading your review queue…</Text>
+        </Stack>
+      </div>
+    );
+  }
+
+  if (error.value && phase !== "error") {
+    return (
+      <div className={styles.wrap}>
+        <Card padding="lg">
+          <Stack gap={3}>
+            <Badge tone="danger">Could not load review queue</Badge>
+            <Text tone="secondary">{error.value.message}</Text>
+            <Button onClick={() => void refetch()}>Try again</Button>
+          </Stack>
+        </Card>
+      </div>
+    );
+  }
+
+  const totalDue = cards.length;
+
+  if (phase === "intro") {
+    return (
+      <div className={styles.wrap}>
+        <Card padding="lg">
+          <Stack className={styles.hero} gap={6}>
+            <Stack gap={2}>
+              <Badge tone={totalDue === 0 ? "neutral" : "success"}>
+                {totalDue === 0 ? "Nothing due" : `${totalDue} card${totalDue === 1 ? "" : "s"} due`}
+              </Badge>
+              <Text as="h2" variant="display" weight="bold">
+                {totalDue === 0 ? "You’re caught up." : "Ready for review?"}
+              </Text>
+              <Text tone="secondary">
+                {totalDue === 0
+                  ? "No flashcards are due right now. Come back later or ingest more material in Library."
+                  : "Answer each card, rate your recall, and the scheduler will space the next review."}
+              </Text>
+            </Stack>
+            <Stack direction="horizontal" gap={3} wrap>
+              <Button
+                disabled={totalDue === 0}
+                leadingIcon={<Icon name="study" />}
+                onClick={() => void startSession()}
+              >
+                Start a session
+              </Button>
+              <Button leadingIcon={<Icon name="command" />} onClick={() => void refetch()} variant="secondary">
+                Refresh queue
+              </Button>
+              <Button leadingIcon={<Icon name="library" />} onClick={enterManage} variant="ghost">
+                Manage cards
+              </Button>
+            </Stack>
+          </Stack>
+        </Card>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div className={styles.wrap}>
+        <Card padding="lg">
+          <Stack gap={4}>
+            <Badge tone="success">Session complete</Badge>
+            <Text as="h2" variant="h1" weight="bold">
+              Reviewed {completedCount} card{completedCount === 1 ? "" : "s"}.
+            </Text>
+            <Text tone="secondary">
+              The scheduler has updated each card’s next review date based on your ratings.
+            </Text>
+            <Stack direction="horizontal" gap={3} wrap>
+              <Button onClick={() => setPhase("intro")} variant="secondary">
+                Back to review queue
+              </Button>
+              <Button onClick={() => void startSession()}>Start another session</Button>
+            </Stack>
+          </Stack>
+        </Card>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className={styles.wrap}>
+        <Card padding="lg">
+          <Stack gap={3}>
+            <Badge tone="danger">Review failed to record</Badge>
+            <Text tone="secondary">{lastError ?? "Unknown error"}</Text>
+            <Button onClick={() => setPhase(currentCard ? "back" : "intro")}>Try again</Button>
+          </Stack>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentCard) {
+    return null;
+  }
+
+  return (
+    <div className={styles.wrap}>
+      <Stack gap={4}>
+        <Stack direction="horizontal" className={styles.progress}>
+          <Text tone="tertiary" variant="caption">
+            {currentIndex + 1} / {cards.length}
+          </Text>
+          <Text tone="tertiary" variant="caption">
+            {completedCount} done today
+          </Text>
+        </Stack>
+        <Card padding="lg">
+          <Stack gap={5}>
+            <Stack gap={2}>
+              <Text tone="tertiary" variant="caption">
+                {currentCard.concept} · {currentCard.document_name}
+              </Text>
+              <Text as="p" variant="h1" weight="semibold">
+                {currentCard.front}
+              </Text>
+            </Stack>
+            {phase === "back" ? (
+              <Stack gap={3}>
+                <Text as="p" className="anim-fadeUp">
+                  {currentCard.back}
+                </Text>
+              </Stack>
+            ) : null}
+            <Stack direction="horizontal" gap={2} wrap>
+              {phase === "front" ? (
+                <Button onClick={revealAnswer} leadingIcon={<Icon name="sparkle" />}>
+                  Show answer (space)
+                </Button>
+              ) : (
+                RATINGS.map((r) => (
+                  <Button
+                    disabled={submitting}
+                    key={r.rating}
+                    onClick={() => void rateCard(r.rating)}
+                    variant={r.rating === "good" ? "primary" : "secondary"}
+                  >
+                    <Badge tone={r.tone}>{r.key}</Badge>
+                    &nbsp;{r.label}
+                  </Button>
+                ))
+              )}
+            </Stack>
+          </Stack>
+        </Card>
+      </Stack>
+    </div>
+  );
+}

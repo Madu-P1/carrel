@@ -1,0 +1,19 @@
+{
+  "url": "https://api.anthropic.com/v1/messages",
+  "method": "POST",
+  "headers": {
+    "x-api-key": "sk-ant-YOURAPIKEY",
+    "content-type": "application/json"
+  },
+  "body": {
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 3000,
+    "system": "You are an expert exam question writer. Create challenging but fair questions that test deep understanding. Return valid JSON only.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Generate 7 exam-style multiple choice questions based on these concepts:\n\n{{concepts_from_previous_step}}\n\nRequirements:\n- 3 Easy questions\n- 2 Medium questions\n- 2 Hard questions\n- Include 4 plausible options each\n- Make distractors reflect common misconceptions\n\nReturn ONLY a JSON array with keys question, options, correct_answer, explanation, difficulty, concept."
+      }
+    ]
+  }
+}

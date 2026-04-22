@@ -1,0 +1,297 @@
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/*
+ * Serif voice for the view header. Per the brief §3.3: serif is used for
+ * questions and big moments. "Ask Einstein from your actual source library"
+ * is the biggest moment on this view — the product's promise in one line.
+ */
+.viewHeading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+  font-feature-settings: "liga", "dlig";
+}
+
+/*
+ * Route the actual <input> inside the question row to serif. The Input
+ * primitive forwards our className to its wrapper; the real field is a
+ * descendant `<input>`, so we target it directly.
+ */
+.questionInputField :global(input) {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-serif);
+  line-height: 1.3;
+}
+
+.questionInputField :global(input)::placeholder {
+  font-family: var(--font-serif);
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+/*
+ * Summary card sits on top of an accent-tinted band. The wash needs two
+ * strengths: stronger on dark (where 12% reads as quiet depth against the
+ * navy bg), weaker on light (where 12% on white reads as mint frosting).
+ * Light theme falls through to 5% via the :global theme selector below.
+ */
+.summaryCard {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-elevated)),
+    var(--color-bg-elevated)
+  );
+}
+
+:global(html.theme-light) .summaryCard {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-elevated)),
+    var(--color-bg-elevated)
+  );
+  box-shadow: var(--shadow-card);
+}
+
+.claimList {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.claimCard {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-4);
+  background: var(--color-bg-muted);
+  padding: var(--space-4);
+}
+
+.citationRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/*
+ * Citation chip — mono voice, accent hover.
+ * Per the Einstein brief: numeric index inside square brackets, mono font,
+ * hairline at rest, accent border + index underline on hover. The chip is
+ * the single most-clicked affordance in the whole app; it must feel precise.
+ */
+.citationChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--text-mono);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.citationChip:hover {
+  border-color: var(--accent-muted);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.citationChip:hover .citationChipIndex {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.citationChip:active {
+  transform: translateY(0);
+}
+
+.citationChip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.citationChipIndex {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.citationChipMeta {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+}
+
+.unsupportedWrap {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-4);
+  overflow: hidden;
+}
+
+.unsupportedHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg-muted);
+  border-bottom: 1px solid transparent;
+}
+
+.unsupportedOpen {
+  border-bottom-color: var(--color-border-subtle);
+}
+
+.unsupportedBody {
+  padding: var(--space-4);
+}
+
+.unsupportedList {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.questionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.fallbackWrap {
+  border: 1px dashed var(--color-border-default);
+  border-radius: var(--radius-4);
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-bg-elevated));
+}
+
+.fallbackClaims {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+/*
+ * Answer meta bar — mono voice, right-aligned beneath the answer. Per the
+ * brief: no fill, no border, tertiary text. Provider + latency as quiet
+ * metadata, not a pill. The cold-load pulse lives on the same row when it
+ * applies (see .metaColdPulse below).
+ */
+.metaBar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+.metaToken {
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.metaModel {
+  color: var(--text-mono);
+}
+
+.metaSeparator {
+  opacity: 0.4;
+}
+
+.metaColdPulse {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent);
+}
+
+.metaColdPulse::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  animation: anim-einstein-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes anim-einstein-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metaColdPulse::before {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
+.errorCard {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, var(--color-border-default));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-bg-elevated));
+}
+
+.skeletonBlock {
+  border-radius: var(--radius-2);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-muted),
+    color-mix(in srgb, var(--color-bg-hover) 75%, transparent),
+    var(--color-bg-muted)
+  );
+  background-size: 200% 100%;
+  animation: anim-shimmer 1.4s linear infinite;
+}
+
+.skeletonBadge {
+  width: 120px;
+  height: 22px;
+}
+
+.skeletonTitle {
+  width: 72%;
+  height: 28px;
+}
+
+.skeletonBody {
+  width: 100%;
+  height: 64px;
+}
+
+.skeletonClaim {
+  width: 100%;
+  height: 40px;
+}
+
+.skeletonChip {
+  width: 180px;
+  height: 34px;
+  border-radius: var(--radius-full);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBlock {
+    animation: none;
+  }
+}

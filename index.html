@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Einstein Tutor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+  <div class="os-shell">
+
+    <!-- ═══════════════════════════════════════════════════════════ HEADER -->
+    <header class="os-header">
+      <div class="os-header-brand">
+        <span class="brand-name">Einstein Tutor</span>
+      </div>
+      <div class="os-header-scope">
+        <select id="headerDocSelect" class="scope-select" aria-label="Active source"></select>
+        <select id="headerConceptSelect" class="scope-select" aria-label="Active concept"></select>
+      </div>
+      <div class="os-header-stats">
+        <div class="header-stat"><strong id="headerDocs">0</strong><span>sources</span></div>
+        <div class="header-stat"><strong id="headerQuestions">0</strong><span>questions</span></div>
+        <div class="header-stat"><strong id="headerDue">0</strong><span>due</span></div>
+        <div class="header-stat"><strong id="headerRetention">0</strong><span>% retention</span></div>
+      </div>
+      <div class="os-header-actions">
+        <button id="uploadTriggerBtn" class="ghost-button" type="button">Upload</button>
+        <button id="commandPaletteToggle" class="ghost-button" type="button" title="⌘K">⌘K</button>
+        <button id="focusModeToggle" class="ghost-button" type="button">Focus</button>
+      </div>
+    </header>
+
+    <!-- ════════════════════════════════════════════════════════ 3-PANE OS -->
+    <div class="os-workspace">
+
+      <!-- ─────────────────────────────── LEFT RAIL: Sources / Goals / Notes -->
+      <aside class="source-rail" id="sourceRail">
+        <button class="rail-collapse-btn" id="sourceRailToggle" type="button" title="Collapse">‹</button>
+
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Sources</h3>
+            <span id="railSourceCount" class="rail-badge">0</span>
+          </div>
+          <div id="railSourceList" class="rail-list"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="rail-section-head"><h3>Goal</h3></div>
+          <textarea id="goalInput" class="rail-textarea" placeholder="What do you want to master?"></textarea>
+          <button id="saveGoalBtn" class="action-link" type="button">Save goal</button>
+        </section>
+
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Mastery</h3>
+            <span id="railMasterySummary" class="rail-badge"></span>
+          </div>
+          <div id="railMasteryList" class="rail-list"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Notes</h3>
+            <span id="railNotesCount" class="rail-badge">0</span>
+          </div>
+          <div id="railNotesList" class="rail-list"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Sessions</h3>
+            <button id="railNewSessionBtn" class="action-link" type="button">New</button>
+          </div>
+          <div id="railSessionsList" class="rail-list"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="rail-section-head"><h3>Artifacts</h3></div>
+          <div id="railArtifactsList" class="rail-list"></div>
+        </section>
+      </aside>
+
+      <!-- ─────────────────────────────────────────────── CENTER CANVAS -->
+      <main class="canvas" id="canvas">
+        <nav class="canvas-nav" aria-label="Learning surfaces">
+          <div class="surface-tabs">
+            <button class="surface-btn active" data-surface="tutor"     type="button">Tutor</button>
+            <button class="surface-btn"         data-surface="concept"   type="button">Concepts</button>
+            <button class="surface-btn"         data-surface="review"    type="button">
+              Review
+              <span id="dueCountBadge" class="nav-badge hidden">0</span>
+            </button>
+            <button class="surface-btn"         data-surface="session"   type="button">Session</button>
+            <button class="surface-btn"         data-surface="notes"     type="button">Notes</button>
+            <button class="surface-btn"         data-surface="compare"   type="button">Compare</button>
+            <button class="surface-btn"         data-surface="studio"    type="button">Studio</button>
+            <button class="surface-btn"         data-surface="synthesis" type="button">Synthesis</button>
+          </div>
+          <div class="canvas-nav-right">
+            <label class="confidence-inline" title="How sure you feel about this material right now. Lower values trigger more scaffolding; higher values unlock deeper challenges.">
+              Confidence
+              <input id="confidenceSlider" type="range" min="0" max="100" value="62" aria-label="Self-reported confidence" title="Drag to reflect how confident you feel — lower values = more scaffolding, higher values = harder challenges." />
+              <strong id="confidenceValue">62%</strong>
+            </label>
+            <button id="momentumActionBtn" class="primary-button compact-btn" type="button">Next Best Step</button>
+          </div>
+        </nav>
+
+        <div class="canvas-body">
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ TUTOR SURFACE -->
+          <div class="canvas-surface active" id="tutorSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Source-Grounded Instruction</p>
+                <h2>Tutor</h2>
+              </div>
+              <div class="button-row compact">
+                <button id="clearTutorBtn" class="ghost-button" type="button">Clear</button>
+              </div>
+            </div>
+
+            <div id="tutorFeed" class="tutor-feed"></div>
+
+            <div class="selected-text-bar hidden" id="selectedTextBar">
+              <div>
+                <span class="section-kicker">Selected text</span>
+                <p id="selectedTextLabel"></p>
+              </div>
+              <div class="button-row compact">
+                <button id="askSelectionBtn"      class="ghost-button" type="button">Ask</button>
+                <button id="noteSelectionBtn"     class="ghost-button" type="button">Note</button>
+                <button id="simplifySelectionBtn" class="ghost-button" type="button">Simplify</button>
+              </div>
+            </div>
+
+            <form id="tutorForm" class="tutor-form">
+              <textarea id="tutorInput" placeholder="Ask a grounded question about your sources…"></textarea>
+              <div class="tutor-form-row">
+                <span class="context-caption" id="tutorContextCaption">No source selected.</span>
+                <button type="submit" class="primary-button">Ask Tutor</button>
+              </div>
+            </form>
+
+            <div class="support-grid">
+              <article class="support-card">
+                <h3>Scaffolded Help</h3>
+                <ul id="scaffoldList" class="support-list"></ul>
+              </article>
+              <article class="support-card">
+                <h3>Misconception Watch</h3>
+                <ul id="misconceptionList" class="support-list"></ul>
+              </article>
+              <article class="support-card">
+                <h3>Check Understanding</h3>
+                <textarea id="selfCheckInput" class="compact-editor" placeholder="Answer in your own words, then let the tutor classify and repair it…"></textarea>
+                <div class="button-row compact">
+                  <button id="submitSelfCheckBtn" class="ghost-button" type="button">Evaluate</button>
+                </div>
+                <div id="tutorEvaluationPanel" class="generated-stack"></div>
+              </article>
+            </div>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ CONCEPT SURFACE -->
+          <div class="canvas-surface" id="conceptSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Knowledge Structure</p>
+                <h2>Concept Map</h2>
+              </div>
+              <label class="depth-inline">
+                Depth
+                <input id="depthSlider" type="range" min="1" max="5" value="2" />
+              </label>
+            </div>
+            <div class="graph-controls">
+              <select id="graphSubjectSelect" class="scope-select"></select>
+              <select id="graphDocumentSelect" class="scope-select"></select>
+            </div>
+            <svg id="conceptMap" viewBox="0 0 760 380" role="img" aria-label="Concept map"></svg>
+
+            <article class="concept-detail-card card" id="conceptDetailCard">
+              <div class="card-head">
+                <div>
+                  <h3 id="conceptTitle">Select a concept</h3>
+                  <p id="conceptExplanation" class="supporting-copy"></p>
+                </div>
+                <div class="button-row compact">
+                  <button id="teachConceptBtn"    class="ghost-button" type="button">Teach This</button>
+                  <button id="quizConceptBtn"     class="ghost-button" type="button">Quiz This</button>
+                  <button id="addConceptNoteBtn"  class="ghost-button" type="button">Add Note</button>
+                  <button id="compareConceptBtn"  class="ghost-button" type="button">Compare</button>
+                </div>
+              </div>
+              <p class="key-takeaway" id="conceptTakeaway"></p>
+              <div class="support-grid cols-3">
+                <article class="support-card">
+                  <h3>Mastery</h3>
+                  <div id="conceptMasteryDetail"></div>
+                </article>
+                <article class="support-card">
+                  <h3>Related</h3>
+                  <div id="conceptRelated" class="generated-stack"></div>
+                </article>
+                <article class="support-card">
+                  <h3>Evidence</h3>
+                  <div id="conceptEvidencePanel" class="generated-stack"></div>
+                </article>
+              </div>
+              <!-- Concept depth: claims, examples, misconceptions -->
+              <div id="conceptDepthPanel" class="concept-depth-panel hidden"></div>
+            </article>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ REVIEW SURFACE -->
+          <div class="canvas-surface" id="reviewSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Spaced Repetition</p>
+                <h2>Review</h2>
+              </div>
+              <div class="button-row compact">
+                <button id="rerunMissedBtn"  class="ghost-button" type="button">Rerun Missed</button>
+                <button id="shuffleReviewBtn" class="ghost-button" type="button">Shuffle</button>
+              </div>
+            </div>
+            <div class="review-progress-bar">
+              <span id="reviewProgressLabel" class="review-progress-label">0 / 0</span>
+              <div class="progress-track"><div class="progress-fill" id="reviewProgressFill"></div></div>
+            </div>
+            <div id="reviewQueue" class="review-queue"></div>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SESSION SURFACE -->
+          <div class="canvas-surface" id="sessionSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Focus Sprint</p>
+                <h2>Session Engine</h2>
+              </div>
+              <div class="button-row compact">
+                <button id="startSessionBtn"    class="primary-button" type="button">Start Session</button>
+                <button id="completeSessionBtn" class="ghost-button"   type="button">Complete</button>
+              </div>
+            </div>
+            <div class="session-form card" id="sessionConfigForm">
+              <label class="context-field">
+                <span>Objective</span>
+                <input id="sessionObjective" type="text" placeholder="What do you want to accomplish this session?" />
+              </label>
+              <div class="session-form-grid">
+                <label class="context-field">
+                  <span>Duration</span>
+                  <select id="sessionDuration">
+                    <option value="15">15 min</option>
+                    <option value="25" selected>25 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">60 min</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Mode</span>
+                  <select id="sessionMode">
+                    <option value="focus_sprint">Focus Sprint</option>
+                    <option value="review">Review</option>
+                    <option value="synthesis">Synthesis</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Difficulty</span>
+                  <select id="sessionDifficulty">
+                    <option value="easy">Easy</option>
+                    <option value="standard" selected>Standard</option>
+                    <option value="challenging">Challenging</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="support-grid">
+              <article class="support-card">
+                <h3>Active Session</h3>
+                <div id="activeSessionPanel" class="generated-stack"></div>
+              </article>
+              <article class="support-card">
+                <h3>Session Summary</h3>
+                <div id="sessionSummaryPanel" class="generated-stack"></div>
+              </article>
+            </div>
+            <article class="support-card">
+              <h3>Recent Sessions</h3>
+              <div id="recentSessionsList" class="rail-list"></div>
+            </article>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ NOTES SURFACE -->
+          <div class="canvas-surface" id="notesSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Compression Before Recall</p>
+                <h2>Notes Workbench</h2>
+              </div>
+              <div class="button-row compact">
+                <select id="noteTypeSelect" class="scope-select" aria-label="Note type">
+                  <option value="saved_insight">Saved Insight</option>
+                  <option value="confusion">Confusion</option>
+                  <option value="exam_trap">Exam Trap</option>
+                  <option value="unresolved_question">Unresolved Question</option>
+                  <option value="comparison">Comparison</option>
+                  <option value="memory_peg">Memory Peg</option>
+                  <option value="citation_backed_claim">Citation-Backed Claim</option>
+                </select>
+                <button id="saveNoteBtn"      class="primary-button" type="button">Save Note</button>
+                <button id="transformNoteBtn" class="ghost-button"   type="button">Make Cards + Quiz</button>
+                <button id="exportNotesBtn"   class="ghost-button"   type="button" title="Export all notes">Export Notes</button>
+              </div>
+            </div>
+            <div class="note-meta-grid">
+              <label class="context-field">
+                <span>Title</span>
+                <input id="noteTitleInput" type="text" placeholder="Note title…" />
+              </label>
+              <div class="source-snippet-card">
+                <span class="section-kicker">Source Anchor</span>
+                <p id="noteSourceSnippet">Select source text or use a citation chip to anchor this note.</p>
+              </div>
+            </div>
+            <textarea id="noteEditor" class="note-editor" placeholder="Core idea, mechanism, contrast, one lingering question…"></textarea>
+            <div class="support-grid">
+              <article class="support-card">
+                <h3>Flashcard Drafts</h3>
+                <div id="noteFlashcards" class="generated-stack"></div>
+              </article>
+              <article class="support-card">
+                <h3>Quiz Drafts</h3>
+                <div id="noteQuiz" class="generated-stack"></div>
+              </article>
+            </div>
+            <article class="support-card">
+              <div class="card-head">
+                <h3>All Notes</h3>
+                <div class="button-row compact">
+                  <select id="noteFilterType" class="scope-select" aria-label="Filter by type">
+                    <option value="">All types</option>
+                    <option value="saved_insight">Insights</option>
+                    <option value="confusion">Confusions</option>
+                    <option value="exam_trap">Exam Traps</option>
+                    <option value="unresolved_question">Questions</option>
+                    <option value="comparison">Comparisons</option>
+                    <option value="memory_peg">Memory Pegs</option>
+                    <option value="citation_backed_claim">Claims</option>
+                  </select>
+                  <span id="recentNotesCount" class="detail-meta">0 notes</span>
+                </div>
+              </div>
+              <div id="recentNotesList" class="recent-notes-list"></div>
+            </article>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ COMPARE SURFACE -->
+          <div class="canvas-surface" id="compareSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Contrast for Deeper Retention</p>
+                <h2>Compare Mode</h2>
+              </div>
+              <button id="runCompareBtn" class="primary-button" type="button">Compare</button>
+            </div>
+            <div class="compare-selectors">
+              <label class="context-field">
+                <span>Left Concept</span>
+                <select id="compareLeftSelect"></select>
+              </label>
+              <label class="context-field">
+                <span>Right Concept</span>
+                <select id="compareRightSelect"></select>
+              </label>
+            </div>
+            <div class="compare-grid" id="compareGrid">
+              <article class="support-card">
+                <h3>Shared Ground</h3>
+                <ul id="compareSimilarities" class="support-list"></ul>
+              </article>
+              <article class="support-card">
+                <h3>Important Differences</h3>
+                <ul id="compareDifferences" class="support-list"></ul>
+              </article>
+            </div>
+            <article class="support-card">
+              <h3>Study Prompt</h3>
+              <p id="comparePrompt">Choose two concepts to generate a contrast prompt.</p>
+              <div id="compareCitationList" class="citation-chip-list"></div>
+            </article>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ STUDIO SURFACE -->
+          <div class="canvas-surface" id="studioSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Artifact Generation</p>
+                <h2>Studio</h2>
+              </div>
+              <div class="button-row compact">
+                <button id="generateArtifactBtn" class="primary-button" type="button">Generate</button>
+                <button id="exportArtifactMdBtn" class="ghost-button" type="button" title="Export as Markdown">Export .md</button>
+                <button id="exportArtifactTxtBtn" class="ghost-button" type="button" title="Export as plain text">Export .txt</button>
+                <button id="exportArtifactJsonBtn" class="ghost-button" type="button" title="Export as JSON">Export .json</button>
+                <button id="copyArtifactBtn" class="ghost-button" type="button" title="Copy artifact content to clipboard">Copy</button>
+              </div>
+            </div>
+            <div class="studio-config card">
+              <div class="studio-config-grid">
+                <label class="context-field">
+                  <span>Type</span>
+                  <select id="artifactKindSelect">
+                    <option value="study_guide">Study Guide</option>
+                    <option value="briefing">Briefing</option>
+                    <option value="faq">FAQ</option>
+                    <option value="flashcards">Flashcard Set</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="outline">Outline</option>
+                    <option value="summary">Summary</option>
+                    <option value="report">Report</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Audience</span>
+                  <select id="artifactAudience">
+                    <option value="student">Student</option>
+                    <option value="expert">Expert</option>
+                    <option value="general">General</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Depth</span>
+                  <select id="artifactDepth">
+                    <option value="quick">Quick</option>
+                    <option value="standard" selected>Standard</option>
+                    <option value="rigorous">Rigorous</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Length</span>
+                  <select id="artifactLength">
+                    <option value="short">Short</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="long">Long</option>
+                  </select>
+                </label>
+              </div>
+              <label class="context-field">
+                <span>Custom prompt (optional)</span>
+                <textarea id="artifactCustomPrompt" class="compact-editor" placeholder="Additional instructions or focus areas…"></textarea>
+              </label>
+            </div>
+            <div id="studioOutput" class="studio-output"></div>
+            <article class="support-card">
+              <h3>Recent Artifacts</h3>
+              <div id="recentArtifactsList" class="rail-list"></div>
+            </article>
+          </div>
+
+          <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SYNTHESIS SURFACE -->
+          <div class="canvas-surface" id="synthesisSurface">
+            <div class="surface-head">
+              <div>
+                <p class="section-kicker">Notebook-Level Reasoning</p>
+                <h2>Cross-Source Synthesis</h2>
+              </div>
+              <div class="button-row compact">
+                <button id="detectContradictionsBtn" class="ghost-button"   type="button">Find Contradictions</button>
+                <button id="runSynthesisBtn"         class="primary-button" type="button">Synthesize</button>
+              </div>
+            </div>
+            <div class="card synthesis-config-card">
+              <label class="context-field">
+                <span>Mode</span>
+                <select id="synthesisType">
+                  <option value="compare">Full Compare</option>
+                  <option value="agreement">Agreement Summary</option>
+                  <option value="gaps">Gap Analysis</option>
+                  <option value="terminology">Terminology Alignment</option>
+                </select>
+              </label>
+            </div>
+            <div id="synthesisOutput" class="synthesis-output"></div>
+            <div class="support-grid cols-3">
+              <article class="support-card">
+                <h3>Contradictions</h3>
+                <div id="synthesisContradictions" class="generated-stack"></div>
+              </article>
+              <article class="support-card">
+                <h3>Shared Themes</h3>
+                <div id="synthesisAgreements" class="generated-stack"></div>
+              </article>
+              <article class="support-card">
+                <h3>Gaps</h3>
+                <div id="synthesisGaps" class="generated-stack"></div>
+              </article>
+            </div>
+          </div>
+
+        </div><!-- /canvas-body -->
+      </main>
+
+      <!-- ──────────────────────────── RIGHT RAIL: Evidence / Provenance -->
+      <aside class="evidence-rail" id="evidenceRail">
+        <button class="rail-collapse-btn rail-collapse-right" id="evidenceRailToggle" type="button" title="Collapse">›</button>
+
+        <!-- Momentum -->
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Momentum</h3>
+            <span id="momentumScoreBadge" class="momentum-badge">0</span>
+          </div>
+          <p class="momentum-headline" id="momentumHeadline">Upload a source to begin</p>
+          <p class="momentum-reason detail-meta" id="momentumReason"></p>
+          <div id="momentumSignals" class="signal-list"></div>
+          <div id="momentumActions" class="action-stack"></div>
+        </section>
+
+        <!-- Evidence -->
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Evidence</h3>
+            <span id="evidenceCountLabel" class="rail-badge">0</span>
+          </div>
+          <div id="evidenceList" class="evidence-list"></div>
+        </section>
+
+        <!-- Confidence -->
+        <section class="rail-section">
+          <div class="rail-section-head"><h3>Confidence</h3></div>
+          <div class="confidence-panel">
+            <div class="confidence-row">
+              <span class="detail-meta" id="modelConfidenceLabel">Model —</span>
+              <span class="detail-meta" id="learnerConfidenceLabel">You —</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Contradictions -->
+        <section class="rail-section" id="contradictionsRailSection">
+          <div class="rail-section-head"><h3>Contradictions</h3></div>
+          <div id="contradictionsList" class="generated-stack"></div>
+        </section>
+
+        <!-- Related Concepts -->
+        <section class="rail-section">
+          <div class="rail-section-head"><h3>Related Concepts</h3></div>
+          <div id="relatedConceptsList" class="related-list"></div>
+        </section>
+
+        <!-- Next Actions -->
+        <section class="rail-section">
+          <div class="rail-section-head"><h3>Next Actions</h3></div>
+          <div id="nextActionsList" class="action-stack"></div>
+        </section>
+
+        <!-- Activity Timeline -->
+        <section class="rail-section">
+          <div class="rail-section-head">
+            <h3>Activity</h3>
+            <button id="refreshWorkspaceBtn" class="action-link" type="button">Refresh</button>
+          </div>
+          <ul id="timelineList" class="timeline-list"></ul>
+        </section>
+
+      </aside>
+
+    </div><!-- /os-workspace -->
+  </div><!-- /os-shell -->
+
+  <!-- ═══════════════════════════════════════════════════ UPLOAD OVERLAY -->
+  <div class="modal-overlay hidden" id="uploadOverlay">
+    <div class="modal-dialog">
+      <div class="modal-head">
+        <h2>Upload Study Material</h2>
+        <button id="uploadCloseBtn" class="ghost-button" type="button">Close</button>
+      </div>
+      <label class="upload-zone" for="docInput">
+        <input id="docInput" type="file" accept=".pdf,.txt,.md,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.tsv,.html,.htm,.json,.jsonl,.epub,.rtf,.xml,.py,.js,.ts,.java,.c,.cpp,.rs,.go,.rb,.tex,.yaml,.yml,.toml,.ini,.log,.swift,.r,.cfg,.conf" />
+        <span>Drop a document here or click to browse</span>
+        <small>PDF, DOCX, PPTX, XLSX, CSV, EPUB, HTML, JSON, RTF, code files, and more</small>
+      </label>
+      <label class="context-field">
+        <span>Subject Group</span>
+        <input id="uploadSubjectInput" type="text" placeholder="Biology Unit 2, Organic Chemistry…" />
+      </label>
+      <p id="uploadStatus" class="upload-status">Ready to upload.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ COMMAND PALETTE -->
+  <div class="command-palette hidden" id="commandPalette" aria-hidden="true">
+    <button class="palette-backdrop" id="paletteBackdrop" type="button" aria-label="Close command palette"></button>
+    <div class="palette-dialog" role="dialog" aria-modal="true" aria-label="Command palette">
+      <input
+        id="commandInput"
+        class="palette-input"
+        type="text"
+        placeholder="Search actions, surfaces, study moves…"
+        autocomplete="off"
+      />
+      <div id="commandResults" class="command-results"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ TOAST CONTAINER -->
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ══════════════════════════════════════════════ STALE BANNER -->
+  <div id="staleBanner" class="stale-banner hidden" role="status">
+    <span class="stale-banner-icon" aria-hidden="true">⚠</span>
+    <span id="staleBannerText" class="stale-banner-text">Some artifacts may be out of date.</span>
+    <button id="staleBannerDismiss" class="stale-banner-dismiss" type="button" aria-label="Dismiss stale warning">×</button>
+  </div>
+
+  <script type="module" src="/static/js/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,118 @@
+.rail {
+  width: 248px;
+  min-width: 248px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-4);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+}
+
+.collapsed {
+  width: 56px;
+  min-width: 56px;
+  align-items: center;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-2);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.nodeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.nodeButton,
+.pageLink {
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+.nodeButton {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-2);
+  cursor: pointer;
+}
+
+.pageLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.pageLink:hover,
+.nodeButton:hover {
+  background: var(--color-bg-hover);
+}
+
+.nodeTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pageMeta {
+  flex-shrink: 0;
+}
+
+.children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-left: var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+@media (max-width: 1240px) {
+  .rail {
+    display: none;
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "url": "https://api.anthropic.com/v1/messages",
+  "method": "POST",
+  "headers": {
+    "x-api-key": "sk-ant-YOURAPIKEY",
+    "content-type": "application/json"
+  },
+  "body": {
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 2000,
+    "system": "You are an expert at breaking down study materials into key concepts. Extract and explain the most important ideas. You must return valid JSON only.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Break this study material into 5-10 key concepts. For each concept, provide name, brief explanation, and why it matters for exams. Return ONLY a JSON array with keys concept, explanation, exam_importance.\n\nSTUDY MATERIAL:\n{{file_content}}"
+      }
+    ]
+  }
+}

@@ -1,0 +1,167 @@
+/* Self-hosted Instrument Serif (display face). Lives in the bundle; no network
+ * at boot, no third-party CDN dependency. font-display:swap so the fallback
+ * serif renders instantly while the woff2 decodes.
+ *
+ * Unicode ranges match Bunny Fonts' split so browsers only fetch the range
+ * they actually need. Both files are committed under src/assets/fonts/
+ * and copied into assets.new/ at build time via build-macos.mjs.
+ */
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/instrument-serif-latin-400.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/instrument-serif-latin-ext-400.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-0: 0;
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 8px;
+  --radius-4: 12px;
+  --radius-5: 16px;
+  --radius-full: 9999px;
+
+  /*
+   * Three-voice type system. Each voice has a specific job. Mixing is a
+   * regression.
+   *   Serif — questions, big moments, section headers, concept names.
+   *   Sans  — answer prose, UI chrome, body copy.
+   *   Mono  — citations, provider badges, filenames, numeric metadata.
+   */
+  --font-sans:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "SF Pro Display",
+    "Inter",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  --font-serif:
+    "Instrument Serif",
+    "Charter",
+    "Iowan Old Style",
+    Georgia,
+    "Times New Roman",
+    serif;
+  /* Alias kept so legacy components that bind to --font-serif-display still work. */
+  --font-serif-display: var(--font-serif);
+  /* System mono is the first-class choice on macOS — SFMono is dense, readable,
+   * and a native voice on the host. JetBrains/Geist Mono can swap in via a
+   * future @font-face without touching callers. */
+  --font-mono:
+    ui-monospace,
+    "SF Mono",
+    SFMono-Regular,
+    "Menlo",
+    "JetBrains Mono",
+    "Geist Mono",
+    Consolas,
+    monospace;
+
+  /* Raw rem scale. Use these for new components. Fluid at display size. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-display: clamp(2.5rem, 5vw, 4rem);
+
+  /* Legacy aliases — value-for-value equivalents bound to sans. Existing
+   * components (Text, Badge, etc.) continue to work without a sweep. */
+  --text-caption: 11px / 14px var(--font-sans);
+  --text-body: 13px / 18px var(--font-sans);
+  --text-h3: 15px / 20px var(--font-sans);
+  --text-h2: 18px / 24px var(--font-sans);
+  --text-h1: 24px / 30px var(--font-sans);
+
+  /* Tracking — differs per voice. Serif goes tighter, mono flat. */
+  --tracking-serif: -0.01em;
+  --tracking-sans: -0.005em;
+  --tracking-mono: 0;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /*
+   * Motion — four duration buckets only. Any duration outside these buckets
+   * fails design review. See docs/einstein-ui-prompt.md §4.1.
+   */
+  --dur-micro: 120ms;      /* hover, press, focus */
+  --dur-small: 220ms;      /* state swap, fade, chip appear */
+  --dur-medium: 380ms;     /* layout change, route change, drawer */
+  --dur-narrative: 720ms;  /* signature moments (citation flight, answer arrival) */
+
+  /* Legacy aliases — kept so existing callers render at roughly the same
+   * perceived speed. New code MUST use the four buckets above. */
+  --dur-instant: 60ms;
+  --dur-fast: var(--dur-micro);
+  --dur-base: var(--dur-small);
+  --dur-slow: var(--dur-medium);
+  --dur-long: var(--dur-narrative);
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-swift: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --motion-fast: var(--dur-fast);
+  --motion-base: var(--dur-base);
+  --motion-slow: var(--dur-slow);
+  --ease-in-out: var(--ease-soft);
+
+  --z-base: 0;
+  --z-elevated: 10;
+  --z-overlay: 100;
+  --z-dialog: 1000;
+  --z-tooltip: 2000;
+
+  --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 60ms;
+    --dur-small: 60ms;
+    --dur-medium: 60ms;
+    --dur-narrative: 60ms;
+    --dur-base: 60ms;
+    --dur-slow: 60ms;
+    --dur-long: 60ms;
+    --ease-spring: var(--ease-out);
+  }
+}

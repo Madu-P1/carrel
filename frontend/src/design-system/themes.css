@@ -1,0 +1,167 @@
+/*
+ * Einstein visual system — tokens.
+ *
+ * Thesis: "study room at night." Calm, focused, quiet. Layered dark surfaces,
+ * off-white text, cool teal as the single signal colour — moonlight through
+ * a window, not desk-lamp warmth. Warn stays amber so alerts still read as
+ * alerts; every other attention signal is teal.
+ * Spec source: docs/einstein-ui-prompt.md (UI/UX Optimization Brief), accent
+ * palette overridden 2026-04-22 per user direction: teal > amber.
+ *
+ * Migration note: we keep the legacy `--color-*` names as aliases over the new
+ * OKLCH semantic names so existing components pick up the accent for free
+ * without a sweep. New components should prefer the semantic names
+ * (--accent, --surface-1, --text-primary, etc.).
+ */
+
+:root {
+  color-scheme: light dark;
+}
+
+html.theme-dark {
+  /* ----- Surfaces — layered dark, never flat. Four tiers. ----- */
+  --surface-0: oklch(0.14 0.012 265);   /* deepest, app background */
+  --surface-1: oklch(0.17 0.014 265);   /* panel */
+  --surface-2: oklch(0.20 0.016 265);   /* card */
+  --surface-3: oklch(0.24 0.018 265);   /* hover / elevated */
+
+  /* ----- Text — off-white, warm metadata. Never pure white. ----- */
+  --text-primary: oklch(0.96 0.005 90);   /* body copy */
+  --text-secondary: oklch(0.78 0.008 90); /* supporting copy */
+  --text-tertiary: oklch(0.58 0.010 90);  /* labels, hints */
+  --text-disabled: oklch(0.42 0.008 90);
+  --text-inverse: oklch(0.14 0.012 265);
+  --text-mono: oklch(0.70 0.015 70);      /* warm for code / metadata */
+
+  /* ----- Accent — cool teal, the only signal colour. ----- */
+  --accent: oklch(0.74 0.11 195);             /* ≈#4DBDBD — all CTAs, active */
+  --accent-hover: oklch(0.80 0.12 195);
+  --accent-muted: oklch(0.58 0.08 195);       /* dim teal for hairlines */
+  --accent-glow: oklch(0.74 0.11 195 / 0.35); /* focus halo */
+  --accent-glow-soft: oklch(0.74 0.11 195 / 0.14);
+
+  /* ----- State — used sparingly, never decoratively. Warn stays warm so
+   * alerts read as alerts against a cool accent. ----- */
+  --state-ok: oklch(0.72 0.13 150);
+  --state-warn: oklch(0.78 0.16 70);   /* amber — divergent from accent on purpose */
+  --state-err: oklch(0.65 0.18 25);
+
+  /* ----- Lines. Hairlines, not borders. ----- */
+  --hairline: oklch(1 0 0 / 0.06);
+  --hairline-strong: oklch(1 0 0 / 0.12);
+
+  /* ----- Legacy aliases. Existing components stay wired; palette shifts. ----- */
+  --color-bg-base: var(--surface-0);
+  --color-bg-elevated: var(--surface-1);
+  --color-bg-overlay: color-mix(in oklab, var(--surface-0) 92%, transparent);
+  --color-bg-hover: oklch(1 0 0 / 0.06);
+  --color-bg-active: oklch(1 0 0 / 0.10);
+  --color-bg-muted: oklch(1 0 0 / 0.03);
+
+  --color-border-subtle: var(--hairline);
+  --color-border-default: var(--hairline-strong);
+  --color-border-strong: oklch(1 0 0 / 0.18);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-success: var(--state-ok);
+  --color-warning: var(--state-warn);
+  --color-danger: var(--state-err);
+  --color-info: var(--accent-muted);
+
+  --shadow-soft: 0 18px 48px rgb(0 0 0 / 28%);
+  --shadow-card: 0 14px 34px rgb(0 0 0 / 24%);
+  --shadow-focus: 0 0 0 3px var(--accent-glow);
+}
+
+html.theme-light {
+  /*
+   * Light theme.
+   *
+   * Design move: in dark mode, elevation goes UP by getting brighter (more
+   * surface colour). In light mode, elevation goes UP by getting closer to
+   * pure white AND gaining a soft shadow. So the app background is a very
+   * subtle cool-neutral gray and cards rise to pure white with a real shadow.
+   *
+   * All surface hues share the cool family (220°) so they harmonise with the
+   * teal accent. An earlier pass used warm hue (90°) which produced a visible
+   * mint cast because warm surface + cool accent clash under color-mix.
+   */
+  --surface-0: oklch(0.965 0.003 220);  /* app background — faint cool gray */
+  --surface-1: oklch(0.98 0.002 220);   /* panels, topbar, rails */
+  --surface-2: oklch(1 0 0);            /* cards — pure white, they pop */
+  --surface-3: oklch(1 0 0);            /* elevated hover — same white + shadow */
+
+  --text-primary: oklch(0.20 0.010 265);
+  --text-secondary: oklch(0.42 0.010 265);
+  --text-tertiary: oklch(0.58 0.008 265);
+  --text-disabled: oklch(0.74 0.004 265);
+  --text-inverse: oklch(0.99 0.002 220);
+  --text-mono: oklch(0.38 0.014 220);    /* cool-neutral mono on light */
+
+  /*
+   * Light-theme accent needs more chroma to carry against white cards without
+   * going neon. 0.13 reads as confident teal; 0.11 looked gray-ish on white.
+   */
+  --accent: oklch(0.54 0.13 200);
+  --accent-hover: oklch(0.48 0.14 200);
+  --accent-muted: oklch(0.72 0.08 200);
+  --accent-glow: oklch(0.54 0.13 200 / 0.24);
+  --accent-glow-soft: oklch(0.54 0.13 200 / 0.10);
+
+  --state-ok: oklch(0.48 0.14 150);
+  --state-warn: oklch(0.60 0.15 60);    /* amber stays warm on light too */
+  --state-err: oklch(0.54 0.19 25);
+
+  --hairline: oklch(0 0 0 / 0.06);
+  --hairline-strong: oklch(0 0 0 / 0.11);
+
+  --color-bg-base: var(--surface-0);
+  --color-bg-elevated: var(--surface-2);   /* cards use surface-2 (pure white) */
+  --color-bg-overlay: color-mix(in oklab, var(--surface-2) 94%, transparent);
+  --color-bg-hover: oklch(0 0 0 / 0.035);
+  --color-bg-active: oklch(0 0 0 / 0.065);
+  --color-bg-muted: oklch(0 0 0 / 0.018);
+
+  --color-border-subtle: var(--hairline);
+  --color-border-default: var(--hairline-strong);
+  --color-border-strong: oklch(0 0 0 / 0.18);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-success: var(--state-ok);
+  --color-warning: var(--state-warn);
+  --color-danger: var(--state-err);
+  /*
+   * On light, --color-info uses the full accent rather than the muted variant.
+   * A muted-teal chip on white reads almost invisible under the badge's 18%
+   * tinted fill; the full accent has enough chroma to carry.
+   */
+  --color-info: var(--accent);
+
+  /*
+   * Real shadows on light. Two reasons: (1) elevation reads via shadow here,
+   * not via surface-colour stepping; (2) a subtle cool-tinted shadow echoes
+   * the accent family without introducing pigment. Tints used:
+   *   - card: cool-neutral, moderate reach
+   *   - soft: longer reach for elevated overlays (palette, dialog)
+   *   - focus: the accent glow itself, so focus rings feel intentional
+   */
+  --shadow-card: 0 1px 2px oklch(0.20 0.010 220 / 0.06),
+                 0 6px 16px oklch(0.20 0.010 220 / 0.08);
+  --shadow-soft: 0 2px 4px oklch(0.20 0.010 220 / 0.06),
+                 0 18px 48px oklch(0.20 0.010 220 / 0.12);
+  --shadow-focus: 0 0 0 3px var(--accent-glow);
+}

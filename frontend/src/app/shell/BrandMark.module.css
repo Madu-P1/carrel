@@ -1,0 +1,38 @@
+/*
+ * Brand mark in the topbar. Squircle-clipped so it reads as an app tile
+ * regardless of whether the source PNG has rounded corners baked in.
+ *
+ * The fallback is a plain text monogram for dev environments where the
+ * logo asset hasn't been dropped in yet. Styled to look intentional rather
+ * than broken — matte navy surface, accent-coloured monogram.
+ */
+
+.mark {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px; /* roughly 22.3% — Apple's squircle for 44px */
+  object-fit: cover;
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: oklch(0.18 0.02 265); /* brand navy — intentional, not accent */
+  flex-shrink: 0;
+}
+
+.fallbackMark {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: var(--tracking-serif);
+  line-height: 1;
+}

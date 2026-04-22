@@ -1,0 +1,101 @@
+.dropzone {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-4);
+  border: 1px dashed var(--color-border-default);
+  background: color-mix(in srgb, var(--color-bg-elevated) 90%, var(--color-accent) 10%);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.dragging {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-bg-elevated) 82%, var(--color-accent) 18%);
+  transform: scale(1.01);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/*
+ * Outcome summary — shown after a batch upload. Lives inside the dropzone so
+ * it's close to where the action happened (per the brief: no corner toasts).
+ * Dismissible; auto-clears next time the user drops new files.
+ */
+.outcome {
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 var(--radius-4) var(--radius-4);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.outcomeHeader {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.outcomeDismiss {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-2);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.outcomeDismiss:hover {
+  color: var(--text-primary);
+}
+
+.outcomeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.outcomeList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.outcomeItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-secondary);
+}
+
+.outcomeFile {
+  color: var(--text-primary);
+}
+
+.outcomeArrow {
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+
+.outcomeExisting {
+  color: var(--text-tertiary);
+}
+
+.outcomeError {
+  color: var(--state-err);
+}

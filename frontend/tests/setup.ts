@@ -1,0 +1,134 @@
+import { act, cleanup } from "@testing-library/preact";
+import { afterEach, beforeEach } from "vitest";
+
+import { appShell } from "../src/app/shell/useAppShell";
+import { resetDocumentsQuery } from "../src/features/library/hooks/useDocumentsQuery";
+import { resetReaderDetailQueries } from "../src/features/reader/hooks/useReaderDetail";
+import { resetReaderState } from "../src/features/reader/state";
+import { installFetchMock, resetFetchMock } from "./support/mockFetch";
+
+installFetchMock();
+
+let prefersDark = true;
+let prefersReducedMotion = false;
+
+function isKnownPreactUnmountNoise(reason: unknown): boolean {
+  return (
+    reason instanceof TypeError &&
+    reason.message.includes("Cannot read properties of null") &&
+    reason.message.includes("'__k'")
+  );
+}
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (isKnownPreactUnmountNoise(event.reason)) {
+    event.preventDefault();
+  }
+});
+
+window.matchMedia = (query: string) =>
+  ({
+    matches: query.includes("prefers-reduced-motion")
+      ? prefersReducedMotion
+      : query.includes("dark")
+        ? prefersDark
+        : false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() {
+      return false;
+    }
+  }) as MediaQueryList;
+
+export function setReducedMotionPreference(value: boolean): void {
+  prefersReducedMotion = value;
+}
+
+export function setDarkModePreference(value: boolean): void {
+  prefersDark = value;
+}
+
+Object.defineProperty(window, "scrollTo", {
+  configurable: true,
+  value: () => {}
+});
+
+Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+  configurable: true,
+  value: () => {}
+});
+
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  value: () => ({
+    clearRect() {},
+    drawImage() {},
+    fillRect() {},
+    save() {},
+    restore() {},
+    scale() {},
+    setTransform() {}
+  })
+});
+
+// jsdom does not implement the Web Animations API. Install a minimal shim
+// that satisfies our usage in lib/flip.ts and hooks that wrap it. Each
+// returned Animation exposes addEventListener, cancel, and finish — enough
+// for our onFinish plumbing.
+if (!Element.prototype.animate) {
+  Object.defineProperty(Element.prototype, "animate", {
+    configurable: true,
+    writable: true,
+    value(this: Element) {
+      const listeners: Record<string, EventListener[]> = {};
+      const animation = {
+        addEventListener(event: string, fn: EventListener) {
+          listeners[event] = [...(listeners[event] ?? []), fn];
+        },
+        removeEventListener(event: string, fn: EventListener) {
+          listeners[event] = (listeners[event] ?? []).filter((other) => other !== fn);
+        },
+        cancel() {
+          listeners.cancel?.forEach((fn) => fn(new Event("cancel")));
+        },
+        finish() {
+          listeners.finish?.forEach((fn) => fn(new Event("finish")));
+        }
+      };
+      return animation as unknown as Animation;
+    }
+  });
+}
+
+beforeEach(() => {
+  document.documentElement.className = "";
+  delete document.body.dataset.appBooted;
+  prefersDark = true;
+  prefersReducedMotion = false;
+  act(() => {
+    appShell.leftOpen.value = true;
+    appShell.rightOpen.value = false;
+    appShell.rightPanelContent.value = null;
+    appShell.theme.value = "system";
+    appShell.currentRoute.value = "/library";
+    resetDocumentsQuery();
+    resetReaderDetailQueries();
+    resetReaderState();
+  });
+  window.history.pushState({}, "", "/");
+  resetFetchMock();
+});
+
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
+  cleanup();
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
+});

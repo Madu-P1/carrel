@@ -1,0 +1,107 @@
+.panel {
+  height: 100%;
+  overflow: auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-4);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.metaRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pageGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pageLabel {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-base);
+  padding: var(--space-1) 0;
+  background: color-mix(in srgb, var(--color-bg-base) 90%, transparent);
+}
+
+.chunkButton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-3);
+  background: var(--color-bg-base);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chunkButton:hover {
+  background: var(--color-bg-hover);
+}
+
+.chunkButtonHighlighted {
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border-strong));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-base));
+}
+
+.chunkMeta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.chunkPreview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+}
+
+.conceptList,
+.notesList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.conceptItem,
+.noteItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.conceptItem:last-child,
+.noteItem:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}

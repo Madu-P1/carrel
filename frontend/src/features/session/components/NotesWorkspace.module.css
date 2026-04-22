@@ -1,0 +1,121 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-4);
+  background: var(--surface-2);
+}
+
+.eyebrow {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.eyebrowMeta {
+  text-transform: none;
+  letter-spacing: var(--tracking-mono);
+  opacity: 0.8;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-3);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  padding: var(--space-4);
+  resize: vertical;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.saveButton {
+  padding: 8px 16px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: oklch(0.14 0.012 265);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+.saveButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.expandButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 14px;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--hairline-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.expandButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.expandButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  margin-left: auto;
+}
+
+.statusOk {
+  color: var(--state-ok);
+}
+
+.statusErr {
+  color: var(--state-err);
+}

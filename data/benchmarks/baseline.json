@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-04-19T23:37:36Z",
+  "paths": {
+    "base_dir": "/Users/madu/Desktop/Codex",
+    "db_path": "/Users/madu/Desktop/Codex/data/einstein_tutor.db",
+    "output_path": "data/benchmarks/baseline.json"
+  },
+  "startup": {
+    "health_status": "ok",
+    "import_health_ms": 10.34,
+    "health_p50_ms": 22.37,
+    "health_p95_ms": 81.92
+  },
+  "ingestion": {
+    "uploaded_doc_id": "9a5ff8de-9e65-4e60-a80c-3d1e36ff1bcc",
+    "input_mb": 0.761,
+    "latency_ms": 5510.34,
+    "throughput_mb_per_s": 0.138
+  },
+  "retrieval": {
+    "samples": 25,
+    "p50_ms": 98.45,
+    "p95_ms": 189.85,
+    "mean_ms": 105.62
+  },
+  "ocr": {
+    "ocr_pages": 0,
+    "total_pages": 0,
+    "fallback_rate": 0.0
+  },
+  "notes": [
+    "Runs against an isolated temporary runtime to avoid mutating the user's real database.",
+    "UI cold/warm paint is not yet included; that will need a Playwright/WKWebView harness.",
+    "This benchmark uses the current retrieval implementation, so it is a performance floor before FTS/vector work."
+  ]
+}
