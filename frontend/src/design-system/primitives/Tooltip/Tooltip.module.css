@@ -21,3 +21,11 @@
   white-space: nowrap;
   animation: anim-fade-up var(--dur-fast) var(--ease-out) both;
 }
+
+/* Multiline variant: wider, wraps content, honors the reading rhythm of a
+ * long quote instead of truncating. Used by citation hover previews. */
+.multiline {
+  max-width: 320px;
+  white-space: normal;
+  line-height: 1.45;
+}

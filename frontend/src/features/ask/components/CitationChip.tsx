@@ -1,5 +1,6 @@
 import { useRef } from "preact/hooks";
 
+import { Tooltip } from "@/design-system";
 import { registerFlight } from "@/features/shared/flightRegistry";
 
 import type { CitationRecord } from "../types";
@@ -11,6 +12,17 @@ interface CitationChipProps {
   index?: number;
   delayMs?: number;
   onClick?: (citation: CitationRecord) => void;
+}
+
+// Pick the best short preview text for the tooltip. Snippet is already
+// designed for preview; content is the full chunk and gets truncated. Returns
+// "" when neither is present — the chip then renders without a tooltip wrap.
+function previewTextFor(citation: CitationRecord): string {
+  const snippet = (citation.snippet ?? "").trim();
+  if (snippet) return snippet.length > 220 ? `${snippet.slice(0, 220).trimEnd()}…` : snippet;
+  const content = (citation.content ?? "").trim();
+  if (content) return content.length > 220 ? `${content.slice(0, 220).trimEnd()}…` : content;
+  return "";
 }
 
 export function CitationChip({ citation, index, delayMs = 0, onClick }: CitationChipProps) {
@@ -39,7 +51,15 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
   // Screen-reader label per the brief §10: announce chunk source, not `[3]`.
   const srLabel = `citation ${index ?? ""}, ${label}. Click to open in reader.`.trim();
 
-  return (
+  const preview = previewTextFor(citation);
+  // Compose the tooltip as source-first, then the short quote: "Document.pdf
+  // · p.12: 'exact citation text'." Reads naturally when a screen reader
+  // announces it and keeps the source context attached to the quote.
+  const tooltipContent = preview
+    ? `${citation.document_name ?? "Source"}${citation.page_num ? ` · p.${citation.page_num}` : ""}: "${preview}"`
+    : "";
+
+  const chip = (
     <button
       className={[styles.citationChip, "anim-fadeUp"].join(" ")}
       data-chunk-id={citation.chunk_id}
@@ -58,5 +78,15 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
         {label}
       </span>
     </button>
+  );
+
+  if (!tooltipContent) {
+    return chip;
+  }
+
+  return (
+    <Tooltip content={tooltipContent} delay={260} multiline>
+      {chip}
+    </Tooltip>
   );
 }
