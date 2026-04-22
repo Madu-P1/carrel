@@ -228,3 +228,64 @@ test("native file.import menu command triggers the library input click", async (
   expect(clickSpy).toHaveBeenCalledTimes(1);
   vi.useRealTimers();
 });
+
+test("LibraryView search filters the document list and announces the match count", async () => {
+  mockJson("GET", "/api/documents", [
+    makeDocument("doc-1", "mitosis.pdf"),
+    makeDocument("doc-2", "atp.pdf", "Chemistry"),
+    makeDocument("doc-3", "photosynthesis.pdf")
+  ]);
+  mockJson("GET", "/api/library/subjects", makeSubjectSummaries(
+    { subject_name: "Biology", source_count: 2 },
+    { subject_name: "Chemistry", source_count: 1 }
+  ));
+  mockJson("GET", "/api/library/duplicates", EMPTY_DUPLICATES);
+
+  render(<LibraryView />);
+
+  // Wait for the search input to render (depends on documents fetch completing).
+  const input = await screen.findByLabelText(/Search library/i);
+  // Typing a filename substring produces a flat "Search results" section.
+  fireEvent.input(input, { target: { value: "mito" } });
+  expect(await screen.findByText("Search results")).toBeDefined();
+  expect(screen.getByText("mitosis.pdf")).toBeDefined();
+  // Non-matching docs are hidden while searching.
+  expect(screen.queryByText("atp.pdf")).toBeNull();
+  expect(screen.queryByText("photosynthesis.pdf")).toBeNull();
+  // Match count is announced for AT.
+  expect(screen.getByText(/1 match\b/)).toBeDefined();
+});
+
+test("LibraryView search shows a zero-result state for no matches", async () => {
+  mockJson("GET", "/api/documents", [makeDocument("doc-1", "mitosis.pdf")]);
+  mockJson("GET", "/api/library/subjects", makeSubjectSummaries(
+    { subject_name: "Biology", source_count: 1 }
+  ));
+  mockJson("GET", "/api/library/duplicates", EMPTY_DUPLICATES);
+
+  render(<LibraryView />);
+
+  const input = await screen.findByLabelText(/Search library/i);
+  fireEvent.input(input, { target: { value: "quantum" } });
+  expect(await screen.findByText(/No documents match/)).toBeDefined();
+  expect(screen.getByText(/0 matches/)).toBeDefined();
+});
+
+test("LibraryView search can also match by subject name", async () => {
+  mockJson("GET", "/api/documents", [
+    makeDocument("doc-1", "mitosis.pdf", "Biology"),
+    makeDocument("doc-2", "atp.pdf", "Chemistry")
+  ]);
+  mockJson("GET", "/api/library/subjects", makeSubjectSummaries(
+    { subject_name: "Biology", source_count: 1 },
+    { subject_name: "Chemistry", source_count: 1 }
+  ));
+  mockJson("GET", "/api/library/duplicates", EMPTY_DUPLICATES);
+
+  render(<LibraryView />);
+
+  const input = await screen.findByLabelText(/Search library/i);
+  fireEvent.input(input, { target: { value: "Chem" } });
+  expect(await screen.findByText("atp.pdf")).toBeDefined();
+  expect(screen.queryByText("mitosis.pdf")).toBeNull();
+});

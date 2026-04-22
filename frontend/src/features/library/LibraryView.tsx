@@ -1,9 +1,13 @@
-import { useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
+import { navigateTo } from "@/app/shell/useAppShell";
+import { Badge, Button, Card, Icon, Input, Stack, Text } from "@/design-system";
+import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 
 import { groupBySubject } from "./utils/group-by-subject";
 import { useDocumentsQuery } from "./hooks/useDocumentsQuery";
+import { useDeleteDocument } from "./hooks/useDeleteDocument";
+import { DocumentRow } from "./components/DocumentRow";
 import { DuplicateCleanupPanel } from "./components/DuplicateCleanupPanel";
 import { ImportDropzone } from "./components/ImportDropzone";
 import { LibraryEmptyState } from "./components/LibraryEmptyState";
@@ -11,6 +15,14 @@ import { LibraryErrorState } from "./components/LibraryErrorState";
 import { SubjectCardGrid } from "./components/SubjectCardGrid";
 import { SubjectSection } from "./components/SubjectSection";
 import styles from "./LibraryView.module.css";
+
+// Lowercase-substring match across filename + subject_name. Intentionally
+// dumb and allocation-light so a 2000-doc library stays snappy without a trie.
+function matchesDocument(doc: DocumentRowType, needle: string): boolean {
+  const title = (doc.filename ?? "").toLowerCase();
+  const subject = (doc.subject_name ?? "").toLowerCase();
+  return title.includes(needle) || subject.includes(needle);
+}
 
 function LibrarySkeleton() {
   return (
@@ -26,6 +38,7 @@ function LibrarySkeleton() {
  *
  * Structure:
  *   - Header: page title + import dropzone
+ *   - Search: always visible, filters to a flat result list when active
  *   - Duplicate cleanup banner (renders itself only when dupes exist)
  *   - Subject card grid — the at-a-glance dashboard of active study
  *     territories. This is the "home" the user lands on.
@@ -41,6 +54,10 @@ export function LibraryView() {
   const { data, loading, error, refetch } = useDocumentsQuery();
   const [openSubject, setOpenSubject] = useState<string | null>(null);
   const [mutationKey, setMutationKey] = useState(0);
+  const [query, setQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const { deleteDocument } = useDeleteDocument();
+
   const documents = data.value ?? [];
   const groups = groupBySubject(documents);
 
@@ -51,6 +68,48 @@ export function LibraryView() {
   };
 
   const openSubjectRows = openSubject ? groups[openSubject] ?? [] : [];
+
+  const trimmed = query.trim();
+  const isSearching = trimmed.length > 0;
+  const results = useMemo(() => {
+    if (!isSearching) return [];
+    const needle = trimmed.toLowerCase();
+    return documents.filter((doc) => matchesDocument(doc, needle));
+    // documents is a fresh ref on every render; gating on length + query + mutationKey
+    // keeps the memo stable for typical typing without walking the array each keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documents.length, trimmed, mutationKey]);
+
+  // `/` focuses the search input from anywhere, unless the user is already
+  // typing in an input/textarea/contenteditable. Matches Linear / GitHub.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "/") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (target.isContentEditable) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const handleResultDelete = (doc: DocumentRowType) => {
+    const name = doc.filename ?? "this source";
+    // Search-results delete uses a native confirm so we don't need to haul the
+    // full DeleteConfirmDialog state machine into this view. For nuanced
+    // undo / rename / reassign, users drill into the subject.
+    if (!window.confirm(`Delete "${name}"? This also removes its chunks and embeddings.`)) return;
+    deleteDocument(doc.id)
+      .then(refreshAll)
+      .catch((err) => {
+        console.error("Library search delete failed", err);
+      });
+  };
 
   return (
     <Stack className={styles.container} gap={6}>
@@ -67,28 +126,83 @@ export function LibraryView() {
         <ImportDropzone onUploaded={refreshAll} />
       </header>
 
+      {data.value && data.value.length > 0 ? (
+        <div className={styles.searchRow}>
+          <Input
+            aria-label="Search library by title or subject"
+            leadingIcon={<Icon name="search" />}
+            onInput={(e) => setQuery((e.currentTarget as HTMLInputElement).value)}
+            placeholder="Search your library. Press / anywhere to focus this."
+            ref={searchInputRef}
+            type="search"
+            value={query}
+          />
+          <div aria-live="polite" className={styles.searchCount}>
+            {isSearching ? (
+              <Text tone="tertiary" variant="caption">
+                {results.length} match{results.length === 1 ? "" : "es"}
+              </Text>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {loading.value && !data.value ? <LibrarySkeleton /> : null}
       {error.value ? <LibraryErrorState error={error.value} onRetry={() => void refetch()} /> : null}
       {data.value && data.value.length === 0 ? <LibraryEmptyState /> : null}
 
-      {data.value && data.value.length > 0 ? (
+      {data.value && data.value.length > 0 && !isSearching ? (
         <DuplicateCleanupPanel onCleanupComplete={refreshAll} />
+      ) : null}
+
+      {/* Search results: flat list of filtered documents. Keeps DocumentRow
+        identical to subject views so hover, click-to-flight, and delete
+        behavior stay consistent. Empty state speaks to the user directly. */}
+      {isSearching ? (
+        <Stack gap={3}>
+          <Text as="h3" variant="h3" weight="semibold">
+            Search results
+          </Text>
+          {results.length === 0 ? (
+            <Card padding="md">
+              <Stack gap={2}>
+                <Text tone="secondary">
+                  No documents match &ldquo;{trimmed}&rdquo;.
+                </Text>
+                <Text tone="tertiary" variant="caption">
+                  Try a shorter phrase, a subject name, or clear the search to browse all subjects.
+                </Text>
+              </Stack>
+            </Card>
+          ) : (
+            <div className={styles.resultsList}>
+              {results.map((doc) => (
+                <DocumentRow
+                  document={doc}
+                  key={doc.id}
+                  onDelete={() => handleResultDelete(doc)}
+                  onOpen={() => navigateTo(`/reader/${doc.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </Stack>
       ) : null}
 
       {/*
         Subject dashboard — the Library home. When the user clicks into a
         subject, we render that subject's file list below with a breadcrumb
         back. The grid itself stays visible so comparing subjects is one
-        click away.
+        click away. Suppressed during an active search to reduce noise.
       */}
-      {data.value && data.value.length > 0 ? (
+      {data.value && data.value.length > 0 && !isSearching ? (
         <SubjectCardGrid
           onSubjectOpen={(subject) => setOpenSubject(subject)}
           refreshKey={mutationKey}
         />
       ) : null}
 
-      {openSubject ? (
+      {openSubject && !isSearching ? (
         <Stack gap={3}>
           <Stack direction="horizontal" gap={2}>
             <Button
@@ -112,7 +226,7 @@ export function LibraryView() {
         </Stack>
       ) : null}
 
-      {data.value && data.value.length > 0 && !openSubject ? (
+      {data.value && data.value.length > 0 && !openSubject && !isSearching ? (
         <Card padding="md">
           <Text tone="tertiary">
             {data.value.length} documents indexed across{" "}
