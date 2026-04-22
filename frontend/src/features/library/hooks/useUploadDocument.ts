@@ -30,6 +30,10 @@ export type UploadOutcome =
       kind: "error";
       filename: string;
       message: string;
+      /** The original File so the dropzone can offer "Retry failed" without
+       *  asking the user to re-select. Optional only because tests and future
+       *  error paths may populate this outcome shape without a File handle. */
+      file?: File;
     };
 
 interface DuplicateDetail {
@@ -91,7 +95,7 @@ export function useUploadDocument() {
           }
           const message =
             caught instanceof Error ? caught.message : String(caught);
-          results.push({ kind: "error", filename: file.name, message });
+          results.push({ kind: "error", filename: file.name, message, file });
           // Keep the legacy .error signal populated with the first hard
           // failure so old UI branches still light up.
           if (!error.value) {
@@ -111,5 +115,21 @@ export function useUploadDocument() {
     error.value = null;
   };
 
-  return { uploadFiles, loading, error, outcomes, clearOutcomes };
+  /**
+   * Re-run just the files that failed in the most recent batch. Duplicates
+   * aren't retried — they aren't failures; the server already has that
+   * content and re-uploading would just hit the same 409. No File handle
+   * means the error outcome came from a code path that didn't track the
+   * original; we silently skip it.
+   */
+  const retryFailed = async (subjectName = "General"): Promise<UploadOutcome[] | null> => {
+    const retriable = outcomes.value
+      .filter((o): o is Extract<UploadOutcome, { kind: "error" }> => o.kind === "error")
+      .map((o) => o.file)
+      .filter((f): f is File => f instanceof File);
+    if (retriable.length === 0) return null;
+    return uploadFiles(retriable, subjectName);
+  };
+
+  return { uploadFiles, loading, error, outcomes, clearOutcomes, retryFailed };
 }

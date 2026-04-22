@@ -64,6 +64,67 @@
   gap: var(--space-1);
 }
 
+/* Group header row: the "N failed" label on the left, a "Retry N" action
+ * button on the right. Inline so the action is visible without scrolling. */
+.outcomeGroupHeader {
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.outcomeRetry {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-sans);
+  color: var(--color-accent);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    background var(--dur-micro) var(--ease-out);
+}
+
+.outcomeRetry:hover:not(:disabled) {
+  color: var(--color-accent-hover);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.outcomeRetry:disabled {
+  color: var(--color-text-disabled);
+  cursor: wait;
+}
+
+/* Duplicate disclosure: a quiet summary that expands on click. Uses native
+ * <details>/<summary> so keyboard + screen reader support is free. */
+.outcomeDupesSummary {
+  cursor: pointer;
+  list-style: none;
+  font: var(--text-caption);
+  color: var(--color-text-tertiary);
+  padding: 0;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+.outcomeDupesSummary:hover {
+  color: var(--color-text-secondary);
+}
+.outcomeDupesSummary::-webkit-details-marker {
+  display: none;
+}
+.outcomeDupesSummary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+details[open] > .outcomeDupesSummary::before {
+  transform: rotate(90deg);
+}
+
 .outcomeList {
   list-style: none;
   padding: 0;
