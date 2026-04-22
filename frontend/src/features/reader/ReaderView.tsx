@@ -1,4 +1,4 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
 import { appShell, clearRightPanelContent } from "@/app/shell/useAppShell";
 import { documents } from "@/services/api/endpoints";
@@ -12,6 +12,7 @@ import { useReaderDetail } from "./hooks/useReaderDetail";
 import { resetReaderState } from "./state";
 import { NonPdfReader } from "./components/NonPdfReader";
 import { OutlineRail } from "./components/OutlineRail";
+import { PdfSearchBar } from "./components/PdfSearchBar";
 import { PdfToolbar } from "./components/PdfToolbar";
 import { PdfViewer } from "./components/PdfViewer";
 import { ReaderErrorState } from "./components/ReaderErrorState";
@@ -33,6 +34,7 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const isPdf = document?.file_type?.toLowerCase() === "pdf";
   const fileUrl = isPdf ? documents.fileUrl(id) : null;
   const pdfState = usePdfDocument(fileUrl);
+  const [searchOpen, setSearchOpen] = useState(false);
   // SM-1: if the user arrived via Library card click, FLIP the header into
   // place from the card's source rect.
   const headerRef = useCardFlight<HTMLDivElement>(id);
@@ -56,6 +58,25 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
       clearRightPanelContent();
     };
   }, [detail, id]);
+
+  // ⌘/ opens the in-doc search. We use ⌘/ instead of ⌘F because ⌘F is owned
+  // by WKWebView / the macOS Edit menu; intercepting it cleanly would need
+  // Swift-side menu routing. `/` alone is already bound at the AppShell level
+  // to jump to Ask. Cmd+Slash is unused elsewhere and keeps the search
+  // affordance local to the Reader.
+  useEffect(() => {
+    if (!isPdf) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "/" || !(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPdf]);
 
   if (loading.value && !detail) {
     return <ReaderLoadingState />;
@@ -107,6 +128,11 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
         <OutlineRail outline={pdfState.outline.value} />
         <div className={styles.readerMain}>
           <PdfToolbar pageCount={pageCount} />
+          <PdfSearchBar
+            chunks={chunks}
+            onClose={() => setSearchOpen(false)}
+            open={searchOpen}
+          />
           <PdfViewer pdfState={pdfState} />
         </div>
       </div>

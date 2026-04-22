@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
 import { Badge, Button, Card, Icon, Input, Stack, Text } from "@/design-system";
@@ -80,23 +80,10 @@ export function LibraryView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documents.length, trimmed, mutationKey]);
 
-  // `/` focuses the search input from anywhere, unless the user is already
-  // typing in an input/textarea/contenteditable. Matches Linear / GitHub.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "/") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const tag = target.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (target.isContentEditable) return;
-      e.preventDefault();
-      searchInputRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  // Note: we don't bind `/` to focus this input because AppShell already
+  // owns `/` as "jump to Ask." The search bar is reached via mouse or by
+  // tabbing into it from the dropzone. If discoverability becomes a real
+  // concern, a Cmd+K palette entry is the next step, not a keybind fight.
 
   const handleResultDelete = (doc: DocumentRowType) => {
     const name = doc.filename ?? "this source";
@@ -132,7 +119,7 @@ export function LibraryView() {
             aria-label="Search library by title or subject"
             leadingIcon={<Icon name="search" />}
             onInput={(e) => setQuery((e.currentTarget as HTMLInputElement).value)}
-            placeholder="Search your library. Press / anywhere to focus this."
+            placeholder="Search your library by title or subject."
             ref={searchInputRef}
             type="search"
             value={query}
