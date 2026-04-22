@@ -41,21 +41,6 @@ export function StudyView() {
     void refetch();
   };
 
-  if (mode === "manage") {
-    return (
-      <div className={styles.wrap}>
-        <Stack gap={3}>
-          <Stack direction="horizontal" gap={2}>
-            <Button variant="ghost" onClick={enterReview} leadingIcon={<Icon name="chevron-left" />}>
-              Back to review
-            </Button>
-          </Stack>
-          <ManageCardsView />
-        </Stack>
-      </div>
-    );
-  }
-
   const cards = data.value?.cards ?? [];
   const currentCard: SrsDueCard | undefined = cards[currentIndex];
 
@@ -94,8 +79,12 @@ export function StudyView() {
     }
   };
 
-  // Keyboard shortcuts during a session.
+  // Keyboard shortcuts during a session. Gated on review mode because the
+  // component has an early return for manage mode further up — without this
+  // guard the effect would register a listener while Manage was on screen
+  // and try to dispatch reveal/rate on cards that aren't mounted.
   useEffect(() => {
+    if (mode !== "review") return;
     const handler = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (phase === "front" && (event.code === "Space" || event.code === "Enter")) {
@@ -114,7 +103,25 @@ export function StudyView() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentIndex, cards.length]);
+  }, [mode, phase, currentIndex, cards.length]);
+
+  // Render branch: Manage mode swaps the UI for card management. The early
+  // return lives below the hooks so the hook call order stays stable across
+  // mode changes (Rules of Hooks).
+  if (mode === "manage") {
+    return (
+      <div className={styles.wrap}>
+        <Stack gap={3}>
+          <Stack direction="horizontal" gap={2}>
+            <Button variant="ghost" onClick={enterReview} leadingIcon={<Icon name="chevron-left" />}>
+              Back to review
+            </Button>
+          </Stack>
+          <ManageCardsView />
+        </Stack>
+      </div>
+    );
+  }
 
   if (loading.value && !data.value) {
     return (

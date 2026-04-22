@@ -96,6 +96,26 @@ def _extract_tool_payload(content: Any, tool_name: str) -> Any | None:
     return None
 
 
+def _classify_claude_exception(exc: BaseException) -> tuple[str, str]:
+    """Map an Anthropic SDK (or generic) exception to a stable (code, message).
+
+    Stability matters: tutor/services code stores the code in the grounded-answer
+    response body and the frontend can branch on it. Using HTTP status codes for
+    API failures keeps the surface consistent with the Ollama provider
+    (`http_429`, `http_500`, ...) and insulates callers from SDK class renames.
+    User-facing message is the SDK message verbatim; it is already short and
+    does not include the API key.
+    """
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return f"http_{status}", str(exc)
+    name = exc.__class__.__name__
+    # Normalize a few common SDK names to stable codes.
+    if name in {"APITimeoutError", "APIConnectionError"}:
+        return "timeout" if name == "APITimeoutError" else "connection_error", str(exc)
+    return name, str(exc)
+
+
 class ClaudeRouter:
     def __init__(self) -> None:
         self._logger = get_logger("ai.claude")
@@ -108,7 +128,14 @@ class ClaudeRouter:
         api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
         if not api_key or anthropic is None:
             return None
-        return anthropic.Anthropic(api_key=api_key)
+        # Bounded timeout so a wedged API call can't hang a tutor turn for the
+        # SDK default (10 min). max_retries lets the SDK handle 429 + 5xx with
+        # exponential backoff that honors the Retry-After header.
+        return anthropic.Anthropic(
+            api_key=api_key,
+            timeout=60.0,
+            max_retries=3,
+        )
 
     def ai_enabled(self) -> bool:
         return self._client() is not None
@@ -181,6 +208,7 @@ class ClaudeRouter:
                 service_tier=self.default_service_tier,
             )
         except Exception as exc:  # pragma: no cover - network / provider failures
+            error_code, error_message = _classify_claude_exception(exc)
             result = ClaudeCallResult(
                 ok=False,
                 task=task,
@@ -188,8 +216,8 @@ class ClaudeRouter:
                 request_kind=request_kind,
                 text=None,
                 json_payload=None,
-                error_code=exc.__class__.__name__,
-                error_message=str(exc),
+                error_code=error_code,
+                error_message=error_message,
                 latency_ms=round((time.perf_counter() - start) * 1000, 2),
                 input_tokens=None,
                 output_tokens=None,
@@ -342,6 +370,7 @@ class ClaudeRouter:
                 service_tier=self.default_service_tier,
             )
         except Exception as exc:  # pragma: no cover - network / provider failures
+            error_code, error_message = _classify_claude_exception(exc)
             result = ClaudeCallResult(
                 ok=False,
                 task=task,
@@ -349,8 +378,8 @@ class ClaudeRouter:
                 request_kind=request_kind,
                 text=None,
                 json_payload=None,
-                error_code=exc.__class__.__name__,
-                error_message=str(exc),
+                error_code=error_code,
+                error_message=error_message,
                 latency_ms=round((time.perf_counter() - start) * 1000, 2),
                 input_tokens=None,
                 output_tokens=None,

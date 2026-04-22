@@ -78,6 +78,16 @@ html.theme-dark {
   --shadow-soft: 0 18px 48px rgb(0 0 0 / 28%);
   --shadow-card: 0 14px 34px rgb(0 0 0 / 24%);
   --shadow-focus: 0 0 0 3px var(--accent-glow);
+
+  /*
+   * Reader page surface. PDF content is rendered white-on-page by pdf.js, so
+   * we can't recolor the content itself. But on dark theme, a pure-white page
+   * against the deep-cool app background hits like a flashlight. A warm-white
+   * (think Readwise / Matter reader mode) keeps the document legible while
+   * dropping overall luminance and introducing a paper feel.
+   */
+  --reader-page-bg: oklch(0.96 0.012 85);
+  --reader-page-overlay: oklch(0.96 0.012 85 / 0.7);
 }
 
 html.theme-light {
@@ -164,4 +174,8 @@ html.theme-light {
   --shadow-soft: 0 2px 4px oklch(0.20 0.010 220 / 0.06),
                  0 18px 48px oklch(0.20 0.010 220 / 0.12);
   --shadow-focus: 0 0 0 3px var(--accent-glow);
+
+  /* Light theme: PDF pages are pure white, matching document convention. */
+  --reader-page-bg: #ffffff;
+  --reader-page-overlay: oklch(1 0 0 / 0.7);
 }
