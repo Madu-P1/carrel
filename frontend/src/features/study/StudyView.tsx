@@ -231,17 +231,42 @@ export function StudyView() {
     return null;
   }
 
+  // Progress bar fills by completedCount across the batch. We use
+  // completedCount (not currentIndex) so a rate-then-advance animates the
+  // bar in the same beat as the card swap. Total-card count (not due count)
+  // means the bar reaches 100% exactly when the "session complete" screen
+  // takes over.
+  const total = cards.length;
+  const progressFraction = total === 0 ? 0 : completedCount / total;
+  // Key the reveal body on phase+index so Preact remounts the animation
+  // element on every card transition — keeps the reveal choreography
+  // firing at the right time, even after a fast sequence.
+  const revealKey = `reveal-${currentIndex}-${phase}`;
+
   return (
     <div className={styles.wrap}>
       <Stack gap={4}>
         <Stack direction="horizontal" className={styles.progress}>
           <Text tone="tertiary" variant="caption">
-            {currentIndex + 1} / {cards.length}
+            Card {currentIndex + 1} of {total}
           </Text>
           <Text tone="tertiary" variant="caption">
-            {completedCount} done today
+            {completedCount} reviewed
           </Text>
         </Stack>
+        <div
+          aria-label={`Session progress, ${completedCount} of ${total} cards reviewed`}
+          aria-valuemax={total}
+          aria-valuemin={0}
+          aria-valuenow={completedCount}
+          className={styles.progressBar}
+          role="progressbar"
+        >
+          <div
+            className={styles.progressBarFill}
+            style={{ transform: `scaleX(${progressFraction})` }}
+          />
+        </div>
         <Card padding="lg">
           <Stack gap={5}>
             <Stack gap={2}>
@@ -253,8 +278,9 @@ export function StudyView() {
               </Text>
             </Stack>
             {phase === "back" ? (
-              <Stack gap={3}>
-                <Text as="p" className="anim-fadeUp">
+              <Stack gap={3} key={revealKey}>
+                <div aria-hidden className={styles.revealDivider} />
+                <Text as="p" className={styles.revealBody}>
                   {currentCard.back}
                 </Text>
               </Stack>

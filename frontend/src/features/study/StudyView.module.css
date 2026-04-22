@@ -12,3 +12,76 @@
   justify-content: space-between;
   padding: 0 var(--space-2);
 }
+
+/* Progress bar: thin accent-tinted rail under the counter text. Fills
+ * left-to-right as the user rates cards. Gives the session a visible
+ * horizon instead of relying on small-caps "N of M" text alone. */
+.progressBar {
+  position: relative;
+  height: 3px;
+  margin: 0 var(--space-2);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
+  /* width is set via inline style; transform-origin locks the growth
+   * direction so the bar never flashes to the right-hand anchor on state
+   * change. */
+}
+
+/*
+ * Card-reveal choreography.
+ * The question card is a single Card that grows to include the answer when
+ * the user presses space. We stagger three signals at reveal time so the
+ * transition reads as "the answer has arrived," not "text appeared":
+ *   1. .revealDivider — a 1px accent hairline slides in from left to right
+ *   2. .revealBody — the answer fades + translates up
+ *   3. the card itself gets a subtle border accent for 600ms (not shown —
+ *      implemented via a pulseOnce on the card wrapper in a later pass)
+ *
+ * All motion respects prefers-reduced-motion via the duration tokens;
+ * reduced-motion collapses all durations to 60ms.
+ */
+.revealDivider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-accent) 55%, transparent),
+    transparent
+  );
+  transform-origin: left center;
+  animation: studyRevealDivider var(--dur-base) var(--ease-out) both;
+}
+
+.revealBody {
+  animation: studyRevealBody var(--dur-medium) var(--ease-out) both;
+  animation-delay: 80ms;
+}
+
+@keyframes studyRevealDivider {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes studyRevealBody {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBarFill,
+  .revealDivider,
+  .revealBody {
+    transition: none;
+    animation: none;
+  }
+}
