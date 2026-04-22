@@ -1,3 +1,5 @@
+import { navigateTo } from "@/app/shell/useAppShell";
+import { sessions } from "@/services/api/endpoints";
 import type { MenuCommand } from "@/services/native/menu";
 
 declare global {
@@ -77,13 +79,11 @@ export function buildActions(context: PaletteContext = {}): PaletteAction[] {
       group: "Context",
       keywords: ["stop", "finish", "complete", "done"],
       run: async () => {
-        // Dynamic import so non-session routes don't pull this payload.
-        const { sessions } = await import("@/services/api/endpoints");
+        // endpoints + useAppShell already ship in the main chunk via other
+        // feature modules, so dynamic import here was dead optimization.
         try {
           await sessions.complete(context.activeSessionId!);
-          // Visit /session so the user sees the completion summary.
           window.location.hash = "";
-          const { navigateTo } = await import("@/app/shell/useAppShell");
           navigateTo("/session");
         } catch (err) {
           console.error("end-session from palette failed", err);

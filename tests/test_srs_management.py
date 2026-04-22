@@ -19,7 +19,6 @@ from routes.study import bulk_delete_cards, delete_card, list_cards, list_subjec
 from services import study as study_service
 from services.ingestion import ingest_document_record
 
-
 _SAMPLE_FINANCE = (
     "Capital markets are venues where buyers and sellers trade financial "
     "instruments. The primary market issues new securities; the secondary "

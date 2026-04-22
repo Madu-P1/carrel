@@ -1,6 +1,7 @@
 import { Badge, Stack, Text } from "@/design-system";
 
 import type { ClaimRecord } from "../types";
+import { friendlyErrorFor } from "../errorMessages";
 import styles from "../AskView.module.css";
 
 interface FallbackAnswerProps {
@@ -9,6 +10,7 @@ interface FallbackAnswerProps {
 }
 
 export function FallbackAnswer({ claims, error }: FallbackAnswerProps) {
+  const friendly = friendlyErrorFor(error);
   return (
     <section className={styles.fallbackWrap}>
       <Stack gap={3}>
@@ -17,10 +19,16 @@ export function FallbackAnswer({ claims, error }: FallbackAnswerProps) {
           <Text as="h2" variant="h2" weight="bold">
             AI synthesis unavailable
           </Text>
+          {friendly ? <Text tone="secondary">{friendly.title}</Text> : null}
           <Text tone="secondary">
-            The shell is showing raw retrieved passages instead of pretending synthesis succeeded.
+            Showing raw retrieved passages so you can still work from the source.
           </Text>
-          {error ? <Text tone="tertiary">Error: {error}</Text> : null}
+          {friendly?.action ? <Text tone="secondary">{friendly.action}</Text> : null}
+          {friendly ? (
+            <Text tone="tertiary" variant="caption">
+              code: {friendly.code}
+            </Text>
+          ) : null}
         </Stack>
         <ol className={styles.fallbackClaims}>
           {claims.map((claim) => (

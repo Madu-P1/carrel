@@ -22,7 +22,6 @@ from fastapi.testclient import TestClient
 
 import main
 
-
 _TEXT_BYTES = (
     b"Capital markets are venues where buyers and sellers trade financial "
     b"instruments such as stocks and bonds. The primary market handles new "
