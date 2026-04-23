@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { appShell, navigateTo } from "@/app/shell/useAppShell";
 import { Badge, Button, Card, Divider, Stack, Text } from "@/design-system";
+import {
+  documents as documentsApi,
+  study as studyApi,
+  type DocumentRow,
+  type SrsSubjectSummary
+} from "@/services/api/endpoints";
 
 import { AnswerMetaBar } from "./components/AnswerMetaBar";
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
@@ -9,6 +15,7 @@ import { AnswerSummary } from "./components/AnswerSummary";
 import { ClaimList } from "./components/ClaimList";
 import { FallbackAnswer } from "./components/FallbackAnswer";
 import { QuestionInput } from "./components/QuestionInput";
+import { ScopePill, type AskScopeValue } from "./components/ScopePill";
 import { UnsupportedSpans } from "./components/UnsupportedSpans";
 import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
@@ -95,8 +102,52 @@ export function AskView() {
   const { answer, error, pending, responseSerial, retry, submit } = useAskTutor();
   const prefilledRef = useRef<string | null>(null);
 
+  // Scope state. Default = Library (no filter). Persisted in the Thread
+  // payload when the question is submitted; every answer surface downstream
+  // can thus show which scope produced it.
+  const [scope, setScope] = useState<AskScopeValue>({ kind: "library", readiness: "ready" });
+  const [docs, setDocs] = useState<DocumentRow[]>([]);
+  const [subjects, setSubjects] = useState<SrsSubjectSummary[]>([]);
+
+  // Load documents + subjects on mount (and let refetch be cheap). We don't
+  // poll — the picker opens rarely enough that stale-by-one-page is fine.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [ds, ss] = await Promise.all([
+          documentsApi.list(),
+          studyApi.subjects(),
+        ]);
+        if (cancelled) return;
+        setDocs(ds);
+        setSubjects(ss.subjects);
+      } catch {
+        // Non-fatal — the pill falls back to Library-only if the lists fail.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Pulls the scope state into the request payload. Keep the mapping in one
+  // place so future scope kinds (Selection, Collection) slot in cleanly.
+  const scopeToPayload = useCallback(
+    (current: AskScopeValue) => {
+      if (current.kind === "document" && current.docId) {
+        return { doc_id: current.docId };
+      }
+      if (current.kind === "subject" && current.subjectName) {
+        return { subject_name: current.subjectName };
+      }
+      return {};
+    },
+    []
+  );
+
   const handleSubmit = async () => {
-    await submit(question);
+    await submit(question, scopeToPayload(scope));
   };
 
   // Consume ?q=…&auto=1 on mount. Guarded by prefilledRef so navigating
@@ -155,15 +206,28 @@ export function AskView() {
 
         <Card padding="lg">
           <Stack gap={5}>
-            <QuestionInput
-              disabled={pending.value}
-              error={null}
-              onSubmit={() => {
-                void handleSubmit();
-              }}
-              onValueChange={setQuestion}
-              value={question}
-            />
+            <Stack gap={2}>
+              <div className={styles.scopeRow}>
+                <ScopePill
+                  documents={docs}
+                  onChange={setScope}
+                  subjects={subjects}
+                  value={scope}
+                />
+                <Text tone="tertiary" variant="caption">
+                  Einstein only retrieves from this scope. Every answer shows where it was grounded.
+                </Text>
+              </div>
+              <QuestionInput
+                disabled={pending.value}
+                error={null}
+                onSubmit={() => {
+                  void handleSubmit();
+                }}
+                onValueChange={setQuestion}
+                value={question}
+              />
+            </Stack>
             <Divider />
 
             {pending.value ? (

@@ -4,6 +4,18 @@
 }
 
 /*
+ * Scope row sits above the question input. Pill on the left, quiet caption
+ * on the right explains what the pill controls. The row wraps when the
+ * copy gets cut off on narrow panes; the pill stays on its own line first.
+ */
+.scopeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/*
  * Serif voice for the view header. Per the brief §3.3: serif is used for
  * questions and big moments. "Ask Einstein from your actual source library"
  * is the biggest moment on this view — the product's promise in one line.

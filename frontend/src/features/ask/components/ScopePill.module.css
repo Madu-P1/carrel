@@ -1,0 +1,243 @@
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+/*
+ * The pill itself — a compact button styled like a chip, sitting above
+ * the Ask prompt. Accent-tinted when not default (subject or doc) so the
+ * user knows the corpus is narrowed.
+ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: var(--text-caption);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.pill:hover {
+  border-color: var(--color-border-default);
+  background: var(--color-bg-hover);
+  transform: translateY(-1px);
+}
+
+.pill:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill:hover { transform: none; }
+}
+
+.pillLabel {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Popover anchored below the pill. z-index above normal content; below
+ * dialog so a Dialog open on top still wins.
+ */
+.popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: var(--z-overlay);
+  min-width: 280px;
+  max-width: min(420px, calc(100vw - var(--space-8)));
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-3);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-soft);
+  animation: scope-pop var(--dur-fast) var(--ease-out) both;
+  overflow: hidden;
+}
+
+@keyframes scope-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover { animation: none; }
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.option:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.optionActive {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.optionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--color-text-secondary);
+}
+
+.optionBody {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.optionTitle {
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.optionDescription {
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionTrailing {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* Secondary picker (document / subject list). */
+.picker {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.search {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-2);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font: var(--text-body);
+}
+.search:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.pickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+}
+
+.pickerRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.pickerRow:hover {
+  background: var(--color-bg-hover);
+}
+
+.pickerTitle {
+  font: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerMeta {
+  font: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.pickerEmpty {
+  padding: var(--space-3);
+  color: var(--color-text-tertiary);
+  font: var(--text-caption);
+  text-align: center;
+}
+
+.backRow {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: var(--text-caption);
+  text-align: left;
+  cursor: pointer;
+  border-top: 1px solid var(--color-border-subtle);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.backRow:hover {
+  color: var(--color-text-primary);
+}
