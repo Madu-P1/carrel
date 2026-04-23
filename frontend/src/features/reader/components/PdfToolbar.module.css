@@ -1,0 +1,242 @@
+/*
+ * PDF toolbar — three-zone layout, 44px tall.
+ *
+ * Grid: left-zone (auto) / center-zone (auto, centered) / right-zone (auto).
+ * The CENTER zone is centered inside the bar via justify-self on a
+ * parent grid so the page controls hit the optical middle even when the
+ * left zone is long (filename) or the right zone is short.
+ *
+ * Background pulls from --color-bg-elevated so the bar reads as
+ * architecture above the app ground. 1px bottom hairline defines the
+ * boundary to the canvas; no visible top or side borders needed.
+ */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-elevated);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  height: 44px;
+  padding: 0 var(--space-4);
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
+}
+
+/* --- Zone wrappers ---------------------------------------------------- */
+.zoneLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.zoneCenter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: center;
+}
+
+.zoneRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: end;
+}
+
+/* --- Left zone: file chip + title ------------------------------------ */
+.fileChip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-1);
+  background: var(--color-bg-base);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* --- Center zone: page controls -------------------------------------- */
+.pageField {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--control-height-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-button);
+  background: var(--color-bg-base);
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+
+.pageField:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.pageInput {
+  width: 36px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: var(--text-body-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  /* Strip the default spinner arrows; chrome is not quiet. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.pageInput::-webkit-inner-spin-button,
+.pageInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pageSep {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.pageTotal {
+  color: var(--color-text-secondary);
+  font: var(--text-label-md);
+  font-variant-numeric: tabular-nums;
+  padding-right: 2px;
+}
+
+/* --- Icon-only buttons (prev/next/zoom/fit) --------------------------- */
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.iconBtn:hover:not(:disabled) {
+  background: var(--state-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.iconBtn:active:not(:disabled) {
+  background: var(--state-bg-pressed);
+}
+
+.iconBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.iconBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.iconBtnActive,
+.iconBtnActive:hover {
+  background: var(--state-bg-selected);
+  border-color: var(--state-border-selected);
+  color: var(--color-text-primary);
+}
+
+/* Glyph-only marks for fit/zoom — no icons in the registry for W / P /
+ * +/-; mono font gives the controls stable widths without bundling
+ * new svg paths. */
+.fitGlyph {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+.zoomGlyph {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+/* Zoom-percent button — shows "100%", clickable to reset to 1×. */
+.zoomBtn {
+  height: var(--control-height-sm);
+  min-width: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-button);
+  background: var(--color-bg-base);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+.zoomBtn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+.zoomBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Divider between page controls + zoom controls. 16px tall hairline. */
+.divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-2);
+  background: var(--color-border-subtle);
+  flex-shrink: 0;
+}
+
+/* Narrow-viewport handling: collapse center zone, wrap the bar to two
+ * rows so no control overflows. */
+@media (max-width: 900px) {
+  .toolbar {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    height: auto;
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+  .zoneCenter {
+    grid-column: 1 / -1;
+    justify-self: start;
+    overflow-x: auto;
+  }
+}

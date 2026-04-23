@@ -35,9 +35,14 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const fileUrl = isPdf ? documents.fileUrl(id) : null;
   const pdfState = usePdfDocument(fileUrl);
   const [searchOpen, setSearchOpen] = useState(false);
-  // SM-1: if the user arrived via Library card click, FLIP the header into
-  // place from the card's source rect.
-  const headerRef = useCardFlight<HTMLDivElement>(id);
+
+  // SM-1: if the user arrived via Library card click, FLIP this element
+  // from the card's source rect. The ref now lives on the toolbar (PDF
+  // path) or on a compact header (non-PDF path). We build a usePdf=true
+  // ref and a usePdf=false ref and attach whichever path renders.
+  const toolbarFlightRef = useCardFlight<HTMLDivElement>(id);
+  const headerFlightRef = useCardFlight<HTMLDivElement>(id);
+
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
   // animate it to the target chunk.
   useCitationFlight(id, chunkId);
@@ -59,11 +64,11 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
     };
   }, [detail, id]);
 
-  // ⌘/ opens the in-doc search. We use ⌘/ instead of ⌘F because ⌘F is owned
-  // by WKWebView / the macOS Edit menu; intercepting it cleanly would need
-  // Swift-side menu routing. `/` alone is already bound at the AppShell level
-  // to jump to Ask. Cmd+Slash is unused elsewhere and keeps the search
-  // affordance local to the Reader.
+  // ⌘/ opens the in-doc search. ⌘F is owned by WKWebView / the macOS Edit
+  // menu; intercepting it cleanly would need Swift-side routing. `/`
+  // alone is already bound at the AppShell level to jump to Ask. Cmd+/
+  // is unused elsewhere and keeps the search affordance local to the
+  // Reader.
   useEffect(() => {
     if (!isPdf) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -79,7 +84,7 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   }, [isPdf]);
 
   if (loading.value && !detail) {
-    return <ReaderLoadingState />;
+    return <ReaderLoadingState filename={document?.filename} />;
   }
 
   if (error.value) {
@@ -91,52 +96,56 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   }
 
   const pageCount = document.page_count ?? detail.counts?.chunks ?? 0;
+  const filename = document.filename ?? "Untitled";
+  const fileType = document.file_type ?? "FILE";
 
+  // ---- Non-PDF branch: plain-text view with a page-heading block -----
+  //
+  // Non-PDF sources keep the old hero header because there's no toolbar
+  // to absorb the title. SM-1 card flight lands on this header.
   if (!isPdf) {
     return (
-      <Stack className={styles.reader} gap={4}>
-        <div className={styles.readerHeader} ref={headerRef}>
+      <div className={styles.reader}>
+        <header className={styles.nonPdfHeader} ref={headerFlightRef}>
           <Stack gap={2}>
             <Badge tone="info">Reader</Badge>
             <Text as="h2" variant="h1" weight="bold">
-              {document.filename}
+              {filename}
             </Text>
             <Text tone="secondary">
-              {chunks.length} chunks • plain-text source rendering
+              {chunks.length} chunk{chunks.length === 1 ? "" : "s"} · plain-text rendering
             </Text>
           </Stack>
-        </div>
+        </header>
         <NonPdfReader chunks={chunks} />
-      </Stack>
+      </div>
     );
   }
 
+  // ---- PDF branch: three-column shell with the toolbar owning the title.
   return (
-    <Stack className={styles.reader} gap={4}>
-      <div className={styles.readerHeader}>
-        <Stack gap={2}>
-          <Badge tone="info">Reader</Badge>
-          <Text as="h2" variant="h1" weight="bold">
-            {document.filename}
-          </Text>
-          <Text tone="secondary">
-            {pageCount} pages • {detail.summary}
-          </Text>
-        </Stack>
-      </div>
+    <div className={styles.reader}>
       <div className={styles.readerRoot}>
         <OutlineRail outline={pdfState.outline.value} />
         <div className={styles.readerMain}>
-          <PdfToolbar pageCount={pageCount} />
+          <PdfToolbar
+            filename={filename}
+            fileType={fileType}
+            flightRef={toolbarFlightRef}
+            onOpenSearch={() => setSearchOpen(true)}
+            pageCount={pageCount}
+          />
           <PdfSearchBar
             chunks={chunks}
             onClose={() => setSearchOpen(false)}
             open={searchOpen}
           />
-          <PdfViewer pdfState={pdfState} />
+          <div className={styles.canvasWrap}>
+            <PdfViewer pdfState={pdfState} />
+          </div>
         </div>
       </div>
-    </Stack>
+    </div>
   );
 }
 
@@ -145,5 +154,12 @@ export function ReaderView({ chunkId = null, id }: ReaderViewProps) {
     return <ReaderPlaceholder reason="no-doc-selected" />;
   }
 
-  return <ReaderDocumentView chunkId={chunkId} id={id} />;
+  // key ensures the whole subtree remounts on doc change so hooks
+  // restart cleanly (was silently working before because internal
+  // state reset fired on id change).
+  return <ReaderDocumentView chunkId={chunkId} id={id} key={id} />;
 }
+
+// Legacy named export retained so useCardFlight import paths stay stable
+// if anything else imports the component by position.
+export const ReaderDocumentViewForTests = ReaderDocumentView;

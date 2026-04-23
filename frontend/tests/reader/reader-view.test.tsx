@@ -75,7 +75,9 @@ test("ReaderView shows a non-PDF placeholder for text sources", async () => {
   });
 
   render(<ReaderView id="text-doc" />);
-  expect(await screen.findByText(/plain-text source rendering/i)).toBeDefined();
+  // Non-PDF hero header: filename + chunk-count + "plain-text rendering"
+  // meta sentence. Text shape updated in the premium rebuild.
+  expect(await screen.findByText(/plain-text rendering/i)).toBeDefined();
   expect(screen.getByText(/Photosynthesis stores light energy in sugars\./i)).toBeDefined();
 });
 
@@ -104,8 +106,10 @@ test("ReaderView shows toolbar and viewer shell for PDFs", async () => {
 
   render(<ReaderView id="pdf-doc" />);
 
+  // The PDF toolbar owns the filename now (premium rebuild). File-type
+  // chip (PDF) + filename both render inside the toolbar.
   expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
-  expect(screen.getByText(/PDF reader/i)).toBeDefined();
+  expect(screen.getByLabelText(/File type: PDF/i)).toBeDefined();
 
   await waitFor(() => {
     expect(document.querySelector("[data-page-number='1']")).toBeTruthy();

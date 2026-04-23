@@ -140,7 +140,10 @@ test("DocumentRow click navigates to the Reader route", async () => {
   fireEvent.click(await screen.findByText("Biology"));
   fireEvent.click(await screen.findByRole("button", { name: /Open mitosis\.pdf/i }));
 
-  expect(await screen.findByText(/PDF reader/i)).toBeDefined();
+  // After the premium rebuild, the toolbar owns the filename (no separate
+  // "PDF reader" badge). The reader is considered loaded once the file-type
+  // chip renders inside the toolbar.
+  expect(await screen.findByLabelText(/File type: PDF/i)).toBeDefined();
 });
 
 test("Delete confirmation opens, deletes the document, and refetches the list", async () => {

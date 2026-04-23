@@ -1,0 +1,99 @@
+/*
+ * Skeleton — the loading placeholder primitive.
+ *
+ * Shape presets carry the 80% case; width/height props handle the rest.
+ * Background uses a three-stop gradient between the default surface and
+ * a slightly brighter wash, so skeletons read as "this is loading" not
+ * "this is a flat rectangle." The shimmer animates background-position
+ * only (GPU-friendly) and respects prefers-reduced-motion.
+ */
+.skeleton {
+  display: block;
+  border-radius: var(--radius-2);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-muted) 0%,
+    color-mix(in srgb, var(--color-bg-hover) 60%, var(--color-bg-muted)) 50%,
+    var(--color-bg-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer var(--dur-narrative) ease-in-out infinite;
+}
+
+.static {
+  animation: none;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* ---------- Shape presets ----------
+ *
+ * Heights tuned to the type scale so a text skeleton matches the size
+ * of the Text it stands in for. All shapes keep their default width at
+ * 100% so stacking naturally fills the parent column.
+ */
+.shape-text {
+  width: 100%;
+  height: 14px;
+  border-radius: var(--radius-2);
+}
+
+.shape-text-lg {
+  width: 100%;
+  height: 22px;
+  border-radius: var(--radius-2);
+}
+
+.shape-text-sm {
+  width: 100%;
+  height: 12px;
+  border-radius: var(--radius-2);
+}
+
+.shape-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+}
+
+.shape-card {
+  width: 100%;
+  height: 120px;
+  border-radius: var(--radius-card);
+}
+
+.shape-row {
+  width: 100%;
+  height: 64px;
+  border-radius: var(--radius-card);
+}
+
+.shape-custom {
+  border-radius: var(--radius-2);
+}
+
+/*
+ * sr-only — visually hidden but announced by assistive tech. Used by
+ * SkeletonGroup to name the loading region without showing a text
+ * header. The pattern matches the shared @/design-system convention
+ * but this primitive keeps its own copy so it can load without a
+ * circular import from a utility module.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

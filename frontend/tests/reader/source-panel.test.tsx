@@ -74,6 +74,8 @@ test("OutlineRail renders the tree and routes clicks into page requests", async 
     expect(readerState.requestedPage.value).toBe(1);
   });
 
-  fireEvent.click(screen.getByLabelText(/Hide outline/i));
+  // Outline toggle label changed in the premium rebuild to match the
+  // Linear-style "Collapse / Expand" pattern used elsewhere in the app.
+  fireEvent.click(screen.getByLabelText(/Collapse outline/i));
   expect(screen.queryByText(/Checkpoints/i)).toBeNull();
 });

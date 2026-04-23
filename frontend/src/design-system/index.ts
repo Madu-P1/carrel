@@ -40,3 +40,7 @@ export { Tooltip } from "./primitives/Tooltip";
 export type { TooltipProps } from "./primitives/Tooltip";
 export { ToastHost, dismissToast, showToast, toast } from "./primitives/Toast";
 export type { ToastInput, ToastKind } from "./primitives/Toast";
+export { Skeleton, SkeletonGroup } from "./primitives/Skeleton";
+export type { SkeletonProps, SkeletonGroupProps } from "./primitives/Skeleton";
+export { Tabs } from "./primitives/Tabs";
+export type { TabItem, TabsProps } from "./primitives/Tabs";

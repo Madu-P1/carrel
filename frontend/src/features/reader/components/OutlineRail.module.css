@@ -1,116 +1,237 @@
+/*
+ * Outline rail — left-hand nav, 280px open / 48px collapsed.
+ *
+ * Scholarly dark feel: surface-1 background (one step up from app bg),
+ * 1px hairline right edge, generous internal padding. Sticky top so the
+ * rail tracks the user as they scroll the canvas.
+ */
 .rail {
-  width: 248px;
-  min-width: 248px;
+  position: sticky;
+  top: 0;
+  width: 280px;
+  min-width: 280px;
+  max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-4);
-  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+  background: var(--surface-1);
+  border-right: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+  overflow: hidden;
+  transition: width var(--dur-base) var(--ease-out);
 }
 
 .collapsed {
-  width: 56px;
-  min-width: 56px;
+  width: 48px;
+  min-width: 48px;
   align-items: center;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .rail { transition: none; }
+}
+
+/* Header — "Outline" eyebrow + collapse toggle. Eyebrow hides when the
+ * rail is collapsed; the toggle button is always visible. */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex-shrink: 0;
+}
+
+.collapsed .header {
+  padding: 0;
+  justify-content: center;
+  border-bottom: none;
+}
+
+.headerTitle {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  margin: 0;
 }
 
 .toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-2);
-  background: var(--color-bg-base);
-  color: var(--color-text-primary);
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.toggle:hover:not(:disabled) {
+  background: var(--state-bg-hover);
+  color: var(--color-text-primary);
 }
 
 .toggle:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring);
+  box-shadow: var(--shadow-focus);
 }
 
+.toggle:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Tree container — scrolls independently. Each row fits on one line
+ * with ellipsis; full title is shown on hover via the row's title
+ * attribute. */
 .tree {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 1px;
+  padding: var(--space-2) var(--space-2);
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 
 .node {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
 }
 
+/*
+ * Row layout: [20px expand-toggle] [link (title + page no)].
+ *
+ * Active row gets a 2px accent left-edge rail via a ::before pseudo,
+ * and a subtle selected fill. Matches the pattern used in WorkspaceSidebar
+ * so nav surfaces read consistent across the shell.
+ */
 .nodeRow {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding-right: var(--space-2);
+  border-radius: var(--radius-2);
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
-.nodeButton,
-.pageLink {
-  border: none;
-  background: transparent;
-  color: inherit;
+.nodeRow:hover {
+  background: var(--state-bg-hover);
 }
 
-.nodeButton {
-  width: 20px;
-  height: 20px;
+.rowActive,
+.rowActive:hover {
+  background: var(--state-bg-selected);
+}
+
+.rowActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+.rowActive .nodeTitle {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.expandBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-2);
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
   cursor: pointer;
+  border-radius: var(--radius-2);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.expandBtn:hover {
+  color: var(--color-text-primary);
+}
+
+.expandBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .pageLink {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
+  flex: 1;
   min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-2);
+  padding: 0 var(--space-2);
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
   text-align: left;
+  border-radius: var(--radius-2);
 }
 
-.pageLink:hover,
-.nodeButton:hover {
-  background: var(--color-bg-hover);
+.pageLink:hover {
+  color: var(--color-text-primary);
+}
+
+.pageLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .nodeTitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  font: var(--text-body-sm);
+  letter-spacing: var(--tracking-sans);
 }
 
 .pageMeta {
   flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
 }
 
+.rowActive .pageMeta {
+  color: var(--color-accent);
+}
+
+/* Children container — child rows inherit indent via the row's
+ * paddingLeft style prop (set in the TSX at 16px/level). The left
+ * hairline is decorative connective tissue, subtle on dark. */
 .children {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-left: var(--space-4);
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--color-border-subtle);
+  gap: 1px;
 }
 
+/* Collapse at narrow viewport — the critique's 1240px breakpoint held
+ * up; keep it. On narrower screens the reader is a two-column layout
+ * and the outline lives behind a palette command. */
 @media (max-width: 1240px) {
   .rail {
     display: none;

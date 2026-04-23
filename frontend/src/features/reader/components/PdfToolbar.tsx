@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
+import type { MutableRef } from "preact/hooks";
 
-import { Badge, Button, Stack, Text } from "@/design-system";
+import { Button, Icon, Tooltip } from "@/design-system";
 
 import {
   readerState,
@@ -9,13 +10,45 @@ import {
   setReaderScale,
   zoomReaderBy
 } from "../state";
-import styles from "../ReaderView.module.css";
+import styles from "./PdfToolbar.module.css";
 
 interface PdfToolbarProps {
+  filename: string;
+  fileType: string;
   pageCount: number;
+  onOpenSearch: () => void;
+  /** Ref attached to the toolbar root so SM-1 (library card flight) can
+   *  morph from the clicked card into this bar. Previously attached to a
+   *  separate page header; moved here so the reader gains vertical space
+   *  for the document canvas. */
+  flightRef?: MutableRef<HTMLDivElement | null>;
 }
 
-export function PdfToolbar({ pageCount }: PdfToolbarProps) {
+/**
+ * PDF toolbar — three-zone layout.
+ *
+ * Zone layout:
+ *   LEFT    file title + file-type chip (SM-1 flight target)
+ *   CENTER  page controls (prev / page input / next / fit / zoom)
+ *   RIGHT   actions (search, overflow)
+ *
+ * Height is fixed at 44px so the toolbar reads as architecture, not
+ * content. All controls snap to --control-height-sm/md and
+ * --radius-button so a button, a field, and a chip on the same row share
+ * rhythm. No one-off paddings survive this file.
+ *
+ * The page input is a native <input type="number"> by convention — the
+ * Input primitive is overkill for one-field numeric entry, and tests
+ * select it by role=spinbutton which pdfjs users know from every other
+ * reader.
+ */
+export function PdfToolbar({
+  filename,
+  fileType,
+  pageCount,
+  onOpenSearch,
+  flightRef,
+}: PdfToolbarProps) {
   const currentPage = readerState.currentPage.value;
   const fitMode = readerState.fitMode.value;
   const scale = readerState.scale.value;
@@ -34,69 +67,140 @@ export function PdfToolbar({ pageCount }: PdfToolbarProps) {
     requestReaderPage(parsed);
   };
 
+  const ft = (fileType || "FILE").toUpperCase();
+
   return (
-    <div className={styles.toolbar}>
-      <Stack align="center" direction="horizontal" gap={3} wrap>
-        <Badge tone="info">PDF reader</Badge>
-        <Button
-          aria-label="Previous page"
-          disabled={currentPage <= 1}
-          onClick={() => requestReaderPage(currentPage - 1)}
-          variant="ghost"
-        >
-          Prev
-        </Button>
-        <label className={styles.pageField}>
-          <span className={styles.pageFieldLabel}>Page</span>
+    <div className={styles.toolbar} ref={flightRef}>
+      {/* --- LEFT ZONE: title + file-type chip ------------------------ */}
+      <div className={styles.zoneLeft}>
+        <span aria-label={`File type: ${ft}`} className={styles.fileChip}>
+          {ft}
+        </span>
+        <h1 className={styles.title} title={filename}>
+          {filename}
+        </h1>
+      </div>
+
+      {/* --- CENTER ZONE: page controls ------------------------------- */}
+      <div className={styles.zoneCenter}>
+        <Tooltip content="Previous page">
+          <button
+            aria-label="Previous page"
+            className={styles.iconBtn}
+            disabled={currentPage <= 1}
+            onClick={() => requestReaderPage(currentPage - 1)}
+            type="button"
+          >
+            <Icon name="chevron-left" size={14} />
+          </button>
+        </Tooltip>
+        <div className={styles.pageField}>
           <input
-            className={styles.pageFieldInput}
+            aria-label="Page number"
+            className={styles.pageInput}
             max={Math.max(pageCount, 1)}
             min={1}
             onBlur={commitPage}
             onChange={(event) => setPageInput(event.currentTarget.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                commitPage();
-              }
+              if (event.key === "Enter") commitPage();
             }}
             type="number"
             value={pageInput}
           />
-        </label>
-        <Text tone="secondary">of {pageCount || 0}</Text>
-        <Button
-          aria-label="Next page"
-          disabled={pageCount === 0 || currentPage >= pageCount}
-          onClick={() => requestReaderPage(currentPage + 1)}
-          variant="ghost"
-        >
-          Next
-        </Button>
-      </Stack>
+          <span className={styles.pageSep}>/</span>
+          <span className={styles.pageTotal}>{pageCount || 0}</span>
+        </div>
+        <Tooltip content="Next page">
+          <button
+            aria-label="Next page"
+            className={styles.iconBtn}
+            disabled={pageCount === 0 || currentPage >= pageCount}
+            onClick={() => requestReaderPage(currentPage + 1)}
+            type="button"
+          >
+            <Icon name="chevron-right" size={14} />
+          </button>
+        </Tooltip>
 
-      <Stack align="center" direction="horizontal" gap={2} wrap>
-        <Button aria-label="Zoom out" onClick={() => zoomReaderBy(-0.1)} variant="ghost">
-          -
-        </Button>
-        <Button aria-label="Reset zoom" onClick={() => setReaderScale(1)} variant="secondary">
-          {Math.round(scale * 100)}%
-        </Button>
-        <Button aria-label="Zoom in" onClick={() => zoomReaderBy(0.1)} variant="ghost">
-          +
-        </Button>
+        <div className={styles.divider} aria-hidden />
+
+        <Tooltip content="Fit width">
+          <button
+            aria-label="Fit width"
+            aria-pressed={fitMode === "fit-width"}
+            className={[
+              styles.iconBtn,
+              fitMode === "fit-width" ? styles.iconBtnActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setReaderFitMode("fit-width")}
+            type="button"
+          >
+            <span className={styles.fitGlyph}>W</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="Fit page">
+          <button
+            aria-label="Fit page"
+            aria-pressed={fitMode === "fit-page"}
+            className={[
+              styles.iconBtn,
+              fitMode === "fit-page" ? styles.iconBtnActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setReaderFitMode("fit-page")}
+            type="button"
+          >
+            <span className={styles.fitGlyph}>P</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="Zoom out">
+          <button
+            aria-label="Zoom out"
+            className={styles.iconBtn}
+            onClick={() => zoomReaderBy(-0.1)}
+            type="button"
+          >
+            <span className={styles.zoomGlyph}>−</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="Reset zoom to 100%">
+          <button
+            aria-label="Reset zoom to 100%"
+            className={styles.zoomBtn}
+            onClick={() => setReaderScale(1)}
+            type="button"
+          >
+            {Math.round(scale * 100)}%
+          </button>
+        </Tooltip>
+        <Tooltip content="Zoom in">
+          <button
+            aria-label="Zoom in"
+            className={styles.iconBtn}
+            onClick={() => zoomReaderBy(0.1)}
+            type="button"
+          >
+            <span className={styles.zoomGlyph}>+</span>
+          </button>
+        </Tooltip>
+      </div>
+
+      {/* --- RIGHT ZONE: actions -------------------------------------- */}
+      <div className={styles.zoneRight}>
         <Button
-          onClick={() => setReaderFitMode("fit-page")}
-          variant={fitMode === "fit-page" ? "primary" : "ghost"}
+          keyHint="⌘/"
+          leadingIcon={<Icon name="search" size={14} />}
+          onClick={onOpenSearch}
+          size="sm"
+          variant="secondary"
         >
-          Fit page
+          Find
         </Button>
-        <Button
-          onClick={() => setReaderFitMode("fit-width")}
-          variant={fitMode === "fit-width" ? "primary" : "ghost"}
-        >
-          Fit width
-        </Button>
-      </Stack>
+      </div>
     </div>
   );
 }
