@@ -819,6 +819,16 @@ def scaffold_steps(question: str, citations: List[Dict[str, Any]], concept_name:
     return steps
 
 
+# Minimum number of hydrated chunks we require when retrieval had to fall
+# back from query-specific search to scope-wide. Below this threshold we
+# refuse the answer with error_code "weak_coverage" and return the nearest
+# passages. The frontend renders a dedicated refusal card with recovery
+# actions. Tunable via env if a classroom wants a looser threshold.
+_WEAK_COVERAGE_MIN_CONTEXTS = int(
+    os.getenv("EINSTEIN_WEAK_COVERAGE_MIN_CONTEXTS", "3")
+)
+
+
 def grounded_tutor_response(
     conn: sqlite3.Connection,
     question: str,
@@ -870,6 +880,24 @@ def grounded_tutor_response(
     if not use_claude:
         error = "grounded_tutor_disabled" if mode == "off" else "grounded_tutor_unavailable"
         answer = _passages_only_fallback(contexts, error=error)
+        _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
+        return answer
+
+    # Grounded-Only refusal: if the query-specific retrieval came up empty
+    # and we had to fall back to scope-wide chunks, there's no real match
+    # to synthesize from. Asking Claude to answer anyway is the hallucination
+    # surface. Refuse with weak_coverage and hand the user the nearest
+    # passages + recovery actions via the frontend.
+    #
+    # We still allow the call when scope_fallback gave us >= _WEAK_COVERAGE_
+    # MIN_CONTEXTS matches, because that usually means the user asked about
+    # a real topic their sources cover; the query just didn't hit cleanly.
+    # Tighten the threshold (env) if false positives multiply.
+    if scope_fallback_used and len(contexts) < _WEAK_COVERAGE_MIN_CONTEXTS:
+        answer = _passages_only_fallback(
+            contexts,
+            error="weak_coverage",
+        )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
 

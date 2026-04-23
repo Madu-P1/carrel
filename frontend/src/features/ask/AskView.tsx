@@ -252,7 +252,21 @@ export function AskView() {
                 {isGrounded ? (
                   <ClaimList claims={claims} onCitationClick={handleCitationClick} />
                 ) : (
-                  <FallbackAnswer claims={claims} error={activeAnswer.error ?? undefined} />
+                  <FallbackAnswer
+                    claims={claims}
+                    error={activeAnswer.error ?? undefined}
+                    onBroadenScope={() => {
+                      setScope({ kind: "library", readiness: "ready" });
+                    }}
+                    onRephrase={() => {
+                      // Focus the input; the Input primitive renders the
+                      // real field as a descendant, found by placeholder.
+                      const field = document.querySelector(
+                        "input[placeholder*='source say' i]"
+                      ) as HTMLInputElement | null;
+                      field?.focus();
+                    }}
+                  />
                 )}
                 <UnsupportedSpans claimCount={claims.length} items={unsupportedSpans} />
                 <AnswerMetaBar

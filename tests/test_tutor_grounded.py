@@ -382,6 +382,66 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertEqual("empty_retrieval", response.error)
         self.assertEqual([], router.calls)
 
+    def test_weak_coverage_refuses_when_scope_fallback_and_few_contexts(self) -> None:
+        """Grounded-only refusal: query retrieval returns empty, scope
+        fallback produces only a couple of chunks, threshold is 3. We must
+        refuse with error='weak_coverage' instead of asking the LLM to
+        synthesize from thin evidence — that's the hallucination surface."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
+            # Only 2 chunks in the doc, both tangential to the question.
+            self._insert_chunk(conn, "chunk-1", "doc-a", "Ion channels.")
+            self._insert_chunk(conn, "chunk-2", "doc-a", "Membrane potential.")
+            conn.commit()
+            router = StubRouter()
+            # Hybrid search misses; scope fallback returns the 2 chunks.
+            with mock.patch("services.tutor.search_hybrid", return_value=[]):
+                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                    response = tutor_service.grounded_tutor_response(
+                        conn,
+                        "Explain photosynthesis light reactions.",
+                        doc_ids=["doc-a"],
+                        router=router,
+                    )
+
+        self.assertFalse(response.ok)
+        self.assertEqual("weak_coverage", response.error)
+        # No Claude call happened — the refusal fires before the LLM.
+        self.assertEqual([], router.calls)
+        # The passages we did find are still exposed so the UI can show them.
+        self.assertGreater(len(response.claims), 0)
+
+    def test_scope_fallback_with_enough_contexts_still_calls_claude(self) -> None:
+        """Counter-case: scope fallback produces enough chunks (>= threshold).
+        Claude still runs because there's real material to synthesize from."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
+            # 4 chunks >= _WEAK_COVERAGE_MIN_CONTEXTS (default 3).
+            for i in range(4):
+                self._insert_chunk(
+                    conn,
+                    f"chunk-{i}",
+                    "doc-a",
+                    f"Sentence {i} about cellular respiration.",
+                )
+            conn.commit()
+            router = StubRouter(
+                result=self._tool_result(
+                    {"summary": "ok", "claims": [], "unsupported_spans": []}
+                )
+            )
+            with mock.patch("services.tutor.search_hybrid", return_value=[]):
+                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                    tutor_service.grounded_tutor_response(
+                        conn,
+                        "Explain cellular respiration.",
+                        doc_ids=["doc-a"],
+                        router=router,
+                    )
+
+        # The router WAS called — we didn't short-circuit to refusal.
+        self.assertEqual(1, len(router.calls))
+
     def test_subject_name_and_doc_ids_propagate_to_hybrid_retrieval(self) -> None:
         with main.get_db() as conn:
             router = StubRouter()

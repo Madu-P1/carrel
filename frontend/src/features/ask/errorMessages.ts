@@ -63,6 +63,10 @@ const MESSAGES: Record<string, { title: string; action?: string }> = {
     title: "No matching passages in your library for this question.",
     action: "Try a different phrasing, or add the source material to Library first.",
   },
+  weak_coverage: {
+    title: "I don't find this cleanly in the current scope.",
+    action: "Broaden the scope, try a sharper query, or look at the nearest passages below.",
+  },
 };
 
 export interface FriendlyError {
