@@ -109,6 +109,8 @@ export function DashboardView() {
 
 function Header({ payload }: { payload: DashboardPayload }) {
   const greet = timeOfDayGreeting(payload.greeting.time_of_day);
+  const dueCards = payload.stats.due_cards;
+  const activeSession = payload.active_session;
   return (
     <header className={styles.header}>
       <span className={styles.eyebrow}>
@@ -120,6 +122,35 @@ function Header({ payload }: { payload: DashboardPayload }) {
         Your study environment is ready. Start a session, review what you've learned,
         or ask a question grounded in your own sources.
       </p>
+      {(dueCards > 0 || activeSession) && (
+        <div className={styles.headerChips}>
+          {dueCards > 0 && (
+            <button
+              type="button"
+              className={[styles.headerChip, styles.headerChipDue].join(" ")}
+              onClick={() => navigateTo("/study")}
+            >
+              <Icon name="study" size={14} />
+              <span>
+                <span className={styles.headerChipCount}>{dueCards}</span>{" "}
+                card{dueCards === 1 ? "" : "s"} due now
+              </span>
+              <span className={styles.headerChipArrow} aria-hidden>→</span>
+            </button>
+          )}
+          {activeSession && (
+            <button
+              type="button"
+              className={styles.headerChip}
+              onClick={() => navigateTo("/session")}
+            >
+              <Icon name="sparkle" size={14} />
+              <span>Session in progress</span>
+              <span className={styles.headerChipArrow} aria-hidden>→</span>
+            </button>
+          )}
+        </div>
+      )}
     </header>
   );
 }

@@ -28,6 +28,78 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Chip row sits under the eyebrow so urgent info (cards due, session in
+ * progress) is discoverable at-a-glance without scrolling past the
+ * decorative title. Each chip is a button; clicking jumps to the
+ * relevant view. */
+.headerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.headerChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: var(--text-caption);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.headerChip:hover {
+  border-color: var(--color-border-default);
+  background: var(--color-bg-hover);
+  transform: translateY(-1px);
+}
+
+.headerChip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headerChip:hover { transform: none; }
+}
+
+/* Due chip — the high-urgency variant. Accent wash so it stands out
+ * against the other chips and the app background. */
+.headerChipDue {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-elevated));
+  color: var(--color-text-primary);
+}
+
+.headerChipDue:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 58%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-bg-elevated));
+}
+
+.headerChipCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
+.headerChipArrow {
+  color: var(--color-text-tertiary);
+  transition: color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+
+.headerChip:hover .headerChipArrow {
+  color: var(--color-text-primary);
+  transform: translateX(2px);
+}
+
 .eyebrow {
   display: inline-flex;
   align-items: center;
