@@ -30,6 +30,15 @@
 }
 
 :root {
+  /* -----------------------------------------------------------------------
+   * SPACING — 8px base, with a 4px ladder for fine-grained row rhythm.
+   * Rules:
+   *   - No arbitrary px values in feature CSS. Use a scale step or extend
+   *     the scale here (with justification) before adding a new constant.
+   *   - --space-3 / --space-4 are the "standard" padding sizes for cards
+   *     and rows. Control rows use --space-4 vertical padding + --space-3
+   *     horizontal as the default.
+   * --------------------------------------------------------------------- */
   --space-0: 0;
   --space-1: 4px;
   --space-2: 8px;
@@ -42,21 +51,63 @@
   --space-12: 48px;
   --space-16: 64px;
 
+  /* -----------------------------------------------------------------------
+   * RADII — numeric scale + semantic aliases. New code should prefer the
+   * semantic aliases (button/input/card/panel) so the radius intent is
+   * readable at the call site.
+   *
+   * Spec: buttons+inputs 10, cards 14, large panels 16, chips full.
+   * --------------------------------------------------------------------- */
   --radius-0: 0;
   --radius-1: 4px;
   --radius-2: 6px;
   --radius-3: 8px;
+  --radius-button: 10px;  /* buttons, inputs, pickers */
   --radius-4: 12px;
+  --radius-card: 14px;    /* cards, dialogs, popovers */
   --radius-5: 16px;
+  --radius-panel: 16px;   /* large panels — sidebar frames, drawers */
   --radius-full: 9999px;
 
-  /*
-   * Three-voice type system. Each voice has a specific job. Mixing is a
-   * regression.
-   *   Serif — questions, big moments, section headers, concept names.
-   *   Sans  — answer prose, UI chrome, body copy.
-   *   Mono  — citations, provider badges, filenames, numeric metadata.
-   */
+  /* -----------------------------------------------------------------------
+   * CONTROL HEIGHTS — one ladder, opted into by the primitive.
+   *
+   * Size sm is for chips and icon-only buttons inside dense rails. Size md
+   * is the default UI control. Size lg is for primary CTAs on full-page
+   * actions (dialogs, onboarding, session setup).
+   *
+   * 44px on lg is deliberate: it meets WCAG 2.2 pointer-target size (24px
+   * min, 44px comfortable) and gives primary actions the presence the
+   * critique called out as missing.
+   * --------------------------------------------------------------------- */
+  --control-height-sm: 28px;
+  --control-height-md: 36px;
+  --control-height-lg: 44px;
+  --control-height-input: 40px;
+
+  /* -----------------------------------------------------------------------
+   * TYPOGRAPHY — type system.
+   *
+   * Three voices: serif (display + questions + hero moments), sans (body
+   * + UI chrome), mono (citations + metadata + numeric).
+   *
+   * Scale premium legibility:
+   *   body:      14/22   (was 13/18 — bump lifts prose legibility across
+   *                       every dense surface and still reads compact)
+   *   body-sm:   13/20   (opt-in, for ultra-dense UI like nav items)
+   *   label-md:  12/16   (chip / meta / inline labels)
+   *   label-sm:  11/14   (last-resort micro-labels)
+   *   h3:        18/24
+   *   h2:        22/28   (was 18/24 — lifts "page heading" voice)
+   *   h1:        28/34   (was 24/30 — meaningful beat jump to serif display)
+   *   display:   40/44   (was clamp — rigid now; clamp spilled into too-big
+   *                       on narrow screens and too-small on wide)
+   *   display-xl:48/52   (hero-only, sparingly)
+   *
+   * Every shorthand binds to --font-sans by default. Serif is opted into
+   * per-site (`font-family: var(--font-serif)`) for the hero moments so
+   * the serif never creeps into dense UI.
+   * --------------------------------------------------------------------- */
   --font-sans:
     -apple-system,
     BlinkMacSystemFont,
@@ -73,11 +124,7 @@
     Georgia,
     "Times New Roman",
     serif;
-  /* Alias kept so legacy components that bind to --font-serif-display still work. */
   --font-serif-display: var(--font-serif);
-  /* System mono is the first-class choice on macOS — SFMono is dense, readable,
-   * and a native voice on the host. JetBrains/Geist Mono can swap in via a
-   * future @font-face without touching callers. */
   --font-mono:
     ui-monospace,
     "SF Mono",
@@ -88,26 +135,30 @@
     Consolas,
     monospace;
 
-  /* Raw rem scale. Use these for new components. Fluid at display size. */
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.375rem;
-  --text-2xl: 1.75rem;
-  --text-3xl: 2.25rem;
-  --text-display: clamp(2.5rem, 5vw, 4rem);
+  /* Raw rem scale — prefer the semantic shorthands below for new code. */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px — now matches body */
+  --text-base: 1rem;     /* 16px */
+  --text-lg: 1.125rem;   /* 18px */
+  --text-xl: 1.375rem;   /* 22px */
+  --text-2xl: 1.75rem;   /* 28px */
+  --text-3xl: 2.5rem;    /* 40px */
+  --text-display: 2.5rem;     /* 40px, fixed */
+  --text-display-xl: 3rem;    /* 48px, hero only */
 
-  /* Legacy aliases — value-for-value equivalents bound to sans. Existing
-   * components (Text, Badge, etc.) continue to work without a sweep. */
-  --text-caption: 11px / 14px var(--font-sans);
-  --text-body: 13px / 18px var(--font-sans);
-  --text-h3: 15px / 20px var(--font-sans);
-  --text-h2: 18px / 24px var(--font-sans);
-  --text-h1: 24px / 30px var(--font-sans);
+  /* Shorthand bundles. Callers use `font: var(--text-body);` and get the
+   * full size/line-height/family triple in one declaration. */
+  --text-label-sm: 11px / 14px var(--font-sans);
+  --text-label-md: 12px / 16px var(--font-sans);
+  --text-caption: 11px / 14px var(--font-sans);  /* legacy alias; == label-sm */
+  --text-body-sm: 13px / 20px var(--font-sans);
+  --text-body: 14px / 22px var(--font-sans);
+  --text-h3: 18px / 24px var(--font-sans);
+  --text-h2: 22px / 28px var(--font-sans);
+  --text-h1: 28px / 34px var(--font-sans);
 
-  /* Tracking — differs per voice. Serif goes tighter, mono flat. */
-  --tracking-serif: -0.01em;
+  /* Tracking — serif goes tighter for large type, mono flat. */
+  --tracking-serif: -0.015em;
   --tracking-sans: -0.005em;
   --tracking-mono: 0;
 
@@ -116,14 +167,14 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /*
-   * Motion — four duration buckets only. Any duration outside these buckets
-   * fails design review. See docs/einstein-ui-prompt.md §4.1.
-   */
+  /* -----------------------------------------------------------------------
+   * MOTION — four duration buckets only. Any duration outside these
+   * buckets fails design review. See DESIGN.md motion section.
+   * --------------------------------------------------------------------- */
   --dur-micro: 120ms;      /* hover, press, focus */
   --dur-small: 220ms;      /* state swap, fade, chip appear */
   --dur-medium: 380ms;     /* layout change, route change, drawer */
-  --dur-narrative: 720ms;  /* signature moments (citation flight, answer arrival) */
+  --dur-narrative: 720ms;  /* signature moments (citation flight, reveal) */
 
   /* Legacy aliases — kept so existing callers render at roughly the same
    * perceived speed. New code MUST use the four buckets above. */
@@ -144,12 +195,24 @@
   --motion-slow: var(--dur-slow);
   --ease-in-out: var(--ease-soft);
 
+  /* -----------------------------------------------------------------------
+   * Z-INDEX — five layers. Keep this short.
+   * --------------------------------------------------------------------- */
   --z-base: 0;
   --z-elevated: 10;
   --z-overlay: 100;
   --z-dialog: 1000;
   --z-tooltip: 2000;
 
+  /* -----------------------------------------------------------------------
+   * FOCUS RING — one token. Every interactive element uses this via
+   * `box-shadow: var(--shadow-focus)` on :focus-visible. Do not invent
+   * per-component focus styles; the ring is a system property.
+   *
+   * The ring is drawn as a two-stop shadow: 2px base-color halo to isolate
+   * the control from its background, then 3px accent ring. This technique
+   * reads on any surface (app bg, card, sidebar) without chroma clash.
+   * --------------------------------------------------------------------- */
   --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent);
 }
 
