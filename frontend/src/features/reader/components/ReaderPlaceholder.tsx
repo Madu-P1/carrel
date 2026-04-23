@@ -1,5 +1,6 @@
 import type { DocumentDetailDocument } from "@/services/api/endpoints";
-import { Badge, Card, Stack, Text } from "@/design-system";
+import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
+import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "../ReaderView.module.css";
 
@@ -46,6 +47,10 @@ function copyForReason(reason: PlaceholderReason, metadata?: DocumentDetailDocum
 
 export function ReaderPlaceholder({ metadata, reason }: ReaderPlaceholderProps) {
   const copy = copyForReason(reason, metadata);
+  // The "pick a source" CTA makes sense for both no-doc-selected and
+  // not-found — in both cases the fix is to go back and pick. For non-pdf
+  // we leave it off; the user is already looking at a source.
+  const showLibraryAction = reason === "no-doc-selected" || reason === "not-found";
 
   return (
     <Card className={styles.stateCard} padding="lg">
@@ -55,6 +60,17 @@ export function ReaderPlaceholder({ metadata, reason }: ReaderPlaceholderProps) 
           {copy.title}
         </Text>
         <Text tone="secondary">{copy.body}</Text>
+        {showLibraryAction ? (
+          <Stack direction="horizontal" gap={2}>
+            <Button
+              keyHint="⌘3"
+              leadingIcon={<Icon name="library" />}
+              onClick={() => navigateTo("/library")}
+            >
+              Open Library
+            </Button>
+          </Stack>
+        ) : null}
       </Stack>
     </Card>
   );

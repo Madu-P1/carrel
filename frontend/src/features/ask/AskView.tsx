@@ -17,15 +17,33 @@ import styles from "./AskView.module.css";
 function AskEmptyState() {
   return (
     <Card padding="lg">
-      <Stack gap={3}>
-        <Badge tone="info">Source-grounded</Badge>
-        <Text as="h2" variant="h1" weight="bold">
-          Ask a question about your sources
-        </Text>
-        <Text tone="secondary">
-          Einstein will retrieve relevant chunks, synthesize only what those sources support,
-          and keep unsupported claims visibly separate.
-        </Text>
+      <Stack gap={4}>
+        <Stack gap={3}>
+          <Badge tone="info">Source-grounded</Badge>
+          <Text as="h2" variant="h1" weight="bold">
+            Ask a question about your sources
+          </Text>
+          <Text tone="secondary">
+            Einstein will retrieve relevant chunks, synthesize only what those sources support,
+            and keep unsupported claims visibly separate.
+          </Text>
+        </Stack>
+        <Stack gap={2}>
+          <Text tone="tertiary" variant="caption">
+            Try one to get started:
+          </Text>
+          <Stack gap={1}>
+            {[
+              "What do my sources say about...?",
+              "Compare the key arguments between...",
+              "What is the mechanism behind...?"
+            ].map((prompt) => (
+              <Text key={prompt} tone="secondary">
+                <span style={{ color: "var(--color-accent)" }}>›</span> {prompt}
+              </Text>
+            ))}
+          </Stack>
+        </Stack>
       </Stack>
     </Card>
   );
