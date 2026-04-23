@@ -1,7 +1,8 @@
 import json
 import sqlite3
+import uuid
 from datetime import date
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from services.documents import clean_concept_label
 
@@ -62,8 +63,8 @@ def fetch_due_cards(conn: sqlite3.Connection) -> List[Dict[str, object]]:
         SELECT s.id, s.front, s.back, s.state, s.stability, s.difficulty, s.reps,
                s.lapses, s.due_date, c.name AS concept, d.filename AS document_name, d.subject_name
         FROM srs_cards s
-        JOIN concepts c ON s.concept_id = c.id
-        JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN concepts c ON s.concept_id = c.id
+        LEFT JOIN documents d ON c.doc_id = d.id
         WHERE s.due_date IS NULL OR s.due_date <= ?
         ORDER BY COALESCE(s.due_date, ?) ASC, s.rowid ASC
         """,
@@ -115,8 +116,8 @@ def list_cards(
         f"""
         SELECT COUNT(*) AS total
         FROM srs_cards s
-        JOIN concepts c ON s.concept_id = c.id
-        JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN concepts c ON s.concept_id = c.id
+        LEFT JOIN documents d ON c.doc_id = d.id
         {where_sql}
         """,
         params,
@@ -132,8 +133,8 @@ def list_cards(
                d.id AS document_id, d.filename AS document_name,
                d.subject_name
         FROM srs_cards s
-        JOIN concepts c ON s.concept_id = c.id
-        JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN concepts c ON s.concept_id = c.id
+        LEFT JOIN documents d ON c.doc_id = d.id
         {where_sql}
         ORDER BY d.subject_name, d.filename, s.rowid
         LIMIT ? OFFSET ?
@@ -168,8 +169,8 @@ def list_subjects(conn: sqlite3.Connection) -> List[Dict[str, object]]:
                COUNT(*) AS card_count,
                SUM(CASE WHEN s.due_date IS NULL OR s.due_date <= ? THEN 1 ELSE 0 END) AS due_count
         FROM srs_cards s
-        JOIN concepts c ON s.concept_id = c.id
-        JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN concepts c ON s.concept_id = c.id
+        LEFT JOIN documents d ON c.doc_id = d.id
         GROUP BY d.subject_name
         ORDER BY card_count DESC
         """,
@@ -218,3 +219,87 @@ def bulk_delete_cards(conn: sqlite3.Connection, card_ids: List[str]) -> int:
         card_ids,
     )
     return int(cursor.rowcount or 0)
+
+
+def create_card(
+    conn: sqlite3.Connection,
+    *,
+    front: str,
+    back: str,
+    concept_id: Optional[str] = None,
+    card_type: str = "custom",
+) -> Dict[str, Any]:
+    """Insert a user-authored flashcard and return the row shape list_cards emits.
+
+    The SRS schedulor treats state='new' cards as immediately due (due_date=today),
+    so a freshly-created card shows up in the next session alongside whatever the
+    ingestion pipeline already queued. concept_id is optional — orphan cards are
+    surfaced by list_cards' LEFT JOIN and show up under the "All" subject filter
+    with a null concept/document. We set stability / difficulty to the same
+    defaults the schema uses (1.0 / 0.3) rather than leaving them implicit so the
+    row shape matches what the ORM callers already consume.
+    """
+    cleaned_front = (front or "").strip()
+    cleaned_back = (back or "").strip()
+    if not cleaned_front or not cleaned_back:
+        raise ValueError("front and back must each be non-empty after trimming")
+
+    card_id = str(uuid.uuid4())
+    today = date.today().isoformat()
+
+    resolved_concept_id: Optional[str] = None
+    if concept_id:
+        row = conn.execute(
+            "SELECT id FROM concepts WHERE id = ?",
+            (concept_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"concept_id {concept_id!r} does not exist")
+        resolved_concept_id = str(row["id"])
+
+    conn.execute(
+        """
+        INSERT INTO srs_cards (
+            id, concept_id, card_type, front, back,
+            state, stability, difficulty,
+            elapsed_days, scheduled_days, reps, lapses,
+            due_date, confidence
+        )
+        VALUES (?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
+        """,
+        (
+            card_id,
+            resolved_concept_id,
+            card_type,
+            cleaned_front,
+            cleaned_back,
+            today,
+            1.0,
+        ),
+    )
+    conn.commit()
+
+    row = conn.execute(
+        """
+        SELECT s.id, s.front, s.back, s.state, s.difficulty, s.reps, s.lapses,
+               s.due_date, s.last_review, s.card_type,
+               c.id AS concept_id, c.name AS concept,
+               d.id AS document_id, d.filename AS document_name,
+               d.subject_name
+        FROM srs_cards s
+        LEFT JOIN concepts c ON s.concept_id = c.id
+        LEFT JOIN documents d ON c.doc_id = d.id
+        WHERE s.id = ?
+        """,
+        (card_id,),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"freshly-inserted card {card_id} missing on read-back")
+
+    replacements = _name_replacements(conn)
+    item = dict(row)
+    item["raw_concept"] = item["concept"]
+    item["concept"] = clean_concept_label(item["concept"]) if item["concept"] else None
+    item["front"] = _normalize_card_text(item["front"], replacements)
+    item["back"] = _normalize_card_text(item["back"], replacements)
+    return item

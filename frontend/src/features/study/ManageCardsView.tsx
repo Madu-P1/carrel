@@ -8,6 +8,7 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 
+import { CardCreateDialog } from "./CardCreateDialog";
 import styles from "./ManageCardsView.module.css";
 
 /**
@@ -49,6 +50,7 @@ export function ManageCardsView() {
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [deleteState, setDeleteState] = useState<DeleteState>({ kind: "idle", cardId: null });
   const [bulkPending, setBulkPending] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const refreshSubjects = useCallback(async () => {
     try {
@@ -115,6 +117,17 @@ export function ManageCardsView() {
     }
   };
 
+  const handleCardCreated = (card: SrsCard) => {
+    // Prepend into the visible page so the user sees their new card
+    // immediately; the next loadPage call will restore canonical ordering.
+    // Bumping total keeps the "X of Y" label honest without a round-trip.
+    setCards((prev) => [card, ...prev]);
+    setTotal((t) => t + 1);
+    // Subject counts changed (orphan cards show under "All" only, but the
+    // counts view still aggregates). Cheap, fire-and-forget.
+    void refreshSubjects();
+  };
+
   const handleBulkDelete = async () => {
     if (selection.size === 0 || bulkPending) return;
     setBulkPending(true);
@@ -167,15 +180,25 @@ export function ManageCardsView() {
   return (
     <div className={styles.wrap}>
       <Stack gap={5}>
-        <Stack gap={3}>
-          <Badge tone="info">Manage cards</Badge>
-          <Text as="h2" variant="display" weight="bold">
-            Curate your library of flashcards.
-          </Text>
-          <Text tone="secondary">
-            Filter by subject, search front or back text, and delete cards the
-            ingestion pipeline got wrong. Bulk select for quick passes.
-          </Text>
+        <Stack direction="horizontal" className={styles.titleRow} gap={4}>
+          <Stack gap={3} className={styles.titleCopy}>
+            <Badge tone="info">Manage cards</Badge>
+            <Text as="h2" variant="display" weight="bold">
+              Curate your library of flashcards.
+            </Text>
+            <Text tone="secondary">
+              Filter by subject, search front or back text, and delete cards the
+              ingestion pipeline got wrong. Bulk select for quick passes.
+            </Text>
+          </Stack>
+          <div className={styles.titleActions}>
+            <Button
+              leadingIcon={<Icon name="plus" />}
+              onClick={() => setCreateOpen(true)}
+            >
+              New card
+            </Button>
+          </div>
         </Stack>
 
         <Card padding="lg">
@@ -337,6 +360,13 @@ export function ManageCardsView() {
           </Stack>
         </Card>
       </Stack>
+
+      <CardCreateDialog
+        activeSubject={subject}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleCardCreated}
+        open={createOpen}
+      />
     </div>
   );
 }

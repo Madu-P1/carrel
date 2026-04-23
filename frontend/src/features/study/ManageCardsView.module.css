@@ -11,6 +11,29 @@
   margin: 0 auto;
 }
 
+/* Title row: copy on the left, "New card" action on the right. The action
+ * sits in the title block (not the filter card below) because card creation
+ * is a primary workflow at this view's level, not a filter step. */
+.titleRow {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.titleCopy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.titleActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
 /* --- Subject filter chips --- */
 
 .chipRow {

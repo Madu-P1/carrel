@@ -359,12 +359,24 @@ export interface SrsCard {
   due_date: string | null;
   last_review: string | null;
   card_type: string | null;
-  concept_id: string;
-  concept: string;
-  raw_concept?: string;
-  document_id: string;
-  document_name: string;
+  /** Null for user-authored "orphan" cards not tied to any concept. */
+  concept_id: string | null;
+  /** Null when concept_id is null, otherwise the cleaned concept label. */
+  concept: string | null;
+  raw_concept?: string | null;
+  /** Null when the card has no concept / source document. */
+  document_id: string | null;
+  document_name: string | null;
   subject_name: string | null;
+}
+
+export interface CardCreatePayload {
+  front: string;
+  back: string;
+  /** Optional. Omit to create an orphan card (shows up in "All subjects"). */
+  conceptId?: string;
+  /** Optional override. Defaults to "custom" on the server. */
+  cardType?: string;
 }
 
 export interface SrsCardListResponse {
@@ -422,5 +434,19 @@ export const study = {
     api<{ deleted: number }>("/api/srs/cards/bulk-delete", {
       method: "POST",
       body: { ids }
+    }),
+  /**
+   * Create a single card from the Manage Cards "New card" dialog. Orphan
+   * cards (no concept) are allowed and surface under the "All" filter.
+   */
+  createCard: (payload: CardCreatePayload) =>
+    api<{ card: SrsCard }>("/api/srs/cards", {
+      method: "POST",
+      body: {
+        front: payload.front,
+        back: payload.back,
+        concept_id: payload.conceptId ?? null,
+        card_type: payload.cardType ?? "custom"
+      }
     })
 };

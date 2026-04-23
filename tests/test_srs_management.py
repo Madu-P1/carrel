@@ -266,6 +266,52 @@ class ManageCardsRouteTests(unittest.TestCase):
         self.assertTrue(callable(delete_card))
         self.assertTrue(callable(bulk_delete_cards))
 
+    def test_create_card_returns_new_card_and_it_shows_up_in_list(self) -> None:
+        response = self.client.post(
+            "/api/srs/cards",
+            json={"front": "What is liquidity?", "back": "Ease of converting an asset to cash."},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIn("card", body)
+        new_card = body["card"]
+        self.assertEqual(new_card["front"], "What is liquidity?")
+        self.assertEqual(new_card["back"], "Ease of converting an asset to cash.")
+        self.assertEqual(new_card["card_type"], "custom")
+        self.assertEqual(new_card["state"], "new")
+        # Orphan card (no concept) — null concept + document fields.
+        self.assertIsNone(new_card["concept_id"])
+        self.assertIsNone(new_card["document_id"])
+        # Fetched back via list_cards (which uses LEFT JOIN now).
+        listed = self.client.get("/api/srs/cards").json()
+        ids = {c["id"] for c in listed["cards"]}
+        self.assertIn(new_card["id"], ids)
+
+    def test_create_card_rejects_empty_fields(self) -> None:
+        response = self.client.post(
+            "/api/srs/cards",
+            json={"front": "", "back": "something"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+        response = self.client.post(
+            "/api/srs/cards",
+            json={"front": "   ", "back": "something"},
+        )
+        # Non-empty pre-trim but empty post-trim — caught by the service layer.
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_card_with_invalid_concept_id_returns_400(self) -> None:
+        response = self.client.post(
+            "/api/srs/cards",
+            json={
+                "front": "q",
+                "back": "a",
+                "concept_id": "not-a-real-concept-id",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

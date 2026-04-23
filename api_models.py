@@ -15,6 +15,18 @@ class BulkDeleteCardsRequest(BaseModel):
     ids: List[str] = Field(default_factory=list)
 
 
+class CardCreateRequest(BaseModel):
+    """POST /api/srs/cards payload. The Manage Cards view posts this from
+    the New Card dialog. concept_id is optional; orphan cards are allowed
+    and surface in the "All" filter via LEFT JOIN. card_type defaults to
+    "custom" so we can distinguish user-authored cards from those that
+    the ingestion pipeline produced."""
+    front: str = Field(..., min_length=1, max_length=4000)
+    back: str = Field(..., min_length=1, max_length=4000)
+    concept_id: Optional[str] = None
+    card_type: str = Field(default="custom", max_length=64)
+
+
 class QuizGenerateRequest(BaseModel):
     concepts: Optional[List[str]] = None
     count: int = 7

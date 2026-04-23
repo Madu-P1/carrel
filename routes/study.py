@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 import db
 from api_models import (
     BulkDeleteCardsRequest,
+    CardCreateRequest,
     FlashcardDraftRequest,
     FlashcardDraftResponse,
     QuizGenerateRequest,
@@ -180,6 +181,30 @@ def list_subjects() -> Dict[str, List[Dict[str, object]]]:
     """Subjects aggregated with card + due counts for filter chips."""
     with db.get_db() as conn:
         return {"subjects": study_service.list_subjects(conn)}
+
+
+@router.post("/api/srs/cards")
+def create_card(payload: CardCreateRequest) -> Dict[str, Any]:
+    """Create a flashcard from the Manage Cards "New card" dialog.
+
+    The dialog posts raw front + back text (required). concept_id is
+    optional: orphan cards are allowed and show up in the All-subjects
+    filter. We return the new row in the same shape list_cards emits so
+    the client can drop it straight into its cached list without a
+    round-trip.
+    """
+    try:
+        with db.get_db() as conn:
+            card = study_service.create_card(
+                conn,
+                front=payload.front,
+                back=payload.back,
+                concept_id=payload.concept_id,
+                card_type=payload.card_type,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"card": card}
 
 
 @router.delete("/api/srs/cards/{card_id}")
