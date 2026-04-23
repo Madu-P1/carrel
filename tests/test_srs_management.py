@@ -317,8 +317,9 @@ class ManageCardsRouteTests(unittest.TestCase):
         We mock the provider to avoid a real network call and the flakiness
         of a live LLM. Focus is on plumbing + response shape + filters.
         """
-        from ai.router import ClaudeCallResult
         from unittest import mock as _mock
+
+        from ai.router import ClaudeCallResult
 
         fake_result = ClaudeCallResult(
             ok=True,
@@ -409,6 +410,38 @@ class ManageCardsRouteTests(unittest.TestCase):
     def test_ai_draft_rejects_empty_topic(self) -> None:
         response = self.client.post("/api/srs/cards/ai-draft", json={"topic": ""})
         self.assertEqual(response.status_code, 422)
+
+    def test_review_orphan_card_succeeds(self) -> None:
+        """Regression guard: user-authored cards have concept_id=NULL. The
+        /api/srs/review handler used to INNER JOIN concepts, which returned
+        no row for orphans and raised 404 on every rating attempt. Rating
+        an orphan card must return the same shape as rating a linked card.
+        """
+        # Create an orphan card via the user-create endpoint.
+        created = self.client.post(
+            "/api/srs/cards",
+            json={"front": "What is LIFO?", "back": "Last in, first out."},
+        ).json()["card"]
+        self.assertIsNone(created["concept_id"])
+
+        # Rate it "good" — this previously 404'd.
+        response = self.client.post(
+            "/api/srs/review",
+            json={"card_id": created["id"], "rating": "good"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        # The response shape is stable: next_due_date + interval + ease.
+        self.assertIn("next_due_date", body)
+        self.assertIn("interval", body)
+        self.assertIn("ease", body)
+
+    def test_review_unknown_card_still_returns_404(self) -> None:
+        response = self.client.post(
+            "/api/srs/review",
+            json={"card_id": "does-not-exist", "rating": "good"},
+        )
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

@@ -364,11 +364,16 @@ def bulk_delete_cards(payload: BulkDeleteCardsRequest) -> Dict[str, object]:
 def review_card(payload: ReviewRequest) -> Dict[str, object]:
     rating = _rating_to_score(payload.rating)
     with db.get_db() as conn:
+        # LEFT JOIN (not INNER) so orphan cards — the ones users create via
+        # the New Card dialog with concept_id=NULL — are found here. Prior
+        # INNER JOIN silently returned no rows and this endpoint raised 404
+        # on every rating attempt against a user-authored card.
         row = conn.execute(
             """
-            SELECT s.id, s.difficulty, s.stability, s.reps, s.lapses, s.concept_id, c.mastery
+            SELECT s.id, s.difficulty, s.stability, s.reps, s.lapses, s.concept_id,
+                   c.mastery
             FROM srs_cards s
-            JOIN concepts c ON s.concept_id = c.id
+            LEFT JOIN concepts c ON s.concept_id = c.id
             WHERE s.id = ?
             """,
             (payload.card_id,),
@@ -393,7 +398,17 @@ def review_card(payload: ReviewRequest) -> Dict[str, object]:
             stability = round(stability * multiplier, 2)
 
         mastery_delta = 0.08 if rating >= 3 else -0.06
-        new_mastery = min(1.0, max(0.05, round(float(row["mastery"]) + mastery_delta, 2)))
+        # Orphan cards carry no concept, so no mastery value to update.
+        # Keep new_mastery set for the response payload below (None means
+        # the frontend can ignore it) and skip the concepts UPDATE.
+        concept_id = row["concept_id"]
+        prior_mastery = row["mastery"]
+        new_mastery: float | None = None
+        if concept_id is not None and prior_mastery is not None:
+            new_mastery = min(
+                1.0,
+                max(0.05, round(float(prior_mastery) + mastery_delta, 2)),
+            )
         next_due = date.today() + timedelta(days=next_interval)
 
         conn.execute(
@@ -416,15 +431,16 @@ def review_card(payload: ReviewRequest) -> Dict[str, object]:
                 payload.card_id,
             ),
         )
-        conn.execute(
-            "UPDATE concepts SET mastery = ?, last_tested = ? WHERE id = ?",
-            (new_mastery, datetime.now(timezone.utc).isoformat(), row["concept_id"]),
-        )
+        if concept_id is not None and new_mastery is not None:
+            conn.execute(
+                "UPDATE concepts SET mastery = ?, last_tested = ? WHERE id = ?",
+                (new_mastery, datetime.now(timezone.utc).isoformat(), concept_id),
+            )
         conn.commit()
         log_study_event(
             conn,
             "card_reviewed",
-            concept_id=row["concept_id"],
+            concept_id=concept_id,
             confidence=85.0 if rating >= 3 else 38.0,
             payload={"rating": payload.rating, "interval": next_interval},
         )
