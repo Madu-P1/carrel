@@ -17,6 +17,7 @@ from api_models import (
     TutorQueryRequest,
     TutorQueryResponse,
 )
+from ai.providers import get_default_provider
 from services import adaptive_tutor as adaptive_tutor_service
 from services import mastery_engine
 from services import provenance_service
@@ -140,13 +141,169 @@ def transform_note(payload: NoteTransformRequest) -> Dict[str, Any]:
         return transformed
 
 
-@router.post("/api/notes/expand")
-def expand_note(payload: NoteExpandRequest) -> Dict[str, str]:
-    content = (payload.content or "").strip()
-    if not content:
-        raise HTTPException(status_code=400, detail="Content is required.")
+_SUBMIT_EXPANDED_NOTE_TOOL: Dict[str, Any] = {
+    "name": "submit_expanded_note",
+    "description": "Produce a structured study-notes expansion of a terse user input.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": (
+                    "2 to 4 sentences that EXPLAIN the concept. Must add real "
+                    "information beyond the user's input. Never a restatement."
+                ),
+            },
+            "key_ideas": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 6,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "1 to 3 word noun phrase, no punctuation.",
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": (
+                                "1 or 2 sentences that explain the sub-concept "
+                                "concretely. Never a reword of the name."
+                            ),
+                        },
+                    },
+                    "required": ["name", "description"],
+                },
+            },
+            "organized_notes": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 8,
+                "items": {"type": "string"},
+                "description": (
+                    "Study-ready factual bullets in logical order: definition, "
+                    "mechanism, examples, edge cases. Each a single sentence."
+                ),
+            },
+            "review_prompts": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 5,
+                "items": {"type": "string"},
+                "description": (
+                    "Questions that test comprehension, not name recall. "
+                    "Prefer how, why, when, and compare questions."
+                ),
+            },
+        },
+        "required": ["summary", "key_ideas", "organized_notes", "review_prompts"],
+    },
+}
 
-    title = (payload.title or "").strip() or "Expanded Notes"
+_EXPAND_NOTE_SYSTEM = (
+    "You expand rough study notes into rigorous, concrete study material for a "
+    "serious learner.\n\n"
+    "Non-negotiables:\n"
+    "1. Never restate the user's input. If they write \"Bonds are issued by "
+    "government bodies,\" your summary is NOT that sentence. It explains what "
+    "a bond IS (a debt security, fixed-income instrument), how it works (face "
+    "value, coupon, maturity, yield), who else issues them (corporations, "
+    "agencies, municipalities), and why it matters.\n"
+    "2. Add substance. If the note leaves out an obvious mechanism, add it. "
+    "If it implies a partial truth, expand to the fuller picture. If a term "
+    "has a standard definition, give that definition.\n"
+    "3. Be concrete. Use real examples, real organizations, real numbers, "
+    "real timeframes.\n"
+    "4. Short sentences. One idea per sentence.\n"
+    "5. Do not use: delve, crucial, comprehensive, robust, nuanced, "
+    "multifaceted, furthermore, moreover, additionally, pivotal, landscape, "
+    "tapestry, underscore, foster, showcase, intricate, vibrant, fundamental, "
+    "significant, interplay. Do not use em dashes. Do not hedge with "
+    "essentially, basically, in essence.\n"
+    "6. Review prompts must test understanding, not recall of the term's "
+    "name. Prefer \"How does X change when Y increases?\" over \"What is X?\"\n\n"
+    "Fill every field of the submit_expanded_note tool."
+)
+
+
+def _format_expansion_markdown(title: str, payload: Dict[str, Any]) -> str:
+    """Render the tool payload back into the feature's expected markdown shape."""
+    summary = str(payload.get("summary") or "").strip()
+    lines: List[str] = [f"# {title}", "", "## Summary", summary or "No summary produced."]
+
+    key_ideas = payload.get("key_ideas") or []
+    if isinstance(key_ideas, list) and key_ideas:
+        body: List[str] = []
+        for item in key_ideas:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            description = str(item.get("description") or "").strip()
+            if name and description:
+                body.append(f"- **{name}**: {description}")
+        if body:
+            lines.extend(["", "## Key Ideas", *body])
+
+    notes = payload.get("organized_notes") or []
+    if isinstance(notes, list) and notes:
+        body = []
+        for index, note in enumerate(notes, start=1):
+            text = str(note).strip()
+            if text:
+                body.append(f"{index}. {text}")
+        if body:
+            lines.extend(["", "## Organized Notes", *body])
+
+    prompts = payload.get("review_prompts") or []
+    if isinstance(prompts, list) and prompts:
+        body = []
+        for prompt in prompts:
+            text = str(prompt).strip()
+            if text:
+                body.append(f"- {text}")
+        if body:
+            lines.extend(["", "## Review Prompts", *body])
+
+    return "\n".join(lines).strip()
+
+
+def _try_ai_expansion(title: str, content: str) -> Optional[Dict[str, Any]]:
+    """Call the configured provider. Returns the tool payload dict on success,
+    None on any failure so the caller can fall back to the deterministic path.
+    """
+    provider = get_default_provider()
+    if not provider.ai_enabled():
+        return None
+    result = provider.request_tool_call(
+        request_kind="notes.expand",
+        system=_EXPAND_NOTE_SYSTEM,
+        prompt=f"Title: {title}\n\nUser's note:\n{content}",
+        tool=_SUBMIT_EXPANDED_NOTE_TOOL,
+        max_tokens=1800,
+        task="balanced",
+    )
+    if not result.ok or not isinstance(result.json_payload, dict):
+        return None
+    payload = result.json_payload
+    # Defensive shape check. The tool schema enforces this, but a model that
+    # ignores the schema shouldn't 500 the endpoint.
+    required_lists = ("key_ideas", "organized_notes", "review_prompts")
+    if not isinstance(payload.get("summary"), str):
+        return None
+    if any(not isinstance(payload.get(key), list) for key in required_lists):
+        return None
+    return payload
+
+
+def _build_deterministic_expansion(title: str, content: str) -> str:
+    """Fallback path when AI is disabled or the call fails.
+
+    This is the original Phase 1 logic: extractive summary, heuristic concept
+    extraction, sentence split. It does not expand the note with new content,
+    it just re-organizes whatever the user typed. Kept so /api/notes/expand
+    still returns something usable offline.
+    """
     summary = summarize_document(content, max_sentences=3)
     concepts = build_concept_payloads(content, title, limit=5)
     sentences = split_sentences(content)
@@ -178,7 +335,25 @@ def expand_note(payload: NoteExpandRequest) -> Dict[str, str]:
             "Which part would you want to practice from memory next?",
         ]
     lines.extend(["", "## Review Prompts", *[f"- {prompt}" for prompt in review_prompts]])
-    return {"expanded_markdown": "\n".join(lines).strip()}
+    return "\n".join(lines).strip()
+
+
+@router.post("/api/notes/expand")
+def expand_note(payload: NoteExpandRequest) -> Dict[str, str]:
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required.")
+
+    title = (payload.title or "").strip() or "Expanded Notes"
+
+    # Try the LLM path first. The deterministic fallback exists so a disabled
+    # provider, rate limit, or schema mismatch never 500s the endpoint; the
+    # user still gets something, just less rich.
+    ai_payload = _try_ai_expansion(title, content)
+    if ai_payload is not None:
+        return {"expanded_markdown": _format_expansion_markdown(title, ai_payload)}
+
+    return {"expanded_markdown": _build_deterministic_expansion(title, content)}
 
 
 @router.post("/api/dialogue/start")
