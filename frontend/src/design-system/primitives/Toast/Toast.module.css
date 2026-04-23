@@ -1,0 +1,120 @@
+/*
+ * Toast host — bottom-right corner, stack upward. Fixed positioning so toasts
+ * don't shift when panels collapse. The host itself is pointer-events: none
+ * so it doesn't block clicks on the app; each toast re-enables pointer
+ * events inside its own box.
+ */
+.host {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - var(--space-8)));
+  pointer-events: none;
+  z-index: var(--z-tooltip);
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-3);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-soft);
+  pointer-events: auto;
+  animation: toast-enter var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+/* Kind-specific left-edge accent. Subtle wash on the whole row so it
+ * reads at a glance without being neon. */
+.kind-success {
+  border-left: 3px solid var(--state-ok);
+  background: color-mix(in srgb, var(--state-ok) 6%, var(--color-bg-elevated));
+}
+.kind-warning {
+  border-left: 3px solid var(--state-warn);
+  background: color-mix(in srgb, var(--state-warn) 6%, var(--color-bg-elevated));
+}
+.kind-error {
+  border-left: 3px solid var(--state-err);
+  background: color-mix(in srgb, var(--state-err) 6%, var(--color-bg-elevated));
+}
+.kind-info {
+  border-left: 3px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-elevated));
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+.kind-success .icon { color: var(--state-ok); }
+.kind-warning .icon { color: var(--state-warn); }
+.kind-error .icon { color: var(--state-err); }
+.kind-info .icon { color: var(--color-accent); }
+
+.body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--color-text-primary);
+}
+
+.title {
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.description {
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
+.dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.dismiss:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

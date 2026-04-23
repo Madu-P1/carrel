@@ -2,7 +2,7 @@ import { useEffect } from "preact/hooks";
 import { useLocation } from "preact-iso";
 import type { ComponentChildren } from "preact";
 
-import { Box, Button, Card, Divider, Icon, ScrollArea, Stack, Text } from "@/design-system";
+import { Box, Button, Card, Divider, Icon, ScrollArea, Stack, Text, ToastHost } from "@/design-system";
 import { WorkspaceSidebar, type SidebarNavItem } from "./WorkspaceSidebar";
 import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
 import type { PaletteAction } from "@/features/palette/actions";
@@ -358,6 +358,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         }}
       />
       <ShortcutsOverlay />
+      <ToastHost />
     </div>
   );
 }

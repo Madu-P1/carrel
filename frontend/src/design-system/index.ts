@@ -38,3 +38,5 @@ export { Text } from "./primitives/Text";
 export type { TextProps } from "./primitives/Text";
 export { Tooltip } from "./primitives/Tooltip";
 export type { TooltipProps } from "./primitives/Tooltip";
+export { ToastHost, dismissToast, showToast, toast } from "./primitives/Toast";
+export type { ToastInput, ToastKind } from "./primitives/Toast";

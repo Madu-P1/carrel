@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
-import { Badge, Button, Card, Icon, Input, Spinner, Stack, Text } from "@/design-system";
+import { Badge, Button, Card, Icon, Input, Spinner, Stack, Text, toast } from "@/design-system";
 import {
   study,
   type SrsCard,
@@ -113,9 +113,11 @@ export function ManageCardsView() {
       setDeleteState({ kind: "idle", cardId: null });
       // Subject counts may have shifted if we emptied a bucket. Cheap refresh.
       void refreshSubjects();
+      toast.info("Card deleted");
     } catch (error) {
       setLoadError((error as Error).message);
       setDeleteState({ kind: "idle", cardId: null });
+      toast.error("Delete failed", (error as Error).message);
     }
   };
 
@@ -128,6 +130,7 @@ export function ManageCardsView() {
     // Subject counts changed (orphan cards show under "All" only, but the
     // counts view still aggregates). Cheap, fire-and-forget.
     void refreshSubjects();
+    toast.success("Card saved", "It's queued for your next review session.");
   };
 
   const handleAiCardsCreated = (created: SrsCard[]) => {
@@ -135,6 +138,10 @@ export function ManageCardsView() {
     setCards((prev) => [...created, ...prev]);
     setTotal((t) => t + created.length);
     void refreshSubjects();
+    toast.success(
+      `${created.length} card${created.length === 1 ? "" : "s"} saved`,
+      "Review them from the top of this list, or start a session to see them immediately."
+    );
   };
 
   const handleBulkDelete = async () => {
@@ -148,8 +155,10 @@ export function ManageCardsView() {
       setSelection(new Set());
       setTotal((t) => Math.max(0, t - ids.length));
       void refreshSubjects();
+      toast.info(`${ids.length} card${ids.length === 1 ? "" : "s"} deleted`);
     } catch (error) {
       setLoadError((error as Error).message);
+      toast.error("Bulk delete failed", (error as Error).message);
     } finally {
       setBulkPending(false);
     }

@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 
-import { Badge, Button, Input, Stack, Text } from "@/design-system";
+import { Badge, Button, Input, Stack, Text, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
 import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 
@@ -32,12 +32,20 @@ export function SubjectSection({
 
   const handleRename = async () => {
     const nextSubject = draft.trim() || "General";
-    await setSubject(
-      documents.map((document) => document.id),
-      nextSubject
-    );
-    setEditing(false);
-    onSubjectRenamed();
+    const priorSubject = subject;
+    try {
+      await setSubject(
+        documents.map((document) => document.id),
+        nextSubject
+      );
+      setEditing(false);
+      onSubjectRenamed();
+      if (nextSubject !== priorSubject) {
+        toast.success(`Subject renamed to "${nextSubject}"`, `${documents.length} document${documents.length === 1 ? "" : "s"} updated.`);
+      }
+    } catch (err) {
+      toast.error("Rename failed", (err as Error).message);
+    }
   };
 
   return (

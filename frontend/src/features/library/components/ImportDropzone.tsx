@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 
-import { Button, Spinner, Stack, Text } from "@/design-system";
+import { Button, Spinner, Stack, Text, toast } from "@/design-system";
 
 import { useUploadDocument, type UploadOutcome } from "../hooks/useUploadDocument";
 import styles from "./ImportDropzone.module.css";
@@ -131,10 +131,26 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
 
   const handleUpload = async (files: FileList | File[]) => {
     const results = await uploadFiles(files);
-    // Refetch if at least one file ingested — otherwise the library hasn't
-    // changed and we save a round trip.
-    if (results.some((r) => r.kind === "ok")) {
+    const okCount = results.filter((r) => r.kind === "ok").length;
+    const errCount = results.filter((r) => r.kind === "error").length;
+    const dupCount = results.filter((r) => r.kind === "duplicate").length;
+    if (okCount > 0) {
       onUploaded();
+      const suffix =
+        dupCount || errCount
+          ? `${dupCount ? ` · ${dupCount} dup${dupCount === 1 ? "" : "s"}` : ""}${errCount ? ` · ${errCount} failed` : ""}`
+          : "";
+      toast.success(
+        `${okCount} file${okCount === 1 ? "" : "s"} ingested${suffix}`,
+        "Einstein has extracted chunks and concepts. Open the Library to start reading."
+      );
+    } else if (errCount > 0) {
+      toast.error(
+        `${errCount} upload${errCount === 1 ? "" : "s"} failed`,
+        "Use Retry failed in the outcome panel below to try again without re-selecting."
+      );
+    } else if (dupCount > 0) {
+      toast.info(`${dupCount} file${dupCount === 1 ? "" : "s"} already in your library`);
     }
   };
 
