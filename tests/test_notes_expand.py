@@ -209,6 +209,64 @@ class NotesExpandTests(unittest.TestCase):
         # Summary section populated from the user's input.
         self.assertIn("## Summary", md)
 
+    def test_small_model_outline_mode_gets_filtered(self) -> None:
+        """Small models sometimes slip into outline mode — emitting topic
+        headings like "Bond Yields" or "Real-World Examples" instead of
+        complete sentences for organized_notes, and non-question headings
+        like "Bond Schedules" for review_prompts. Those must be dropped so
+        the user sees only real content.
+        """
+        ai_payload = {
+            "summary": "Bonds are debt instruments sold by issuers to raise capital.",
+            "key_ideas": [
+                {"name": "Face value", "description": "Amount repaid at maturity."},
+                # Identifier leak, dropped.
+                {"name": "bond_types", "description": "concepts_related_to_bonds"},
+            ],
+            "organized_notes": [
+                "Bonds pay fixed coupon interest until maturity.",  # real sentence, keep
+                "Government Bonds",  # title-case heading, drop
+                "Bond Valuation",  # heading, drop
+                "use_cases_for_government_bonds",  # identifier leak, drop
+                "Investor protection depends on issuer credit quality.",  # real sentence, keep
+            ],
+            "review_prompts": [
+                "How does a bond's price change when interest rates rise?",  # real question, keep
+                "Bond Schedules",  # non-question heading, drop
+                "concepts_related_to_bonds",  # identifier leak, drop
+                "What is X?",  # too short (3 words), drop
+                "Why might a corporation issue bonds instead of equity?",  # real question, keep
+            ],
+        }
+        fake = FakeProvider(enabled=True, result=_ok_tool_result(ai_payload))
+        with mock.patch("routes.tutor.get_default_provider", return_value=fake):
+            response = self.client.post(
+                "/api/notes/expand",
+                json={"content": "Bonds are issued by governments.", "title": "Bonds"},
+            )
+        self.assertEqual(response.status_code, 200)
+        md = response.json()["expanded_markdown"]
+
+        # Junk filtered out.
+        for bad in [
+            "concepts_related_to_bonds",
+            "use_cases_for_government_bonds",
+            "Government Bonds",
+            "Bond Valuation",
+            "Bond Schedules",
+        ]:
+            self.assertNotIn(bad, md, f"{bad!r} should have been filtered")
+
+        # "What is X?" is too short (3 words).
+        self.assertNotIn("- What is X?", md)
+
+        # Real content survives.
+        self.assertIn("Face value", md)
+        self.assertIn("coupon interest until maturity", md)
+        self.assertIn("Investor protection", md)
+        self.assertIn("interest rates rise", md)
+        self.assertIn("corporation issue bonds", md)
+
     def test_ai_error_falls_back(self) -> None:
         fake = FakeProvider(enabled=True, result=_failing_tool_result("http_429"))
         with mock.patch("routes.tutor.get_default_provider", return_value=fake):

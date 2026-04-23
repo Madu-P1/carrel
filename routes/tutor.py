@@ -221,14 +221,72 @@ _EXPAND_NOTE_SYSTEM = (
     "tapestry, underscore, foster, showcase, intricate, vibrant, fundamental, "
     "significant, interplay. Do not use em dashes. Do not hedge with "
     "essentially, basically, in essence.\n"
-    "6. Review prompts must test understanding, not recall of the term's "
-    "name. Prefer \"How does X change when Y increases?\" over \"What is X?\"\n\n"
+    "6. Review prompts must be COMPLETE QUESTIONS ending with a question mark. "
+    "Four words minimum. Test understanding, not name recall. Prefer \"How "
+    "does X change when Y increases?\" over \"What is X?\". NEVER emit a "
+    "plain heading like \"Bond Yields\" or a field identifier like "
+    "\"yield_and_bond_prices\" as a review prompt. Every prompt is a "
+    "grammatical question.\n"
+    "7. Organized notes are COMPLETE SENTENCES ending with a period. Not "
+    "headings. Not labels. Not outline points. \"Bonds pay fixed coupon "
+    "interest until maturity.\" is right. \"Bond Valuation\" is wrong.\n\n"
     "Fill every field of the submit_expanded_note tool."
 )
 
 
+_IDENTIFIER_LOOKALIKE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)+$")
+# Matches headings like "Bond Schedules" or "Real-World Examples" that small
+# models emit when they slip into outline mode. Each word starts with a
+# capital (allowing for hyphenated words), no terminal punctuation, no verbs.
+_TITLE_CASE_HEADING = re.compile(
+    r"^(?:[A-Z][A-Za-z0-9-]*)(?:[ :][A-Z][A-Za-z0-9-]*){0,5}[A-Za-z0-9]$"
+)
+
+
+def _looks_like_schema_leak(text: str) -> bool:
+    """Small models sometimes emit field-name tokens instead of actual content
+    (e.g., "concepts_related_to_bonds" as a review prompt). Filter those.
+    """
+    if not text:
+        return True
+    return bool(_IDENTIFIER_LOOKALIKE.match(text))
+
+
+def _is_real_sentence(text: str) -> bool:
+    """A proper factual note should be a sentence: multi-word, end in a
+    period or question mark. Rejects title-case headings like
+    "Government Bonds" or "Real-World Examples" that some small models
+    emit when they slip into outline mode.
+    """
+    if not text or len(text) < 12:
+        return False
+    if " " not in text:
+        return False
+    if _TITLE_CASE_HEADING.match(text):
+        return False
+    return text.endswith((".", "!", "?"))
+
+
+def _is_real_question(text: str) -> bool:
+    """A review prompt must be an actual question. Requires a question mark
+    at the end and at least a few words. Catches "Bond Schedules" and
+    similar headings that sometimes leak into the prompt list.
+    """
+    if not text:
+        return False
+    if not text.endswith("?"):
+        return False
+    words = text.split()
+    return len(words) >= 4
+
+
 def _format_expansion_markdown(title: str, payload: Dict[str, Any]) -> str:
-    """Render the tool payload back into the feature's expected markdown shape."""
+    """Render the tool payload back into the feature's expected markdown shape.
+
+    Aggressively filters malformed items (empty, identifier-looking tokens)
+    rather than letting a model artifact reach the user. If filtering leaves
+    a section empty, that section is omitted entirely.
+    """
     summary = str(payload.get("summary") or "").strip()
     lines: List[str] = [f"# {title}", "", "## Summary", summary or "No summary produced."]
 
@@ -240,28 +298,41 @@ def _format_expansion_markdown(title: str, payload: Dict[str, Any]) -> str:
                 continue
             name = str(item.get("name") or "").strip()
             description = str(item.get("description") or "").strip()
-            if name and description:
-                body.append(f"- **{name}**: {description}")
+            if not name or not description:
+                continue
+            if _looks_like_schema_leak(name) or _looks_like_schema_leak(description):
+                continue
+            body.append(f"- **{name}**: {description}")
         if body:
             lines.extend(["", "## Key Ideas", *body])
 
     notes = payload.get("organized_notes") or []
     if isinstance(notes, list) and notes:
         body = []
-        for index, note in enumerate(notes, start=1):
+        for note in notes:
             text = str(note).strip()
-            if text:
-                body.append(f"{index}. {text}")
+            if not text or _looks_like_schema_leak(text):
+                continue
+            # Small models sometimes produce a topic outline ("Government
+            # Bonds", "Bond Valuation") instead of factual sentences. Require
+            # a real sentence shape before rendering.
+            if not _is_real_sentence(text):
+                continue
+            body.append(text)
         if body:
-            lines.extend(["", "## Organized Notes", *body])
+            lines.extend(["", "## Organized Notes"])
+            lines.extend(f"{i}. {note}" for i, note in enumerate(body, start=1))
 
     prompts = payload.get("review_prompts") or []
     if isinstance(prompts, list) and prompts:
         body = []
         for prompt in prompts:
             text = str(prompt).strip()
-            if text:
-                body.append(f"- {text}")
+            if not text or _looks_like_schema_leak(text):
+                continue
+            if not _is_real_question(text):
+                continue
+            body.append(f"- {text}")
         if body:
             lines.extend(["", "## Review Prompts", *body])
 
@@ -275,13 +346,19 @@ def _try_ai_expansion(title: str, content: str) -> Optional[Dict[str, Any]]:
     provider = get_default_provider()
     if not provider.ai_enabled():
         return None
+    # task="fast" — notes expansion is a structured-output task, not a
+    # reasoning task. On Ollama the 8B "balanced" model takes 3-4 minutes
+    # on this tool schema (measured in prod logs) and routinely times out.
+    # The 3B "fast" model finishes in ~20s with comparable quality for this
+    # shape of problem. Callers who want max quality should switch to
+    # EINSTEIN_AI_PROVIDER=claude in .env.
     result = provider.request_tool_call(
         request_kind="notes.expand",
         system=_EXPAND_NOTE_SYSTEM,
         prompt=f"Title: {title}\n\nUser's note:\n{content}",
         tool=_SUBMIT_EXPANDED_NOTE_TOOL,
-        max_tokens=1800,
-        task="balanced",
+        max_tokens=1600,
+        task="fast",
     )
     if not result.ok or not isinstance(result.json_payload, dict):
         return None

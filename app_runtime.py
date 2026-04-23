@@ -2,6 +2,34 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dotenv is in requirements.txt
+    load_dotenv = None  # type: ignore[assignment]
+
+
+def _load_env_file() -> None:
+    """Load .env from the repo root if present.
+
+    The .env lives next to this file (repo root) and is the canonical home
+    for ANTHROPIC_API_KEY, EINSTEIN_AI_PROVIDER, OLLAMA_* overrides, etc.
+    Previously the backend only saw whatever the invoking shell had
+    exported, which meant users dropping keys in .env got silently ignored
+    and the app fell back to auto-selection heuristics instead of their
+    explicit choice. Loading at import time fixes that for any process
+    that imports app_runtime (which main.py does before touching AI).
+    override=False keeps real process env ahead of .env so ops tools
+    (systemd, launchd, Docker) still win.
+    """
+    if load_dotenv is None:
+        return
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.is_file():
+        load_dotenv(env_path, override=False)
+
+
+_load_env_file()
+
 
 @dataclass(frozen=True)
 class RuntimePaths:
