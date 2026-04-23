@@ -3,59 +3,87 @@
   gap: var(--space-2);
 }
 
+/*
+ * Label — label-md size per the new type scale. Uppercase kept because
+ * it reads as a proper form label, not body prose. Tracking tightened
+ * slightly so the uppercase still feels refined.
+ */
 .label {
-  font: var(--text-caption);
+  font: var(--text-label-md);
   color: var(--color-text-secondary);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
+/*
+ * Control container — the visible "field" box. Height pulls from the
+ * control-height ladder (40px) so an Input on a row with Buttons sized
+ * md (36px) reads as intentionally slightly taller, which is the
+ * reading-first convention.
+ */
 .control {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 40px;
-  padding: 0 var(--space-3);
+  height: var(--control-height-input);
+  padding: 0 var(--space-4);
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-3);
+  border-radius: var(--radius-button);
   background: var(--color-bg-elevated);
   transition:
-    border-color var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out),
-    box-shadow var(--dur-fast) var(--ease-out);
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.control:hover:not(:focus-within) {
+  border-color: var(--color-border-strong);
 }
 
 .control:focus-within {
   border-color: var(--color-accent);
-  box-shadow: var(--focus-ring);
+  box-shadow: var(--shadow-focus);
 }
 
 .input {
   width: 100%;
+  height: 100%;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--color-text-primary);
   caret-color: var(--color-accent);
+  font: var(--text-body);
+  letter-spacing: var(--tracking-sans);
 }
 
 .input::placeholder {
   color: var(--color-text-tertiary);
 }
 
+.input:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
 .help {
-  font: var(--text-caption);
+  font: var(--text-label-md);
   color: var(--color-text-tertiary);
 }
 
 .error {
-  font: var(--text-caption);
+  font: var(--text-label-md);
   color: var(--color-danger);
 }
 
 .invalid {
   border-color: var(--color-danger);
+}
+.invalid:focus-within {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 2px var(--surface-0),
+              0 0 0 4px var(--color-danger);
 }
 
 .leading {

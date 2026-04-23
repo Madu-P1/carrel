@@ -1,3 +1,14 @@
+/*
+ * Button primitive.
+ *
+ * Heights snap to the control-height ladder so a button, input, and select
+ * on the same row read as one aligned set. No arbitrary px padding left in
+ * this file; everything is a token.
+ *
+ * State ladder wired to the theme tokens (default / hover / pressed /
+ * selected / focus-visible / disabled). Selection is rare on buttons but
+ * gets a separate rule so the same vocabulary works on tab-style buttons.
+ */
 .btn {
   position: relative;
   display: inline-flex;
@@ -5,16 +16,18 @@
   justify-content: center;
   gap: var(--space-2);
   border: 1px solid transparent;
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-button);
   font: var(--text-body);
   font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-sans);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
   transition:
-    background-color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out),
-    opacity var(--dur-fast) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    opacity var(--dur-micro) var(--ease-out),
     transform var(--dur-instant) var(--ease-swift);
 }
 
@@ -25,34 +38,51 @@
 
 .btn:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring);
+  box-shadow: var(--shadow-focus);
 }
 
 .btn:active:not(:disabled) {
   transform: scale(0.97);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled) { transform: none; }
+}
+
+/* Sizes snap to the control-height ladder. Horizontal padding scales with
+ * size, font-size stays at --text-body by default (body size is 14 now so
+ * md + lg don't need a size bump; sm keeps the smaller label for density). */
 .size-sm {
-  padding: 4px 10px;
-  font-size: 12px;
+  height: var(--control-height-sm);
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  line-height: 1;
 }
 
 .size-md {
-  padding: 6px 14px;
+  height: var(--control-height-md);
+  padding: 0 var(--space-4);
+  line-height: 1;
 }
 
 .size-lg {
-  padding: 10px 18px;
-  font-size: 14px;
+  height: var(--control-height-lg);
+  padding: 0 var(--space-5);
+  font-size: 15px;
+  line-height: 1;
 }
 
+/* Variants — each variant picks a background from the state ladder so
+ * hover/pressed are consistent across the app. */
 .variant-primary {
   background: var(--color-accent);
   color: var(--color-text-inverse);
 }
-
 .variant-primary:hover:not(:disabled) {
   background: var(--color-accent-hover);
+}
+.variant-primary:active:not(:disabled) {
+  background: var(--accent-pressed, var(--color-accent-hover));
 }
 
 .variant-secondary {
@@ -60,27 +90,34 @@
   color: var(--color-text-primary);
   border-color: var(--color-border-default);
 }
-
 .variant-secondary:hover:not(:disabled) {
-  background: var(--color-bg-hover);
+  background: var(--state-bg-hover);
+  border-color: var(--color-border-strong);
+}
+.variant-secondary:active:not(:disabled) {
+  background: var(--state-bg-pressed);
 }
 
 .variant-ghost {
   background: transparent;
   color: var(--color-text-primary);
 }
-
 .variant-ghost:hover:not(:disabled) {
-  background: var(--color-bg-hover);
+  background: var(--state-bg-hover);
+}
+.variant-ghost:active:not(:disabled) {
+  background: var(--state-bg-pressed);
 }
 
 .variant-danger {
   background: var(--color-danger);
   color: var(--color-text-inverse);
 }
-
 .variant-danger:hover:not(:disabled) {
-  filter: brightness(1.04);
+  filter: brightness(1.06);
+}
+.variant-danger:active:not(:disabled) {
+  filter: brightness(0.96);
 }
 
 .leading,
