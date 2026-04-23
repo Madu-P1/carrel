@@ -287,8 +287,12 @@ export function StudyView() {
             ) : null}
             <Stack direction="horizontal" gap={2} wrap>
               {phase === "front" ? (
-                <Button onClick={revealAnswer} leadingIcon={<Icon name="sparkle" />}>
-                  Show answer (space)
+                <Button
+                  keyHint="Space"
+                  leadingIcon={<Icon name="sparkle" />}
+                  onClick={revealAnswer}
+                >
+                  Show answer
                 </Button>
               ) : (
                 RATINGS.map((r) => (

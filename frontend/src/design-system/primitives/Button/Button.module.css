@@ -92,3 +92,44 @@
 .loading .label {
   opacity: 0.7;
 }
+
+/*
+ * Key hint chip — trailing kbd shown inside primary / secondary buttons
+ * when the caller passes a `keyHint` prop. Visually muted so the main
+ * label still carries the weight; mono for the shortcut glyphs so the
+ * width stays stable across different keys ("⌘N" vs "↵").
+ */
+.keyHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  margin-left: var(--space-1);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-1);
+  background: color-mix(in srgb, var(--color-bg-base) 60%, transparent);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* On the primary variant the background is the accent color; the key
+ * hint needs an inverted chip so it stays legible against it. */
+.variant-primary .keyHint {
+  border-color: color-mix(in srgb, var(--color-text-inverse) 30%, transparent);
+  background: color-mix(in srgb, var(--color-text-inverse) 14%, transparent);
+  color: var(--color-text-inverse);
+}
+
+/* Danger buttons inherit the same inverted treatment. */
+.variant-danger .keyHint {
+  border-color: color-mix(in srgb, var(--color-text-inverse) 30%, transparent);
+  background: color-mix(in srgb, var(--color-text-inverse) 14%, transparent);
+  color: var(--color-text-inverse);
+}

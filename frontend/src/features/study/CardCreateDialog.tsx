@@ -96,7 +96,12 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
           <Button onClick={onClose} variant="secondary">
             Cancel
           </Button>
-          <Button disabled={!canSubmit} isLoading={submitting} onClick={() => void handleSubmit()}>
+          <Button
+            disabled={!canSubmit}
+            isLoading={submitting}
+            keyHint="⌘↵"
+            onClick={() => void handleSubmit()}
+          >
             Create card
           </Button>
         </Stack>

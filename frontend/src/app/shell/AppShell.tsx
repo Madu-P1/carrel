@@ -281,11 +281,12 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           </Button>
           <Button
             aria-label="Open command palette"
+            keyHint="⌘K"
             leadingIcon={<Icon name="command" />}
             onClick={() => openPalette()}
             variant="secondary"
           >
-            ⌘K
+            Commands
           </Button>
         </div>
       </header>

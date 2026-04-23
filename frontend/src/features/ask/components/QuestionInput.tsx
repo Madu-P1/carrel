@@ -52,6 +52,7 @@ export function QuestionInput({
         <Button
           disabled={disabled || !value.trim()}
           isLoading={disabled}
+          keyHint="↵"
           leadingIcon={<Icon name="sparkle" />}
           type="submit"
         >

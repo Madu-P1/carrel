@@ -12,6 +12,13 @@ export interface ButtonProps
   size?: Size;
   isLoading?: boolean;
   leadingIcon?: ComponentChildren;
+  /**
+   * Keyboard shortcut hint rendered as a trailing `<kbd>` chip inside the
+   * button, Linear/Raycast-style. Pass the rendered label ("⌘N", "↵",
+   * "⌘⇧P") — the button does not bind the shortcut. Global key handling
+   * stays in AppShell and per-feature effects.
+   */
+  keyHint?: string;
   children?: ComponentChildren;
 }
 
@@ -20,6 +27,7 @@ export function Button({
   size = "md",
   isLoading = false,
   leadingIcon,
+  keyHint,
   className,
   disabled,
   children,
@@ -47,6 +55,11 @@ export function Button({
         <span className={styles.leading}>{leadingIcon}</span>
       ) : null}
       <span className={styles.label}>{children}</span>
+      {!isLoading && keyHint ? (
+        <kbd aria-hidden className={styles.keyHint}>
+          {keyHint}
+        </kbd>
+      ) : null}
     </button>
   );
 }
