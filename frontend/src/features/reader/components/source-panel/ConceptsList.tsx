@@ -1,6 +1,6 @@
 import type { DocumentDetail } from "@/services/api/endpoints";
-import { Pane, Text } from "@/design-system";
 
+import { EmptyState } from "./EmptyState";
 import styles from "./SourcePanel.module.css";
 
 type ReaderConcept = NonNullable<DocumentDetail["concepts"]>[number];
@@ -16,18 +16,34 @@ function conceptDescription(concept: ReaderConcept): string {
 }
 
 export function ConceptsList({ concepts }: { concepts: ReaderConcept[] }) {
+  if (concepts.length === 0) {
+    return (
+      <EmptyState
+        icon="sparkle"
+        title="No concepts extracted yet."
+        description="The tutor pulls key concepts the first time you study this source. They will appear here as soon as it runs."
+      />
+    );
+  }
+
   return (
-    <Pane title={`Concepts (${concepts.length})`}>
-      <div className={styles.conceptList}>
-        {concepts.map((concept, index) => (
-          <div className={styles.conceptItem} key={`${conceptName(concept)}-${index}`}>
-            <Text weight="semibold">{conceptName(concept)}</Text>
-            {conceptDescription(concept) ? (
-              <Text tone="secondary">{conceptDescription(concept)}</Text>
+    <ul className={styles.rowList}>
+      {concepts.map((concept, index) => {
+        const description = conceptDescription(concept);
+        return (
+          <li
+            className={styles.conceptRow}
+            key={`${conceptName(concept)}-${index}`}
+          >
+            <div className={styles.rowHeader}>
+              <span className={styles.rowTitle}>{conceptName(concept)}</span>
+            </div>
+            {description ? (
+              <p className={styles.rowPreview}>{description}</p>
             ) : null}
-          </div>
-        ))}
-      </div>
-    </Pane>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

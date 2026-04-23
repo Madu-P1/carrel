@@ -1,34 +1,135 @@
+/*
+ * SourcePanel — right-rail layout.
+ *
+ * The rail is a 320px column (fixed by AppShell). The panel claims 100%
+ * of that width and splits vertically into three regions:
+ *
+ *   [ MetadataStripe    ] — fixed-height doc header, non-scrolling
+ *   [ Tabs              ] — segmented tablist, non-scrolling
+ *   [ Tab panel         ] — the only scrollable region
+ *
+ * The outer container uses grid rows: auto / auto / 1fr. The 1fr row is
+ * what scrolls; the two "auto" rows stick to the top. That's why the
+ * stripe and tablist don't disappear when the user pages through a long
+ * chunks list.
+ */
 .panel {
-  height: 100%;
-  overflow: auto;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-4);
-  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
-}
-
-.metaGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--space-3);
+  height: 100%;
+  min-height: 0;
 }
 
-.metaRow {
+/* ---------- MetadataStripe ----------------------------------------- */
+/*
+ * Stripe = 2 lines max (topRow + meta). Bottom border acts as a seam
+ * between the stripe and the tablist so neither feels "loose."
+ */
+.stripe {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.stripeTopRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stripeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-2);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+
+.stripeTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stripeConfidence {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.confidence-good {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.confidence-warn {
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
+}
+
+.confidence-low {
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  color: var(--color-danger);
+}
+
+.confidence-unknown {
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  color: var(--color-text-tertiary);
+}
+
+.stripeMeta,
+.stripeSummary {
+  margin: 0;
+  font: var(--text-body-sm);
+  color: var(--color-text-tertiary);
+}
+
+.stripeSummary {
+  color: var(--color-text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- Tab panel scroll region -------------------------------- */
+.tabPanel {
+  min-height: 0;
+  overflow: auto;
+  padding-right: var(--space-1);
+}
+
+/* ---------- Row list + standardized row treatment ------------------ */
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 .pageGroup {
@@ -41,67 +142,161 @@
   position: sticky;
   top: 0;
   z-index: var(--z-base);
-  padding: var(--space-1) 0;
-  background: color-mix(in srgb, var(--color-bg-base) 90%, transparent);
+  padding: var(--space-1) var(--space-2);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  background: var(--surface-0);
+}
+
+.rowList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rowList > li + li {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/*
+ * Shared row chrome — chunk rows, concept rows, note rows all land on
+ * the same padding + radius + hover so the right rail reads as one
+ * family instead of three styled lists.
+ */
+.chunkButton,
+.conceptRow,
+.noteRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  position: relative;
+  transition: background var(--dur-micro) var(--ease-out);
 }
 
 .chunkButton {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-3);
-  background: var(--color-bg-base);
-  color: inherit;
-  text-align: left;
   cursor: pointer;
 }
 
 .chunkButton:hover {
-  background: var(--color-bg-hover);
+  background: var(--state-bg-hover);
 }
 
-.chunkButtonHighlighted {
-  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border-strong));
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-base));
+.chunkButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
-.chunkMeta {
-  width: 100%;
+/*
+ * Active chunk gets:
+ *   - a 2px accent rail on the left edge
+ *   - the selected surface fill
+ *   - the selected text color for the title
+ */
+.chunkButtonActive,
+.chunkButtonActive:hover {
+  background: var(--state-bg-selected);
+}
+
+.chunkButtonActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+.chunkButtonActive .rowTitle {
+  color: var(--state-fg-selected, var(--color-text-primary));
+}
+
+.rowHeader {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
+  min-width: 0;
 }
 
-.chunkPreview {
+.rowTitle {
+  font: var(--text-body-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.rowLocation {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.rowPreview {
+  margin: 0;
+  font: var(--text-body-sm);
+  color: var(--color-text-secondary);
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  overflow: hidden;
   -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
-.conceptList,
-.notesList {
+/* ---------- EmptyState --------------------------------------------- */
+.emptyState {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
 }
 
-.conceptItem,
-.noteItem {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border-subtle);
+.emptyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-2);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  color: var(--color-text-tertiary);
 }
 
-.conceptItem:last-child,
-.noteItem:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
+.emptyTitle {
+  margin: 0;
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.emptyDescription {
+  margin: 0;
+  font: var(--text-body-sm);
+  color: var(--color-text-tertiary);
+}
+
+.emptyAction {
+  margin-top: var(--space-2);
 }

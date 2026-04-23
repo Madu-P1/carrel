@@ -154,6 +154,9 @@ test("reader route deep-link populates the right panel and highlights the chunk"
 
   expect(await screen.findByText(/biology-notes\.md/i)).toBeDefined();
   expect(screen.getByTestId("right-panel")).toBeDefined();
-  expect(await screen.findByText(/Chunks \(2\)/i)).toBeDefined();
+  // Right-rail premium rebuild: chunks live inside the "Chunks" tab
+  // (default tab on mount) with a separate count chip, not a "Chunks
+  // (2)" pane title. Assert on the tab button instead.
+  expect(await screen.findByRole("tab", { name: /Chunks/i })).toBeDefined();
   expect(document.querySelector('[data-chunk-id="chunk-2"]')).toBeTruthy();
 });

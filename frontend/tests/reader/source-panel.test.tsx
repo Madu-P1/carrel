@@ -33,24 +33,65 @@ const detail: DocumentDetail = {
   summary: "Cell-cycle summary"
 };
 
-test("SourcePanel renders metadata, chunks, and concepts", async () => {
+test("SourcePanel renders the metadata stripe and tablist", async () => {
   render(<SourcePanel detail={detail} docId="doc-1" />);
 
+  // Stripe carries the filename, file-type chip, and confidence pill.
   expect(screen.getByText(/biology\.pdf/i)).toBeDefined();
+  // The "PDF" chip is purely visual (aria-hidden); assert the visible
+  // text instead of a label.
+  expect(screen.getByText("PDF")).toBeDefined();
   expect(screen.getByText(/Confidence 91%/i)).toBeDefined();
-  expect(screen.getByText(/Chunks \(2\)/i)).toBeDefined();
-  expect(screen.getByText(/Concepts \(1\)/i)).toBeDefined();
+
+  // Tab labels render as buttons with role=tab. The count chip is
+  // rendered separately from the label, so assert each.
+  expect(screen.getByRole("tab", { name: /Chunks/i })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Concepts/i })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Notes/i })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Related/i })).toBeDefined();
 });
 
 test("clicking a chunk updates the reader route and requested page", async () => {
   render(<SourcePanel detail={detail} docId="doc-1" />);
 
+  // Chunks tab is the default, so chunk rows are on screen at mount.
   fireEvent.click(screen.getByText(/Checkpoints pause progression/i));
 
   await waitFor(() => {
     expect(appShell.currentRoute.value).toBe("/reader/doc-1?chunk=chunk-2");
     expect(readerState.requestedPage.value).toBe(2);
   });
+});
+
+test("switching to the Concepts tab reveals the concept list", async () => {
+  render(<SourcePanel detail={detail} docId="doc-1" />);
+
+  // Concepts tab is not selected by default — its panel content is
+  // hidden until the user clicks the tab.
+  expect(screen.queryByText("Mitosis")).toBeNull();
+
+  fireEvent.click(screen.getByRole("tab", { name: /Concepts/i }));
+
+  expect(await screen.findByText("Mitosis")).toBeDefined();
+  expect(screen.getByText("Cell division")).toBeDefined();
+});
+
+test("Notes tab renders an empty-state copy block when there are no notes", async () => {
+  render(<SourcePanel detail={detail} docId="doc-1" />);
+
+  fireEvent.click(screen.getByRole("tab", { name: /Notes/i }));
+
+  // Scripted empty-state line lives in NotesList. It must appear when
+  // the notes list is empty instead of a blank panel.
+  expect(await screen.findByText(/No notes on this source yet/i)).toBeDefined();
+});
+
+test("Related tab renders the scaffold empty state", async () => {
+  render(<SourcePanel detail={detail} docId="doc-1" />);
+
+  fireEvent.click(screen.getByRole("tab", { name: /Related/i }));
+
+  expect(await screen.findByText(/No related sources yet/i)).toBeDefined();
 });
 
 test("OutlineRail renders the tree and routes clicks into page requests", async () => {

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 
 import type { DocumentDetail } from "@/services/api/endpoints";
-import { Text } from "@/design-system";
 
 import { readerState } from "../../state";
 import styles from "./SourcePanel.module.css";
@@ -13,21 +12,47 @@ interface ChunkRowProps {
   onSelect: (chunk: ReaderChunk) => void;
 }
 
+/**
+ * ChunkRow — standardized row treatment.
+ *
+ * Spec from the UI pass:
+ *   padding   --space-3 vertical, --space-4 horizontal
+ *   separator 1px hairline between rows (not 2px — 2px was visual noise
+ *             at 320px column width)
+ *   layout    title line (section · page) in primary tone, preview in
+ *             secondary tone, 2-line clamped
+ *   radius    --radius-card on hover so the click target feels discrete
+ *   active    --state-bg-selected + left-edge accent rail
+ *
+ * Whole row is the click target — a button wrapping both lines — so the
+ * hover + focus ring covers everything and there's no "the title isn't
+ * clickable but the body is" confusion.
+ */
 export function ChunkRow({ chunk, onSelect }: ChunkRowProps) {
   const rowRef = useRef<HTMLButtonElement>(null);
   const highlighted = readerState.highlightedChunkId.value === chunk.id;
 
   useEffect(() => {
-    if (highlighted) {
-      rowRef.current?.scrollIntoView({ block: "center" });
+    if (!highlighted) return;
+    const el = rowRef.current;
+    // JSDOM doesn't implement scrollIntoView — guard so the test
+    // environment doesn't throw, while still scrolling in a real
+    // browser where the function exists.
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "center" });
     }
   }, [highlighted]);
 
+  const sectionLabel = chunk.section || "Source chunk";
+  const locationLabel =
+    chunk.page_num != null ? `p. ${chunk.page_num}` : null;
+
   return (
     <button
+      aria-current={highlighted ? "true" : undefined}
       className={[
         styles.chunkButton,
-        highlighted ? styles.chunkButtonHighlighted : ""
+        highlighted ? styles.chunkButtonActive : ""
       ]
         .filter(Boolean)
         .join(" ")}
@@ -36,17 +61,13 @@ export function ChunkRow({ chunk, onSelect }: ChunkRowProps) {
       ref={rowRef}
       type="button"
     >
-      <div className={styles.chunkMeta}>
-        <Text tone="tertiary" variant="caption">
-          {chunk.section || "Source chunk"}
-        </Text>
-        {chunk.page_num != null ? (
-          <Text tone="tertiary" variant="caption">
-            p. {chunk.page_num}
-          </Text>
+      <div className={styles.rowHeader}>
+        <span className={styles.rowTitle}>{sectionLabel}</span>
+        {locationLabel ? (
+          <span className={styles.rowLocation}>{locationLabel}</span>
         ) : null}
       </div>
-      <Text className={styles.chunkPreview}>{chunk.content}</Text>
+      <p className={styles.rowPreview}>{chunk.content}</p>
     </button>
   );
 }
