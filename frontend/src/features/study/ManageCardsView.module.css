@@ -134,11 +134,22 @@
   background: var(--surface-2);
   transition:
     border-color var(--dur-micro) var(--ease-out),
-    background-color var(--dur-micro) var(--ease-out);
+    background-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
 }
 
+/* Hover lift matches DocumentRow and SubjectCard — the Manage list is the
+ * primary visual surface at this route, so it should feel as premium as
+ * the Library's card grid. */
 .row:hover {
   border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-card);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row:hover { transform: none; }
 }
 
 .rowSelected {

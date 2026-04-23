@@ -106,12 +106,23 @@
   transition:
     color var(--dur-micro) var(--ease-out),
     background-color var(--dur-micro) var(--ease-out),
-    border-color var(--dur-micro) var(--ease-out);
+    border-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
 }
 
+/* Subtle horizontal nudge on hover — matches the "Linear snap" feel
+ * DocumentRow and SubjectCard already have. Translate-X (not Y) because
+ * the sidebar is a vertical list; a Y nudge would cause items to
+ * visually bump each other. Reduced-motion users get the bg-color
+ * change only (the transform is gated by the @media rule below). */
 .navItem:hover {
   color: var(--text-primary);
   background: var(--color-bg-hover);
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navItem:hover { transform: none; }
 }
 
 .navItem:focus-visible {
