@@ -1,0 +1,144 @@
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  display: grid;
+  gap: var(--space-1);
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-3);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  line-height: 1.5;
+  resize: vertical;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.textarea::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.numberInput {
+  width: 92px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-2);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  font-variant-numeric: tabular-nums;
+}
+.numberInput:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.workingRow,
+.savingRow {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+/* Draft list — each card gets its own bordered row with editable fields.
+ * Excluded rows fade + desaturate so the set of kept cards is visually
+ * easy to count at a glance before clicking Save. */
+.draftsList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+.draftItem {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-3);
+  background: var(--color-bg-elevated);
+  transition: opacity var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.draftItemExcluded {
+  opacity: 0.55;
+}
+
+.draftHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.checkboxLabel input[type="checkbox"] {
+  appearance: auto; /* use native macOS checkbox for accurate hit target */
+  cursor: pointer;
+}
+
+.draftFields {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.draftFieldLabel {
+  display: grid;
+  gap: var(--space-1);
+  font: var(--text-caption);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.draftTextarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-2);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  line-height: 1.5;
+  resize: vertical;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.draftTextarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+.draftTextarea:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}

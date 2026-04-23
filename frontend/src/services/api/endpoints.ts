@@ -379,6 +379,26 @@ export interface CardCreatePayload {
   cardType?: string;
 }
 
+export interface CardAiDraftPayload {
+  topic: string;
+  context?: string;
+  count?: number;
+}
+
+export interface CardAiDraftItem {
+  front: string;
+  back: string;
+}
+
+export interface CardAiDraftResponse {
+  cards: CardAiDraftItem[];
+  /** "ok" | "ai_disabled" | "ai_failed". The UI branches on this so a
+   *  disabled provider renders a different empty state than an LLM that
+   *  returned no usable drafts. */
+  status: string;
+  error?: string | null;
+}
+
 export interface SrsCardListResponse {
   cards: SrsCard[];
   total: number;
@@ -447,6 +467,20 @@ export const study = {
         back: payload.back,
         concept_id: payload.conceptId ?? null,
         card_type: payload.cardType ?? "custom"
+      }
+    }),
+  /**
+   * Ask the configured AI provider to generate flashcard drafts for a
+   * topic. Returns drafts as {front, back} pairs; the user picks which
+   * to save via the regular createCard endpoint, one per kept draft.
+   */
+  aiDraftCards: (payload: CardAiDraftPayload) =>
+    api<CardAiDraftResponse>("/api/srs/cards/ai-draft", {
+      method: "POST",
+      body: {
+        topic: payload.topic,
+        context: payload.context ?? null,
+        count: payload.count ?? 5
       }
     })
 };

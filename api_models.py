@@ -27,6 +27,31 @@ class CardCreateRequest(BaseModel):
     card_type: str = Field(default="custom", max_length=64)
 
 
+class CardAiDraftRequest(BaseModel):
+    """POST /api/srs/cards/ai-draft payload. The "Generate with AI" mode of
+    the New Card dialog sends a topic (required) and optional long-form
+    context (pasted notes, a textbook excerpt). count is clamped server-side
+    to 3-10 regardless of what the client sends."""
+    topic: str = Field(..., min_length=1, max_length=400)
+    context: Optional[str] = Field(default=None, max_length=8000)
+    count: int = Field(default=5, ge=1, le=20)
+
+
+class CardAiDraftItem(BaseModel):
+    front: str
+    back: str
+
+
+class CardAiDraftResponse(BaseModel):
+    cards: List[CardAiDraftItem]
+    # status is one of: "ok" (AI produced drafts), "ai_disabled" (no
+    # provider configured), "ai_failed" (provider returned ok=False or a
+    # malformed payload). The client uses this to show the right empty
+    # state instead of mis-diagnosing "zero drafts" as "AI returned nothing."
+    status: str = "ok"
+    error: Optional[str] = None
+
+
 class QuizGenerateRequest(BaseModel):
     concepts: Optional[List[str]] = None
     count: int = 7

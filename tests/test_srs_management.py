@@ -312,6 +312,104 @@ class ManageCardsRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_ai_draft_happy_path_returns_cleaned_cards(self) -> None:
+        """The route routes through the AI provider and returns cleaned cards.
+        We mock the provider to avoid a real network call and the flakiness
+        of a live LLM. Focus is on plumbing + response shape + filters.
+        """
+        from ai.router import ClaudeCallResult
+        from unittest import mock as _mock
+
+        fake_result = ClaudeCallResult(
+            ok=True,
+            task="fast",
+            model="claude-haiku-4-5",
+            request_kind="srs.ai_draft",
+            text=None,
+            json_payload={
+                "cards": [
+                    {"front": "What is NPV?", "back": "Present value of future cash flows minus the initial investment."},
+                    {"front": "Why does NPV matter?", "back": "It tells you whether a project creates or destroys shareholder value."},
+                    {"front": "", "back": "This one gets dropped (empty front)"},
+                    {"front": "Orphan front only"},  # malformed — dropped
+                    {"front": "Long" + "x" * 5000, "back": "a"},  # oversize — dropped
+                ]
+            },
+            error_code=None,
+            error_message=None,
+            latency_ms=1200.0,
+            input_tokens=120,
+            output_tokens=300,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier=None,
+            stop_reason="tool_use",
+            request_id="req-1",
+        )
+
+        class FakeProvider:
+            def ai_enabled(self) -> bool:
+                return True
+
+            def model_for_task(self, task):  # pragma: no cover
+                del task
+                return "fake"
+
+            def request_tool_call(self, **_) -> ClaudeCallResult:
+                return fake_result
+
+            def request_text(self, **_):  # pragma: no cover
+                raise AssertionError("unused")
+
+            def request_json(self, **_):  # pragma: no cover
+                raise AssertionError("unused")
+
+        with _mock.patch("routes.study.get_default_provider", return_value=FakeProvider()):
+            response = self.client.post(
+                "/api/srs/cards/ai-draft",
+                json={"topic": "Net present value", "count": 3},
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(len(body["cards"]), 2)  # only the two well-formed items survive
+        self.assertEqual(body["cards"][0]["front"], "What is NPV?")
+
+    def test_ai_draft_when_provider_disabled_reports_ai_disabled(self) -> None:
+        from unittest import mock as _mock
+
+        class DisabledProvider:
+            def ai_enabled(self) -> bool:
+                return False
+
+            def model_for_task(self, task):  # pragma: no cover
+                del task
+                return "none"
+
+            def request_tool_call(self, **_):  # pragma: no cover
+                raise AssertionError("should not be called when disabled")
+
+            def request_text(self, **_):  # pragma: no cover
+                raise AssertionError("unused")
+
+            def request_json(self, **_):  # pragma: no cover
+                raise AssertionError("unused")
+
+        with _mock.patch("routes.study.get_default_provider", return_value=DisabledProvider()):
+            response = self.client.post(
+                "/api/srs/cards/ai-draft",
+                json={"topic": "Bonds"},
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "ai_disabled")
+        self.assertEqual(body["cards"], [])
+
+    def test_ai_draft_rejects_empty_topic(self) -> None:
+        response = self.client.post("/api/srs/cards/ai-draft", json={"topic": ""})
+        self.assertEqual(response.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

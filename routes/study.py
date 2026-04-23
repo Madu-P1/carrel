@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 
 import db
+from ai.providers import get_default_provider
 from api_models import (
     BulkDeleteCardsRequest,
+    CardAiDraftRequest,
+    CardAiDraftResponse,
     CardCreateRequest,
     FlashcardDraftRequest,
     FlashcardDraftResponse,
@@ -181,6 +184,133 @@ def list_subjects() -> Dict[str, List[Dict[str, object]]]:
     """Subjects aggregated with card + due counts for filter chips."""
     with db.get_db() as conn:
         return {"subjects": study_service.list_subjects(conn)}
+
+
+_AI_DRAFT_CARDS_TOOL: Dict[str, Any] = {
+    "name": "submit_flashcard_drafts",
+    "description": "Produce a batch of study flashcards on the user's topic.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "cards": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "front": {
+                            "type": "string",
+                            "description": (
+                                "A clear, atomic question or prompt. One idea "
+                                "per card. End with a question mark when it is "
+                                "a question. Prefer 'How does ... ?' or "
+                                "'Why does ... ?' over 'What is ... ?'."
+                            ),
+                        },
+                        "back": {
+                            "type": "string",
+                            "description": (
+                                "The answer. 1 to 3 sentences. Concrete. "
+                                "Include a real example or a number when the "
+                                "concept has one."
+                            ),
+                        },
+                    },
+                    "required": ["front", "back"],
+                },
+            }
+        },
+        "required": ["cards"],
+    },
+}
+
+_AI_DRAFT_CARDS_SYSTEM = (
+    "You write rigorous flashcards for a serious learner.\n\n"
+    "Non-negotiables:\n"
+    "1. Atomic cards. Each card tests ONE idea. If a concept has multiple "
+    "parts, split it into multiple cards.\n"
+    "2. Test understanding, not definitions. Prefer 'How does X change when "
+    "Y shifts?' over 'What is X?'. A pure vocab card is acceptable only "
+    "when the term is genuinely worth memorising.\n"
+    "3. Back answers are concrete. 1-3 sentences. Use real examples, real "
+    "numbers, real names when the concept has them.\n"
+    "4. No hedging language: essentially, basically, in essence.\n"
+    "5. Do not use: delve, crucial, comprehensive, robust, nuanced, "
+    "multifaceted, furthermore, moreover, additionally, pivotal, landscape, "
+    "tapestry, underscore, foster, showcase, intricate, vibrant, "
+    "fundamental, significant, interplay. Do not use em dashes.\n"
+    "6. Fronts and backs stand alone. A card's front cannot reference "
+    "'the previous card' or 'the next one'.\n"
+    "7. Do not repeat the same concept across two cards in the batch. "
+    "Vary angles: definition, mechanism, edge case, comparison, example.\n\n"
+    "Output the requested number of cards via the submit_flashcard_drafts "
+    "tool. No meta-commentary."
+)
+
+
+def _drafts_from_ai(topic: str, context: Optional[str], count: int) -> Dict[str, Any]:
+    """Call the configured provider. Returns the response-shape dict: status,
+    cards, optional error. Mirrors the notes.expand contract so the UI can
+    handle AI failures with a consistent vocabulary.
+    """
+    provider = get_default_provider()
+    if not provider.ai_enabled():
+        return {"status": "ai_disabled", "cards": [], "error": None}
+
+    prompt_parts = [f"Topic: {topic.strip()}"]
+    if context:
+        prompt_parts.append(f"\nSupporting context from the user:\n{context.strip()}")
+    prompt_parts.append(f"\nGenerate exactly {count} flashcards.")
+    prompt = "\n".join(prompt_parts)
+
+    result = provider.request_tool_call(
+        request_kind="srs.ai_draft",
+        system=_AI_DRAFT_CARDS_SYSTEM,
+        prompt=prompt,
+        tool=_AI_DRAFT_CARDS_TOOL,
+        max_tokens=2400,
+        task="fast",
+    )
+    if not result.ok or not isinstance(result.json_payload, dict):
+        return {
+            "status": "ai_failed",
+            "cards": [],
+            "error": result.error_code or "unknown",
+        }
+    raw_cards = result.json_payload.get("cards")
+    if not isinstance(raw_cards, list):
+        return {"status": "ai_failed", "cards": [], "error": "malformed_payload"}
+
+    cleaned: List[Dict[str, str]] = []
+    for item in raw_cards:
+        if not isinstance(item, dict):
+            continue
+        front = str(item.get("front") or "").strip()
+        back = str(item.get("back") or "").strip()
+        if not front or not back:
+            continue
+        # Belt-and-braces against truncated fields; sane upper bound that
+        # matches the CardCreateRequest server-side validation.
+        if len(front) > 4000 or len(back) > 4000:
+            continue
+        cleaned.append({"front": front, "back": back})
+    if not cleaned:
+        return {"status": "ai_failed", "cards": [], "error": "no_valid_cards"}
+    return {"status": "ok", "cards": cleaned[:count], "error": None}
+
+
+@router.post("/api/srs/cards/ai-draft", response_model=CardAiDraftResponse)
+def ai_draft_cards(payload: CardAiDraftRequest) -> Dict[str, Any]:
+    """Generate flashcard drafts for a topic. The New Card dialog's
+    "Generate with AI" mode posts here. The user then edits and bulk-saves
+    selected drafts via /api/srs/cards, one card per save.
+    """
+    # Clamp count server-side even though the schema already bounds it;
+    # keeps the LLM call bounded if a client ever sends a larger value.
+    count = max(1, min(payload.count or 5, 10))
+    result = _drafts_from_ai(payload.topic, payload.context, count)
+    return result
 
 
 @router.post("/api/srs/cards")

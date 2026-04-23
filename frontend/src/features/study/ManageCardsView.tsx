@@ -8,6 +8,7 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 
+import { CardAiDraftDialog } from "./CardAiDraftDialog";
 import { CardCreateDialog } from "./CardCreateDialog";
 import styles from "./ManageCardsView.module.css";
 
@@ -51,6 +52,7 @@ export function ManageCardsView() {
   const [deleteState, setDeleteState] = useState<DeleteState>({ kind: "idle", cardId: null });
   const [bulkPending, setBulkPending] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
 
   const refreshSubjects = useCallback(async () => {
     try {
@@ -128,6 +130,13 @@ export function ManageCardsView() {
     void refreshSubjects();
   };
 
+  const handleAiCardsCreated = (created: SrsCard[]) => {
+    if (created.length === 0) return;
+    setCards((prev) => [...created, ...prev]);
+    setTotal((t) => t + created.length);
+    void refreshSubjects();
+  };
+
   const handleBulkDelete = async () => {
     if (selection.size === 0 || bulkPending) return;
     setBulkPending(true);
@@ -192,6 +201,13 @@ export function ManageCardsView() {
             </Text>
           </Stack>
           <div className={styles.titleActions}>
+            <Button
+              leadingIcon={<Icon name="sparkle" />}
+              onClick={() => setAiDraftOpen(true)}
+              variant="secondary"
+            >
+              Generate with AI
+            </Button>
             <Button
               leadingIcon={<Icon name="plus" />}
               onClick={() => setCreateOpen(true)}
@@ -366,6 +382,12 @@ export function ManageCardsView() {
         onClose={() => setCreateOpen(false)}
         onCreated={handleCardCreated}
         open={createOpen}
+      />
+
+      <CardAiDraftDialog
+        onCardsCreated={handleAiCardsCreated}
+        onClose={() => setAiDraftOpen(false)}
+        open={aiDraftOpen}
       />
     </div>
   );
