@@ -7,6 +7,7 @@ import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 import { ActiveSessionCard } from "./components/ActiveSessionCard";
 import { HeroAskPrompt } from "./components/HeroAskPrompt";
 import { StreakRing } from "./components/StreakRing";
+import { useCountUp } from "./components/useCountUp";
 import { WeekSparkline } from "./components/WeekSparkline";
 import styles from "./DashboardView.module.css";
 
@@ -265,7 +266,6 @@ function QuickActionGrid({ dueCards }: { dueCards: number }) {
 // ---------- Stat Strip ----------
 
 function StatStrip({ stats }: { stats: DashboardPayload["stats"] }) {
-  const hours = (stats.week_minutes / 60).toFixed(1);
   return (
     <section className={styles.stats} aria-label="Weekly stats">
       <div className={styles.streakCell}>
@@ -278,7 +278,7 @@ function StatStrip({ stats }: { stats: DashboardPayload["stats"] }) {
       <div className={styles.statCell}>
         <span className={styles.statLabel}>THIS WEEK</span>
         <div className={styles.statValueRow}>
-          <span className={styles.statValue}>{hours}</span>
+          <AnimatedStatValue value={stats.week_minutes / 60} decimals={1} />
           <span className={styles.statSuffix}>h</span>
         </div>
         <WeekSparkline minutesByDay={stats.week_minutes_by_day} />
@@ -297,20 +297,36 @@ function StatStrip({ stats }: { stats: DashboardPayload["stats"] }) {
   );
 }
 
+/**
+ * The headline numerical value on a stat cell — count-ups from 0 on
+ * mount. Uses tabular nums so the serif numerals don't shift width as
+ * they tick upward.
+ */
+function AnimatedStatValue({
+  value,
+  decimals = 0
+}: {
+  value: number;
+  decimals?: number;
+}) {
+  const rendered = useCountUp(value, 700, decimals);
+  return <span className={styles.statValue}>{rendered}</span>;
+}
+
 function StatBlock({
   label,
   value,
   suffix
 }: {
   label: string;
-  value: number | string;
+  value: number;
   suffix: string;
 }) {
   return (
     <div className={styles.statCell}>
       <span className={styles.statLabel}>{label.toUpperCase()}</span>
       <div className={styles.statValueRow}>
-        <span className={styles.statValue}>{value}</span>
+        <AnimatedStatValue value={value} />
         <span className={styles.statSuffix}>{suffix}</span>
       </div>
     </div>

@@ -71,17 +71,29 @@
  * mount per subject, not a prop change on the same tree).
  */
 .drillInWrap {
-  animation: anim-subject-pop 240ms var(--ease-out) both;
+  animation: anim-subject-pop 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: top center;
   will-change: transform, opacity;
 }
 
+/*
+ * Pop curve: starts from a bigger delta (scale 0.92, translateY -12) so
+ * the motion is visible, not polite. The spring-like ease
+ * (cubic-bezier(0.16, 1, 0.3, 1)) lets the block slightly overshoot in
+ * the first 40% then settle, which reads as "the drawer cracked open"
+ * rather than "a div appeared." 320ms is short enough to not feel
+ * theatrical on subsequent drill-ins.
+ */
 @keyframes anim-subject-pop {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(-6px) scale(0.97);
+    transform: translateY(-12px) scale(0.92);
   }
-  to {
+  60% {
+    opacity: 1;
+    transform: translateY(1px) scale(1.01);
+  }
+  100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }

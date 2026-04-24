@@ -82,6 +82,17 @@
   box-shadow: var(--shadow-card);
 }
 
+/*
+ * Press feedback — when the user clicks to drill into a subject, the
+ * card dips before the drill-in panel pops below. That brief "push
+ * down" makes the card feel like a physical button hatching the panel
+ * beneath it, rather than just a div that triggered a state change.
+ */
+.card:active {
+  transform: translateY(0) scale(0.985);
+  transition-duration: 80ms;
+}
+
 .card:focus-visible {
   outline: none;
   border-color: var(--accent);

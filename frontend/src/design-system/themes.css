@@ -197,11 +197,32 @@ html.theme-dark {
  * accent harmonises.
  */
 html.theme-light {
-  --surface-0: oklch(0.94 0.004 220);  /* app bg — calm cool gray */
-  --surface-1: oklch(0.96 0.003 220);  /* rails, chrome */
-  --surface-2: oklch(1 0 0);            /* cards — pure white, they pop */
-  --surface-3: oklch(1 0 0);            /* elevated hover — white + shadow */
-  --surface-4: oklch(1 0 0);            /* popovers over dialogs */
+  /*
+   * Light surfaces — calibrated down from "a bit too bright."
+   *
+   * The prior palette was surface-0: 0.94 base + surface-2: pure white
+   * cards. The ~6% jump created a hard snap where cards punched out of
+   * the page, which on a display with any glare read as "flashlight in
+   * the eye." This version keeps the same hierarchy idea (app < rail <
+   * card < elevated) but the top end is pulled off pure-white so the
+   * whole page can coexist with a lit room.
+   *
+   *   surface-0  0.932   app background (bone / warm paper)
+   *   surface-1  0.950   rails, chrome
+   *   surface-2  0.978   cards — near-white, not harsh
+   *   surface-3  0.992   elevated hover
+   *   surface-4  1.000   topmost popovers (still pure white — rare and
+   *                      small, the snap works for them)
+   *
+   * Hue held at 220 (cool neutral) to keep harmony with the teal accent.
+   * Chroma nudged up to 0.006 on surface-0/1 so the gray reads as a
+   * chosen tone, not a battery-dying screen.
+   */
+  --surface-0: oklch(0.932 0.006 220);
+  --surface-1: oklch(0.950 0.005 220);
+  --surface-2: oklch(0.978 0.003 220);
+  --surface-3: oklch(0.992 0.002 220);
+  --surface-4: oklch(1 0 0);
 
   --text-primary: oklch(0.20 0.010 265);
   --text-secondary: oklch(0.42 0.010 265);
@@ -267,14 +288,15 @@ html.theme-light {
 
   /*
    * Shadows do the elevation work on light (no surface-step to rely on).
-   * Cool-tinted at low opacity to echo the accent family without pigment.
-   * Bumped from the prior 6% / 8% to 8% / 12% so cards read as floating
-   * against the new, calmer app background.
+   * Now that cards are 0.978 (not pure white) the surface-step DOES do
+   * a tiny bit of work on its own, so shadow opacity eases back slightly
+   * from the old 8% / 12% to 6% / 10%. This avoids cards looking
+   * "lifted" to an unrealistic distance on a paper-like page.
    */
-  --shadow-card: 0 1px 2px oklch(0.18 0.010 220 / 0.08),
-                 0 8px 20px oklch(0.18 0.010 220 / 0.10);
-  --shadow-soft: 0 2px 4px oklch(0.18 0.010 220 / 0.08),
-                 0 20px 52px oklch(0.18 0.010 220 / 0.14);
+  --shadow-card: 0 1px 2px oklch(0.18 0.010 220 / 0.06),
+                 0 8px 20px oklch(0.18 0.010 220 / 0.08);
+  --shadow-soft: 0 2px 4px oklch(0.18 0.010 220 / 0.07),
+                 0 20px 52px oklch(0.18 0.010 220 / 0.11);
   --shadow-focus: 0 0 0 2px var(--surface-0),
                   0 0 0 4px var(--accent);
 
