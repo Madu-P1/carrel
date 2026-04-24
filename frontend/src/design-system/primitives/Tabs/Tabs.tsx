@@ -115,7 +115,7 @@ export function Tabs({
             type="button"
           >
             <span className={styles.tabLabel}>{item.label}</span>
-            {item.count !== undefined ? (
+            {shouldRenderCount(item.count) ? (
               <span aria-hidden className={styles.tabCount}>
                 {item.count}
               </span>
@@ -125,4 +125,17 @@ export function Tabs({
       })}
     </div>
   );
+}
+
+/**
+ * Render the count chip when there's something meaningful to show.
+ * A literal 0 is noise — "Notes 0" and "Related 0" are already clear
+ * from the empty state inside the panel, and the chip eats horizontal
+ * space in narrow columns like the right rail. String counts (e.g.,
+ * "99+") always render; non-zero numbers always render.
+ */
+function shouldRenderCount(count: TabItem["count"]): boolean {
+  if (count === undefined) return false;
+  if (typeof count === "number") return count > 0;
+  return count.length > 0;
 }

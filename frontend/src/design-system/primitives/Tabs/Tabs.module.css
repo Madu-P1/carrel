@@ -13,32 +13,52 @@
   align-items: center;
 }
 
-/* ---------- Segmented variant ---------- */
+/* ---------- Segmented variant ----------
+ *
+ * Tuned for narrow columns (the 320px right rail is the primary host).
+ * Tab padding is 6px horizontal and the internal label↔count gap
+ * collapses to 4px so four tabs with counts can fit in the rail without
+ * clipping the last one. If a particular label + count combo still
+ * overflows (e.g., 3-digit counts), the tablist scrolls horizontally
+ * instead of clipping. */
 .variant-segmented {
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-button);
   background: var(--color-bg-muted);
   border: 1px solid var(--color-border-subtle);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.variant-segmented::-webkit-scrollbar {
+  display: none;
 }
 
 .variant-segmented .tab {
   flex: 1 1 0;
+  min-width: 0;
+  gap: 4px;
   justify-content: center;
-  height: 30px;
-  padding: 0 var(--space-3);
+  height: 28px;
+  padding: 0 6px;
   border-radius: calc(var(--radius-button) - 2px);
   background: transparent;
   color: var(--color-text-secondary);
   font: var(--text-body-sm);
   font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-sans);
+  letter-spacing: 0;
   border: 1px solid transparent;
   cursor: pointer;
   transition:
     background var(--dur-micro) var(--ease-out),
     color var(--dur-micro) var(--ease-out),
     border-color var(--dur-micro) var(--ease-out);
+}
+
+.variant-segmented .tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .variant-segmented .tab:hover:not(:disabled) {
@@ -119,20 +139,27 @@
   white-space: nowrap;
 }
 
+/*
+ * Count meta — compact. Not a pill anymore; the pill treatment ate too
+ * much width in narrow columns and made the active-tab color swap feel
+ * heavy. Now it's a mono numeral that sits next to the label with a
+ * tight background, reading as metadata rather than a badge.
+ */
 .tabCount {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  flex: 0 0 auto;
 }
 
 .variant-segmented .tabActive .tabCount {
