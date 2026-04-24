@@ -24,6 +24,35 @@
   gap: var(--space-4);
 }
 
+/*
+ * Collapsed (icon-rail) mode — only the BrandMark remains visible. The
+ * nav, today panel, and footer stay in the DOM but become
+ * `display: none` so the rail is physically only as tall as the
+ * brand + whatever padding the wrapping Card gives it. That keeps the
+ * sidebar's border-right aligned at a natural height rather than a
+ * stretched-empty tall rail.
+ *
+ * The brand header drops its bottom hairline in this mode — there's
+ * nothing beneath it for the rule to separate.
+ */
+.sidebarCollapsed {
+  align-items: center;
+  gap: 0;
+}
+
+.sidebarCollapsed .nav,
+.sidebarCollapsed .today,
+.sidebarCollapsed .footer {
+  display: none;
+}
+
+.sidebarCollapsed .brand {
+  padding-bottom: 0;
+  border-bottom: none;
+  justify-content: center;
+  width: 100%;
+}
+
 /* --- Brand ---
  * Icon-only. No title / subtitle copy. The icon is itself the sidebar
  * toggle — matches Linear/Raycast, where the brand mark is the

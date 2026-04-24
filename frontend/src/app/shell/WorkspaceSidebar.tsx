@@ -18,6 +18,11 @@ interface WorkspaceSidebarProps {
   pathname: string;
   items: SidebarNavItem[];
   onNavigate: (path: string) => void;
+  /** When true, the sidebar renders in "icon rail" mode — only the
+   *  BrandMark is visible and clicking it expands the sidebar again.
+   *  The nav, today panel, and footer stay in the DOM (hidden with
+   *  CSS) so expanding doesn't re-mount them. */
+  collapsed?: boolean;
 }
 
 /**
@@ -41,7 +46,8 @@ interface WorkspaceSidebarProps {
 export function WorkspaceSidebar({
   pathname,
   items,
-  onNavigate
+  onNavigate,
+  collapsed = false
 }: WorkspaceSidebarProps) {
   const signals = useSidebarSignals();
   const dueCount = signals.dueCount ?? 0;
@@ -54,19 +60,28 @@ export function WorkspaceSidebar({
   };
 
   return (
-    <div className={styles.sidebar}>
+    <div
+      className={[styles.sidebar, collapsed ? styles.sidebarCollapsed : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {/*
        * Sidebar brand: icon-only. Clicking it collapses the sidebar —
        * matches the Linear/Raycast pattern where the brand mark IS the
        * toggle. The "Einstein / Study tutor" text that used to sit here
-       * duplicated information already in the top bar. When collapsed,
-       * ⌘B re-opens it; the top-bar BrandMark stays visible either way.
+       * duplicated information already in the top bar.
+       *
+       * When collapsed (icon-rail mode), the brand tile is the ONLY
+       * visible thing in the rail, so a second click brings the
+       * sidebar back. The aria-label flips between "Collapse sidebar"
+       * and "Expand sidebar" so screen-reader users hear the current
+       * affordance, not a generic "Toggle".
        */}
       <header className={styles.brand}>
         <BrandMark
-          ariaLabel="Toggle sidebar"
+          ariaLabel={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={() => toggleLeft()}
-          title="Toggle sidebar (⌘B)"
+          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
         />
       </header>
 

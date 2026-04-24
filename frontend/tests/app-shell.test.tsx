@@ -51,12 +51,15 @@ test("toggle left sidebar command collapses the sidebar", async () => {
   await renderAppReady();
 
   const sidebar = screen.getByTestId("left-sidebar");
-  expect(sidebar.getAttribute("aria-hidden")).toBe("false");
+  // `aria-hidden` was swapped for `data-collapsed` in the icon-rail
+  // rebuild — the aside keeps the BrandMark as a live control when
+  // "collapsed," so it must stay in the AT tree.
+  expect(sidebar.getAttribute("data-collapsed")).toBe("false");
 
   dispatchMenuCommand("view.toggleLeftSidebar");
 
   await waitFor(() => {
-    expect(sidebar.getAttribute("aria-hidden")).toBe("true");
+    expect(sidebar.getAttribute("data-collapsed")).toBe("true");
   });
 });
 
@@ -110,11 +113,11 @@ test("meta+b keydown inside the web app does not toggle the sidebar by itself", 
   await renderAppReady();
 
   const sidebar = screen.getByTestId("left-sidebar");
-  expect(sidebar.getAttribute("aria-hidden")).toBe("false");
+  expect(sidebar.getAttribute("data-collapsed")).toBe("false");
 
   fireEvent.keyDown(document.body, { key: "b", metaKey: true });
 
-  expect(sidebar.getAttribute("aria-hidden")).toBe("false");
+  expect(sidebar.getAttribute("data-collapsed")).toBe("false");
 });
 
 test("router renders each route without crashing", async () => {

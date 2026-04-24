@@ -293,7 +293,11 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
 
       <div className={styles.body}>
         <aside
-          aria-hidden={!isLeftOpen}
+          // NOTE: the rail is NOT aria-hidden when collapsed, because the
+          // BrandMark inside it is still a live control the user can
+          // tab to / click to re-expand. Hiding the whole aside would
+          // strip that control from the accessibility tree. Tests read
+          // the `data-collapsed` attribute instead.
           className={[
             styles.leftRail,
             !isLeftOpen ? styles.leftRailCollapsed : "",
@@ -301,11 +305,16 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           ]
             .filter(Boolean)
             .join(" ")}
+          data-collapsed={!isLeftOpen ? "true" : "false"}
           data-testid="left-sidebar"
         >
           <div className={styles.leftRailInner}>
-            <Card className={styles.navCard} padding="md">
+            <Card
+              className={styles.navCard}
+              padding={isLeftOpen ? "md" : "sm"}
+            >
               <WorkspaceSidebar
+                collapsed={!isLeftOpen}
                 pathname={pathname}
                 items={navLinks}
                 onNavigate={(path) => navigateTo(path)}

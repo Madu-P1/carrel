@@ -79,11 +79,32 @@
   border-right: 1px solid var(--color-border-subtle);
 }
 
+/*
+ * Deliberate no-transition on width. The motion guardrail forbids
+ * transitioning layout-triggering properties (width, padding) — they
+ * reflow on every frame and tank scroll/ink perf. The collapse snaps
+ * between 248px and 108px instead. The BrandMark inside fades via its
+ * own :hover transitions, which keeps the interaction feeling
+ * responsive without animating the container.
+ */
+
+/*
+ * Collapsed (icon-rail) mode. Previously `width: 0; opacity: 0;` — but
+ * that killed the ET tile with the rest of the rail, leaving ⌘B as
+ * the only way back. The rail now shrinks to just-enough-for-the-ET-
+ * tile so the user can click the same mark to re-expand.
+ *
+ * Width math:
+ *   44px brand-mark + 16px Card padding (sm) * 2 + 16px leftRail padding * 2
+ *   = 44 + 32 + 32 = 108px
+ *
+ * Border stays so the rail still reads as a structural edge against
+ * the main pane. No opacity fade — the tile needs to be fully visible
+ * and clickable, not ghosted.
+ */
 .leftRailCollapsed {
-  width: 0;
-  padding: var(--space-4) 0;
-  opacity: 0;
-  border-right-color: transparent;
+  width: 108px;
+  padding: var(--space-4);
 }
 
 .leftRailInner,
