@@ -71,15 +71,28 @@ test("menu dispatch navigates to Ask route", async () => {
 test("theme toggle command cycles html theme classes", async () => {
   await renderAppReady();
 
+  // Cycle is system → dark → light → auto → system. `auto` resolves to
+  // dark or light based on the local clock (night/day), so after the
+  // third toggle we only assert that some theme class is applied — the
+  // cycle correctness is what the test guards, not the auto-mode
+  // resolution.
   expect(document.documentElement.classList.contains("theme-dark")).toBe(true);
 
-  dispatchMenuCommand("view.toggleTheme");
+  dispatchMenuCommand("view.toggleTheme"); // system → dark
   expect(document.documentElement.classList.contains("theme-dark")).toBe(true);
 
-  dispatchMenuCommand("view.toggleTheme");
+  dispatchMenuCommand("view.toggleTheme"); // dark → light
   expect(document.documentElement.classList.contains("theme-light")).toBe(true);
 
-  dispatchMenuCommand("view.toggleTheme");
+  dispatchMenuCommand("view.toggleTheme"); // light → auto
+  const hasTheme =
+    document.documentElement.classList.contains("theme-dark") ||
+    document.documentElement.classList.contains("theme-light");
+  expect(hasTheme).toBe(true);
+
+  dispatchMenuCommand("view.toggleTheme"); // auto → system
+  // setup.ts stubs matchMedia so prefers-color-scheme:dark returns true,
+  // which means system lands back on theme-dark for the test env.
   expect(document.documentElement.classList.contains("theme-dark")).toBe(true);
 });
 

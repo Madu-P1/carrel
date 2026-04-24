@@ -190,27 +190,32 @@ export function LibraryView() {
       ) : null}
 
       {openSubject && !isSearching ? (
-        <Stack gap={3}>
-          <Stack direction="horizontal" gap={2}>
-            <Button
-              variant="ghost"
-              onClick={() => setOpenSubject(null)}
-              leadingIcon={<Icon name="chevron-left" />}
-            >
-              Back to all subjects
-            </Button>
-            <Text tone="secondary">
-              {openSubject} · {openSubjectRows.length} document
-              {openSubjectRows.length === 1 ? "" : "s"}
-            </Text>
+        // `key={openSubject}` remounts the block when the user switches
+        // subjects, which replays the pop animation per drill-in. The
+        // `.drillInWrap` class owns the animation itself.
+        <div className={styles.drillInWrap} key={openSubject}>
+          <Stack gap={3}>
+            <Stack direction="horizontal" gap={2}>
+              <Button
+                variant="ghost"
+                onClick={() => setOpenSubject(null)}
+                leadingIcon={<Icon name="chevron-left" />}
+              >
+                Back to all subjects
+              </Button>
+              <Text tone="secondary">
+                {openSubject} · {openSubjectRows.length} document
+                {openSubjectRows.length === 1 ? "" : "s"}
+              </Text>
+            </Stack>
+            <SubjectSection
+              documents={openSubjectRows}
+              onDocumentDeleted={refreshAll}
+              onSubjectRenamed={refreshAll}
+              subject={openSubject}
+            />
           </Stack>
-          <SubjectSection
-            documents={openSubjectRows}
-            onDocumentDeleted={refreshAll}
-            onSubjectRenamed={refreshAll}
-            subject={openSubject}
-          />
-        </Stack>
+        </div>
       ) : null}
 
       {data.value && data.value.length > 0 && !openSubject && !isSearching ? (

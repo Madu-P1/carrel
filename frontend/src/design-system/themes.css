@@ -185,12 +185,20 @@ html.theme-dark {
 /* =======================================================================
  * LIGHT THEME
  * =======================================================================
- * Light-theme thesis: elevation reads through shadow + approach to pure
- * white, not surface-color stepping. Cool-neutral base so the teal accent
- * harmonises. */
+ * Light-theme thesis: daytime reading room, NOT a glare factory. The prior
+ * palette set the app bg at L=0.97 and cards at L=1.0 — only a 3% step,
+ * which meant the whole view read as a single bright slab with cards that
+ * vanished into it. Calmer now: app bg steps down to L=0.94 with a slight
+ * cool tint, chrome at 0.96, cards stay pure white — a 6% step that lets
+ * cards visibly float above the plane without needing a heavy shadow.
+ *
+ * Elevation reads through shadow + approach to pure white, not surface-
+ * color stepping (dark mode's trick). Cool-neutral base so the teal
+ * accent harmonises.
+ */
 html.theme-light {
-  --surface-0: oklch(0.97 0.003 220);  /* app bg — faint cool gray */
-  --surface-1: oklch(0.985 0.002 220); /* rails, chrome */
+  --surface-0: oklch(0.94 0.004 220);  /* app bg — calm cool gray */
+  --surface-1: oklch(0.96 0.003 220);  /* rails, chrome */
   --surface-2: oklch(1 0 0);            /* cards — pure white, they pop */
   --surface-3: oklch(1 0 0);            /* elevated hover — white + shadow */
   --surface-4: oklch(1 0 0);            /* popovers over dialogs */
@@ -260,11 +268,13 @@ html.theme-light {
   /*
    * Shadows do the elevation work on light (no surface-step to rely on).
    * Cool-tinted at low opacity to echo the accent family without pigment.
+   * Bumped from the prior 6% / 8% to 8% / 12% so cards read as floating
+   * against the new, calmer app background.
    */
-  --shadow-card: 0 1px 2px oklch(0.20 0.010 220 / 0.06),
-                 0 6px 16px oklch(0.20 0.010 220 / 0.08);
-  --shadow-soft: 0 2px 4px oklch(0.20 0.010 220 / 0.06),
-                 0 18px 48px oklch(0.20 0.010 220 / 0.12);
+  --shadow-card: 0 1px 2px oklch(0.18 0.010 220 / 0.08),
+                 0 8px 20px oklch(0.18 0.010 220 / 0.10);
+  --shadow-soft: 0 2px 4px oklch(0.18 0.010 220 / 0.08),
+                 0 20px 52px oklch(0.18 0.010 220 / 0.14);
   --shadow-focus: 0 0 0 2px var(--surface-0),
                   0 0 0 4px var(--accent);
 

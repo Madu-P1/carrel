@@ -24,37 +24,18 @@
   gap: var(--space-4);
 }
 
-/* --- Brand --- */
+/* --- Brand ---
+ * Icon-only. No title / subtitle copy. The icon is itself the sidebar
+ * toggle — matches Linear/Raycast, where the brand mark is the
+ * interactive. The hairline below the brand lives on this header so
+ * the toggle stays visually anchored as part of the chrome, not
+ * free-floating. */
 
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--hairline);
-}
-
-.brandText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.brandTitle {
-  font-family: var(--font-serif);
-  font-size: var(--text-lg);
-  letter-spacing: var(--tracking-serif);
-  color: var(--text-primary);
-  line-height: 1.1;
-}
-
-.brandSubtitle {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-mono);
-  color: var(--text-tertiary);
-  text-transform: lowercase;
-  margin-top: 2px;
 }
 
 /* --- Section eyebrow --- */

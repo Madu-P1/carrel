@@ -111,13 +111,75 @@
   color: var(--accent);
 }
 
+/*
+ * Beating-heart date marker.
+ *
+ * Two-beat cardiac rhythm (not a sine wave): a short lub followed by a
+ * short dub, then a long rest. At ~60bpm the dot reads as "this is
+ * alive, waiting for you" rather than "this is a spinner." The ring
+ * around the dot expands with each beat so the pulse is visible even on
+ * a single fixation — relying only on scale would be too subtle on
+ * small hardware.
+ *
+ * prefers-reduced-motion users get a static dot with the ring rendered
+ * at mid-pulse so they still see the "accent halo" visual affordance
+ * without any animation.
+ */
 .eyebrowDot {
+  position: relative;
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: var(--radius-full);
   background: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: anim-heartbeat-dot 1.6s ease-in-out infinite;
+}
+
+.eyebrowDot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 32%, transparent);
+  animation: anim-heartbeat-ring 1.6s ease-out infinite;
+}
+
+@keyframes anim-heartbeat-dot {
+  0%, 18%, 100% {
+    transform: scale(1);
+  }
+  6% {
+    transform: scale(1.22);
+  }
+  12% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.12);
+  }
+}
+
+@keyframes anim-heartbeat-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  40% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyebrowDot,
+  .eyebrowDot::after {
+    animation: none;
+  }
+  .eyebrowDot {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
 }
 
 .heading {
@@ -299,24 +361,32 @@
   color: var(--text-tertiary);
 }
 
-/* --- Stat Strip --- */
+/* --- Stat Strip ---
+ *
+ * One horizontal row, always. The prior grid used `repeat(auto-fit,
+ * minmax(140px, 1fr))` which on viewports below ~720px dropped to a
+ * single column, and even above 720px the streak ring's auto column
+ * could push the remaining cells to wrap. The new grid pins exactly
+ * four columns (streak + three stat cells), divided by hairline rules
+ * so they read as "four facts about this week" not "four separate
+ * cards." On phone/narrow viewports the row scrolls horizontally
+ * rather than collapsing — a single glance always tells the same
+ * story.
+ *
+ * Each cell fades+slides in on mount with a small stagger. The stagger
+ * (60ms per cell) makes the row feel authored, not dumped. Respects
+ * prefers-reduced-motion via the anim-* class tokens.
+ */
 
 .stats {
   display: grid;
-  gap: var(--space-5);
-  grid-template-columns: auto repeat(auto-fit, minmax(140px, 1fr));
-  align-items: start;
+  grid-template-columns: auto 1fr 1fr 1fr;
+  align-items: center;
   padding: var(--space-5);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-4);
   background: var(--surface-1);
-}
-
-/* On narrow screens the streak ring can't claim a whole column; stack. */
-@media (max-width: 720px) {
-  .stats {
-    grid-template-columns: 1fr;
-  }
+  overflow-x: auto;
 }
 
 .statCell {
@@ -324,6 +394,12 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--hairline);
+
+  opacity: 0;
+  transform: translateY(6px);
+  animation: anim-stat-enter 420ms var(--ease-out) forwards;
 }
 
 .streakCell {
@@ -331,6 +407,48 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
+  padding-right: var(--space-4);
+
+  opacity: 0;
+  transform: translateY(6px);
+  animation: anim-stat-enter 420ms var(--ease-out) forwards;
+}
+
+/* Remove the left rule on the first cell (streak) so the row starts
+ * cleanly against the card edge. */
+.streakCell + .statCell {
+  /* No-op: we rely on source order. The rule below zeros the border on
+   * the streak cell, which is the actual first child. */
+}
+
+.stats > :first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+/* Staggered entrance — each subsequent cell comes in 60ms later so
+ * the row pops like keys on a piano, not like a dropped slab. */
+.stats > :nth-child(1) { animation-delay: 0ms; }
+.stats > :nth-child(2) { animation-delay: 60ms; }
+.stats > :nth-child(3) { animation-delay: 120ms; }
+.stats > :nth-child(4) { animation-delay: 180ms; }
+
+@keyframes anim-stat-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statCell,
+  .streakCell {
+    animation-duration: 1ms;
+  }
 }
 
 .statLabel {

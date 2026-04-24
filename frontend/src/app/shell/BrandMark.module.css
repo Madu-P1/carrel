@@ -1,31 +1,42 @@
 /*
- * Brand mark in the topbar. Squircle-clipped so it reads as an app tile
- * regardless of whether the source PNG has rounded corners baked in.
+ * Brand mark — the Einstein Tutor tile. Used in the top bar (decorative,
+ * non-interactive) and in the sidebar (interactive toggle).
  *
- * The fallback is a plain text monogram for dev environments where the
- * logo asset hasn't been dropped in yet. Styled to look intentional rather
- * than broken — matte navy surface, accent-coloured monogram.
+ * The `.mark` wrapper is the 44x44 squircle that always frames the glyph.
+ * When `onClick` is supplied we swap the outer element to a <button> and
+ * add `.interactive` — a hover lift and focus ring so the icon feels
+ * pressable. The image lives inside `.markImage`; the fallback is a text
+ * monogram that shares the squircle frame.
  */
 
 .mark {
-  display: block;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px; /* roughly 22.3% — Apple's squircle for 44px */
-  object-fit: cover;
-  background: var(--surface-2);
-  flex-shrink: 0;
-}
-
-.fallback {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
-  border-radius: 10px;
-  background: oklch(0.18 0.02 265); /* brand navy — intentional, not accent */
+  border-radius: 10px; /* ~22.3% — Apple's squircle for 44px */
+  background: var(--surface-2);
   flex-shrink: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid transparent;
+}
+
+.markImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Fallback tile — intentional brand navy with an accent-coloured
+ * monogram. Reads as "this is deliberately a letter", not as a broken
+ * image. */
+.fallback {
+  background: oklch(0.18 0.02 265);
 }
 
 .fallbackMark {
@@ -35,4 +46,35 @@
   color: var(--accent);
   letter-spacing: var(--tracking-serif);
   line-height: 1;
+}
+
+/* Interactive variant — used when the mark is a sidebar toggle. Subtle
+ * ring on hover so the user can tell it's pressable; full focus ring on
+ * :focus-visible for keyboard users. */
+.interactive {
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.interactive:hover {
+  border-color: var(--border-default);
+  transform: translateY(-1px);
+}
+
+.interactive:active {
+  transform: translateY(0);
+}
+
+.interactive:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .interactive:hover {
+    transform: none;
+  }
 }

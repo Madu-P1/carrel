@@ -1,6 +1,7 @@
 import { Icon } from "@/design-system";
 
 import { BrandMark } from "./BrandMark";
+import { toggleLeft } from "./useAppShell";
 import { useSidebarSignals } from "./useSidebarSignals";
 import styles from "./WorkspaceSidebar.module.css";
 
@@ -54,12 +55,19 @@ export function WorkspaceSidebar({
 
   return (
     <div className={styles.sidebar}>
+      {/*
+       * Sidebar brand: icon-only. Clicking it collapses the sidebar —
+       * matches the Linear/Raycast pattern where the brand mark IS the
+       * toggle. The "Einstein / Study tutor" text that used to sit here
+       * duplicated information already in the top bar. When collapsed,
+       * ⌘B re-opens it; the top-bar BrandMark stays visible either way.
+       */}
       <header className={styles.brand}>
-        <BrandMark />
-        <div className={styles.brandText}>
-          <span className={styles.brandTitle}>Einstein</span>
-          <span className={styles.brandSubtitle}>Study tutor</span>
-        </div>
+        <BrandMark
+          ariaLabel="Toggle sidebar"
+          onClick={() => toggleLeft()}
+          title="Toggle sidebar (⌘B)"
+        />
       </header>
 
       <nav className={styles.nav} aria-label="Workspace navigation">

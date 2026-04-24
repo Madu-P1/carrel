@@ -51,3 +51,44 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/*
+ * Subject drill-in — pop animation.
+ *
+ * When the user clicks a subject card, the documents for that subject
+ * should feel like they "rise up from the card" rather than jump-loading
+ * below it. We animate the whole drill-in block (back button + doc
+ * list) as a unit: scale from 0.97 with transform-origin at the top so
+ * the expansion reads as "the card opened," and a short translateY +
+ * opacity so the motion doesn't look like a popover modal.
+ *
+ * `transform-origin: top` matters — the default (center) makes the
+ * block grow outward in both directions, which feels like a dialog
+ * opening. Top origin keeps the motion anchored to the grid above.
+ *
+ * A `key={openSubject}` in the LibraryView makes this animation replay
+ * when the user switches from one subject to another (it's a fresh
+ * mount per subject, not a prop change on the same tree).
+ */
+.drillInWrap {
+  animation: anim-subject-pop 240ms var(--ease-out) both;
+  transform-origin: top center;
+  will-change: transform, opacity;
+}
+
+@keyframes anim-subject-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drillInWrap {
+    animation: none;
+  }
+}
