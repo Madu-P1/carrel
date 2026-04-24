@@ -35,13 +35,30 @@
   display: none;
 }
 
+/*
+ * Tab sizing: `flex: 1 1 auto + min-width: max-content`.
+ *
+ * Why not `flex: 1 1 0` (equal quarters)? Because the tabs have
+ * unequal content — "Chunks 109" is genuinely wider than "Notes" —
+ * and forcing equal quarters makes the bigger one truncate to "C..."
+ * while the smaller one has whitespace. Equal widths are only right
+ * when labels are equal.
+ *
+ * With `min-width: max-content` each tab is at least as wide as its
+ * label + count. Tabs can then grow (flex-grow: 1) to absorb any
+ * remaining space proportionally, so the bar still reads as a single
+ * unit when it fits. When labels + counts exceed the container, the
+ * tablist scrolls horizontally (parent has `overflow-x: auto`) —
+ * users can reach every tab without the ellipsis lying about the
+ * label name.
+ */
 .variant-segmented .tab {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: max-content;
   gap: 4px;
   justify-content: center;
   height: 28px;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: calc(var(--radius-button) - 2px);
   background: transparent;
   color: var(--color-text-secondary);
@@ -57,8 +74,10 @@
 }
 
 .variant-segmented .tabLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* No overflow clipping — min-width: max-content on the tab above
+   * guarantees there's always room for the full label. If the rail
+   * is narrower than the sum of labels, the tablist scrolls. */
+  white-space: nowrap;
 }
 
 .variant-segmented .tab:hover:not(:disabled) {
