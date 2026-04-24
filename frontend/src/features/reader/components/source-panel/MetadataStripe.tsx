@@ -15,15 +15,16 @@ type ReaderDocument = DocumentDetail["document"];
  *   LINE 1  [PDF chip] filename                  [confidence pill]
  *   LINE 2  Biology · 4 pages · updated Apr 20
  *
- * The stripe gives back real estate for what the rail is actually for:
- * chunks, concepts, notes, and related.
+ * The stripe is intentionally identity-only. The document `summary`
+ * field is NOT rendered here — the API summary is often a raw first
+ * chunk ("Project 5 12,000 1,000 2.5 30,000..."), which reads as
+ * garbage data at 320px width. Summary belongs in a dedicated view
+ * (About this source) where it can breathe, not in a compact header.
  */
 export function MetadataStripe({
-  doc,
-  summary
+  doc
 }: {
   doc: ReaderDocument;
-  summary: string;
 }) {
   const ft = (doc.file_type || "DOC").toUpperCase();
   const confidenceValue =
@@ -71,7 +72,6 @@ export function MetadataStripe({
       {metaBits.length > 0 ? (
         <p className={styles.stripeMeta}>{metaBits.join(" · ")}</p>
       ) : null}
-      {summary ? <p className={styles.stripeSummary}>{summary}</p> : null}
     </header>
   );
 }

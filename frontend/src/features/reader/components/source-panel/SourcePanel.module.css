@@ -8,17 +8,25 @@
  *   [ Tabs              ] — segmented tablist, non-scrolling
  *   [ Tab panel         ] — the only scrollable region
  *
- * The outer container uses grid rows: auto / auto / 1fr. The 1fr row is
- * what scrolls; the two "auto" rows stick to the top. That's why the
- * stripe and tablist don't disappear when the user pages through a long
- * chunks list.
+ * Flexbox column beats grid-percentage here: the height chain through
+ * AppShell → rightPanel → rightPanelInner → panel goes through multiple
+ * percentage-height hops, and grid rows sized with `1fr` don't always
+ * resolve to a definite height in that chain. Flex with `flex: 1 1 0 +
+ * min-height: 0` on the scroll child is the forgiving pattern — the
+ * scroll region gets a computed size, not a percentage-chain guess, so
+ * long chunks lists scroll instead of clipping at the panel edge.
+ *
+ * `overflow: hidden` on the panel means a runaway child can never push
+ * the stripe or tabs out of view; the tabPanel is the only legal escape
+ * hatch and it's the one with `overflow: auto`.
  */
 .panel {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ---------- MetadataStripe ----------------------------------------- */
@@ -103,26 +111,55 @@
   color: var(--color-text-tertiary);
 }
 
-.stripeMeta,
-.stripeSummary {
+.stripeMeta {
   margin: 0;
   font: var(--text-body-sm);
   color: var(--color-text-tertiary);
-}
-
-.stripeSummary {
-  color: var(--color-text-secondary);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- Tab panel scroll region -------------------------------- */
+/*
+ * `flex: 1 1 0` + `min-height: 0` is the combo that lets this child
+ * consume the remaining vertical space AND scroll its overflow
+ * internally. Without `min-height: 0` the flex child refuses to be
+ * smaller than its content — the whole column grows and the stripe
+ * gets pushed off-screen with no scrollbar (the symptom we just saw).
+ */
 .tabPanel {
+  flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: var(--space-1);
+}
+
+/*
+ * A quiet scrollbar. The default JSDOM/WebKit track on macOS over a
+ * dark surface reads as light gray and looks unfinished. We theme it so
+ * the rail feels authored instead of "the OS ran out of style."
+ */
+.tabPanel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.tabPanel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tabPanel::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.tabPanel::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-primary) 20%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 /* ---------- Row list + standardized row treatment ------------------ */

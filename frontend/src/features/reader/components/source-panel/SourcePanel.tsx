@@ -58,7 +58,7 @@ export function SourcePanel({ detail, docId }: SourcePanelProps) {
 
   return (
     <div className={styles.panel}>
-      <MetadataStripe doc={detail.document} summary={detail.summary} />
+      <MetadataStripe doc={detail.document} />
       <Tabs
         ariaLabel="Source panel sections"
         items={items}
