@@ -28,10 +28,24 @@
   border-bottom: 1px solid var(--hairline);
 }
 
-/* Chip row sits under the eyebrow so urgent info (cards due, session in
- * progress) is discoverable at-a-glance without scrolling past the
- * decorative title. Each chip is a button; clicking jumps to the
- * relevant view. */
+/*
+ * Status chips row — sits ABOVE the greeting in ship 6.
+ *
+ * The previous version placed cards-due / session-in-progress chips
+ * BELOW the subhead, which the critique flagged: urgent info (a session
+ * waiting to be resumed, cards overdue) shouldn't sit underneath
+ * decorative serif text. New order is chips → greeting → composer.
+ *
+ * Renders nothing if neither chip applies — no empty placeholder.
+ */
+.statusChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Legacy alias retained briefly for any in-flight callers. The actual
+ * row class is `.statusChips` above. */
 .headerChips {
   display: flex;
   flex-wrap: wrap;
@@ -200,166 +214,13 @@
   max-width: 60ch;
 }
 
-/* --- Next Best Action --- */
-
-.nba {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-6);
-  border: 1px solid var(--hairline);
-  border-left: 2px solid var(--state-warn);
-  border-radius: var(--radius-4);
-  background: color-mix(in srgb, var(--state-warn) 4%, var(--surface-2));
-}
-
-.nbaEyebrow {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--state-warn);
-}
-
-.nbaTitle {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: var(--text-2xl);
-  letter-spacing: var(--tracking-serif);
-  color: var(--text-primary);
-  line-height: 1.15;
-}
-
-.nbaReason {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  max-width: 64ch;
-  line-height: 1.5;
-}
-
-.nbaActions {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  padding-top: var(--space-2);
-}
-
-/* Primary action: warm amber fill to match the NBA card rail. Visually the
- * only "click here right now" affordance on the dashboard. */
-.primaryAction {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 16px;
-  border-radius: var(--radius-3);
-  border: 1px solid var(--state-warn);
-  background: var(--state-warn);
-  color: oklch(0.14 0.012 265);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition:
-    transform var(--dur-micro) var(--ease-out),
-    box-shadow var(--dur-micro) var(--ease-out);
-}
-
-.primaryAction:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--state-warn) 24%, transparent);
-}
-
-.primaryAction:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-warn) 32%, transparent);
-}
-
-.secondaryAction {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 14px;
-  border-radius: var(--radius-3);
-  border: 1px solid var(--hairline-strong);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition:
-    border-color var(--dur-micro) var(--ease-out),
-    color var(--dur-micro) var(--ease-out);
-}
-
-.secondaryAction:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* --- Quick Action Grid --- */
-
-.quickGrid {
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
-.quickTile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-4);
-  background: var(--surface-2);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color var(--dur-micro) var(--ease-out),
-    transform var(--dur-micro) var(--ease-out),
-    box-shadow var(--dur-micro) var(--ease-out);
-}
-
-.quickTile:hover {
-  transform: translateY(-2px);
-  border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-card);
-}
-
-.quickTile:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--shadow-focus);
-}
-
-.quickIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-3);
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface-3));
-  color: var(--accent);
-}
-
-.quickTitle {
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-  color: var(--text-primary);
-}
-
-.quickMeta {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-mono);
-  color: var(--text-tertiary);
-}
+/*
+ * Ship 6 extracted NextBestAction and QuickActionGrid into their own
+ * components — see ./components/NextBestAction.module.css and
+ * ./components/QuickActionGrid.module.css. The orphan .nba* and
+ * .quickGrid/.quickTile classes that lived here previously were
+ * removed in that refactor (no other consumer).
+ */
 
 /* --- Stat Strip ---
  *
