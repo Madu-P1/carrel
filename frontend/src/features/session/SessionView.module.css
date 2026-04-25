@@ -1,8 +1,17 @@
 /*
- * Session view layout.
- * Wide column, generous vertical spacing — this is a "do work here"
- * surface, not a dense dashboard. Timer ring is the visual anchor when
- * a session is active; setup form is the anchor when it isn't.
+ * Session view layout — premium UI ship 4.
+ *
+ * Setup branch reads as a cockpit, not a settings dialog. Three blocks
+ * stack vertically inside a 960px column:
+ *
+ *   [ header eyebrow + title + subtitle ]
+ *   [ ModeCard grid — 2 columns ≥900px, stacked below ]
+ *   [ controls grid — 12 col, scope / duration / objective ]
+ *   [ inline error region (alert) ]
+ *   [ size-lg primary CTA ]
+ *
+ * Active and completion branches retain their existing chrome — Ship 5
+ * picks up the in-session UX.
  */
 
 .wrap {
@@ -47,7 +56,7 @@
   max-width: 64ch;
 }
 
-/* --- Setup form --- */
+/* --- Setup form ------------------------------------------------------- */
 
 .setup {
   display: flex;
@@ -55,169 +64,139 @@
   gap: var(--space-6);
 }
 
-.sectionHeading {
-  margin: 0 0 var(--space-3) 0;
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: var(--text-xl);
-  letter-spacing: var(--tracking-serif);
-  color: var(--text-primary);
+/* Section labels: small mono caps that read as instrument labels above
+ * the cockpit controls. Don't compete with the page title. */
+.sectionLabel,
+.fieldLabel {
+  font: var(--text-label-md);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
 }
 
+.modeSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * Mode grid — 2 columns ≥900px, single stack below. Cards self-size
+ * via min-height: 156px so a missing metric doesn't shrink one card
+ * and break the visual rhythm.
+ */
 .modeGrid {
   display: grid;
-  gap: var(--space-3);
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.setupGrid {
-  display: grid;
   gap: var(--space-4);
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.field {
+@media (max-width: 900px) {
+  .modeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * 12-column controls grid. Scope and duration each occupy 6 cols on
+ * wide; objective spans the full row. Below 720px every row is full
+ * width. Aligning all controls to a 12-col anchor keeps the cockpit
+ * feeling intentional — no orphan field hanging off-axis.
+ */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.controlRow {
+  grid-column: span 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: var(--control-height-input, 40px);
+}
+
+.objectiveRow {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.fieldWide {
-  grid-column: 1 / -1;
+@media (max-width: 720px) {
+  .controlRow {
+    grid-column: 1 / -1;
+  }
 }
 
-.fieldLabel {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.select,
-.input {
+.objectiveInput {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-3);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  transition: border-color var(--dur-micro) var(--ease-out);
+  height: var(--control-height-input, 40px);
+  padding: 0 14px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
 }
 
-.select:focus,
-.input:focus {
+.objectiveInput::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.objectiveInput:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--color-accent);
   box-shadow: var(--shadow-focus);
 }
 
-.durationRow {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.durationChip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-  padding: 8px 14px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--hairline-strong);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  letter-spacing: var(--tracking-mono);
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition:
-    border-color var(--dur-micro) var(--ease-out),
-    color var(--dur-micro) var(--ease-out),
-    background-color var(--dur-micro) var(--ease-out);
-}
-
-.durationChip:hover {
-  color: var(--text-primary);
-}
-
-.durationChipSelected {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
-}
-
-.durationUnit {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  text-transform: lowercase;
-}
-
-.durationChipSelected .durationUnit {
-  color: var(--accent);
-}
-
+/*
+ * Inline error region. Lives BETWEEN the controls and the CTA so the
+ * user reads it before reaching the action — fits the alert pattern
+ * without an interruption modal.
+ */
 .formError {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-mono);
+  font: var(--text-body-sm);
   color: var(--state-err);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--state-err) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--state-err) 28%, transparent);
+  border-radius: var(--radius-2);
 }
 
-.setupFooter {
+/*
+ * CTA row — full-width on narrow, auto right-aligned on wide. The
+ * single most visible action on the page; nothing else competes
+ * vertically once we hit this line. The button itself is size="lg"
+ * (44px) via the Button primitive.
+ */
+.ctaRow {
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
-.primaryBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px 18px;
-  border-radius: var(--radius-3);
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: oklch(0.14 0.012 265);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition: transform var(--dur-micro) var(--ease-out);
+.ctaButton {
+  /* Wide screens: auto width, hugs the right. Narrow: take full row. */
 }
 
-.primaryBtn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 24%, transparent);
+.ctaLabel {
+  white-space: nowrap;
 }
 
-.primaryBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.secondaryBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 14px;
-  border-radius: var(--radius-3);
-  border: 1px solid var(--hairline-strong);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition:
-    border-color var(--dur-micro) var(--ease-out),
-    color var(--dur-micro) var(--ease-out);
-}
-
-.secondaryBtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+@media (max-width: 720px) {
+  .ctaRow {
+    justify-content: stretch;
+  }
+  .ctaButton {
+    width: 100%;
+  }
 }
 
 /* --- Active session body --- */
@@ -435,8 +414,5 @@
   .activeHero {
     grid-template-columns: 1fr;
     justify-items: center;
-  }
-  .setupGrid {
-    grid-template-columns: 1fr;
   }
 }

@@ -1,0 +1,93 @@
+/*
+ * DurationChips — segmented duration row.
+ *
+ * Visually a single segmented bar; semantically a radiogroup. Each chip
+ * is 28px tall (matches --control-height-sm) with a transparent 40x40
+ * hit target via ::before. The container is a soft-bg band with subtle
+ * border to match the Tabs primitive's `segmented` variant.
+ *
+ * Selected chip carries --state-bg-selected + --state-border-selected
+ * + a tiny 1px lift + the accent text color. Unselected chips stay
+ * quiet so the active duration reads at a glance.
+ */
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-button);
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  height: 28px;
+  min-width: 52px;
+  padding: 0 var(--space-3);
+  border-radius: calc(var(--radius-button) - 2px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+/*
+ * No pseudo hit-target expansion. A prior version expanded the click
+ * region with a 40×40 ::before for touch screens, but the geometry
+ * leaked downward into the next row (overlapping the objective input).
+ * Einstein is a desktop app — 28px × 52px is already comfortable for
+ * mouse + trackpad. If we ever ship a touch surface, the chips become
+ * larger inside that variant, not via a geometry hack here.
+ */
+
+.chip:hover:not(:disabled) {
+  background: var(--state-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chipSelected,
+.chipSelected:hover {
+  background: var(--state-bg-selected);
+  border-color: var(--state-border-selected);
+  color: var(--color-accent);
+}
+
+.chipValue {
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+}
+
+.chipUnit {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.chipSelected .chipUnit {
+  color: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip { transition: none; }
+}

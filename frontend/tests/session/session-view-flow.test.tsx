@@ -7,32 +7,34 @@ import { jsonResponse, mockJson, registerFetchHandler } from "../support/mockFet
 /**
  * Session start → active → end flow, with the UI-mode prefix round-trip.
  *
- * The SessionView encodes the chosen UI mode into the objective string
- * (e.g. `[ui:pomodoro] Cover chapter 8`) so refreshing the page restores
- * the right mode-specific body. This test verifies the encode side; the
- * decode side is covered implicitly by the active state rendering the
- * correct mode label.
+ * Premium-UI Ship 4 rebuilt the setup form: the primary CTA renamed
+ * to "Start focused study session", subjects moved into the ScopePill
+ * popover, mode buttons became radio cards, durations became a
+ * radiogroup. Tests below reflect that structure.
  */
 
-test("begin session disabled until objective is provided", async () => {
+test("start session is disabled until objective is provided", async () => {
   mockJson("GET", "/api/sessions/active", { active_session: null });
   mockJson("GET", "/api/library/subjects", { subjects: [] });
+  mockJson("GET", "/api/documents", []);
 
   render(<SessionView />);
 
-  const begin = await screen.findByRole("button", { name: /begin session/i });
+  const begin = await screen.findByRole("button", {
+    name: /start focused study session/i,
+  });
   expect((begin as HTMLButtonElement).disabled).toBe(true);
 
   const objective = screen.getByPlaceholderText(/cover chapter/i);
   fireEvent.input(objective, {
     currentTarget: { value: "Test objective" },
-    target: { value: "Test objective" }
+    target: { value: "Test objective" },
   });
 
   expect((begin as HTMLButtonElement).disabled).toBe(false);
 });
 
-test("begin posts the UI-mode prefix in the objective field", async () => {
+test("starting posts the UI-mode prefix in the objective field", async () => {
   let receivedBody: unknown = null;
   registerFetchHandler((url, init) => {
     if (url.pathname === "/api/sessions/active" && init.method === "GET") {
@@ -40,6 +42,9 @@ test("begin posts the UI-mode prefix in the objective field", async () => {
     }
     if (url.pathname === "/api/library/subjects" && init.method === "GET") {
       return jsonResponse({ subjects: [] });
+    }
+    if (url.pathname === "/api/documents" && init.method === "GET") {
+      return jsonResponse([]);
     }
     if (url.pathname === "/api/sessions" && init.method === "POST") {
       receivedBody = init.body ? JSON.parse(init.body as string) : null;
@@ -49,7 +54,7 @@ test("begin posts the UI-mode prefix in the objective field", async () => {
         mode: "focus_sprint",
         duration_minutes: 25,
         started_at: new Date().toISOString(),
-        status: "active"
+        status: "active",
       });
     }
     return undefined;
@@ -60,15 +65,21 @@ test("begin posts the UI-mode prefix in the objective field", async () => {
   const objective = await screen.findByPlaceholderText(/cover chapter/i);
   fireEvent.input(objective, {
     currentTarget: { value: "Test objective" },
-    target: { value: "Test objective" }
+    target: { value: "Test objective" },
   });
 
-  fireEvent.click(screen.getByRole("button", { name: /begin session/i }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /start focused study session/i })
+  );
 
   await waitFor(() => {
     expect(receivedBody).not.toBeNull();
   });
-  const body = receivedBody as { objective: string; mode: string; duration_minutes: number };
+  const body = receivedBody as {
+    objective: string;
+    mode: string;
+    duration_minutes: number;
+  };
   expect(body.objective).toBe("[ui:pomodoro] Test objective");
   expect(body.mode).toBe("focus_sprint");
   expect(body.duration_minutes).toBe(25);
@@ -83,6 +94,9 @@ test("flowtime mode posts duration 0 (open-ended) and mixed backend mode", async
     if (url.pathname === "/api/library/subjects" && init.method === "GET") {
       return jsonResponse({ subjects: [] });
     }
+    if (url.pathname === "/api/documents" && init.method === "GET") {
+      return jsonResponse([]);
+    }
     if (url.pathname === "/api/sessions" && init.method === "POST") {
       receivedBody = init.body ? JSON.parse(init.body as string) : null;
       return jsonResponse({
@@ -91,7 +105,7 @@ test("flowtime mode posts duration 0 (open-ended) and mixed backend mode", async
         mode: "mixed",
         duration_minutes: 0,
         started_at: new Date().toISOString(),
-        status: "active"
+        status: "active",
       });
     }
     return undefined;
@@ -99,19 +113,25 @@ test("flowtime mode posts duration 0 (open-ended) and mixed backend mode", async
 
   render(<SessionView />);
 
-  // Select Flowtime mode.
-  fireEvent.click(await screen.findByRole("button", { name: /flowtime/i }));
+  // Mode cards expose role=radio with the title as the accessible name.
+  fireEvent.click(await screen.findByRole("radio", { name: /flowtime/i }));
 
   fireEvent.input(screen.getByPlaceholderText(/cover chapter/i), {
     currentTarget: { value: "Open work" },
-    target: { value: "Open work" }
+    target: { value: "Open work" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /begin session/i }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /start focused study session/i })
+  );
 
   await waitFor(() => {
     expect(receivedBody).not.toBeNull();
   });
-  const body = receivedBody as { objective: string; mode: string; duration_minutes: number };
+  const body = receivedBody as {
+    objective: string;
+    mode: string;
+    duration_minutes: number;
+  };
   expect(body.mode).toBe("mixed");
   expect(body.duration_minutes).toBe(0);
   expect(body.objective).toBe("[ui:flowtime] Open work");
@@ -128,10 +148,11 @@ test("active session renders End button and objective with prefix stripped", asy
       duration_minutes: 25,
       difficulty_target: null,
       started_at: startedAt,
-      status: "active"
-    }
+      status: "active",
+    },
   });
   mockJson("GET", "/api/library/subjects", { subjects: [] });
+  mockJson("GET", "/api/documents", []);
 
   render(<SessionView />);
 
@@ -141,4 +162,104 @@ test("active session renders End button and objective with prefix stripped", asy
   expect(screen.queryByText(/\[ui:pomodoro\]/)).toBeNull();
   // End button present.
   expect(screen.getByRole("button", { name: /end session/i })).toBeDefined();
+});
+
+test("duration chips form a radiogroup; selecting 45 sends 45 minutes", async () => {
+  let receivedBody: unknown = null;
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/sessions/active" && init.method === "GET") {
+      return jsonResponse({ active_session: null });
+    }
+    if (url.pathname === "/api/library/subjects" && init.method === "GET") {
+      return jsonResponse({ subjects: [] });
+    }
+    if (url.pathname === "/api/documents" && init.method === "GET") {
+      return jsonResponse([]);
+    }
+    if (url.pathname === "/api/sessions" && init.method === "POST") {
+      receivedBody = init.body ? JSON.parse(init.body as string) : null;
+      return jsonResponse({
+        id: "sess-45",
+        objective: "[ui:pomodoro] 45 work",
+        mode: "focus_sprint",
+        duration_minutes: 45,
+        started_at: new Date().toISOString(),
+        status: "active",
+      });
+    }
+    return undefined;
+  });
+
+  render(<SessionView />);
+
+  // The duration radiogroup exposes a labelled container.
+  await screen.findByRole("radiogroup", { name: /focus duration/i });
+  // Click the "45" chip — it's a radio with the value as accessible name.
+  const chip45 = screen.getByRole("radio", { name: /^45/i });
+  fireEvent.click(chip45);
+  expect(chip45.getAttribute("aria-checked")).toBe("true");
+
+  fireEvent.input(screen.getByPlaceholderText(/cover chapter/i), {
+    currentTarget: { value: "45 work" },
+    target: { value: "45 work" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: /start focused study session/i })
+  );
+
+  await waitFor(() => {
+    expect(receivedBody).not.toBeNull();
+  });
+  expect((receivedBody as { duration_minutes: number }).duration_minutes).toBe(45);
+});
+
+test("mode cards form a radiogroup with single selection", async () => {
+  mockJson("GET", "/api/sessions/active", { active_session: null });
+  mockJson("GET", "/api/library/subjects", { subjects: [] });
+  mockJson("GET", "/api/documents", []);
+
+  render(<SessionView />);
+
+  await screen.findByRole("radiogroup", { name: /session mode/i });
+
+  const pomodoro = screen.getByRole("radio", { name: /pomodoro/i });
+  const notes = screen.getByRole("radio", { name: /notes/i });
+
+  // Default selection is pomodoro.
+  expect(pomodoro.getAttribute("aria-checked")).toBe("true");
+  expect(notes.getAttribute("aria-checked")).toBe("false");
+
+  fireEvent.click(notes);
+  expect(notes.getAttribute("aria-checked")).toBe("true");
+  expect(pomodoro.getAttribute("aria-checked")).toBe("false");
+});
+
+test("ArrowRight on the mode radiogroup cycles selection", async () => {
+  mockJson("GET", "/api/sessions/active", { active_session: null });
+  mockJson("GET", "/api/library/subjects", { subjects: [] });
+  mockJson("GET", "/api/documents", []);
+
+  render(<SessionView />);
+
+  const group = await screen.findByRole("radiogroup", { name: /session mode/i });
+  // Default is pomodoro (first). ArrowRight should land on flowtime.
+  fireEvent.keyDown(group, { key: "ArrowRight" });
+  expect(
+    screen.getByRole("radio", { name: /flowtime/i }).getAttribute("aria-checked")
+  ).toBe("true");
+});
+
+test("ArrowRight on the duration radiogroup cycles selection", async () => {
+  mockJson("GET", "/api/sessions/active", { active_session: null });
+  mockJson("GET", "/api/library/subjects", { subjects: [] });
+  mockJson("GET", "/api/documents", []);
+
+  render(<SessionView />);
+
+  const group = await screen.findByRole("radiogroup", { name: /focus duration/i });
+  // Default is 25. ArrowRight → 45.
+  fireEvent.keyDown(group, { key: "ArrowRight" });
+  expect(
+    screen.getByRole("radio", { name: /^45/i }).getAttribute("aria-checked")
+  ).toBe("true");
 });

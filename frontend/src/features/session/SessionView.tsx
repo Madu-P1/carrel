@@ -1,35 +1,45 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { JSX } from "preact";
 
-import { Icon } from "@/design-system";
+import { Button, Icon, Stack, Text } from "@/design-system";
 import { ApiError } from "@/services/api/client";
 import {
+  documents as documentsApi,
   library,
   sessions,
+  study as studyApi,
   type ActiveSessionSummary,
+  type DocumentRow,
   type SessionCompletionResult,
-  type SubjectSummary
+  type SrsSubjectSummary,
+  type SubjectSummary,
 } from "@/services/api/endpoints";
 import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 
-import { ModeTile, type ModeTileData } from "./components/ModeTile";
+import {
+  ScopePill,
+  type AskScopeValue,
+} from "@/features/ask/components/ScopePill";
+
+import { DurationChips } from "./components/DurationChips";
+import { ModeCard, type ModeCardData } from "./components/ModeCard";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { TimerRing } from "./components/TimerRing";
 import styles from "./SessionView.module.css";
 
 /**
- * Session engine — Enter deep work.
+ * Session engine — the cockpit.
  *
  * Three top-level states:
- *   1. setup      — no active session: render mode tiles + setup form
+ *   1. setup      — no active session: render mode cards + setup grid
  *   2. active     — session running: timer ring + mode-specific body
  *   3. completed  — just-ended: mastery summary with revision recs
  *
- * State is server-sourced. We fetch /api/sessions/active on mount and on
- * window focus; if one is active we land in state 2 automatically,
- * matching what the Dashboard shows. The completion state is local-only
- * (ephemeral) and follows directly from the user pressing End; it does
- * NOT persist across refresh.
+ * Premium UI ship 4 rebuilt the setup branch: 2-column ModeCard grid,
+ * 12-column controls grid, segmented DurationChips, ScopePill replaces
+ * the native subject <select>, and a single size-lg primary CTA at the
+ * bottom. Active + completed branches are unchanged for now (Ship 5
+ * picks up Answer feed; the active body lives in its own ship).
  *
  * Mode mapping to backend:
  *   pomodoro    → focus_sprint
@@ -43,11 +53,31 @@ import styles from "./SessionView.module.css";
 
 type UiMode = "pomodoro" | "flowtime" | "notes" | "flashcards";
 
-const MODES: ModeTileData[] = [
-  { id: "pomodoro", label: "Pomodoro", description: "Timed focus with a clear end", icon: "study" },
-  { id: "flowtime", label: "Flowtime", description: "Open-ended, stop when ready", icon: "sparkle" },
-  { id: "notes", label: "Notes", description: "Writing-first with AI expand", icon: "doc" },
-  { id: "flashcards", label: "Flashcards", description: "Spaced repetition review", icon: "ask" }
+const MODES: ModeCardData[] = [
+  {
+    id: "pomodoro",
+    title: "Pomodoro",
+    purpose: "Timed focus with a clear end.",
+    iconName: "study",
+  },
+  {
+    id: "flowtime",
+    title: "Flowtime",
+    purpose: "Open-ended. Stop when you're ready.",
+    iconName: "sparkle",
+  },
+  {
+    id: "notes",
+    title: "Notes",
+    purpose: "Writing-first with AI expand.",
+    iconName: "doc",
+  },
+  {
+    id: "flashcards",
+    title: "Flashcards",
+    purpose: "Spaced repetition through what's due.",
+    iconName: "ask",
+  },
 ];
 
 const DURATIONS = [15, 25, 45, 60];
@@ -56,7 +86,7 @@ const UI_TO_BACKEND_MODE: Record<UiMode, string> = {
   pomodoro: "focus_sprint",
   flowtime: "mixed",
   notes: "focus_sprint",
-  flashcards: "retrieval_practice"
+  flashcards: "retrieval_practice",
 };
 
 /** Persist the ui-mode by stashing it in the objective prefix — backend
@@ -82,6 +112,45 @@ function decodeObjective(stored: string | null | undefined): {
   return { uiMode: null, text: stored };
 }
 
+/**
+ * ScopePill emits an AskScopeValue. The session start endpoint expects
+ * `source_scope: string[] | undefined` — a list of subject names.
+ *
+ * Mapping:
+ *   library          → undefined (no scope filter)
+ *   subject(name)    → [name]
+ *   document(docId)  → undefined for now (the backend filters by subject
+ *                      not by docId; document scope still scopes the
+ *                      retrieval correctly inside the active session
+ *                      because the picker exposes the docTitle and the
+ *                      tutor passes it through Ask). When backend gains
+ *                      doc-level session scope, this returns [docId].
+ */
+function scopeToSourceList(scope: AskScopeValue): string[] | undefined {
+  if (scope.kind === "subject" && scope.subjectName) {
+    return [scope.subjectName];
+  }
+  return undefined;
+}
+
+/** SubjectSummary → SrsSubjectSummary adapter. ScopePill is shaped
+ *  around the SRS view of subjects (card_count, due_count). For session
+ *  setup we want the same picker UX but seeded from the broader
+ *  library.subjects() list (every subject with sources, even if it has
+ *  no cards yet). The adapter coerces shapes; due_count is unknown here
+ *  and reads as 0, which the picker just doesn't display in our path. */
+function subjectsForScope(
+  librarySubjects: SubjectSummary[]
+): SrsSubjectSummary[] {
+  return librarySubjects
+    .filter((s) => s.source_count > 0)
+    .map((s) => ({
+      subject_name: s.subject_name,
+      card_count: s.flashcard_count ?? 0,
+      due_count: 0,
+    }));
+}
+
 export function SessionView() {
   const [active, setActive] = useState<ActiveSessionSummary | null>(null);
   const [completion, setCompletion] = useState<SessionCompletionResult | null>(null);
@@ -92,8 +161,12 @@ export function SessionView() {
   const [selectedMode, setSelectedMode] = useState<UiMode>("pomodoro");
   const [duration, setDuration] = useState<number>(25);
   const [objective, setObjective] = useState("");
-  const [subject, setSubject] = useState<string>("");
+  const [scope, setScope] = useState<AskScopeValue>({
+    kind: "library",
+    readiness: "ready",
+  });
   const [subjects, setSubjects] = useState<SubjectSummary[]>([]);
+  const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -109,7 +182,7 @@ export function SessionView() {
           objective: (data.active_session.objective || "").replace(
             /^\[ui:[a-z]+\]\s*/,
             ""
-          )
+          ),
         });
       } else {
         setActiveSession(null);
@@ -120,30 +193,39 @@ export function SessionView() {
     }
   }, []);
 
-  const refreshSubjects = useCallback(async () => {
+  const refreshCorpus = useCallback(async () => {
+    // Fetch library subjects + documents in parallel for the ScopePill.
+    // Failures fall back to empty lists so the rest of the setup form
+    // still works.
     try {
-      const data = await library.subjects();
-      setSubjects(data.subjects);
+      const [subjectsRes, docsRes] = await Promise.all([
+        library.subjects(),
+        documentsApi.list().catch(() => [] as DocumentRow[]),
+      ]);
+      setSubjects(subjectsRes.subjects);
+      setDocs(docsRes);
     } catch {
       setSubjects([]);
+      setDocs([]);
     }
+    // study.subjects() exists too but we prefer library.subjects() since
+    // it covers every subject with sources, not only those with SRS cards.
+    void studyApi;
   }, []);
 
   useEffect(() => {
     void refreshActive();
-    void refreshSubjects();
+    void refreshCorpus();
     const onFocus = () => void refreshActive();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refreshActive, refreshSubjects]);
+  }, [refreshActive, refreshCorpus]);
 
   // If the active session was started via this view, decode the UI-mode
   // prefix so the rendered body matches what the user picked.
   const activeDecoded = useMemo(() => decodeObjective(active?.objective), [active]);
   const activeUiMode: UiMode = useMemo(() => {
     if (!active) return selectedMode;
-    // Backend mode is a reasonable fallback when no prefix is present
-    // (session started outside this view).
     if (activeDecoded.uiMode) return activeDecoded.uiMode;
     if (active.mode === "retrieval_practice") return "flashcards";
     if (active.mode === "mixed") return "flowtime";
@@ -155,7 +237,7 @@ export function SessionView() {
     if (starting) return;
     const cleanObjective = objective.trim();
     if (!cleanObjective) {
-      setStartError("Give the session an objective before starting.");
+      setStartError("Tell us what you'd like to learn before starting.");
       return;
     }
     setStarting(true);
@@ -164,8 +246,11 @@ export function SessionView() {
       await sessions.start({
         objective: encodeObjective(selectedMode, cleanObjective),
         mode: UI_TO_BACKEND_MODE[selectedMode],
-        duration_minutes: selectedMode === "flowtime" || selectedMode === "flashcards" ? 0 : duration,
-        source_scope: subject ? [subject] : undefined
+        duration_minutes:
+          selectedMode === "flowtime" || selectedMode === "flashcards"
+            ? 0
+            : duration,
+        source_scope: scopeToSourceList(scope),
       });
       setCompletion(null);
       setCompletionError(null);
@@ -225,14 +310,15 @@ export function SessionView() {
       ) : (
         <SetupForm
           subjects={subjects}
+          documents={docs}
           selectedMode={selectedMode}
           onSelectMode={setSelectedMode}
           duration={duration}
           onDuration={setDuration}
           objective={objective}
           onObjective={setObjective}
-          subject={subject}
-          onSubject={setSubject}
+          scope={scope}
+          onScope={setScope}
           starting={starting}
           error={startError}
           onBegin={(event) => void begin(event)}
@@ -248,10 +334,10 @@ function Header() {
   return (
     <header className={styles.header}>
       <span className={styles.eyebrow}>Session engine</span>
-      <h1 className={styles.title}>Enter deep work</h1>
+      <h1 className={styles.title}>Set the focus.</h1>
       <p className={styles.subtitle}>
-        Pick a mode, set an objective, and start. Einstein tracks the session
-        and surfaces mastery deltas when you end.
+        Pick the depth, set the corpus, name the objective. Einstein
+        tracks the session and surfaces mastery deltas when you end.
       </p>
     </header>
   );
@@ -261,14 +347,15 @@ function Header() {
 
 interface SetupFormProps {
   subjects: SubjectSummary[];
+  documents: DocumentRow[];
   selectedMode: UiMode;
   onSelectMode: (mode: UiMode) => void;
   duration: number;
   onDuration: (minutes: number) => void;
   objective: string;
   onObjective: (value: string) => void;
-  subject: string;
-  onSubject: (value: string) => void;
+  scope: AskScopeValue;
+  onScope: (next: AskScopeValue) => void;
   starting: boolean;
   error: string | null;
   onBegin: (event: JSX.TargetedEvent<HTMLFormElement, Event>) => void;
@@ -276,26 +363,70 @@ interface SetupFormProps {
 
 function SetupForm({
   subjects,
+  documents,
   selectedMode,
   onSelectMode,
   duration,
   onDuration,
   objective,
   onObjective,
-  subject,
-  onSubject,
+  scope,
+  onScope,
   starting,
   error,
-  onBegin
+  onBegin,
 }: SetupFormProps) {
   const showDuration = selectedMode === "pomodoro" || selectedMode === "notes";
+  const scopeSubjects = useMemo(() => subjectsForScope(subjects), [subjects]);
+
+  /*
+   * Keyboard navigation for the ModeCard radiogroup.
+   * WAI-ARIA radio group pattern: ArrowLeft/Right cycle, Home/End jump
+   * to ends. Roving tabindex lives on the cards themselves (`tabIndex={
+   * selected ? 0 : -1 }` in ModeCard). Here we move BOTH the value AND
+   * focus so the visual ring follows the selection.
+   */
+  const handleModeKeyDown = (event: KeyboardEvent) => {
+    const key = event.key;
+    if (
+      key !== "ArrowRight" &&
+      key !== "ArrowLeft" &&
+      key !== "Home" &&
+      key !== "End"
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const idx = MODES.findIndex((m) => m.id === selectedMode);
+    if (idx < 0) return;
+    let nextIdx = idx;
+    if (key === "ArrowRight") nextIdx = (idx + 1) % MODES.length;
+    else if (key === "ArrowLeft")
+      nextIdx = (idx - 1 + MODES.length) % MODES.length;
+    else if (key === "Home") nextIdx = 0;
+    else if (key === "End") nextIdx = MODES.length - 1;
+    const next = MODES[nextIdx];
+    onSelectMode(next.id as UiMode);
+    // Move focus to the newly selected card so the focus ring tracks
+    // the value. Cards expose role=radio so we can target them by role.
+    const target = event.currentTarget as HTMLDivElement;
+    const buttons = target.querySelectorAll<HTMLButtonElement>("[role=\"radio\"]");
+    buttons?.[nextIdx]?.focus();
+  };
+
   return (
     <form onSubmit={onBegin} className={styles.setup}>
-      <section>
-        <h2 className={styles.sectionHeading}>Choose a mode</h2>
-        <div className={styles.modeGrid}>
+      {/* --- Mode card grid ---------------------------------------------- */}
+      <section className={styles.modeSection}>
+        <span className={styles.sectionLabel}>Pick the depth</span>
+        <div
+          role="radiogroup"
+          aria-label="Session mode"
+          className={styles.modeGrid}
+          onKeyDown={handleModeKeyDown}
+        >
           {MODES.map((mode) => (
-            <ModeTile
+            <ModeCard
               key={mode.id}
               mode={mode}
               selected={selectedMode === mode.id}
@@ -305,73 +436,67 @@ function SetupForm({
         </div>
       </section>
 
-      <section>
-        <h2 className={styles.sectionHeading}>Session setup</h2>
-        <div className={styles.setupGrid}>
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>Subject (optional)</span>
-            <select
-              className={styles.select}
-              value={subject}
-              onChange={(event) =>
-                onSubject((event.currentTarget as HTMLSelectElement).value)
-              }
-            >
-              <option value="">No subject scope</option>
-              {subjects.map((s) => (
-                <option key={s.subject_name} value={s.subject_name}>
-                  {s.subject_name} ({s.source_count})
-                </option>
-              ))}
-            </select>
-          </label>
-          {showDuration && (
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Focus duration</span>
-              <div className={styles.durationRow}>
-                {DURATIONS.map((minutes) => (
-                  <button
-                    key={minutes}
-                    type="button"
-                    className={[
-                      styles.durationChip,
-                      minutes === duration ? styles.durationChipSelected : ""
-                    ].join(" ")}
-                    onClick={() => onDuration(minutes)}
-                  >
-                    {minutes}
-                    <span className={styles.durationUnit}>m</span>
-                  </button>
-                ))}
-              </div>
-            </label>
-          )}
-          <label className={[styles.field, styles.fieldWide].join(" ")}>
-            <span className={styles.fieldLabel}>Objective</span>
-            <input
-              type="text"
-              className={styles.input}
-              value={objective}
-              onInput={(event) =>
-                onObjective((event.currentTarget as HTMLInputElement).value)
-              }
-              placeholder="e.g. Cover chapter 7 — bond valuation"
-            />
-          </label>
+      {/* --- 12-col controls grid ---------------------------------------- */}
+      <section className={styles.controls}>
+        <div className={styles.controlRow}>
+          <span className={styles.fieldLabel}>Set the corpus</span>
+          <ScopePill
+            value={scope}
+            onChange={onScope}
+            documents={documents}
+            subjects={scopeSubjects}
+          />
         </div>
+
+        {showDuration ? (
+          <div className={styles.controlRow}>
+            <span className={styles.fieldLabel}>Set the timer</span>
+            <DurationChips
+              value={duration}
+              options={DURATIONS}
+              onChange={onDuration}
+            />
+          </div>
+        ) : null}
+
+        <label className={styles.objectiveRow}>
+          <span className={styles.fieldLabel}>What would you like to learn?</span>
+          <input
+            type="text"
+            className={styles.objectiveInput}
+            value={objective}
+            onInput={(event) =>
+              onObjective((event.currentTarget as HTMLInputElement).value)
+            }
+            placeholder="e.g. Cover chapter 7 — bond valuation"
+            autoComplete="off"
+          />
+        </label>
       </section>
 
-      {error && <div className={styles.formError}>{error}</div>}
+      {error ? (
+        <div className={styles.formError} role="alert">
+          {error}
+        </div>
+      ) : null}
 
-      <div className={styles.setupFooter}>
-        <button
+      {/* --- CTA row ------------------------------------------------------ */}
+      <div className={styles.ctaRow}>
+        <Button
           type="submit"
-          className={styles.primaryBtn}
+          variant="primary"
+          size="lg"
+          className={styles.ctaButton}
           disabled={starting || objective.trim().length === 0}
+          isLoading={starting}
         >
-          {starting ? "Starting…" : "Begin session"}
-          <Icon name="arrow-right" size={14} />
-        </button>
+          <span className={styles.ctaLabel}>
+            {starting ? "Starting…" : "Start focused study session"}
+          </span>
+          {!starting ? (
+            <Icon name="arrow-right" size={14} />
+          ) : null}
+        </Button>
       </div>
     </form>
   );
@@ -394,7 +519,7 @@ function ActiveBody({
   decodedObjective,
   ending,
   error,
-  onEnd
+  onEnd,
 }: ActiveBodyProps) {
   const timerMode = uiMode === "pomodoro" ? "countdown" : "countup";
   const targetMinutes = active.duration_minutes > 0 ? active.duration_minutes : 25;
@@ -402,10 +527,10 @@ function ActiveBody({
     uiMode === "pomodoro"
       ? "focus"
       : uiMode === "flowtime"
-      ? "flow"
-      : uiMode === "notes"
-      ? "writing"
-      : "review";
+        ? "flow"
+        : uiMode === "notes"
+          ? "writing"
+          : "review";
 
   return (
     <div className={styles.active}>
@@ -418,9 +543,13 @@ function ActiveBody({
         />
         <div className={styles.activeInfo}>
           <span className={styles.activeEyebrow}>Active session</span>
-          <h2 className={styles.activeObjective}>{decodedObjective || "Deep work"}</h2>
+          <h2 className={styles.activeObjective}>
+            {decodedObjective || "Deep work"}
+          </h2>
           <span className={styles.activeMeta}>
-            {uiMode} · {active.duration_minutes > 0 ? `planned ${active.duration_minutes} min` : "open-ended"}
+            {uiMode} · {active.duration_minutes > 0
+              ? `planned ${active.duration_minutes} min`
+              : "open-ended"}
           </span>
           <div className={styles.activeControls}>
             <button
@@ -432,15 +561,15 @@ function ActiveBody({
               {ending ? "Ending…" : "End session"}
             </button>
           </div>
-          {error && <div className={styles.inlineError}>{error}</div>}
+          {error ? <div className={styles.inlineError}>{error}</div> : null}
         </div>
       </div>
 
-      {uiMode === "notes" && (
+      {uiMode === "notes" ? (
         <NotesWorkspace sessionId={active.id} sessionObjective={decodedObjective} />
-      )}
+      ) : null}
 
-      {uiMode === "flashcards" && <FlashcardsPanel />}
+      {uiMode === "flashcards" ? <FlashcardsPanel /> : null}
     </div>
   );
 }
@@ -448,19 +577,22 @@ function ActiveBody({
 function FlashcardsPanel() {
   return (
     <div className={styles.flashcardsPanel}>
-      <div className={styles.flashcardsEyebrow}>Flashcards mode</div>
-      <p className={styles.flashcardsCopy}>
-        Jump into the SRS review queue. Session time keeps running in the
-        background; come back here to end when you're done.
-      </p>
-      <button
-        type="button"
-        className={styles.secondaryBtn}
-        onClick={() => navigateTo("/study")}
-      >
-        Open review queue
-        <Icon name="arrow-right" size={14} />
-      </button>
+      <Stack gap={2}>
+        <Text className={styles.flashcardsEyebrow} tone="tertiary">
+          Flashcards mode
+        </Text>
+        <p className={styles.flashcardsCopy}>
+          Jump into the SRS review queue. Session time keeps running in the
+          background; come back here to end when you're done.
+        </p>
+        <Button
+          onClick={() => navigateTo("/study")}
+          variant="secondary"
+        >
+          <span>Open review queue</span>
+          <Icon name="arrow-right" size={14} />
+        </Button>
+      </Stack>
     </div>
   );
 }
@@ -473,9 +605,14 @@ interface CompletionPanelProps {
   onStartAnother: () => void;
 }
 
-function CompletionPanel({ result, onDismiss, onStartAnother }: CompletionPanelProps) {
+function CompletionPanel({
+  result,
+  onDismiss,
+  onStartAnother,
+}: CompletionPanelProps) {
   const deltaPct = Math.round(result.mastery_delta * 100);
-  const deltaLabel = deltaPct === 0 ? "±0%" : deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`;
+  const deltaLabel =
+    deltaPct === 0 ? "±0%" : deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`;
   return (
     <section className={styles.completion} aria-label="Session complete">
       <header className={styles.completionHeader}>
@@ -483,14 +620,14 @@ function CompletionPanel({ result, onDismiss, onStartAnother }: CompletionPanelP
         <span
           className={[
             styles.deltaChip,
-            deltaPct >= 0 ? styles.deltaChipPos : styles.deltaChipNeg
+            deltaPct >= 0 ? styles.deltaChipPos : styles.deltaChipNeg,
           ].join(" ")}
         >
           Mastery {deltaLabel}
         </span>
       </header>
       <p className={styles.completionLine}>{result.revision_recommendation}</p>
-      {result.weak_concepts.length > 0 && (
+      {result.weak_concepts.length > 0 ? (
         <div className={styles.chipRow}>
           {result.weak_concepts.map((concept) => (
             <span key={concept} className={styles.weakChip}>
@@ -498,20 +635,20 @@ function CompletionPanel({ result, onDismiss, onStartAnother }: CompletionPanelP
             </span>
           ))}
         </div>
-      )}
-      {result.stretch_question && (
+      ) : null}
+      {result.stretch_question ? (
         <p className={styles.stretch}>
           <span className={styles.stretchLabel}>Stretch · </span>
           {result.stretch_question}
         </p>
-      )}
+      ) : null}
       <div className={styles.completionFooter}>
-        <button type="button" className={styles.primaryBtn} onClick={onStartAnother}>
+        <Button onClick={onStartAnother} variant="primary">
           Start another session
-        </button>
-        <button type="button" className={styles.secondaryBtn} onClick={onDismiss}>
+        </Button>
+        <Button onClick={onDismiss} variant="ghost">
           Dismiss
-        </button>
+        </Button>
       </div>
     </section>
   );
