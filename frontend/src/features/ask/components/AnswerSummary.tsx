@@ -1,25 +1,110 @@
-import { Card, Stack, Text } from "@/design-system";
+import { Stack, toast } from "@/design-system";
 
-import { renderMarkdown } from "@/lib/markdown";
+import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
+import type { CitationRecord } from "../types";
 import styles from "../AskView.module.css";
+import { AnswerFeedCard } from "./AnswerFeedCard";
 
 interface AnswerSummaryProps {
   summary: string;
+  citations: CitationRecord[];
+  cacheHit: boolean;
+  latencyMs: number;
+  model: string;
+  onRetry?: () => void;
 }
 
-export function AnswerSummary({ summary }: AnswerSummaryProps) {
+function locationSummary(citations: CitationRecord[]): string | null {
+  if (citations.length === 0) {
+    return null;
+  }
+  const preview = citations.slice(0, 2).map((citation) =>
+    [
+      citation.document_name ?? citation.document_id ?? "Source",
+      citation.page_num ? `p.${citation.page_num}` : null,
+      citation.chunk_id ? `chunk ${citation.chunk_id}` : null
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  );
+  const extra = citations.length > 2 ? ` +${citations.length - 2} more` : "";
+  return `${preview.join("  •  ")}${extra}`;
+}
+
+export function AnswerSummary({
+  summary,
+  citations,
+  cacheHit,
+  latencyMs,
+  model,
+  onRetry
+}: AnswerSummaryProps) {
   if (!summary) {
     return null;
   }
 
+  const citation = citations[0];
+  const latencyToken = latencyMs > 0 ? `${(latencyMs / 1000).toFixed(1)}s` : "0.0s";
+  const metaLocation = locationSummary(citations);
+
   return (
-    <Card className={[styles.summaryCard, "anim-fadeUp"].join(" ")} padding="lg">
-      <Stack gap={2}>
-        <Text as="h2" variant="h1" weight="bold">
-          Grounded answer
-        </Text>
-        <div className={styles.prose}>{renderMarkdown(summary)}</div>
-      </Stack>
-    </Card>
+    <AnswerFeedCard
+      actions={[
+        {
+          label: "Copy",
+          onClick: () => {
+            void copyAskCardText(summary)
+              .then(() => {
+                toast.success("Copied answer", "The grounded answer is on your clipboard.");
+              })
+              .catch(() => {
+                toast.error("Copy failed", "Clipboard access is unavailable in this context.");
+              });
+          }
+        },
+        {
+          label: "Retry",
+          onClick: () => {
+            onRetry?.();
+          }
+        },
+        {
+          label: "Save as anchor",
+          onClick: () => {
+            try {
+              const saved = saveAskAnchorDraft({
+                title: "Grounded answer",
+                body: summary,
+                sourceKind: "answer-summary",
+                citation
+              });
+              toast.success(
+                saved.status === "created" ? "Anchor saved" : "Anchor refreshed",
+                citation?.document_name ?? "Saved from this grounded answer."
+              );
+            } catch {
+              toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+            }
+          },
+          disabled: citations.length === 0
+        }
+      ]}
+      body={summary}
+      evidence={
+        <Stack className={styles.summaryEvidence} gap={1}>
+          <div className={styles.summaryMetaTokens}>
+            <span>{model || "no-model"}</span>
+            <span aria-hidden>·</span>
+            <span>{latencyToken}</span>
+            <span aria-hidden>·</span>
+            <span>{cacheHit ? "cache hit" : "cold call"}</span>
+            <span aria-hidden>·</span>
+            <span>{citations.length} source{citations.length === 1 ? "" : "s"}</span>
+          </div>
+          {metaLocation ? <div className={styles.feedCardLocation}>{metaLocation}</div> : null}
+        </Stack>
+      }
+      title="Grounded answer"
+    />
   );
 }

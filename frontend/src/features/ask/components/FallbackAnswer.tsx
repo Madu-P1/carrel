@@ -1,9 +1,10 @@
-import { Badge, Button, Icon, Stack, Text } from "@/design-system";
+import { Badge, Stack, Text, toast } from "@/design-system";
 
-import { renderMarkdown } from "@/lib/markdown";
-import type { ClaimRecord } from "../types";
+import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
 import { friendlyErrorFor } from "../errorMessages";
+import type { ClaimRecord } from "../types";
 import styles from "../AskView.module.css";
+import { AnswerFeedCard, type AnswerFeedAction } from "./AnswerFeedCard";
 
 interface FallbackAnswerProps {
   claims: ClaimRecord[];
@@ -14,6 +15,36 @@ interface FallbackAnswerProps {
   /** Invoked when the user clicks "Rephrase question". Typically focuses
    *  the question input. Not bound for non-weak-coverage errors. */
   onRephrase?: () => void;
+  /** Invoked when the user clicks "Retry". Re-runs the most recent Ask payload. */
+  onRetry?: () => void;
+}
+
+function normalizedText(value: string): string {
+  return value.replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function fallbackSupportText(claim: ClaimRecord): string {
+  const candidate = (claim.citations[0]?.snippet ?? claim.citations[0]?.content ?? "").trim();
+  if (candidate && normalizedText(candidate) !== normalizedText(claim.text)) {
+    return candidate;
+  }
+  const citation = claim.citations[0];
+  if (citation?.document_name) {
+    return `Nearest retrieved passage from ${citation.document_name}${citation.page_num ? ` on page ${citation.page_num}` : ""}.`;
+  }
+  return "Nearest retrieved passage from your current scope.";
+}
+
+function fallbackLocations(claim: ClaimRecord): string[] {
+  return claim.citations.map((citation) =>
+    [
+      citation.document_name ?? citation.document_id ?? "Source",
+      citation.page_num ? `p.${citation.page_num}` : null,
+      citation.chunk_id ? `chunk ${citation.chunk_id}` : null
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  );
 }
 
 /**
@@ -22,7 +53,7 @@ interface FallbackAnswerProps {
  *
  *   weak_coverage: deliberate refusal. Claude was NOT called; we refused
  *     because scope fallback thinned the evidence. Shows a refusal card
- *     with 3 recovery actions + the nearest passages we did find.
+ *     with recovery actions + the nearest passages we did find.
  *
  *   everything else: legacy fallback shape. AI synthesis was attempted but
  *     failed (API error, disabled, etc). Shows the raw passages so the
@@ -31,54 +62,71 @@ interface FallbackAnswerProps {
  * Both shapes share the passages list so the user always walks away with
  * something readable.
  */
-export function FallbackAnswer({ claims, error, onBroadenScope, onRephrase }: FallbackAnswerProps) {
+export function FallbackAnswer({
+  claims,
+  error,
+  onBroadenScope,
+  onRephrase,
+  onRetry
+}: FallbackAnswerProps) {
   const friendly = friendlyErrorFor(error);
   const isRefusal = error === "weak_coverage";
+  const summaryActions: AnswerFeedAction[] = [];
+
+  if (onRetry) {
+    summaryActions.push({
+      label: "Retry",
+      onClick: () => {
+        onRetry();
+      }
+    });
+  }
+  if (isRefusal && onBroadenScope) {
+    summaryActions.push({
+      label: "Broaden to Library",
+      onClick: () => {
+        onBroadenScope();
+      }
+    });
+  }
+  if (isRefusal && onRephrase) {
+    summaryActions.push({
+      label: "Rephrase question",
+      onClick: () => {
+        onRephrase();
+      }
+    });
+  }
+
   return (
     <section className={styles.fallbackWrap}>
       <Stack gap={3}>
-        <Stack gap={1}>
-          <Badge tone={isRefusal ? "info" : "warning"}>
-            {isRefusal ? "Grounded refusal" : "Fallback"}
-          </Badge>
-          <Text as="h2" variant="h2" weight="bold">
-            {isRefusal ? "I refused this one." : "AI synthesis unavailable"}
-          </Text>
-          {friendly ? <Text tone="secondary">{friendly.title}</Text> : null}
-          <Text tone="secondary">
-            {isRefusal
-              ? "The evidence in your current scope didn't cleanly match the question. I wouldn't make up an answer from passages that weren't actually a match."
-              : "Showing raw retrieved passages so you can still work from the source."}
-          </Text>
-          {friendly?.action ? <Text tone="secondary">{friendly.action}</Text> : null}
-          {friendly ? (
-            <Text tone="tertiary" variant="caption">
-              code: {friendly.code}
-            </Text>
-          ) : null}
-        </Stack>
-        {isRefusal ? (
-          <Stack direction="horizontal" gap={2} wrap>
-            {onBroadenScope ? (
-              <Button
-                leadingIcon={<Icon name="library" size={14} />}
-                onClick={onBroadenScope}
-                variant="secondary"
-              >
-                Broaden to Library
-              </Button>
-            ) : null}
-            {onRephrase ? (
-              <Button
-                leadingIcon={<Icon name="ask" size={14} />}
-                onClick={onRephrase}
-                variant="secondary"
-              >
-                Rephrase question
-              </Button>
-            ) : null}
-          </Stack>
-        ) : null}
+        <AnswerFeedCard
+          actions={summaryActions}
+          body={
+            isRefusal
+              ? "The evidence in your current scope did not cleanly answer the question, so I stopped short instead of inventing a summary."
+              : "Showing the closest retrieved passages so you can still work directly from the source."
+          }
+          evidence={
+            <Stack gap={1}>
+              {friendly ? <Text className={styles.feedCardMetaText}>{friendly.title}</Text> : null}
+              {friendly?.action ? <Text className={styles.feedCardMetaText}>{friendly.action}</Text> : null}
+              {friendly ? (
+                <Text className={[styles.feedCardMetaText, styles.feedCardLocation].join(" ")}>
+                  code: {friendly.code}
+                </Text>
+              ) : null}
+            </Stack>
+          }
+          eyebrow={
+            <Badge tone={isRefusal ? "info" : "warning"}>
+              {isRefusal ? "Grounded refusal" : "Fallback"}
+            </Badge>
+          }
+          title={isRefusal ? "I refused this one." : "AI synthesis unavailable"}
+        />
+
         {claims.length > 0 ? (
           <Stack gap={2}>
             {isRefusal ? (
@@ -86,13 +134,58 @@ export function FallbackAnswer({ claims, error, onBroadenScope, onRephrase }: Fa
                 Nearest passages I did find, in case they help:
               </Text>
             ) : null}
-            <ol className={styles.fallbackClaims}>
-              {claims.map((claim) => (
-                <li key={claim.text}>
-                  <div className={styles.prose}>{renderMarkdown(claim.text)}</div>
-                </li>
+            <div className={styles.claimList}>
+              {claims.map((claim, index) => (
+                <AnswerFeedCard
+                  actions={[
+                    {
+                      label: "Copy",
+                      onClick: () => {
+                        void copyAskCardText(claim.text)
+                          .then(() => {
+                            toast.success("Copied passage", "The fallback passage is on your clipboard.");
+                          })
+                          .catch(() => {
+                            toast.error("Copy failed", "Clipboard access is unavailable in this context.");
+                          });
+                      }
+                    },
+                    {
+                      label: "Save as anchor",
+                      onClick: () => {
+                        try {
+                          const saved = saveAskAnchorDraft({
+                            title: claim.text,
+                            body: fallbackSupportText(claim),
+                            sourceKind: "fallback-passage",
+                            citation: claim.citations[0]
+                          });
+                          toast.success(
+                            saved.status === "created" ? "Anchor saved" : "Anchor refreshed",
+                            claim.citations[0]?.document_name ?? "Saved from this fallback passage."
+                          );
+                        } catch {
+                          toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+                        }
+                      }
+                    }
+                  ]}
+                  body={fallbackSupportText(claim)}
+                  delayMs={120 + index * 60}
+                  evidence={
+                    <div className={styles.feedCardLocationList}>
+                      {fallbackLocations(claim).map((location) => (
+                        <span className={styles.feedCardLocation} key={`${claim.text}-${location}`}>
+                          {location}
+                        </span>
+                      ))}
+                    </div>
+                  }
+                  key={claim.text}
+                  title={claim.text}
+                />
               ))}
-            </ol>
+            </div>
           </Stack>
         ) : null}
       </Stack>

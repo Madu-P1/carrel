@@ -1,13 +1,47 @@
-import { Stack } from "@/design-system";
+import { toast } from "@/design-system";
 
-import { renderMarkdown } from "@/lib/markdown";
+import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
 import type { CitationRecord, ClaimRecord } from "../types";
+import { AnswerFeedCard } from "./AnswerFeedCard";
 import { CitationChip } from "./CitationChip";
 import styles from "../AskView.module.css";
 
 interface ClaimListProps {
   claims: ClaimRecord[];
   onCitationClick?: (citation: CitationRecord) => void;
+}
+
+function normalizedText(value: string): string {
+  return value.replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function supportTextForClaim(claim: ClaimRecord): string {
+  const firstCitation = claim.citations[0];
+  const candidate = (firstCitation?.snippet ?? firstCitation?.content ?? "").trim();
+  const claimText = normalizedText(claim.text);
+  const candidateText = normalizedText(candidate);
+  if (
+    candidate &&
+    candidateText !== claimText &&
+    !candidateText.includes(claimText) &&
+    !claimText.includes(candidateText)
+  ) {
+    return candidate;
+  }
+  if (firstCitation?.document_name) {
+    return `Supporting passage from ${firstCitation.document_name}${firstCitation.page_num ? ` on page ${firstCitation.page_num}` : ""}.`;
+  }
+  return "Supporting passage from your source library.";
+}
+
+function sourceLocationFor(citation: CitationRecord): string {
+  return [
+    citation.document_name ?? citation.document_id ?? "Source",
+    citation.page_num ? `p.${citation.page_num}` : null,
+    citation.chunk_id ? `chunk ${citation.chunk_id}` : null
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
@@ -19,33 +53,77 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
       {claims.map((claim, index) => {
         const claimDelay = 80 + index * 60;
         const citationDelay = claimDelay + 120;
+        const firstCitation = claim.citations[0];
 
         return (
-          <article
-            className={[styles.claimCard, "anim-fadeUp"].join(" ")}
+          <AnswerFeedCard
+            actions={[
+              {
+                label: "Copy",
+                onClick: () => {
+                  void copyAskCardText(claim.text)
+                    .then(() => {
+                      toast.success("Copied claim", "The claim text is on your clipboard.");
+                    })
+                    .catch(() => {
+                      toast.error("Copy failed", "Clipboard access is unavailable in this context.");
+                    });
+                }
+              },
+              {
+                label: "Save as anchor",
+                onClick: () => {
+                  try {
+                    const saved = saveAskAnchorDraft({
+                      title: claim.text,
+                      body: supportTextForClaim(claim),
+                      sourceKind: "claim",
+                      citation: firstCitation
+                    });
+                    toast.success(
+                      saved.status === "created" ? "Anchor saved" : "Anchor refreshed",
+                      firstCitation?.document_name ?? "Saved from this answer card."
+                    );
+                  } catch {
+                    toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+                  }
+                }
+              }
+            ]}
+            body={supportTextForClaim(claim)}
+            delayMs={claimDelay}
+            evidence={
+              <div className={styles.claimEvidence}>
+                {claim.citations.length > 0 ? (
+                  <div className={styles.citationRow}>
+                    {claim.citations.map((citation) => {
+                      runningIndex += 1;
+                      return (
+                        <CitationChip
+                          citation={citation}
+                          index={runningIndex}
+                          delayMs={citationDelay}
+                          key={`${claim.text}-${citation.chunk_id}`}
+                          onClick={onCitationClick}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {claim.citations.length > 0 ? (
+                  <div className={styles.feedCardLocationList}>
+                    {claim.citations.map((citation) => (
+                      <span className={styles.feedCardLocation} key={`${claim.text}-${citation.chunk_id}-location`}>
+                        {sourceLocationFor(citation)}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            }
             key={claim.text}
-            style={{ animationDelay: `${claimDelay}ms` }}
-          >
-          <Stack gap={3}>
-            <div className={[styles.prose, styles.claimProse].join(" ")}>
-              {renderMarkdown(claim.text)}
-            </div>
-            <div className={styles.citationRow}>
-              {claim.citations.map((citation) => {
-                runningIndex += 1;
-                return (
-                  <CitationChip
-                    citation={citation}
-                    index={runningIndex}
-                    delayMs={citationDelay}
-                    key={`${claim.text}-${citation.chunk_id}`}
-                    onClick={onCitationClick}
-                  />
-                );
-              })}
-            </div>
-          </Stack>
-          </article>
+            title={claim.text}
+          />
         );
       })}
     </div>

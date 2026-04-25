@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { appShell, navigateTo } from "@/app/shell/useAppShell";
-import { Badge, Button, Card, Divider, Stack, Text } from "@/design-system";
+import { Badge, Button, Card, Divider, Icon, Stack, Text } from "@/design-system";
 import {
   documents as documentsApi,
   study as studyApi,
@@ -9,7 +9,6 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 
-import { AnswerMetaBar } from "./components/AnswerMetaBar";
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { AnswerSummary } from "./components/AnswerSummary";
 import { ClaimList } from "./components/ClaimList";
@@ -21,37 +20,29 @@ import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
 import styles from "./AskView.module.css";
 
-function AskEmptyState() {
+const ASK_EMPTY_SAMPLE = "What do my sources say about mitosis checkpoints?";
+
+function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
   return (
-    <Card padding="lg">
-      <Stack gap={4}>
+    <Card className={styles.emptyStateCard} padding="md">
+      <div className={styles.feedCardMeasure}>
         <Stack gap={3}>
           <Badge tone="info">Source-grounded</Badge>
-          <Text as="h2" variant="h1" weight="bold">
-            Ask a question about your sources
+          <h3 className={styles.emptyStateHeadline}>Ask a question about your sources</h3>
+          <Text className={styles.emptyStateHelper}>
+            Einstein retrieves supporting chunks first, then answers only with what those sources can actually support.
           </Text>
-          <Text tone="secondary">
-            Einstein will retrieve relevant chunks, synthesize only what those sources support,
-            and keep unsupported claims visibly separate.
-          </Text>
+          <div>
+            <Button
+              leadingIcon={<Icon name="sparkle" size={14} />}
+              onClick={onPrimaryAction}
+              type="button"
+            >
+              Try a sample question
+            </Button>
+          </div>
         </Stack>
-        <Stack gap={2}>
-          <Text tone="tertiary" variant="caption">
-            Try one to get started:
-          </Text>
-          <Stack gap={1}>
-            {[
-              "What do my sources say about...?",
-              "Compare the key arguments between...",
-              "What is the mechanism behind...?"
-            ].map((prompt) => (
-              <Text key={prompt} tone="secondary">
-                <span style={{ color: "var(--color-accent)" }}>›</span> {prompt}
-              </Text>
-            ))}
-          </Stack>
-        </Stack>
-      </Stack>
+      </div>
     </Card>
   );
 }
@@ -150,6 +141,13 @@ export function AskView() {
     await submit(question, scopeToPayload(scope));
   };
 
+  const focusQuestionInput = useCallback(() => {
+    const field = document.querySelector(
+      "input[placeholder*='source say' i]"
+    ) as HTMLInputElement | null;
+    field?.focus();
+  }, []);
+
   // Consume ?q=…&auto=1 on mount. Guarded by prefilledRef so navigating
   // within Ask (or back-and-forth) doesn't re-fire the auto-submit.
   useEffect(() => {
@@ -245,10 +243,28 @@ export function AskView() {
                 }}
               />
             ) : null}
-            {!pending.value && !error.value && !activeAnswer ? <AskEmptyState /> : null}
+            {!pending.value && !error.value && !activeAnswer ? (
+              <AskEmptyState
+                onPrimaryAction={() => {
+                  setQuestion(ASK_EMPTY_SAMPLE);
+                  focusQuestionInput();
+                }}
+              />
+            ) : null}
             {!pending.value && !error.value && activeAnswer ? (
-              <Stack gap={5} key={answerRevealKey}>
-                {isGrounded ? <AnswerSummary summary={activeAnswer.answer ?? ""} /> : null}
+              <Stack gap={3} key={answerRevealKey}>
+                {isGrounded ? (
+                  <AnswerSummary
+                    cacheHit={Boolean(activeAnswer.cache_hit)}
+                    citations={activeAnswer.citations}
+                    latencyMs={activeAnswer.latency_ms ?? 0}
+                    model={activeAnswer.model ?? ""}
+                    onRetry={() => {
+                      void retry();
+                    }}
+                    summary={activeAnswer.answer ?? ""}
+                  />
+                ) : null}
                 {isGrounded ? (
                   <ClaimList claims={claims} onCitationClick={handleCitationClick} />
                 ) : (
@@ -259,21 +275,14 @@ export function AskView() {
                       setScope({ kind: "library", readiness: "ready" });
                     }}
                     onRephrase={() => {
-                      // Focus the input; the Input primitive renders the
-                      // real field as a descendant, found by placeholder.
-                      const field = document.querySelector(
-                        "input[placeholder*='source say' i]"
-                      ) as HTMLInputElement | null;
-                      field?.focus();
+                      focusQuestionInput();
+                    }}
+                    onRetry={() => {
+                      void retry();
                     }}
                   />
                 )}
                 <UnsupportedSpans claimCount={claims.length} items={unsupportedSpans} />
-                <AnswerMetaBar
-                  cacheHit={Boolean(activeAnswer.cache_hit)}
-                  latencyMs={activeAnswer.latency_ms ?? 0}
-                  model={activeAnswer.model ?? ""}
-                />
               </Stack>
             ) : null}
           </Stack>
