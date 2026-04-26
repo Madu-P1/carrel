@@ -110,6 +110,12 @@ export function ManageCardsView() {
         return next;
       });
       setTotal((t) => Math.max(0, t - 1));
+      // Keep `offset` (the count of rows already pulled from the server)
+      // in sync with the visible row count so the next "Load more" doesn't
+      // duplicate or skip cards. The deleted row was inside the prefix we
+      // already paged in, so the next request should advance from one row
+      // earlier on the server timeline.
+      setOffset((o) => Math.max(0, o - 1));
       setDeleteState({ kind: "idle", cardId: null });
       // Subject counts may have shifted if we emptied a bucket. Cheap refresh.
       void refreshSubjects();
@@ -122,21 +128,50 @@ export function ManageCardsView() {
   };
 
   const handleCardCreated = (card: SrsCard) => {
-    // Prepend into the visible page so the user sees their new card
-    // immediately; the next loadPage call will restore canonical ordering.
-    // Bumping total keeps the "X of Y" label honest without a round-trip.
+    // CardCreateDialog explicitly saves orphan cards (no subject). When
+    // the user is filtered to a specific subject, the new orphan does
+    // NOT match the current view's contract — prepending it would leak a
+    // non-matching row into a filtered list until the next reload.
+    //
+    // In that case, bump total + refresh subject counts only, and tell
+    // the user where the card actually lives. The unfiltered "All
+    // subjects" view remains the reachable destination.
+    if (subject !== null) {
+      setTotal((t) => t + 1);
+      void refreshSubjects();
+      toast.success(
+        "Card saved under All subjects",
+        "Switch to All subjects to see it; or attach a subject from Library first.",
+      );
+      return;
+    }
+    // No filter active — prepend optimistically so the user sees their new
+    // card immediately. Bumping `offset` alongside the cards array keeps
+    // the "Load more" boundary aligned with the new visible row count.
     setCards((prev) => [card, ...prev]);
     setTotal((t) => t + 1);
-    // Subject counts changed (orphan cards show under "All" only, but the
-    // counts view still aggregates). Cheap, fire-and-forget.
+    setOffset((o) => o + 1);
     void refreshSubjects();
     toast.success("Card saved", "It's queued for your next review session.");
   };
 
   const handleAiCardsCreated = (created: SrsCard[]) => {
     if (created.length === 0) return;
+    // AI-drafted cards are also orphan-on-create. Apply the same filter
+    // gate so a subject-filtered list doesn't suddenly show non-matching
+    // rows after a draft batch.
+    if (subject !== null) {
+      setTotal((t) => t + created.length);
+      void refreshSubjects();
+      toast.success(
+        `${created.length} card${created.length === 1 ? "" : "s"} saved under All subjects`,
+        "Switch to All subjects to see them; or attach a subject from Library first.",
+      );
+      return;
+    }
     setCards((prev) => [...created, ...prev]);
     setTotal((t) => t + created.length);
+    setOffset((o) => o + created.length);
     void refreshSubjects();
     toast.success(
       `${created.length} card${created.length === 1 ? "" : "s"} saved`,
@@ -154,6 +189,9 @@ export function ManageCardsView() {
       setCards((prev) => prev.filter((c) => !idSet.has(c.id)));
       setSelection(new Set());
       setTotal((t) => Math.max(0, t - ids.length));
+      // See handleDelete — keep `offset` aligned with visible row count
+      // so subsequent "Load more" requests target the correct slice.
+      setOffset((o) => Math.max(0, o - ids.length));
       void refreshSubjects();
       toast.info(`${ids.length} card${ids.length === 1 ? "" : "s"} deleted`);
     } catch (error) {

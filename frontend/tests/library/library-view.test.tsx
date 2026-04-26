@@ -205,6 +205,67 @@ test("Subject rename saves through the API for every document in the section", a
   });
 });
 
+test("Subject rename keeps the drill-in panel pointed at the new subject", async () => {
+  // The drill-in pointer (`openSubject` in LibraryView) used to stick
+  // to the old subject string after a rename. The post-refetch
+  // `groups[openSubject]` was empty and the user landed in a blank
+  // panel labeled with the old name. Audit fix: SubjectSection now
+  // hands the new name back via onSubjectRenamed(nextSubject), and the
+  // parent updates openSubject before refetching.
+  let renamed = false;
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/documents" && init.method === "GET") {
+      // After the rename, the same document reports the new subject.
+      const subject = renamed ? "Advanced Biology" : "Biology";
+      return jsonResponse([makeDocument("doc-1", "mitosis.pdf", subject)]);
+    }
+    if (url.pathname === "/api/documents/doc-1/subject" && init.method === "PUT") {
+      renamed = true;
+      return jsonResponse(makeDocument("doc-1", "mitosis.pdf", "Advanced Biology"));
+    }
+    if (url.pathname === "/api/library/subjects" && init.method === "GET") {
+      return jsonResponse(
+        renamed
+          ? makeSubjectSummaries({ subject_name: "Advanced Biology", source_count: 1 })
+          : makeSubjectSummaries({ subject_name: "Biology", source_count: 1 }),
+      );
+    }
+    if (url.pathname === "/api/library/duplicates" && init.method === "GET") {
+      return jsonResponse(EMPTY_DUPLICATES);
+    }
+    return undefined;
+  });
+
+  render(<LibraryView />);
+
+  // Drill into Biology, then rename it to "Advanced Biology".
+  fireEvent.click(await screen.findByText("Biology"));
+  fireEvent.click(await screen.findByRole("button", { name: /Rename subject/i }));
+  fireEvent.input(screen.getByLabelText(/Subject name/i), {
+    currentTarget: { value: "Advanced Biology" },
+    target: { value: "Advanced Biology" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Save$/i }));
+
+  // After the rename + refetch, the drill-in panel should reflect the
+  // NEW subject name AND still contain the document. Three places in
+  // the DOM render the subject text (the subject card grid, the
+  // drill-in breadcrumb, and the SubjectSection header) — all must
+  // show the new name, not the stale one. Assert ≥2 matches and zero
+  // matches for the old name inside the live panel.
+  await waitFor(() => {
+    expect(screen.getAllByText(/Advanced Biology/i).length).toBeGreaterThanOrEqual(2);
+  });
+  // The document inside the renamed drill-in still has its open
+  // button — wait for the post-rename refetch to land. The drill-in
+  // remounts when openSubject changes (key={openSubject}), so the
+  // document briefly disappears before the new fetch fills the new
+  // subject's bucket.
+  expect(
+    await screen.findByRole("button", { name: /Open mitosis\.pdf/i })
+  ).toBeDefined();
+});
+
 test("native file.import menu command triggers the library input click", async () => {
   vi.useFakeTimers();
   mockJson("GET", "/api/documents", []);

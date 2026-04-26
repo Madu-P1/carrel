@@ -216,7 +216,17 @@ export function LibraryView() {
             <SubjectSection
               documents={openSubjectRows}
               onDocumentDeleted={refreshAll}
-              onSubjectRenamed={refreshAll}
+              onSubjectRenamed={(nextSubject) => {
+                // Move the drill-in pointer to the new name BEFORE the
+                // refetch lands. Otherwise `groups[openSubject]` is empty
+                // (the rows now live under the new subject key) and the
+                // panel shows a blank list under the stale label until
+                // the user hits "Back to all subjects."
+                if (nextSubject !== openSubject) {
+                  setOpenSubject(nextSubject);
+                }
+                refreshAll();
+              }}
               subject={openSubject}
             />
           </Stack>

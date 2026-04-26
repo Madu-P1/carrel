@@ -13,7 +13,16 @@ import styles from "./SubjectSection.module.css";
 interface SubjectSectionProps {
   documents: DocumentRowType[];
   onDocumentDeleted: () => void;
-  onSubjectRenamed: () => void;
+  /**
+   * Fires after a successful rename. The new name is passed back so the
+   * parent can update any state pinned to the old subject string (the
+   * Library drill-in panel keys off `openSubject`; without this hand-off,
+   * renaming an open subject leaves the panel pointing at a stale key).
+   *
+   * If the user "saves" with no actual change, `nextSubject ===
+   * priorSubject` and the parent treats the call as a no-op.
+   */
+  onSubjectRenamed: (nextSubject: string) => void;
   subject: string;
 }
 
@@ -39,7 +48,7 @@ export function SubjectSection({
         nextSubject
       );
       setEditing(false);
-      onSubjectRenamed();
+      onSubjectRenamed(nextSubject);
       if (nextSubject !== priorSubject) {
         toast.success(`Subject renamed to "${nextSubject}"`, `${documents.length} document${documents.length === 1 ? "" : "s"} updated.`);
       }
