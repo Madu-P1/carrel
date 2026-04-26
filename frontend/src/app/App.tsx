@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "preact/compat";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
@@ -5,12 +6,32 @@ import { AskView } from "@/features/ask/AskView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
 import { NotFoundView } from "@/features/NotFoundView";
-import { ReaderView } from "@/features/reader/ReaderView";
+import { ReaderLoadingState } from "@/features/reader/components/ReaderLoadingState";
 import { SessionView } from "@/features/session/SessionView";
 import { StudyView } from "@/features/study/StudyView";
 
 import { appShell } from "./shell/useAppShell";
 import { AppShell, BundledAppShell } from "./shell/AppShell";
+
+/*
+ * Reader feature is route-split. It's the heaviest leaf in the app
+ * (PdfToolbar, PdfViewer, PdfPage, OutlineRail, SourcePanel, the
+ * usePdfDocument hook, plus the dynamic pdfjs-dist load that already
+ * lives in lib/pdfjs-setup.ts) and most users land on Dashboard or
+ * Library first. Splitting at the route boundary keeps the entry chunk
+ * lean for cold starts; the Reader's own chunk loads on demand when
+ * the user opens a document.
+ *
+ * `import().then(...default-shim)` bridges the named export to the
+ * default export shape `lazy()` expects. Tests that import ReaderView
+ * directly bypass this wrapper — they get the eager symbol from the
+ * source path and never hit the Suspense boundary.
+ */
+const ReaderView = lazy(() =>
+  import("@/features/reader/ReaderView").then((module) => ({
+    default: module.ReaderView,
+  }))
+);
 
 function parseBundledRoute(path: string): URL {
   // Default landing is the Dashboard. Historically this defaulted to
@@ -38,14 +59,25 @@ function bundledReaderChunkId(path: string): string | null {
 function BrowserReaderRoute({ id }: { id?: string }) {
   const { query } = useLocation();
 
-  return <ReaderView chunkId={query.chunk ?? null} id={id} />;
+  return (
+    <Suspense fallback={<ReaderLoadingState />}>
+      <ReaderView chunkId={query.chunk ?? null} id={id} />
+    </Suspense>
+  );
 }
 
 function renderBundledRoute(rawPath: string) {
   const path = parseBundledRoute(rawPath).pathname;
 
   if (path.startsWith("/reader")) {
-    return <ReaderView chunkId={bundledReaderChunkId(rawPath)} id={bundledReaderId(rawPath)} />;
+    return (
+      <Suspense fallback={<ReaderLoadingState />}>
+        <ReaderView
+          chunkId={bundledReaderChunkId(rawPath)}
+          id={bundledReaderId(rawPath)}
+        />
+      </Suspense>
+    );
   }
 
   if (path.startsWith("/ask")) {
