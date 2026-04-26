@@ -60,6 +60,13 @@ export function OutlineNode({ activeTitle, depth = 0, node }: OutlineNodeProps) 
               requestReaderPage(node.pageNumber);
             }
           }}
+          // `title` here is a desktop hover-tooltip for the truncated
+          // visible text (.nodeTitle has text-overflow: ellipsis).
+          // It is NOT this button's accessible name — the visible text
+          // span below already provides that, so screen readers hear
+          // the full title regardless of visual truncation. Don't swap
+          // for aria-label; doing so just duplicates the string and
+          // loses the hover affordance.
           title={node.title}
           type="button"
         >

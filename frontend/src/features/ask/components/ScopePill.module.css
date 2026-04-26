@@ -168,10 +168,15 @@
   color: var(--color-text-primary);
   font: var(--text-body);
 }
-.search:focus {
+/*
+ * `:focus-visible` (not `:focus`) so the ring only appears for
+ * keyboard users — mouse-click focus stays quiet. Aligns with the
+ * primitive ladder where every focus signal is gated this way.
+ */
+.search:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  box-shadow: var(--shadow-focus);
 }
 
 .pickerList {
@@ -204,6 +209,12 @@
 
 .pickerRow:hover {
   background: var(--color-bg-hover);
+}
+
+.pickerRow:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .pickerTitle {
@@ -240,4 +251,10 @@
 
 .backRow:hover {
   color: var(--color-text-primary);
+}
+
+.backRow:focus-visible {
+  outline: none;
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-focus);
 }

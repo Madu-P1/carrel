@@ -15,6 +15,17 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/*
+ * Reduced-motion users skip the slide-in. The bar still appears (no
+ * `animation: none` on the wrap would leave it `opacity: 0` from the
+ * `from` keyframe) — we set the final state directly instead.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+}
+
 .field {
   flex: 1;
   display: flex;
@@ -93,6 +104,18 @@
 .closeBtn:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
+}
+
+/*
+ * Visible focus ring for keyboard users — both buttons share the
+ * design-system shadow-focus token so the ring color/offset matches
+ * every other primitive. Without this, tabbing through the search
+ * bar provided no visible affordance (Ship 8 a11y fix).
+ */
+.stepBtn:focus-visible,
+.closeBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .stepBtn:disabled {
