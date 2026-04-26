@@ -23,6 +23,8 @@ test("Save and Expand buttons are disabled until the user types", () => {
   expect((expand as HTMLButtonElement).disabled).toBe(true);
 
   const textarea = screen.getByRole("textbox", { name: /session notes/i });
+  expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+  expect((textarea as HTMLTextAreaElement).labels?.[0]?.textContent).toMatch(/session notes/i);
   fireEvent.input(textarea, { currentTarget: { value: "a" }, target: { value: "a" } });
 
   expect((save as HTMLButtonElement).disabled).toBe(false);

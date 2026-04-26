@@ -29,6 +29,7 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
   const [expanding, setExpanding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const textareaId = `session-notes-${sessionId}`;
 
   const saveNote = async () => {
     const content = draft.trim();
@@ -69,14 +70,17 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
         <span>Notes</span>
         <span className={styles.eyebrowMeta}>session-bound · not auto-saved</span>
       </div>
+      <label htmlFor={textareaId} className={styles.srOnly}>
+        Session notes
+      </label>
       <textarea
+        id={textareaId}
         className={styles.textarea}
         value={draft}
         onInput={(event) =>
           setDraft((event.currentTarget as HTMLTextAreaElement).value)
         }
         placeholder="Write what you're learning. Press Expand to grow the draft from your sources."
-        aria-label="Session notes"
       />
       <div className={styles.actions}>
         <button

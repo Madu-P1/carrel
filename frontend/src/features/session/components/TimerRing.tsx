@@ -37,15 +37,15 @@ interface TimerRingProps {
 export function TimerRing({ startedAt, targetMinutes, mode, modeLabel }: TimerRingProps) {
   const [now, setNow] = useState(() => Date.now());
   const startedMs = useRef(parseIsoAsUtc(startedAt)).current;
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
   useEffect(() => {
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-    const interval = reduced ? 60_000 : 1_000;
+    const interval = prefersReducedMotion ? 60_000 : 1_000;
     const timer = window.setInterval(() => setNow(Date.now()), interval);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [prefersReducedMotion]);
 
   const size = 240;
   const strokeWidth = 10;
@@ -103,7 +103,11 @@ export function TimerRing({ startedAt, targetMinutes, mode, modeLabel }: TimerRi
           strokeDasharray={`${dashLen} ${circumference}`}
           strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: "stroke-dasharray 0.25s linear, stroke 0.2s var(--ease-out)" }}
+          style={{
+            transition: prefersReducedMotion
+              ? "none"
+              : "stroke-dasharray 0.25s linear, stroke 0.2s var(--ease-out)"
+          }}
         />
       </svg>
       <div className={styles.center}>
