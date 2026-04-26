@@ -27,10 +27,10 @@
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
-.textarea:focus {
+.textarea:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .textarea::placeholder {

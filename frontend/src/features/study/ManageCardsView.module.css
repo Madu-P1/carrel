@@ -43,6 +43,7 @@
 .subjectChip {
   display: inline-flex;
   align-items: center;
+  min-height: 28px;
   gap: var(--space-2);
   padding: 6px 12px;
   border-radius: var(--radius-full);
@@ -62,6 +63,12 @@
 .subjectChip:hover {
   border-color: var(--hairline-strong);
   color: var(--text-primary);
+}
+
+.subjectChip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .subjectChipActive {
@@ -170,6 +177,11 @@
   cursor: pointer;
 }
 
+.selectCell input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .content {
   min-width: 0;
   display: flex;
@@ -222,6 +234,7 @@
 .deleteBtn {
   display: inline-flex;
   align-items: center;
+  min-height: var(--control-height-md);
   gap: var(--space-2);
   padding: 6px 10px;
   border-radius: var(--radius-2);
@@ -243,6 +256,11 @@
   background: color-mix(in srgb, var(--state-err) 8%, transparent);
 }
 
+.deleteBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .confirmGroup {
   display: inline-flex;
   gap: var(--space-1);
@@ -250,6 +268,7 @@
 
 .confirmBtn,
 .cancelBtn {
+  min-height: var(--control-height-md);
   padding: 6px 10px;
   border-radius: var(--radius-2);
   font-family: var(--font-sans);
@@ -278,6 +297,12 @@
 .cancelBtn:hover {
   color: var(--text-primary);
   border-color: var(--hairline-strong);
+}
+
+.confirmBtn:focus-visible,
+.cancelBtn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .footer {

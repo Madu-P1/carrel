@@ -25,10 +25,10 @@
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
-.textarea:focus {
+.textarea:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 .textarea::placeholder {
   color: var(--color-text-tertiary);
@@ -43,11 +43,14 @@
   color: var(--color-text-primary);
   font: var(--text-body);
   font-variant-numeric: tabular-nums;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
-.numberInput:focus {
+.numberInput:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .workingRow,
@@ -106,6 +109,11 @@
   cursor: pointer;
 }
 
+.checkboxLabel input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .draftFields {
   display: grid;
   gap: var(--space-2);
@@ -133,10 +141,10 @@
   text-transform: none;
   letter-spacing: 0;
 }
-.draftTextarea:focus {
+.draftTextarea:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
 }
 .draftTextarea:disabled {
   opacity: 0.75;
