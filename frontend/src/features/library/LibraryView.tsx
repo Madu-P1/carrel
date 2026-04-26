@@ -152,13 +152,18 @@ export function LibraryView() {
           </Text>
           {results.length === 0 ? (
             <Card padding="md">
-              <Stack gap={2}>
+              <Stack gap={3}>
                 <Text tone="secondary">
                   No documents match &ldquo;{trimmed}&rdquo;.
                 </Text>
                 <Text tone="tertiary" variant="caption">
                   Try a shorter phrase, a subject name, or clear the search to browse all subjects.
                 </Text>
+                <Stack direction="horizontal" gap={2}>
+                  <Button onClick={() => setQuery("")} variant="secondary">
+                    Clear the search
+                  </Button>
+                </Stack>
               </Stack>
             </Card>
           ) : (

@@ -124,7 +124,7 @@ export function FallbackAnswer({
               {isRefusal ? "Grounded refusal" : "Fallback"}
             </Badge>
           }
-          title={isRefusal ? "I refused this one." : "AI synthesis unavailable"}
+          title={isRefusal ? "I refused this one." : "Couldn't synthesize an answer."}
         />
 
         {claims.length > 0 ? (

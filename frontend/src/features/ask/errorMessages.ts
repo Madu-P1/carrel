@@ -12,8 +12,8 @@
 
 const MESSAGES: Record<string, { title: string; action?: string }> = {
   http_429: {
-    title: "The AI service is rate-limited right now.",
-    action: "Wait a few seconds and try again.",
+    title: "The model is rate-limited right now.",
+    action: "Wait a few seconds, then ask again.",
   },
   http_401: {
     title: "The Anthropic API key is missing or invalid.",
@@ -24,28 +24,28 @@ const MESSAGES: Record<string, { title: string; action?: string }> = {
     action: "Confirm the key has permission for the selected model.",
   },
   http_500: {
-    title: "The AI service is having trouble.",
-    action: "Try again in a moment.",
+    title: "The model server is having trouble.",
+    action: "Wait a moment, then ask again.",
   },
   http_502: {
-    title: "The AI service is unreachable.",
-    action: "Try again in a moment.",
+    title: "The model server is unreachable.",
+    action: "Wait a moment, then ask again.",
   },
   http_503: {
-    title: "The AI service is temporarily unavailable.",
-    action: "Try again in a moment.",
+    title: "The model server is temporarily unavailable.",
+    action: "Wait a moment, then ask again.",
   },
   timeout: {
-    title: "The AI request timed out.",
-    action: "Try again, or switch to a faster provider in your .env.",
+    title: "The request timed out.",
+    action: "Ask again, or switch to a faster provider in your .env.",
   },
   connection_error: {
-    title: "Can't reach the AI service.",
+    title: "Can't reach the model server.",
     action: "Check your network connection.",
   },
   missing_api_key: {
     title: "Grounded tutoring needs an API key.",
-    action: "Set ANTHROPIC_API_KEY in your .env or switch EINSTEIN_AI_PROVIDER to ollama.",
+    action: "Set ANTHROPIC_API_KEY in your .env, or switch EINSTEIN_AI_PROVIDER to ollama.",
   },
   grounded_tutor_disabled: {
     title: "Grounded tutoring is turned off.",
@@ -56,16 +56,16 @@ const MESSAGES: Record<string, { title: string; action?: string }> = {
     action: "Check your API key or provider settings.",
   },
   claude_call_failed: {
-    title: "The AI request failed.",
-    action: "Try again.",
+    title: "The model request failed.",
+    action: "Ask the question again.",
   },
   empty_retrieval: {
     title: "No matching passages in your library for this question.",
-    action: "Try a different phrasing, or add the source material to Library first.",
+    action: "Rephrase, broaden the scope, or import the missing source first.",
   },
   weak_coverage: {
-    title: "I don't find this cleanly in the current scope.",
-    action: "Broaden the scope, try a sharper query, or look at the nearest passages below.",
+    title: "I can't find this cleanly in the current scope.",
+    action: "Broaden the scope, sharpen the query, or skim the nearest passages below.",
   },
 };
 
@@ -82,14 +82,14 @@ export function friendlyErrorFor(code: string | undefined | null): FriendlyError
   // Fallback: generic HTTP bucket if we recognize the prefix but not the code.
   if (code.startsWith("http_")) {
     return {
-      title: "The AI service returned an error.",
-      action: "Try again, and check the log if this persists.",
+      title: "The model server returned an error.",
+      action: "Ask again, and check the log if this persists.",
       code,
     };
   }
   return {
-    title: "The AI request didn't complete.",
-    action: "Try again.",
+    title: "The model request didn't complete.",
+    action: "Ask the question again.",
     code,
   };
 }

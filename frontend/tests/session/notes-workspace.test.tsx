@@ -18,7 +18,7 @@ test("Save and Expand buttons are disabled until the user types", () => {
   render(<NotesWorkspace sessionId="sess-1" sessionObjective="Cover chapter 8" />);
 
   const save = screen.getByRole("button", { name: /save note/i });
-  const expand = screen.getByRole("button", { name: /expand with ai/i });
+  const expand = screen.getByRole("button", { name: /expand the draft/i });
   expect((save as HTMLButtonElement).disabled).toBe(true);
   expect((expand as HTMLButtonElement).disabled).toBe(true);
 
@@ -40,7 +40,7 @@ test("Expand with AI replaces the textarea content with the backend response", a
     currentTarget: { value: "raw notes" },
     target: { value: "raw notes" }
   });
-  fireEvent.click(screen.getByRole("button", { name: /expand with ai/i }));
+  fireEvent.click(screen.getByRole("button", { name: /expand the draft/i }));
 
   await waitFor(() => {
     expect(textarea.value).toContain("Expanded");
@@ -94,7 +94,7 @@ test("Expand surfaces backend errors inline (no toast)", async () => {
     currentTarget: { value: "a" },
     target: { value: "a" }
   });
-  fireEvent.click(screen.getByRole("button", { name: /expand with ai/i }));
+  fireEvent.click(screen.getByRole("button", { name: /expand the draft/i }));
 
   // Error text comes from ApiError.message — the thrown shape is
   // "API 500 Internal Server Error".

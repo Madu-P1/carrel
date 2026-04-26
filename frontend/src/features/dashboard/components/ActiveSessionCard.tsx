@@ -82,7 +82,7 @@ export function ActiveSessionCard({ active, onMutation }: ActiveSessionCardProps
         message:
           caught instanceof Error
             ? caught.message
-            : "Could not end session. Try again."
+            : "Could not end the session. Retry the end action."
       });
     }
   }, [state, onMutation]);
@@ -108,7 +108,7 @@ export function ActiveSessionCard({ active, onMutation }: ActiveSessionCardProps
           <span className={styles.errorText}>{state.message}</span>
         </div>
         <button type="button" className={styles.endButton} onClick={retryEnd}>
-          Try again
+          Retry end session
         </button>
       </div>
     );

@@ -215,7 +215,7 @@ export function ManageCardsView() {
               onClick={() => setAiDraftOpen(true)}
               variant="secondary"
             >
-              Generate with AI
+              Draft from a topic
             </Button>
             <Button
               leadingIcon={<Icon name="plus" />}
@@ -342,10 +342,24 @@ export function ManageCardsView() {
             <div className={styles.list}>
               {cards.length === 0 && !loading ? (
                 <div className={styles.empty}>
-                  <Text>
-                    No cards match this filter. Try widening the subject or
-                    clearing the search.
-                  </Text>
+                  <Stack gap={3}>
+                    <Text>
+                      No cards match this filter. Widen the subject or
+                      clear the search.
+                    </Text>
+                    <Stack direction="horizontal" gap={2}>
+                      <Button
+                        onClick={() => {
+                          setSubject(null);
+                          setSearch("");
+                          setSearchDraft("");
+                        }}
+                        variant="secondary"
+                      >
+                        Clear filters
+                      </Button>
+                    </Stack>
+                  </Stack>
                 </div>
               ) : null}
 

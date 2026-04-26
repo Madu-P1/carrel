@@ -141,7 +141,7 @@ export function StudyView() {
           <Stack gap={3}>
             <Badge tone="danger">Could not load review queue</Badge>
             <Text tone="secondary">{error.value.message}</Text>
-            <Button onClick={() => void refetch()}>Try again</Button>
+            <Button onClick={() => void refetch()}>Reload the queue</Button>
           </Stack>
         </Card>
       </div>
@@ -220,7 +220,9 @@ export function StudyView() {
           <Stack gap={3}>
             <Badge tone="danger">Review failed to record</Badge>
             <Text tone="secondary">{lastError ?? "Unknown error"}</Text>
-            <Button onClick={() => setPhase(currentCard ? "back" : "intro")}>Try again</Button>
+            <Button onClick={() => setPhase(currentCard ? "back" : "intro")}>
+              Re-rate this card
+            </Button>
           </Stack>
         </Card>
       </div>
@@ -292,7 +294,7 @@ export function StudyView() {
                   leadingIcon={<Icon name="sparkle" />}
                   onClick={revealAnswer}
                 >
-                  Show answer
+                  Reveal the source-grounded answer
                 </Button>
               ) : (
                 RATINGS.map((r) => (

@@ -71,8 +71,12 @@ describe("StudyView", () => {
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, 10));
     });
-    // Either shows error state or gracefully degrades. Just assert no crash +
-    // retry affordance is somewhere in the doc.
-    expect(screen.queryByText(/Try again|Refresh queue/i)).toBeTruthy();
+    // Ship 7 voice sweep: generic "Try again" was replaced with
+    // concrete recovery actions. Either path here ("Reload the queue"
+    // on the error card, "Refresh queue" on a graceful-degrade intro)
+    // is a valid recovery affordance.
+    expect(
+      screen.queryByText(/Reload the queue|Refresh queue/i)
+    ).toBeTruthy();
   });
 });

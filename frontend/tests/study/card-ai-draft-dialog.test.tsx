@@ -92,7 +92,8 @@ test("CardAiDraftDialog: ai_disabled shows the config hint without drafts", asyn
   fireEvent.input(await screen.findByLabelText(/^Topic/i), { target: { value: "Bonds" } });
   fireEvent.click(screen.getByRole("button", { name: /Generate drafts/i }));
 
-  await screen.findByText(/AI is turned off/i);
+  // Ship 7 voice sweep renamed "AI is turned off" → "The model is turned off."
+  await screen.findByText(/The model is turned off/i);
   // The Save action is absent because there are no drafts to save.
   expect(screen.queryByRole("button", { name: /Save /i })).toBeNull();
 });

@@ -21,7 +21,8 @@ test("claim list renders claims and clicking a citation chip fires the handler",
 test("fallback answer renders the visible unavailable state and snippet claims", () => {
   render(<FallbackAnswer claims={DEMO_FALLBACK.claims} error={DEMO_FALLBACK.error ?? undefined} />);
 
-  expect(screen.getByText(/AI synthesis unavailable/i)).toBeDefined();
+  // Ship 7 voice sweep: "AI synthesis unavailable" → "Couldn't synthesize an answer."
+  expect(screen.getByText(/Couldn't synthesize an answer/i)).toBeDefined();
   expect(screen.getByText(/Cell-cycle checkpoints pause progression/i)).toBeDefined();
 });
 
@@ -48,9 +49,10 @@ test("fallback renders the weak_coverage refusal card with the recovery actions"
   expect(onRephrase).toHaveBeenCalledTimes(1);
 });
 
-test("fallback renders the legacy 'AI synthesis unavailable' state for non-refusal errors", () => {
+test("fallback renders the 'couldn't synthesize' state for non-refusal errors", () => {
   render(<FallbackAnswer claims={DEMO_FALLBACK.claims} error="claude_call_failed" />);
-  expect(screen.getByText(/AI synthesis unavailable/i)).toBeDefined();
+  // Ship 7 voice sweep renamed the legacy "AI synthesis unavailable" string.
+  expect(screen.getByText(/Couldn't synthesize an answer/i)).toBeDefined();
   // Recovery buttons are refusal-only; should NOT render for legacy errors.
   expect(screen.queryByRole("button", { name: /Broaden to Library/i })).toBeNull();
 });

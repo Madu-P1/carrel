@@ -27,7 +27,7 @@ export function QuestionInput({
   return (
     <Stack gap={2}>
       <Text variant="h3" weight="semibold">
-        Ask Einstein
+        Your question
       </Text>
       <form className={styles.questionRow} onSubmit={handleSubmit}>
         {/*
@@ -41,12 +41,16 @@ export function QuestionInput({
           autoFocus
           className={styles.questionInputField}
           error={error ?? undefined}
-          helpText={error ? undefined : "Grounded answers cite only the source chunks Einstein can retrieve."}
+          helpText={
+            error
+              ? undefined
+              : "Answers cite only the chunks the retriever found in your library."
+          }
           label="Question"
           onInput={(event) => {
             onValueChange((event.currentTarget as HTMLInputElement).value);
           }}
-          placeholder="What do my sources say about mitosis checkpoints?"
+          placeholder="How do mitosis checkpoints respond to DNA damage?"
           value={value}
         />
         <Button

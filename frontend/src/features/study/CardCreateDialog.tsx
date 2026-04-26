@@ -60,7 +60,7 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
       onCreated(card);
       onClose();
     } catch (err) {
-      setError((err as Error).message || "Could not create the card. Try again.");
+      setError((err as Error).message || "Could not create the card. Save it again.");
     } finally {
       setSubmitting(false);
     }

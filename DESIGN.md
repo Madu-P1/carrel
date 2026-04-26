@@ -220,6 +220,42 @@ Cold launch budget 800ms p50. Measured baselines (5-run, not post-purge):
 - All other motion is user-triggered. Zero on boot path.
 - Current headroom to 800 ms budget: ~319 ms at p95.
 
+## Voice
+
+The product talks like a serious study platform, not an AI demo. Codified in Ship 7 (premium UI pass) after a sweep that replaced "Ask Einstein," "AI assistant," and generic "Try again" strings across the app.
+
+### Rules
+
+1. **Buttons start with a verb.** "Reload the queue", "Reveal the source-grounded answer", "Draft from a topic", "Resume" — not "Try again", "Show answer", "Generate with AI". The verb tells the user what will happen on click.
+2. **Helper text is one sentence, max.** No paragraphs under inputs. Period.
+3. **No "AI assistant" phrasing.** Say what the system does ("the model drafts cards", "answers cite the chunks the retriever found"), not what category it belongs to. The user already knows it's an AI app — leading with the disclaimer is throat-clearing.
+4. **Errors name a concrete recovery action.** Not "Try again" — say which action ("Reload the dashboard", "Retry end session", "Re-rate this card", "Wait a few seconds, then ask again"). The user shouldn't have to guess what re-trying means in this surface.
+5. **Empty states ship a Button CTA.** Not just text. If the surface is empty, the next step belongs as a primary or secondary action that takes the user there.
+6. **Loading states are skeletons over the real layout.** Never a centered spinner on an empty page; the layout should hold while the data arrives.
+7. **Lab-notebook tone in section labels.** Mono uppercase, terse: "Pick the depth", "Set the corpus", "Set the timer", "What would you like to learn?" Reads as instruments on a cockpit, not labels on a form.
+8. **No em dashes in product copy.** Use commas, periods, or "..." (per the broader voice guide; the dash is reserved for editorial copy).
+
+### Examples (the critique called these out by name)
+
+| Before | After |
+|---|---|
+| "Ask something you're unsure about" | "Ask from your sources" |
+| "Enter deep work" | "Set the focus" / "Start focused study session" |
+| "Show answer" | "Reveal the source-grounded answer" |
+| "Try again" (refetch) | "Reload the queue" / "Reload the dashboard" / "Retry end session" |
+| "Try again" (rate failure) | "Re-rate this card" |
+| "Generate with AI" | "Draft from a topic" |
+| "Expand with AI" | "Expand the draft" |
+| "AI synthesis unavailable" | "Couldn't synthesize an answer." |
+| "The AI service is rate-limited" | "The model is rate-limited" |
+| "Wait a few seconds and try again" | "Wait a few seconds, then ask again" |
+
+### Where the rules live in code
+
+- Empty states must include a `Button` per the existing primitives. See `LibraryEmptyState.tsx` for the canonical shape: badge + headline + helper + Button CTA.
+- Error copy in `frontend/src/features/ask/errorMessages.ts` is the model for the error pattern: each entry is `{ title, action }` where `title` says what happened and `action` says what to do — not "try again."
+- Section labels for cockpit surfaces use `--text-label-md` mono uppercase. See `SessionView.module.css` `.sectionLabel` / `.fieldLabel`.
+
 ## File map
 
 | Role | Path |
@@ -240,6 +276,7 @@ Cold launch budget 800ms p50. Measured baselines (5-run, not post-purge):
 | 2026-04-21 | Zero runtime motion library | Bundle discipline. CSS + WAAPI handle all needed motion. Framer Motion rejected as overkill (~50 KB gzip). |
 | 2026-04-21 | Defined 5 signature moments (SM-1 through SM-5), capped at 5 | Limit protects against motion feature-soup. Each moment earns its code budget. |
 | 2026-04-21 | Kept PR-E1 color palette unchanged | No brand-signal strength earned yet for a custom accent. System blue reads correctly on macOS. Revisit post-launch. |
+| 2026-04-26 | Codified product voice (Ship 7) | After the surface redesigns, swept user-facing strings across the app: verb-led button labels, concrete error recoveries (no generic "Try again"), no "AI assistant" phrasing, empty states ship a Button CTA. Rules + before/after table now live in the Voice section above so future copy decisions snap to one source of truth. |
 | 2026-04-21 | Bunny Fonts over Google Fonts for Instrument Serif | GDPR-clean, no tracking, same CDN latency. |
 | 2026-04-21 | Self-hosted Instrument Serif (PR-E8a-followup) | Bunny CDN stylesheet pushed cold-launch p95 from 351 ms to 1014 ms due to render-blocking external fetch. Self-hosting the woff2 restored p95 to 481 ms and removes the third-party dependency from a local-first product. |
 | 2026-04-21 | PR-E8b signature moments (SM-1, SM-2, SM-4) landed with zero runtime motion library | FLIP utility (`lib/flip.ts`) + flight registry (`features/shared/flightRegistry.ts`) handle cross-feature rect handoff. Ghost chip flight uses cloned DOM appended to body, never touches Preact tree. Full motion system weighs < 250 LOC of new JS + 250 LOC of CSS. |

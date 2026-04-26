@@ -75,7 +75,7 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
         onInput={(event) =>
           setDraft((event.currentTarget as HTMLTextAreaElement).value)
         }
-        placeholder="Write what you're learning. Einstein can expand or organize your notes with AI."
+        placeholder="Write what you're learning. Press Expand to grow the draft from your sources."
         aria-label="Session notes"
       />
       <div className={styles.actions}>
@@ -94,7 +94,7 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
           disabled={!draft.trim() || expanding}
         >
           <Icon name="sparkle" size={14} />
-          {expanding ? "Expanding…" : "Expand with AI"}
+          {expanding ? "Expanding…" : "Expand the draft"}
         </button>
         {status && (
           <span

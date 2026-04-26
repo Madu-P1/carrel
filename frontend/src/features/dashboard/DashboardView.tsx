@@ -97,7 +97,7 @@ export function DashboardView() {
             className={styles.retryButton}
             onClick={() => void refresh()}
           >
-            Try again
+            Reload the dashboard
           </button>
         </div>
       </div>

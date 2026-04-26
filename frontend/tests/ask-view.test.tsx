@@ -124,7 +124,8 @@ test("AskView renders the visible fallback state when the tutor response is not 
   });
   fireEvent.click(screen.getByRole("button", { name: /^Ask$/i }));
 
-  expect(await screen.findByText(/AI synthesis unavailable/i)).toBeDefined();
+  // Ship 7 voice sweep: "AI synthesis unavailable" → "Couldn't synthesize an answer."
+  expect(await screen.findByText(/Couldn't synthesize an answer/i)).toBeDefined();
   expect(screen.getByText(/Cell-cycle checkpoints pause progression/i)).toBeDefined();
 });
 

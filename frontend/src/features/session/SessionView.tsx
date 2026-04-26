@@ -69,7 +69,7 @@ const MODES: ModeCardData[] = [
   {
     id: "notes",
     title: "Notes",
-    purpose: "Writing-first with AI expand.",
+    purpose: "Writing-first; expand the draft from your sources.",
     iconName: "doc",
   },
   {
@@ -280,7 +280,7 @@ export function SessionView() {
         setCompletionError(
           caught instanceof Error
             ? caught.message
-            : "Could not end session. Try again."
+            : "Could not end the session. Retry the end action."
         );
       }
     } finally {

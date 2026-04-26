@@ -149,8 +149,12 @@ test("Hero composer is the dominant Ask entry — submitting routes to /ask?q=..
 
   render(<DashboardView />);
 
-  // Hero composer carries the role=search label.
-  const composer = await screen.findByRole("search", { name: /Ask Einstein/i });
+  // Hero composer carries the role=search label. Ship 7 voice sweep
+  // renamed the prior "Ask Einstein" to "Ask from your sources" — the
+  // verb-led, source-grounded version per the new copy rules.
+  const composer = await screen.findByRole("search", {
+    name: /Ask from your sources/i,
+  });
   expect(composer).toBeDefined();
   // It's a single dominant input — assert exactly one search role on the
   // page (any duplicate would mean the old composer still mounted).

@@ -80,7 +80,7 @@ export function CardAiDraftDialog({ open, onClose, onCardsCreated }: CardAiDraft
         setPhase({
           kind: "review",
           status: "ai_disabled",
-          note: "AI is turned off. Set EINSTEIN_AI_PROVIDER to claude or ollama in .env and restart the backend to use this."
+          note: "The model is turned off. Set EINSTEIN_AI_PROVIDER to claude or ollama in .env and restart the backend to use this."
         });
         setDrafts([]);
         return;
@@ -90,8 +90,8 @@ export function CardAiDraftDialog({ open, onClose, onCardsCreated }: CardAiDraft
           kind: "review",
           status: "ai_failed",
           note: response.error
-            ? `The AI couldn't draft cards (${response.error}). Try a more specific topic.`
-            : "The AI returned no usable drafts. Try a more specific topic."
+            ? `The model couldn't draft cards (${response.error}). Try a more specific topic.`
+            : "The model returned no usable drafts. Try a more specific topic."
         });
         setDrafts([]);
         return;
@@ -158,10 +158,10 @@ export function CardAiDraftDialog({ open, onClose, onCardsCreated }: CardAiDraft
         onGenerate: () => void handleGenerate(),
         onSave: () => void handleSaveSelected()
       })}
-      description="Describe a topic. The AI drafts a few cards; you edit and keep the ones you want."
+      description="Describe a topic. The model drafts a few cards; you edit and keep the ones you want."
       onClose={onClose}
       open={open}
-      title="Generate flashcards with AI"
+      title="Draft flashcards from a topic"
     >
       {phase.kind === "form" || phase.kind === "generating" ? (
         <FormPane

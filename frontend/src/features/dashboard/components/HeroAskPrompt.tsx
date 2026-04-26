@@ -33,7 +33,12 @@ export function HeroAskPrompt() {
   };
 
   return (
-    <form className={styles.wrap} onSubmit={submit} role="search" aria-label="Ask Einstein">
+    <form
+      className={styles.wrap}
+      onSubmit={submit}
+      role="search"
+      aria-label="Ask from your sources"
+    >
       <span className={styles.eyebrow}>Ask your library</span>
       <div className={styles.inputRow}>
         <input
@@ -43,17 +48,17 @@ export function HeroAskPrompt() {
           onInput={(event) =>
             setValue((event.currentTarget as HTMLInputElement).value)
           }
-          placeholder="What does my source say about…"
+          placeholder="What do you want to understand right now?"
           autoComplete="off"
           autoCapitalize="off"
           spellcheck={true}
-          aria-label="Question for Einstein"
+          aria-label="Question for the tutor"
         />
         <button
           type="submit"
           className={styles.submit}
           disabled={value.trim().length === 0}
-          aria-label="Ask Einstein"
+          aria-label="Ask from your sources"
         >
           <Icon name="arrow-right" size={16} />
         </button>

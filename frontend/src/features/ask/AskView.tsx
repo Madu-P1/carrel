@@ -194,11 +194,11 @@ export function AskView() {
         <Stack gap={3}>
           <Badge tone="info">Live Ask</Badge>
           <h2 className={styles.viewHeading}>
-            Ask Einstein from your actual source library.
+            Ask from your sources.
           </h2>
           <Text tone="secondary">
-            Citation chips jump straight into the Reader so you can inspect the supporting chunk
-            instead of trusting the summary blindly.
+            Every claim shows the chunk it came from. Click a citation to
+            jump into the Reader and verify the source for yourself.
           </Text>
         </Stack>
 
