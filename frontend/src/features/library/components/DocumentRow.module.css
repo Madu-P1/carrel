@@ -28,7 +28,17 @@
 
 .row:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring);
+  box-shadow: var(--shadow-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: none;
+  }
+
+  .row:hover {
+    transform: none;
+  }
 }
 
 .header,

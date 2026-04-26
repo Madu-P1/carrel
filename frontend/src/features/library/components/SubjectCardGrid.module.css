@@ -219,6 +219,23 @@
   gap: 4px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .cardSkeleton {
+    animation: none;
+  }
+
+  .card {
+    transition: none;
+  }
+
+  .card:hover,
+  .card:active,
+  .cardSelected,
+  .cardSelected:hover {
+    transform: none;
+  }
+}
+
 .statAccent {
   color: var(--accent);
 }
