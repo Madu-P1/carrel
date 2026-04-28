@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
 import { Badge, Button, Card, Icon, Input, Stack, Text } from "@/design-system";
@@ -60,6 +60,28 @@ export function LibraryView() {
 
   const documents = data.value ?? [];
   const groups = groupBySubject(documents);
+  const drillInRef = useRef<HTMLDivElement | null>(null);
+
+  // When the user drills into a subject, scroll the panel into view so the
+  // pop animation actually happens where their eyes are. Without this, the
+  // panel mounts below the subject grid (often below the fold), the
+  // 320ms pop fires off-screen, and the user only sees the static end
+  // state once they manually scroll down — reading as "no animation."
+  //
+  // Reduced-motion users get an instant scroll instead of "smooth" so we
+  // don't induce motion they've opted out of.
+  useEffect(() => {
+    if (!openSubject) return;
+    const el = drillInRef.current;
+    if (!el || typeof el.scrollIntoView !== "function") return;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({
+      behavior: reduce ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [openSubject]);
 
   const bumpMutationKey = () => setMutationKey((k) => k + 1);
   const refreshAll = () => {
@@ -198,7 +220,12 @@ export function LibraryView() {
         // `key={openSubject}` remounts the block when the user switches
         // subjects, which replays the pop animation per drill-in. The
         // `.drillInWrap` class owns the animation itself.
-        <div className={styles.drillInWrap} key={openSubject}>
+        //
+        // The ref is bound here so the scroll-into-view effect above can
+        // anchor the viewport on the panel as it pops, ensuring the
+        // animation lands inside the visible area instead of below the
+        // fold.
+        <div className={styles.drillInWrap} key={openSubject} ref={drillInRef}>
           <Stack gap={3}>
             <Stack direction="horizontal" gap={2}>
               <Button
