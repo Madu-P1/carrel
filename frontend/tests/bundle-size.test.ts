@@ -32,10 +32,18 @@ import { describe, expect, test } from "vitest";
  *     wrapper chunk that Vite split via the import() in
  *     features/reader/lib/pdfjs-setup.ts. Loaded only on the Reader
  *     route. Same story: if it grows, that's a pdfjs version bump.
- *   - dist/assets/ReaderView.js (10 KB gz) — the route-split Reader
- *     feature. Has its own implicit budget via the entry budget below
- *     (if Reader leaks into the entry chunk, the entry budget trips).
  *   - dist/assets/logo.png (909 KB) — image asset, not parsed JS.
+ *
+ * NOTE on the entry budget: Ship 7ac8931 briefly route-split Reader off
+ * the entry chunk via `lazy()` + `Suspense`. That worked in `bun run
+ * dev` but produced a blank Reader pane under the bundled file://
+ * macOS shell — preact/compat's Suspense + lazy combination didn't
+ * re-render the tree after the chunk resolved. Reverted to a static
+ * import; the entry budget below is sized to fit the static-import
+ * payload again (~68 KB gz). Future code splits should be triggered by
+ * user action (e.g., a click handler that does `await import(...)`)
+ * rather than render-time Suspense, until preact/compat's lazy
+ * behavior is verified under file://.
  */
 
 const distDir = resolve(__dirname, "..", "dist", "assets");
@@ -44,10 +52,10 @@ const indexCssPath = resolve(distDir, "index.css");
 
 /** Entry JS budget — gzipped. Tripped if the entry chunk grows past
  *  this. Move only with an explicit explanation in the commit message. */
-const ENTRY_JS_GZIP_BUDGET = 65 * 1024; // 65 KB (current ~62 KB)
+const ENTRY_JS_GZIP_BUDGET = 72 * 1024; // 72 KB (current ~68 KB after Reader un-split)
 
 /** Entry CSS budget — gzipped. Same rule as JS. */
-const ENTRY_CSS_GZIP_BUDGET = 20 * 1024; // 20 KB (current ~19 KB)
+const ENTRY_CSS_GZIP_BUDGET = 23 * 1024; // 23 KB (current ~21 KB after Reader un-split)
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);
@@ -88,19 +96,4 @@ describe("entry-bundle size budget", () => {
     ).toBeLessThan(ENTRY_CSS_GZIP_BUDGET);
   });
 
-  test("ReaderView code-split chunk exists (route-level lazy load)", () => {
-    // We don't budget the size here (the entry budget already catches
-    // accidental Reader leakage into the entry chunk). What we DO want to
-    // assert: the route-level split is still in place. If a future
-    // change reverts the lazy() and pulls Reader back into the entry,
-    // the chunk goes away and this assertion catches it.
-    if (!existsSync(distDir)) return;
-    const readerChunk = resolve(distDir, "ReaderView.js");
-    expect(
-      existsSync(readerChunk),
-      "ReaderView.js code-split chunk is missing — the route-level " +
-        "lazy import in src/app/App.tsx may have been reverted to a " +
-        "static import. Restore the lazy() wrapper around ReaderView."
-    ).toBe(true);
-  });
 });

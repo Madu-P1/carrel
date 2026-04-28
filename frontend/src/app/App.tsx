@@ -1,4 +1,3 @@
-import { lazy, Suspense } from "preact/compat";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
@@ -6,7 +5,7 @@ import { AskView } from "@/features/ask/AskView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
 import { NotFoundView } from "@/features/NotFoundView";
-import { ReaderLoadingState } from "@/features/reader/components/ReaderLoadingState";
+import { ReaderView } from "@/features/reader/ReaderView";
 import { SessionView } from "@/features/session/SessionView";
 import { StudyView } from "@/features/study/StudyView";
 
@@ -14,24 +13,22 @@ import { appShell } from "./shell/useAppShell";
 import { AppShell, BundledAppShell } from "./shell/AppShell";
 
 /*
- * Reader feature is route-split. It's the heaviest leaf in the app
- * (PdfToolbar, PdfViewer, PdfPage, OutlineRail, SourcePanel, the
- * usePdfDocument hook, plus the dynamic pdfjs-dist load that already
- * lives in lib/pdfjs-setup.ts) and most users land on Dashboard or
- * Library first. Splitting at the route boundary keeps the entry chunk
- * lean for cold starts; the Reader's own chunk loads on demand when
- * the user opens a document.
+ * Reader was briefly route-split via `lazy()` + `Suspense` from
+ * preact/compat (perf ship 7ac8931). Under the bundled file:// macOS
+ * shell that combination produced a blank Reader pane: the chunk
+ * fetched successfully (verified via WebKit's resource log) but the
+ * Suspense + lazy resolution didn't re-render the tree. preact/compat's
+ * Suspense has known limitations in this combination of
+ * server-less / file-protocol / inlined-entry that we don't have time
+ * to chase down here. Reverted to a static import so Reader renders
+ * reliably. Cold-start cost is only ~10 KB gz (under file:// load,
+ * imperceptible) — not worth a broken page.
  *
- * `import().then(...default-shim)` bridges the named export to the
- * default export shape `lazy()` expects. Tests that import ReaderView
- * directly bypass this wrapper — they get the eager symbol from the
- * source path and never hit the Suspense boundary.
+ * The build script's chunk-path rewrite stays in place for any future
+ * code split that doesn't go through preact/compat's Suspense (e.g., a
+ * truly optional feature gated behind a user action, where loading is
+ * triggered by user click rather than a render-time Suspense boundary).
  */
-const ReaderView = lazy(() =>
-  import("@/features/reader/ReaderView").then((module) => ({
-    default: module.ReaderView,
-  }))
-);
 
 function parseBundledRoute(path: string): URL {
   // Default landing is the Dashboard. Historically this defaulted to
@@ -59,11 +56,7 @@ function bundledReaderChunkId(path: string): string | null {
 function BrowserReaderRoute({ id }: { id?: string }) {
   const { query } = useLocation();
 
-  return (
-    <Suspense fallback={<ReaderLoadingState />}>
-      <ReaderView chunkId={query.chunk ?? null} id={id} />
-    </Suspense>
-  );
+  return <ReaderView chunkId={query.chunk ?? null} id={id} />;
 }
 
 function renderBundledRoute(rawPath: string) {
@@ -71,12 +64,10 @@ function renderBundledRoute(rawPath: string) {
 
   if (path.startsWith("/reader")) {
     return (
-      <Suspense fallback={<ReaderLoadingState />}>
-        <ReaderView
-          chunkId={bundledReaderChunkId(rawPath)}
-          id={bundledReaderId(rawPath)}
-        />
-      </Suspense>
+      <ReaderView
+        chunkId={bundledReaderChunkId(rawPath)}
+        id={bundledReaderId(rawPath)}
+      />
     );
   }
 
