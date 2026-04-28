@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useId, useMemo, useState } from "preact/hooks";
 
 import { Button, Dialog, Icon, Input, Spinner, Stack, Text } from "@/design-system";
 import {
@@ -277,6 +277,13 @@ function FormPane({
   onContextChange: (v: string) => void;
   onCountChange: (v: number) => void;
 }) {
+  // Ship 8 a11y audit: the optional-context textarea needs an associated
+  // label so screen readers and the click-the-label-to-focus-the-field
+  // affordance both work. The Input primitive handles this for the
+  // Topic field automatically; this is the one custom field in the
+  // dialog that needs explicit wiring.
+  const contextId = useId();
+
   return (
     <Stack gap={4}>
       <Input
@@ -289,13 +296,14 @@ function FormPane({
       />
 
       <div className={styles.field}>
-        <label className={styles.label}>
+        <label className={styles.label} htmlFor={contextId}>
           Optional context
           <Text tone="tertiary" variant="caption">
             Paste notes or an excerpt here. Leave blank to use only the topic.
           </Text>
         </label>
         <textarea
+          id={contextId}
           className={styles.textarea}
           onInput={(e) => onContextChange((e.currentTarget as HTMLTextAreaElement).value)}
           placeholder=""

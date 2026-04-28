@@ -134,3 +134,28 @@ test("CardAiDraftDialog: returns null when closed", () => {
   );
   expect(container.querySelector("input")).toBeNull();
 });
+
+/*
+ * Ship 8 a11y audit found one labeling gap in this dialog: the
+ * "Optional context" <label> was a sibling of the <textarea>, not
+ * connected via `htmlFor`. Screen readers couldn't announce the field
+ * name, and clicking the label didn't focus the textarea.
+ *
+ * The fix wires `useId()` between the label and the field. This test
+ * pins that wiring so a future refactor can't quietly undo it.
+ */
+test("Optional-context textarea is associated with its label", async () => {
+  render(<CardAiDraftDialog onCardsCreated={vi.fn()} onClose={vi.fn()} open />);
+
+  // The textarea must be reachable via the label text — testing-library's
+  // `getByLabelText` walks the htmlFor → id link, so this only succeeds
+  // if the association is wired correctly.
+  const textarea = await screen.findByLabelText(/Optional context/i);
+  expect(textarea.tagName.toLowerCase()).toBe("textarea");
+
+  // And the label's htmlFor matches the textarea's id (sanity belt).
+  const id = (textarea as HTMLTextAreaElement).id;
+  expect(id).not.toBe("");
+  const label = document.querySelector(`label[for="${id}"]`);
+  expect(label).not.toBeNull();
+});
