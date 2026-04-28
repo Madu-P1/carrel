@@ -49,12 +49,57 @@ const workerSource = existsSync(workerPath) ? readFileSync(workerPath, "utf8") :
 const workerBase64 = workerSource ? Buffer.from(workerSource, "utf8").toString("base64") : "";
 const safeInline = (source) => source.replace(/<\/script/gi, "<\\/script");
 
+/*
+ * Rewrite every `import("./X.js")` so the dynamic chunk loader resolves
+ * paths against the Resources/assets.new/ directory rather than against
+ * the inlined HTML's own URL.
+ *
+ * Why this is necessary: the bundle inlines the entry JS into a
+ * <script> inside app.new.html. Inside that inlined script, a relative
+ * dynamic import like `import("./pdf.js")` is resolved against the
+ * HTML's URL (e.g., file://.../Resources/app.new.html), so it looks for
+ * .../Resources/pdf.js — but the actual chunk lives at
+ * .../Resources/assets.new/pdf.js.
+ *
+ * The previous version of this script only rewrote pdf.js. After Ship
+ * 8b's route-level lazy split landed `import("./ReaderView.js")`, the
+ * Reader page silently failed to load under file:// because the chunk
+ * URL resolved to a non-existent path. Generalize the rewrite to catch
+ * ANY relative chunk import so future code splits don't trip the same
+ * bug.
+ *
+ * Pattern: `import("./<filename>.js")` where filename is alphanumeric
+ * + dash/underscore. Any chunk Vite emits that the entry pulls in via
+ * a code-split point matches this shape. Absolute URLs, http(s)://,
+ * and import.meta.url-based paths are left alone.
+ */
+const dynamicImportRewrite = /import\("\.\/([A-Za-z0-9_\-]+\.js)"\)/g;
 const rewrittenJsSource = [
   'window.__einsteinAssetBase = window.__einsteinAssetBase ?? new URL("./assets.new/", window.location.href).href;',
   jsSource
-    .replaceAll('import("./pdf.js")', 'import(window.__einsteinAssetBase + "pdf.js")')
+    .replace(dynamicImportRewrite, 'import(window.__einsteinAssetBase + "$1")')
     .replaceAll("import.meta.url", "window.__einsteinAssetBase")
 ].join("\n");
+
+// Build-time integrity check: after the rewrite, no relative dynamic
+// imports of the form `import("./*.js")` should survive. If one does,
+// it means the regex above missed a shape Vite emitted (e.g., a chunk
+// imported without quotes, or with extra whitespace). Fail the build
+// loudly so we don't ship another silently-broken Reader page.
+const survivingRelativeImports = [
+  ...rewrittenJsSource.matchAll(dynamicImportRewrite),
+];
+if (survivingRelativeImports.length > 0) {
+  const examples = survivingRelativeImports
+    .slice(0, 3)
+    .map((m) => m[0])
+    .join(", ");
+  throw new Error(
+    `Bundled HTML integrity check failed: ${survivingRelativeImports.length} ` +
+      `relative dynamic import(s) survived the rewrite (e.g., ${examples}). ` +
+      "Update the dynamicImportRewrite pattern in build-macos.mjs to match."
+  );
+}
 
 const workerShim = workerBase64
   ? `<script>
