@@ -35,7 +35,27 @@ function showGlobalDebugBanner(prefix: string, info: string) {
     (banner.textContent || "") + "\n[" + prefix + "] " + info;
 }
 
+/**
+ * Known-benign error messages we filter out of the debug banner. These
+ * fire constantly under WKWebView and aren't real bugs:
+ *
+ * - "ResizeObserver loop completed with undelivered notifications" (and
+ *   the older "ResizeObserver loop limit exceeded" wording): the
+ *   browser saw a potential layout-feedback loop and dropped one
+ *   notification rather than spinning. Safe to suppress; every modern
+ *   app emits this. Filtering at the global level keeps the banner
+ *   useful for real errors.
+ */
+const BENIGN_ERROR_PATTERNS = [
+  /ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i,
+];
+
+function isBenign(message: string): boolean {
+  return BENIGN_ERROR_PATTERNS.some((re) => re.test(message));
+}
+
 window.addEventListener("error", (event) => {
+  if (isBenign(event.message)) return;
   const stack = (event.error as { stack?: string } | undefined)?.stack ?? "";
   const detail = `${event.message} @ ${event.filename}:${event.lineno}:${event.colno}\n${stack}`;
   showGlobalDebugBanner("ERROR", detail);
@@ -45,6 +65,7 @@ window.addEventListener("unhandledrejection", (event) => {
   const reason = event.reason as { message?: string; stack?: string } | string | undefined;
   const message =
     typeof reason === "string" ? reason : reason?.message ?? String(reason);
+  if (isBenign(message)) return;
   const stack = typeof reason === "object" && reason ? reason?.stack ?? "" : "";
   showGlobalDebugBanner("REJECT", `${message}\n${stack}`);
 });
