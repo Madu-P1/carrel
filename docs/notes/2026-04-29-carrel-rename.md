@@ -175,22 +175,20 @@ window for env vars / log namespaces operators are already using.
 - Plan: when ready, do the rename + a one-time read-old-write-new-delete-old
   migration on app start. Cheap, ~10 lines.
 
-#### G. Logo asset — `frontend/src/assets/logo.png`
+#### G. Logo asset — `frontend/src/assets/logo.png` ✅ SHIPPED
 
-- Owner: the BrandMark component renders this PNG; it's a 1134×698
-  image with the ET monogram + "EINSTEIN TUTOR" wordmark baked in.
-- Risk: this is a designer asset, not a string. Replacing it requires a
-  Carrel-branded PNG (or SVG) from the design package — out of scope
-  for a string-rename pass.
-- Symptom you'll notice: the sidebar BrandMark tile and any other
-  surface that renders `logoUrl` shows the legacy ET monogram +
-  EINSTEIN TUTOR wordmark until the asset is swapped. The fallback
-  text monogram (`Cr`) only renders when the image fails to load,
-  which it doesn't.
-- Plan: drop a Carrel logo into `frontend/src/assets/logo.png` (same
-  filename, same dimensions, or update the import to a new asset
-  name). Vite picks up the new asset on next build. No code change
-  required if you keep the filename.
+- Owner: the BrandMark component renders this PNG.
+- 2026-04-29: Carrel logo dropped in by the user — a 474×444 dark navy
+  squircle with a white lowercase "c" and a teal accent dot at the
+  bottom-right of the bowl. Same file simultaneously serves as the
+  macOS dock-tile icon source via `macos-app/Resources/icon-source.png`
+  (kept in sync — copied from the frontend asset, then
+  `script/generate-icon.sh --force` regenerates the multi-resolution
+  `AppIcon.icns` bundle).
+- Future iterations: if a higher-resolution version (1024×1024)
+  becomes available, drop it at the same path and rerun
+  `script/generate-icon.sh --force`. macOS Big Sur and later prefer
+  1024×1024 sources for the sharpest Retina rendering.
 
 #### H. macOS bundle identity
 
