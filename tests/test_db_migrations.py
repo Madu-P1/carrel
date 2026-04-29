@@ -75,6 +75,10 @@ class DatabaseMigrationTests(unittest.TestCase):
                     ).fetchall()
                 }
 
+        # Vector migration (0007) is conditionally applied based on
+        # whether sqlite-vec is available at runtime; the rest are
+        # unconditional. Build the expected list in version order so the
+        # 0008 / 0009 migrations always tail the vector slot.
         expected_rows = [
             (1, "0001_initial.sql"),
             (2, "0002_documents_storage_and_subject.sql"),
@@ -85,6 +89,12 @@ class DatabaseMigrationTests(unittest.TestCase):
         ]
         if db.sqlite_vec_runtime_supported():
             expected_rows.append((7, "0007_chunks_vec.sql"))
+        expected_rows.extend(
+            [
+                (8, "0008_anchors.sql"),
+                (9, "0009_calendar_and_planning.sql"),
+            ]
+        )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
         self.assertTrue({"storage_name", "subject_name", "updated_at"} <= document_columns)
         self.assertIn("doc_id", concept_columns)
@@ -106,7 +116,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
 
-        expected_total = 7 if db.sqlite_vec_runtime_supported() else 6
+        # +2 for 0008_anchors and 0009_calendar_and_planning, which
+        # always apply (no runtime gate like sqlite-vec).
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 2
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -133,6 +145,12 @@ class DatabaseMigrationTests(unittest.TestCase):
         ]
         if db.sqlite_vec_runtime_supported():
             expected_names.append("0007_chunks_vec.sql")
+        expected_names.extend(
+            [
+                "0008_anchors.sql",
+                "0009_calendar_and_planning.sql",
+            ]
+        )
         self.assertEqual(len(expected_names), len(rows))
         self.assertEqual(expected_names, [row["name"] for row in rows])
 

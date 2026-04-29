@@ -155,7 +155,13 @@ def get_active_session() -> Dict[str, Any]:
     from datetime import datetime, timedelta, timezone
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ACTIVE_SESSION_MAX_AGE_HOURS)
-    cutoff_iso = cutoff.isoformat(sep=" ", timespec="seconds")
+    # Match the T-separator + microseconds format that
+    # services.session_engine writes via datetime.now().isoformat().
+    # Space-separator cutoffs broke SQLite lexical TEXT comparison
+    # (`T` > ` `), so every active row passed the cutoff check
+    # regardless of age. Same fix applied in
+    # services.dashboard._active_session.
+    cutoff_iso = cutoff.isoformat()
     with db.get_db() as conn:
         row = conn.execute(
             """

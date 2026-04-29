@@ -171,7 +171,17 @@ def _active_session(conn: sqlite3.Connection) -> Dict[str, Any] | None:
     started_at. Schema doesn't enforce uniqueness.
     """
     cutoff = _now_utc() - timedelta(hours=ACTIVE_SESSION_MAX_AGE_HOURS)
-    cutoff_iso = cutoff.isoformat(sep=" ", timespec="seconds")
+    # Match the storage format. Production writes `started_at` via
+    # `datetime.now(timezone.utc).isoformat()` (T separator, microseconds,
+    # +00:00 offset), e.g. "2026-04-29T02:15:52.659996+00:00". The
+    # previous `isoformat(sep=" ", timespec="seconds")` produced space-
+    # separated cutoffs, and SQLite's lexical TEXT comparison sees
+    # "T" (ASCII 84) > " " (32), so EVERY T-format started_at passed
+    # the `>= cutoff_iso` filter — abandoned sessions surfaced
+    # unconditionally. Default isoformat() keeps both sides on the
+    # T+microsecond shape so position-by-position comparison sorts
+    # by actual time.
+    cutoff_iso = cutoff.isoformat()
     row = conn.execute(
         """
         SELECT id, objective, mode, duration_minutes, started_at
