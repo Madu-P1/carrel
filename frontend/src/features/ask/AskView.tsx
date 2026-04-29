@@ -20,7 +20,13 @@ import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
 import styles from "./AskView.module.css";
 
-const ASK_EMPTY_SAMPLE = "What do my sources say about mitosis checkpoints?";
+// Subject-agnostic sample that demonstrates Carrel's strength
+// (citation-grounded synthesis across whatever the user has imported)
+// without assuming they have biology sources. Pre-rename this used to
+// be a biology-specific question, which read as a mismatch in any
+// finance / law / stats library.
+const ASK_EMPTY_SAMPLE =
+  "Summarise the main argument across my sources.";
 
 function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
   return (

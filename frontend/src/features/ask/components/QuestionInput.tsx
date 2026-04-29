@@ -55,7 +55,7 @@ export function QuestionInput({
         onInput={(event) => {
           onValueChange((event.currentTarget as HTMLInputElement).value);
         }}
-        placeholder="How do mitosis checkpoints respond to DNA damage?"
+        placeholder="What do you want to understand?"
         value={value}
       />
       <Button
