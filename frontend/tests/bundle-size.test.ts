@@ -57,8 +57,15 @@ const indexCssPath = resolve(distDir, "index.css");
  *    65 KB → 72 KB: ReaderView un-split (preact/compat Suspense bug)
  *    72 KB → 78 KB: Plan feature added (calendar feeds + WeekTimeGrid +
  *                    AddFeedDialog + SuggestionCard + usePlan + utils
- *                    + 4 Pydantic-shaped API types) ~73.6 KB live. */
-const ENTRY_JS_GZIP_BUDGET = 78 * 1024;
+ *                    + 4 Pydantic-shaped API types) ~73.6 KB live.
+ *    78 KB → 84 KB: Search MVP + 3D Concepts + WeakConceptsRail. The
+ *                    three.js + 3d-force-graph libs are lazy-imported
+ *                    (separate chunks: ~189 KB gz three, ~218 KB gz
+ *                    3d-force-graph) so the entry chunk only carries
+ *                    the dynamic-import wiring and the new view module
+ *                    IDs (~7 KB gz delta). Entry now lands at ~81.5 KB
+ *                    gz live. */
+const ENTRY_JS_GZIP_BUDGET = 84 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

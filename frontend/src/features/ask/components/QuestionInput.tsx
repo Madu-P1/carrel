@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 
-import { Button, Icon, Input, Stack, Text } from "@/design-system";
+import { Button, Icon, Input } from "@/design-system";
 
 import styles from "../AskView.module.css";
 
@@ -25,44 +25,48 @@ export function QuestionInput({
   };
 
   return (
-    <Stack gap={2}>
-      <Text variant="h3" weight="semibold">
-        Your question
-      </Text>
-      <form className={styles.questionRow} onSubmit={handleSubmit}>
-        {/*
-         * Serif voice on the question itself — per the brief §3.3, the user's
-         * question is one of the "big moments." We pass a className that the
-         * Input primitive forwards to its underlying <input>; if the primitive
-         * doesn't forward it, the class still reaches the outer wrapper and
-         * the `.questionInputField input` rule below catches the real field.
-         */}
-        <Input
-          autoFocus
-          className={styles.questionInputField}
-          error={error ?? undefined}
-          helpText={
-            error
-              ? undefined
-              : "Answers cite only the chunks the retriever found in your library."
-          }
-          label="Question"
-          onInput={(event) => {
-            onValueChange((event.currentTarget as HTMLInputElement).value);
-          }}
-          placeholder="How do mitosis checkpoints respond to DNA damage?"
-          value={value}
-        />
-        <Button
-          disabled={disabled || !value.trim()}
-          isLoading={disabled}
-          keyHint="↵"
-          leadingIcon={<Icon name="sparkle" />}
-          type="submit"
-        >
-          Ask
-        </Button>
-      </form>
-    </Stack>
+    <form className={styles.questionRow} onSubmit={handleSubmit}>
+      {/*
+       * Serif voice on the question itself — per the brief §3.3, the user's
+       * question is one of the "big moments." We pass a className that the
+       * Input primitive forwards to its underlying <input>; if the primitive
+       * doesn't forward it, the class still reaches the outer wrapper and
+       * the `.questionInputField input` rule below catches the real field.
+       *
+       * The Input primitive's `label` prop renders the mono uppercase
+       * "QUESTION" eyebrow above the field — that's the canonical
+       * design-system pattern for form fields. Previously this component
+       * also rendered an h3 "Your question" above the eyebrow; removed
+       * because it was a third label for the same field (page heading
+       * "Ask from your sources." already establishes the section, the
+       * Input's "QUESTION" labels the field, and an h3 between them
+       * just restated what was above and below it).
+       */}
+      <Input
+        autoFocus
+        className={styles.questionInputField}
+        error={error ?? undefined}
+        helpText={
+          error
+            ? undefined
+            : "Answers cite only the chunks the retriever found in your library."
+        }
+        label="Question"
+        onInput={(event) => {
+          onValueChange((event.currentTarget as HTMLInputElement).value);
+        }}
+        placeholder="How do mitosis checkpoints respond to DNA damage?"
+        value={value}
+      />
+      <Button
+        disabled={disabled || !value.trim()}
+        isLoading={disabled}
+        keyHint="↵"
+        leadingIcon={<Icon name="sparkle" />}
+        type="submit"
+      >
+        Ask
+      </Button>
+    </form>
   );
 }
