@@ -75,7 +75,7 @@ export function FallbackAnswer({
 
   if (onRetry) {
     summaryActions.push({
-      label: "Retry",
+      label: "Retry the question",
       onClick: () => {
         onRetry();
       }

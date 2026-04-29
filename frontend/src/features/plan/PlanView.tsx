@@ -48,7 +48,7 @@ export function PlanView() {
     try {
       const result = await syncFeed(feedId);
       if (result.status === "error") {
-        toast.error("Sync didn't complete", result.error || "Try again or check the URL.");
+        toast.error("Sync didn't complete", result.error || "Re-run the sync, or check the feed URL.");
       } else if (result.status === "not_modified") {
         toast.info("No changes since last sync");
       } else {

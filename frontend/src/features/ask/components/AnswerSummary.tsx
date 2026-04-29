@@ -63,7 +63,7 @@ export function AnswerSummary({
           }
         },
         {
-          label: "Retry",
+          label: "Retry the question",
           onClick: () => {
             onRetry?.();
           }

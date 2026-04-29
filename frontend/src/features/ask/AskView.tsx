@@ -60,7 +60,7 @@ function AskErrorState({ message, onRetry }: { message: string; onRetry: () => v
         </Stack>
         <div>
           <Button onClick={onRetry} variant="secondary">
-            Retry
+            Retry the question
           </Button>
         </div>
       </Stack>

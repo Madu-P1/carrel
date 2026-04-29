@@ -17,7 +17,7 @@ export function ReaderErrorState({ error, onRetry }: ReaderErrorStateProps) {
         <Text tone="secondary">{error.message || "Unknown reader error."}</Text>
         {onRetry ? (
           <Button onClick={onRetry} variant="secondary">
-            Retry
+            Reload the document
           </Button>
         ) : null}
       </Stack>

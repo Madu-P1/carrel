@@ -17,19 +17,33 @@ import styles from "./HeroAskPrompt.module.css";
  *   - Submit-on-enter, no visible submit button at rest — an amber spark icon
  *     appears on focus/hover to signal the action is live.
  *   - Reduced-motion friendly: no focus animation, just color swap.
+ *
+ * Suggestion chips below the input act as a "what can I ask" ladder for
+ * users staring at an empty input. Per the Carrel design package: generic
+ * but credible prompts that showcase explain / analyze / cite — Carrel's
+ * three core strengths. Click → pre-fill + auto-submit via the same
+ * `q + auto=1` query contract the form uses.
  */
+
+const SUGGESTION_PROMPTS: readonly string[] = [
+  "Explain this simply",
+  "What's the main argument?",
+  "Summarise the cited evidence",
+];
+
+function askWith(prompt: string): void {
+  const trimmed = prompt.trim();
+  if (!trimmed) return;
+  const url = `/ask?q=${encodeURIComponent(trimmed)}&auto=1`;
+  navigateTo(url);
+}
+
 export function HeroAskPrompt() {
   const [value, setValue] = useState("");
 
   const submit = (event: JSX.TargetedEvent<HTMLFormElement, Event>) => {
     event.preventDefault();
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    // `auto=1` tells the Ask view to skip the usual manual-submit gate and
-    // kick off the question immediately. Keeping this contract explicit so
-    // a future change to Ask doesn't silently break the Dashboard entry.
-    const url = `/ask?q=${encodeURIComponent(trimmed)}&auto=1`;
-    navigateTo(url);
+    askWith(value);
   };
 
   return (
@@ -62,6 +76,22 @@ export function HeroAskPrompt() {
         >
           <Icon name="arrow-right" size={16} />
         </button>
+      </div>
+      <div
+        className={styles.suggestions}
+        aria-label="Suggested prompts"
+        role="group"
+      >
+        {SUGGESTION_PROMPTS.map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            className={styles.suggestionChip}
+            onClick={() => askWith(prompt)}
+          >
+            {prompt}
+          </button>
+        ))}
       </div>
     </form>
   );
