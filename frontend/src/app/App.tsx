@@ -2,6 +2,7 @@ import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
 import { AskView } from "@/features/ask/AskView";
+import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
 import { NotFoundView } from "@/features/NotFoundView";
@@ -89,6 +90,10 @@ function renderBundledRoute(rawPath: string) {
     return <SearchView />;
   }
 
+  if (path.startsWith("/concepts")) {
+    return <ConceptGraphView />;
+  }
+
   if (path.startsWith("/session")) {
     return <SessionView />;
   }
@@ -126,6 +131,7 @@ export function App() {
           <Route component={AskView} path="/ask" />
           <Route component={StudyView} path="/study" />
           <Route component={SearchView} path="/search" />
+          <Route component={ConceptGraphView} path="/concepts" />
           <Route component={PlanView} path="/plan" />
           <Route component={NotFoundView} default />
         </Router>

@@ -42,6 +42,13 @@ export const icons = {
   // multi-widget page" at 16×16.
   dashboard: "M2.5 2.5 h4.5 v4.5 h-4.5 z M9 2.5 h4.5 v4.5 h-4.5 z M2.5 9 h4.5 v4.5 h-4.5 z M9 9 h4.5 v4.5 h-4.5 z",
 
+  // graph: three small nodes connected by lines — concept-graph cue.
+  // Top node centered, two on the lower row. Lines connect top-down to
+  // each lower node and across between the lower pair. Reads as
+  // "network" / "atlas" at 16×16 without overlapping any lines.
+  graph:
+    "M8 2.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M3.5 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M12.5 10.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M7.2 5.4 4.3 9.6 M8.8 5.4 11.7 9.6 M5 12 11 12",
+
   // --- Sidebar nav (upgraded pass) ---
   // library: four books of varying heights with the rightmost slightly
   // tilted. The leaning book is the signature Lucide "Library" cue —

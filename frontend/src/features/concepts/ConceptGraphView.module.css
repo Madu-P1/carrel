@@ -1,0 +1,393 @@
+/*
+ * Concept graph — the atlas view.
+ *
+ * Layout: header, toolbar (subject filter + count), then a canvas-row
+ * that holds the SVG graph and an optional detail panel. The panel
+ * occupies the right side when a node is selected; the graph re-flows
+ * to fit the remaining space (no fixed widths — everything's grid).
+ */
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* --- Header (shared lab-notebook pattern) --- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-3xl);
+  line-height: 44px;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
+/* --- Toolbar --- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.filterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.filterLabelText {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/*
+ * Custom-styled select. Native <select> is hard to fully restyle across
+ * platforms, so we keep enough native to inherit OS dropdown UI but
+ * theme the chrome (border, bg, text, focus ring) to match Inputs.
+ */
+.filterSelect {
+  height: var(--control-height-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.filterSelect:hover {
+  border-color: var(--color-border-strong);
+}
+
+.filterSelect:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.graphCount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+/* --- Canvas row --- */
+
+.canvasRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  min-height: 520px;
+}
+
+/* When the detail panel is mounted, the row splits into graph + panel.
+ * `:has()` is supported in Safari 15.4+ and Chrome 105+; Carrel ships
+ * WKWebView 2024+ so this is safe. */
+.canvasRow:has(.detailPanel) {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+@media (max-width: 920px) {
+  .canvasRow:has(.detailPanel) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.canvasFrame {
+  position: relative;
+  min-height: 520px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.skeleton {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-bg-muted),
+      color-mix(in srgb, var(--color-bg-hover) 70%, transparent),
+      var(--color-bg-muted)
+    );
+  background-size: 200% 100%;
+  animation: anim-graph-shimmer 1.6s linear infinite;
+}
+
+@keyframes anim-graph-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* --- SVG graph --- */
+
+.graph {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.edgeLayer { pointer-events: none; }
+
+.edge {
+  stroke: var(--color-border-default);
+  stroke-width: 1.25;
+  transition: stroke var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out);
+}
+
+.edgeDimmed {
+  opacity: 0.18;
+}
+
+.node {
+  cursor: pointer;
+  transition: opacity var(--dur-micro) var(--ease-out);
+}
+
+.nodeDimmed {
+  opacity: 0.32;
+}
+
+.nodeCircle {
+  fill: var(--color-accent);
+  stroke: color-mix(in srgb, var(--color-accent) 80%, var(--surface-0));
+  stroke-width: 1.5;
+  transition:
+    r var(--dur-micro) var(--ease-out),
+    fill var(--dur-micro) var(--ease-out),
+    stroke var(--dur-micro) var(--ease-out);
+}
+
+.nodeHovered .nodeCircle {
+  fill: var(--color-accent-hover, var(--color-accent));
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.nodeSelected .nodeCircle {
+  fill: var(--color-accent);
+  stroke: var(--text-primary);
+  stroke-width: 2.5;
+}
+
+.nodeLabel {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  fill: var(--text-secondary);
+  text-anchor: middle;
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: var(--tracking-sans);
+  transition: fill var(--dur-micro) var(--ease-out);
+}
+
+.nodeHovered .nodeLabel,
+.nodeSelected .nodeLabel {
+  fill: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.node:focus-visible .nodeCircle {
+  stroke: var(--text-primary);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 0 var(--color-accent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge,
+  .node,
+  .nodeCircle,
+  .nodeLabel { transition: none; }
+}
+
+/* --- Detail panel --- */
+
+.detailPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-card);
+  height: fit-content;
+  position: sticky;
+  top: var(--space-5);
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detailClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.detailClose:hover {
+  color: var(--text-primary);
+  background: var(--state-bg-hover);
+  border-color: var(--hairline-strong);
+}
+
+.detailClose:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.detailTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-serif);
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.detailMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detailLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.detailList {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.detailList li::marker {
+  color: var(--text-tertiary);
+}
+
+.detailOpenButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-height-md);
+  padding: 0 16px;
+  border-radius: var(--radius-button);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  align-self: flex-start;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.detailOpenButton:hover {
+  background: var(--color-accent-hover, var(--color-accent));
+  transform: translateY(-1px);
+}
+
+.detailOpenButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detailOpenButton:hover { transform: none; }
+}
+
+/* --- State cards (empty / error inside the canvas frame) --- */
+
+.stateEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.stateHeading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}

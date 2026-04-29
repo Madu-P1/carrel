@@ -188,6 +188,84 @@ export const search = {
 };
 
 /**
+ * Concept graph — nodes + edges across the user's library, scoped by
+ * doc or subject. Positions (x, y) are pre-computed server-side via
+ * `services.helpers.concept_positions`, so the renderer can place nodes
+ * directly without running a client-side force-layout.
+ *
+ * Edge `relationship` is one of "supports" | "contrasts with" |
+ * "includes" (the LLM extractor's vocabulary). Weight is 1 today;
+ * future feedback signals may scale it.
+ */
+export interface ConceptGraphNode {
+  id: string;
+  document_id: string;
+  raw_label: string;
+  label: string;
+  description: string | null;
+  document_name: string | null;
+  subject_name: string | null;
+  mastery: number;
+  x: number;
+  y: number;
+}
+
+export interface ConceptGraphEdge {
+  source: string;
+  target: string;
+  relationship: string;
+  weight: number;
+  document_id: string;
+}
+
+export interface ConceptGraphResponse {
+  nodes: ConceptGraphNode[];
+  edges: ConceptGraphEdge[];
+}
+
+export interface ConceptExplainResponse {
+  concept: string;
+  document_name: string | null;
+  subject_name: string | null;
+  level: number;
+  explanation: string;
+  takeaway: string;
+  claims: Array<{
+    id: string;
+    claim_text: string;
+    claim_type: string | null;
+    confidence: number | null;
+  }>;
+  examples: Array<{
+    id: string;
+    example_text: string;
+    example_type: string | null;
+    confidence: number | null;
+  }>;
+  misconceptions: Array<{
+    id: string;
+    label: string;
+    description: string | null;
+    repair_strategy: string | null;
+    confidence: number | null;
+  }>;
+}
+
+export const concepts = {
+  graph: (params: { subjectName?: string; docId?: string } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.subjectName) qs.set("subject_name", params.subjectName);
+    if (params.docId) qs.set("doc_id", params.docId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<ConceptGraphResponse>(`/api/concepts/graph${suffix}`);
+  },
+  explain: (conceptId: string, level = 2) =>
+    api<ConceptExplainResponse>(
+      `/api/concepts/${encodeURIComponent(conceptId)}/explain?level=${level}`
+    )
+};
+
+/**
  * Aggregated Dashboard payload. One read, one round trip — the Dashboard
  * view renders everything on first paint without secondary fetches.
  */
