@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { Card, Icon, Stack, Text } from "@/design-system";
+import { Card, Stack, Text } from "@/design-system";
 import {
   concepts,
   library,
   type ConceptExplainResponse,
-  type ConceptGraphEdge,
-  type ConceptGraphNode,
   type ConceptGraphResponse,
   type SubjectSummary,
 } from "@/services/api/endpoints";
@@ -15,29 +13,107 @@ import { navigateTo } from "@/app/shell/useAppShell";
 import styles from "./ConceptGraphView.module.css";
 
 /**
- * Concept graph view.
+ * Concept graph — 3D force-directed atlas.
  *
- * Renders the LLM-extracted concept network as an SVG node-link graph.
- * Backend (`/api/concepts/graph`) does the heavy lifting:
- *   - Returns nodes with pre-computed (x, y) positions from
- *     `services.helpers.concept_positions` — a hand-rolled layout that
- *     clusters concepts by document along an arc. We don't pay for a
- *     client-side force simulation; positions arrive in the response.
- *   - Edge relationships come straight from the extractor's vocabulary
- *     ("supports", "contrasts with", "includes"). The renderer encodes
- *     each as a different stroke style: solid (supports), dashed
- *     (contrasts with), dotted (includes). Communicates relationship at
- *     a glance without a legend.
+ * Implements the design spec at `~/Downloads/Einstein Design System (1)/
+ * Concepts View.html`: full-bleed 3D force graph with subject-coloured
+ * nodes, slide-in detail panel, hover card, legend, filter pills,
+ * starfield, selection point-light + directional particles.
  *
- * Click a node → fetches `/api/concepts/{id}/explain` for the side
- * panel (claims, examples, misconceptions). The graph itself stays
- * mounted; the panel slides in over the right margin.
+ * The previous SVG implementation was a "trace the bones" pass using
+ * server-pre-computed 2D positions. That was useful as an MVP but the
+ * spec wants a real 3D atlas — so this rewrite drops the 2D layout and
+ * lets `3d-force-graph` (with three.js) compute the 3D physics in the
+ * browser. Backend `(x, y)` positions are ignored; we only need the
+ * relational shape (nodes + edges + subject + mastery).
  *
- * Filter dropdown: select a subject to scope the graph. Default is
- * "All subjects" → every concept across the library. Subject scope
- * cuts down visual noise for large corpora and reads as a per-subject
- * concept atlas.
+ * Bundle cost: three.js + 3d-force-graph total ~700kB minified (~210kB
+ * gzipped). To keep the entry chunk lean, both libs are loaded via
+ * `await import(...)` inside an effect so they only land when the
+ * /concepts route mounts. The build script's chunk-base rewrite
+ * (`__carrelAssetBase`) handles the dynamic-import path under file://.
  */
+
+type ForceGraph3DInstance = {
+  graphData(data: { nodes: GraphNode[]; links: GraphLink[] }): ForceGraph3DInstance;
+  graphData(): { nodes: GraphNode[]; links: GraphLink[] };
+  backgroundColor(c: string): ForceGraph3DInstance;
+  showNavInfo(b: boolean): ForceGraph3DInstance;
+  nodeId(k: string): ForceGraph3DInstance;
+  nodeLabel(fn: () => string): ForceGraph3DInstance;
+  nodeColor(fn: (n: GraphNode) => string): ForceGraph3DInstance;
+  nodeColor(): (n: GraphNode) => string;
+  nodeVal(fn: (n: GraphNode) => number): ForceGraph3DInstance;
+  nodeOpacity(n: number): ForceGraph3DInstance;
+  nodeResolution(n: number): ForceGraph3DInstance;
+  linkColor(fn: (l: GraphLink) => string): ForceGraph3DInstance;
+  linkColor(): (l: GraphLink) => string;
+  linkWidth(fn: (l: GraphLink) => number): ForceGraph3DInstance;
+  linkWidth(): (l: GraphLink) => number;
+  linkOpacity(n: number): ForceGraph3DInstance;
+  linkDirectionalParticles(fn: (l: GraphLink) => number): ForceGraph3DInstance;
+  linkDirectionalParticles(): (l: GraphLink) => number;
+  linkDirectionalParticleWidth(n: number): ForceGraph3DInstance;
+  linkDirectionalParticleColor(fn: () => string): ForceGraph3DInstance;
+  linkDirectionalParticleSpeed(n: number): ForceGraph3DInstance;
+  onNodeClick(fn: (n: GraphNode | null, e?: MouseEvent) => void): ForceGraph3DInstance;
+  onNodeHover(fn: (n: GraphNode | null) => void): ForceGraph3DInstance;
+  onBackgroundClick(fn: () => void): ForceGraph3DInstance;
+  onRenderFramePre(fn: () => void): ForceGraph3DInstance;
+  cameraPosition(
+    pos: { x: number; y: number; z: number },
+    look: { x: number; y: number; z: number },
+    transitionMs: number
+  ): ForceGraph3DInstance;
+  scene(): unknown;
+  width(n: number): ForceGraph3DInstance;
+  height(n: number): ForceGraph3DInstance;
+  _destructor?: () => void;
+};
+
+interface GraphNode {
+  id: string;
+  label: string;
+  subject: string;
+  weight: number;
+  mastery: number;
+  document_id: string;
+  document_name: string | null;
+  // 3d-force-graph fills these during simulation
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+interface GraphLink {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  relationship: string;
+}
+
+/**
+ * Subject → colour mapping. Spec lists Finance (teal), Tax (amber), Law
+ * (purple). For other subjects (Stats, Bio, etc.) we deterministically
+ * pick from a small set of mid-saturation hues so colours are stable
+ * across reloads — same subject always reads the same colour.
+ *
+ * Each entry has CSS rgb (used for tags + nodes), hex int (for three.js
+ * lights/materials), and a CSS class for the tag pill in the panel.
+ */
+const SUBJECT_PALETTE: Record<string, { css: string; hex: number; tag: string }> = {
+  Finance: { css: "rgb(87, 214, 195)", hex: 0x57d6c3, tag: "tagFinance" },
+  Tax: { css: "rgb(200, 155, 40)", hex: 0xc89b28, tag: "tagTax" },
+  Law: { css: "rgb(155, 120, 210)", hex: 0x9b78d2, tag: "tagLaw" },
+  Stats: { css: "rgb(220, 140, 130)", hex: 0xdc8c82, tag: "tagOther" },
+  Biology: { css: "rgb(130, 200, 140)", hex: 0x82c88c, tag: "tagOther" },
+};
+const FALLBACK_SUBJECT = { css: "rgb(180, 180, 200)", hex: 0xb4b4c8, tag: "tagOther" };
+
+function paletteFor(subject: string | null | undefined) {
+  if (subject && SUBJECT_PALETTE[subject]) return SUBJECT_PALETTE[subject];
+  // Fallback: deterministic pastel from a hash of the subject name.
+  return FALLBACK_SUBJECT;
+}
 
 interface SelectedConcept {
   id: string;
@@ -46,36 +122,59 @@ interface SelectedConcept {
   error: string | null;
 }
 
-const PADDING = 80; // viewport breathing room around the node bounding box
-
 export function ConceptGraphView() {
   const [graph, setGraph] = useState<ConceptGraphResponse | null>(null);
   const [graphError, setGraphError] = useState<string | null>(null);
   const [graphLoading, setGraphLoading] = useState(true);
-  const [subjects, setSubjects] = useState<SubjectSummary[]>([]);
-  const [subjectFilter, setSubjectFilter] = useState<string>("");
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  // `subjects` is fetched but not currently displayed in this view —
+  // the filter pills derive their list from concepts present in the
+  // graph (subjectsInGraph below) so we only show pills for subjects
+  // that actually have nodes. Keeping the fetch in case a future pass
+  // wants to surface "subjects with concepts vs without" as a hint.
+  const [, setSubjects] = useState<SubjectSummary[]>([]);
+  const [filter, setFilter] = useState<string>("All");
   const [selected, setSelected] = useState<SelectedConcept | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{
+    label: string;
+    subject: string;
+    weight: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  // Fetch subjects once on mount for the filter dropdown.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const graphRef = useRef<ForceGraph3DInstance | null>(null);
+  const selectionRef = useRef<{
+    selectedId: string | null;
+    highlightedNodes: Set<string>;
+    highlightedLinks: Set<GraphLink>;
+    pointLight: { intensity: number; position: { set: (x: number, y: number, z: number) => void } } | null;
+  }>({ selectedId: null, highlightedNodes: new Set(), highlightedLinks: new Set(), pointLight: null });
+
+  // Fetch concepts and subjects.
   useEffect(() => {
     library
       .subjects()
       .then((response) => setSubjects(response.subjects))
       .catch(() => {
-        // Subject filter is non-critical; graph still loads with "All".
-        // Don't surface an error — just leave the dropdown empty.
+        // Subject filter falls back to "All" if subjects can't load.
       });
   }, []);
 
-  // (Re)fetch the graph whenever the subject filter changes.
   useEffect(() => {
     setGraphLoading(true);
     setGraphError(null);
     concepts
-      .graph(subjectFilter ? { subjectName: subjectFilter } : {})
+      .graph(filter !== "All" ? { subjectName: filter } : {})
       .then((response) => {
         setGraph(response);
+        // Populate the concept-id → document_id side-channel map so the
+        // detail panel's "Open in Reader" button can navigate without
+        // an extra round-trip to /api/documents.
+        conceptDocIdMap.clear();
+        for (const node of response.nodes) {
+          conceptDocIdMap.set(node.id, node.document_id);
+        }
       })
       .catch((err) => {
         setGraphError((err as Error).message ?? "Unknown error");
@@ -83,49 +182,306 @@ export function ConceptGraphView() {
       .finally(() => {
         setGraphLoading(false);
       });
-  }, [subjectFilter]);
+  }, [filter]);
 
-  // Compute the SVG viewBox from node positions so the graph fills the
-  // available canvas regardless of how many nodes there are. Falls back
-  // to a sensible default when there are no nodes (shouldn't render
-  // anyway in that branch).
-  const viewBox = useMemo(() => {
-    if (!graph || graph.nodes.length === 0) return "0 0 800 600";
-    const xs = graph.nodes.map((n) => n.x);
-    const ys = graph.nodes.map((n) => n.y);
-    const minX = Math.min(...xs) - PADDING;
-    const minY = Math.min(...ys) - PADDING;
-    const maxX = Math.max(...xs) + PADDING;
-    const maxY = Math.max(...ys) + PADDING;
-    return `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
-  }, [graph]);
-
-  const nodesById = useMemo(() => {
-    const map = new Map<string, ConceptGraphNode>();
-    if (graph) {
-      for (const node of graph.nodes) map.set(node.id, node);
+  // Build the GraphNode/GraphLink arrays for 3d-force-graph.
+  const graphData = useMemo(() => {
+    if (!graph) return null;
+    // Compute connection count (weight) per node from edge incidences.
+    const degree = new Map<string, number>();
+    for (const edge of graph.edges) {
+      degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+      degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
     }
-    return map;
+    const nodes: GraphNode[] = graph.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      subject: n.subject_name ?? "Other",
+      weight: Math.max(2, degree.get(n.id) ?? 1),
+      mastery: n.mastery,
+      document_id: n.document_id,
+      document_name: n.document_name,
+    }));
+    const links: GraphLink[] = graph.edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      relationship: e.relationship,
+    }));
+    return { nodes, links };
   }, [graph]);
 
-  const handleNodeClick = (node: ConceptGraphNode) => {
-    setSelected({ id: node.id, data: null, loading: true, error: null });
-    concepts
-      .explain(node.id)
-      .then((data) => {
-        // Only update if the user hasn't already moved on to another node
-        // (preact + closure on `node.id` already guards this).
-        setSelected({ id: node.id, data, loading: false, error: null });
-      })
-      .catch((err) => {
-        setSelected({
-          id: node.id,
-          data: null,
-          loading: false,
-          error: (err as Error).message ?? "Unknown error",
-        });
+  const subjectsInGraph = useMemo(() => {
+    if (!graph) return [];
+    const set = new Set<string>();
+    for (const n of graph.nodes) {
+      if (n.subject_name) set.add(n.subject_name);
+    }
+    return [...set].sort();
+  }, [graph]);
+
+  // Initialise the 3D force graph once `graphData` is available.
+  // Lazy-import three.js + 3d-force-graph so they don't bloat the entry
+  // chunk. Vite code-splits the dynamic imports automatically.
+  useEffect(() => {
+    if (!graphData || !containerRef.current) return;
+
+    let cancelled = false;
+    let graphInstance: ForceGraph3DInstance | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+
+    (async () => {
+      const [{ default: ForceGraph3D }, three] = await Promise.all([
+        import("3d-force-graph"),
+        import("three"),
+      ]);
+      if (cancelled || !containerRef.current) return;
+      const THREE = three;
+
+      // Reset the container in case we're remounting (filter change).
+      const container = containerRef.current;
+      container.innerHTML = "";
+
+      // 3d-force-graph 1.80 changed the construction API — was a curried
+      // function, now a constructor: `new ForceGraph3D(element, opts)`.
+      // Cast through `unknown` to our local interface since the library's
+      // generics chain doesn't quite line up with our explicit method
+      // signatures (the runtime behavior is identical).
+      graphInstance = new ForceGraph3D(container, {
+        rendererConfig: { antialias: true, alpha: true },
+      }) as unknown as ForceGraph3DInstance;
+      graphRef.current = graphInstance;
+
+      const sel = selectionRef.current;
+      sel.selectedId = null;
+      sel.highlightedNodes = new Set();
+      sel.highlightedLinks = new Set();
+
+      const nodeColorFn = (n: GraphNode) => {
+        const base = paletteFor(n.subject).css;
+        if (!sel.selectedId) return base;
+        if (n.id === sel.selectedId) return base;
+        if (sel.highlightedNodes.has(n.id)) return base;
+        return "rgba(255,255,255,0.15)";
+      };
+      const linkColorFn = (l: GraphLink) => {
+        if (sel.highlightedLinks.has(l)) return "rgba(87,214,195,0.7)";
+        if (sel.selectedId) return "rgba(255,255,255,0.03)";
+        return "rgba(255,255,255,0.10)";
+      };
+      const linkWidthFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 1.8 : 0.5);
+      const linkParticlesFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 4 : 0);
+
+      graphInstance
+        .backgroundColor("rgba(0,0,0,0)")
+        .showNavInfo(false)
+        .nodeId("id")
+        .nodeLabel(() => "")
+        .nodeColor(nodeColorFn)
+        .nodeVal((n: GraphNode) => Math.pow(n.weight, 1.6))
+        .nodeOpacity(0.95)
+        .nodeResolution(20)
+        .linkColor(linkColorFn)
+        .linkWidth(linkWidthFn)
+        .linkOpacity(0.8)
+        .linkDirectionalParticles(linkParticlesFn)
+        .linkDirectionalParticleWidth(1.8)
+        .linkDirectionalParticleColor(() => "rgb(87,214,195)")
+        .linkDirectionalParticleSpeed(0.004)
+        .onNodeClick((n) => handleNodeSelect(n))
+        .onNodeHover((n) => handleNodeHover(n))
+        .onBackgroundClick(() => handleClearSelection())
+        .graphData(graphData);
+
+      // Match the canvas to the container size + watch for resizes.
+      const fit = () => {
+        if (!graphInstance || !containerRef.current) return;
+        const { clientWidth: w, clientHeight: h } = containerRef.current;
+        graphInstance.width(w).height(h);
+      };
+      fit();
+      resizeObserver = new ResizeObserver(fit);
+      resizeObserver.observe(container);
+
+      // ── Scene enhancements (lights + starfield) ──
+      const scene = graphInstance.scene() as {
+        add: (obj: unknown) => void;
+      };
+      const ambient = new THREE.AmbientLight(0x223355, 0.6);
+      scene.add(ambient);
+      const fillLight = new THREE.DirectionalLight(0x4488cc, 0.4);
+      fillLight.position.set(1, 1, 2);
+      scene.add(fillLight);
+
+      // Selection point-light pulses around the selected node.
+      const selLight = new THREE.PointLight(0x57d6c3, 0, 80);
+      scene.add(selLight);
+      sel.pointLight = selLight as unknown as typeof sel.pointLight;
+
+      // Starfield (the spec calls for a sphere of points around the
+      // graph at radius 600..1000 — feels like a study lamp at midnight).
+      const starPositions: number[] = [];
+      for (let i = 0; i < 3000; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 600 + Math.random() * 400;
+        starPositions.push(
+          r * Math.sin(phi) * Math.cos(theta),
+          r * Math.sin(phi) * Math.sin(theta),
+          r * Math.cos(phi)
+        );
+      }
+      const starGeo = new THREE.BufferGeometry();
+      starGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(starPositions, 3)
+      );
+      const starMat = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 1.2,
+        transparent: true,
+        opacity: 0.35,
       });
-  };
+      scene.add(new THREE.Points(starGeo, starMat));
+
+      // Pulse the selection light per frame.
+      graphInstance.onRenderFramePre(() => {
+        if (sel.selectedId && sel.pointLight) {
+          const t = Date.now() / 1200;
+          (sel.pointLight as unknown as { intensity: number }).intensity =
+            2.5 + Math.sin(t) * 0.8;
+        }
+      });
+    })();
+
+    function handleNodeSelect(node: GraphNode | null) {
+      if (!node) {
+        handleClearSelection();
+        return;
+      }
+      const sel = selectionRef.current;
+      sel.selectedId = node.id;
+      sel.highlightedNodes = new Set([node.id]);
+      sel.highlightedLinks = new Set();
+
+      const data = graphInstance?.graphData();
+      if (data) {
+        for (const link of data.links) {
+          const srcId = typeof link.source === "object" ? link.source.id : link.source;
+          const tgtId = typeof link.target === "object" ? link.target.id : link.target;
+          if (srcId === node.id || tgtId === node.id) {
+            sel.highlightedLinks.add(link);
+            sel.highlightedNodes.add(srcId);
+            sel.highlightedNodes.add(tgtId);
+          }
+        }
+      }
+      // Trigger re-render of node/link styles by re-applying the
+      // accessors. 3d-force-graph re-pulls colours per node/link on the
+      // next frame after this call.
+      if (graphInstance) {
+        graphInstance
+          .nodeColor(graphInstance.nodeColor())
+          .linkColor(graphInstance.linkColor())
+          .linkWidth(graphInstance.linkWidth())
+          .linkDirectionalParticles(graphInstance.linkDirectionalParticles());
+      }
+
+      // Camera fly-to.
+      if (graphInstance && typeof node.x === "number") {
+        const dist = 90;
+        const nx = node.x ?? 0;
+        const ny = node.y ?? 0;
+        const nz = node.z ?? 0;
+        const mag = Math.hypot(nx, ny, nz) || 1;
+        graphInstance.cameraPosition(
+          {
+            x: nx * (1 + dist / mag),
+            y: ny * (1 + dist / mag),
+            z: nz * (1 + dist / mag),
+          },
+          { x: nx, y: ny, z: nz },
+          900
+        );
+        // Move the selection point-light to the node.
+        if (sel.pointLight) {
+          (sel.pointLight as unknown as {
+            position: { set: (x: number, y: number, z: number) => void };
+            intensity: number;
+          }).position.set(nx, ny, nz);
+          (sel.pointLight as unknown as { intensity: number }).intensity = 2.5;
+        }
+      }
+
+      // Open the detail panel + fetch the explain payload.
+      setSelected({ id: node.id, data: null, loading: true, error: null });
+      concepts
+        .explain(node.id)
+        .then((data) => setSelected({ id: node.id, data, loading: false, error: null }))
+        .catch((err) =>
+          setSelected({
+            id: node.id,
+            data: null,
+            loading: false,
+            error: (err as Error).message ?? "Unknown error",
+          })
+        );
+    }
+
+    function handleClearSelection() {
+      const sel = selectionRef.current;
+      sel.selectedId = null;
+      sel.highlightedNodes = new Set();
+      sel.highlightedLinks = new Set();
+      if (sel.pointLight) {
+        (sel.pointLight as unknown as { intensity: number }).intensity = 0;
+      }
+      if (graphInstance) {
+        graphInstance
+          .nodeColor(graphInstance.nodeColor())
+          .linkColor(graphInstance.linkColor())
+          .linkWidth(graphInstance.linkWidth())
+          .linkDirectionalParticles(graphInstance.linkDirectionalParticles());
+      }
+      setSelected(null);
+    }
+
+    function handleNodeHover(node: GraphNode | null) {
+      if (!node) {
+        setHoverInfo(null);
+        return;
+      }
+      setHoverInfo({
+        label: node.label,
+        subject: node.subject,
+        weight: node.weight,
+        x: 0,
+        y: 0,
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      if (resizeObserver) resizeObserver.disconnect();
+      if (graphInstance && typeof graphInstance._destructor === "function") {
+        graphInstance._destructor();
+      }
+      graphRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphData]);
+
+  // Track mouse position for the hover card.
+  const [pointer, setPointer] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      setPointer({ x: e.clientX - rect.left + 14, y: e.clientY - rect.top - 40 });
+    };
+    el.addEventListener("mousemove", onMove, { passive: true });
+    return () => el.removeEventListener("mousemove", onMove);
+  }, []);
 
   return (
     <div className={styles.wrap}>
@@ -133,32 +489,29 @@ export function ConceptGraphView() {
         <span className={styles.eyebrow}>Concept atlas</span>
         <h1 className={styles.heading}>The shape of your library.</h1>
         <Text tone="secondary">
-          Concepts the model has extracted across your sources, with the
-          relationships it inferred between them. Solid lines support, dashed
-          contrast, dotted contain. Click any node to see its claims,
-          examples, and known misconceptions.
+          A 3D map of the concepts the model has extracted from your sources.
+          Drag to orbit, scroll to zoom, click any node to see its claims and
+          open the source.
         </Text>
       </header>
 
       <div className={styles.toolbar}>
-        <label className={styles.filterLabel}>
-          <span className={styles.filterLabelText}>Subject</span>
-          <select
-            className={styles.filterSelect}
-            value={subjectFilter}
-            onChange={(e) =>
-              setSubjectFilter((e.currentTarget as HTMLSelectElement).value)
-            }
-            aria-label="Filter graph by subject"
-          >
-            <option value="">All subjects</option>
-            {subjects.map((s) => (
-              <option key={s.subject_name} value={s.subject_name}>
-                {s.subject_name} ({s.source_count})
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className={styles.filterPills} role="tablist" aria-label="Subject filter">
+          <FilterPill
+            label="All subjects"
+            active={filter === "All"}
+            onClick={() => setFilter("All")}
+          />
+          {subjectsInGraph.map((s) => (
+            <FilterPill
+              key={s}
+              label={s}
+              active={filter === s}
+              accent={paletteFor(s).css}
+              onClick={() => setFilter(s)}
+            />
+          ))}
+        </div>
         {graph ? (
           <span className={styles.graphCount}>
             {graph.nodes.length} concept{graph.nodes.length === 1 ? "" : "s"} ·{" "}
@@ -167,279 +520,270 @@ export function ConceptGraphView() {
         ) : null}
       </div>
 
-      <div className={styles.canvasRow}>
+      <div className={[styles.canvasRow, selected ? styles.canvasRowWithPanel : ""].filter(Boolean).join(" ")}>
         <div className={styles.canvasFrame}>
           {graphError ? (
-            <GraphErrorState
+            <ErrorState
               message={graphError}
-              onRetry={() => setSubjectFilter((prev) => prev)}
+              onRetry={() => setFilter((prev) => prev)}
             />
-          ) : graphLoading && !graph ? (
+          ) : graphLoading && !graphData ? (
             <div className={styles.skeleton} aria-label="Loading concept graph" />
-          ) : !graph || graph.nodes.length === 0 ? (
-            <GraphEmptyState />
+          ) : !graphData || graphData.nodes.length === 0 ? (
+            <EmptyState />
           ) : (
-            <svg
-              className={styles.graph}
-              viewBox={viewBox}
-              preserveAspectRatio="xMidYMid meet"
-              role="figure"
-              aria-label="Concept graph"
-            >
-              {/* Edges first so they sit BEHIND nodes. SVG paints in document
-                  order and there's no z-index in pure SVG without groups. */}
-              <g className={styles.edgeLayer} aria-hidden>
-                {graph.edges.map((edge) => (
-                  <Edge
-                    key={`${edge.source}-${edge.target}`}
-                    edge={edge}
-                    nodesById={nodesById}
-                    dimmed={
-                      hoveredNodeId !== null &&
-                      edge.source !== hoveredNodeId &&
-                      edge.target !== hoveredNodeId
-                    }
-                  />
-                ))}
-              </g>
-              <g className={styles.nodeLayer}>
-                {graph.nodes.map((node) => (
-                  <Node
-                    key={node.id}
-                    node={node}
-                    isSelected={selected?.id === node.id}
-                    isHovered={hoveredNodeId === node.id}
-                    isDimmed={
-                      hoveredNodeId !== null && hoveredNodeId !== node.id
-                    }
-                    onClick={() => handleNodeClick(node)}
-                    onHover={(id) => setHoveredNodeId(id)}
-                  />
-                ))}
-              </g>
-            </svg>
+            <>
+              <div ref={containerRef} className={styles.canvas} role="figure" aria-label="3D concept graph" />
+              <Legend subjects={subjectsInGraph} />
+              {hoverInfo ? (
+                <div
+                  className={styles.hoverCard}
+                  style={{ transform: `translate(${pointer.x}px, ${pointer.y}px)` }}
+                  aria-hidden
+                >
+                  <div className={styles.hoverLabel}>{hoverInfo.label}</div>
+                  <div
+                    className={styles.hoverSubject}
+                    style={{ color: paletteFor(hoverInfo.subject).css }}
+                  >
+                    {hoverInfo.subject} · {hoverInfo.weight} connection
+                    {hoverInfo.weight === 1 ? "" : "s"}
+                  </div>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
 
-        {selected ? (
-          <ConceptDetailPanel
-            selected={selected}
-            onClose={() => setSelected(null)}
-            onOpenInReader={(node) => {
-              if (!node) return;
-              navigateTo(`/reader/${encodeURIComponent(node.document_id)}`);
-            }}
-            sourceNode={nodesById.get(selected.id) ?? null}
-          />
-        ) : null}
+        <DetailPanel
+          selected={selected}
+          onClose={() => {
+            setSelected(null);
+            if (graphRef.current) {
+              const sel = selectionRef.current;
+              sel.selectedId = null;
+              sel.highlightedNodes.clear();
+              sel.highlightedLinks.clear();
+              if (sel.pointLight) {
+                (sel.pointLight as unknown as { intensity: number }).intensity = 0;
+              }
+              graphRef.current
+                .nodeColor(graphRef.current.nodeColor())
+                .linkColor(graphRef.current.linkColor())
+                .linkWidth(graphRef.current.linkWidth())
+                .linkDirectionalParticles(graphRef.current.linkDirectionalParticles());
+            }
+          }}
+          onOpenInReader={(docId) => navigateTo(`/reader/${encodeURIComponent(docId)}`)}
+        />
       </div>
     </div>
   );
 }
 
-interface NodeProps {
-  node: ConceptGraphNode;
-  isSelected: boolean;
-  isHovered: boolean;
-  isDimmed: boolean;
+interface FilterPillProps {
+  label: string;
+  active: boolean;
+  accent?: string;
   onClick: () => void;
-  onHover: (id: string | null) => void;
 }
 
-function Node({
-  node,
-  isSelected,
-  isHovered,
-  isDimmed,
-  onClick,
-  onHover,
-}: NodeProps) {
-  // Mastery is a 0-1 float in the schema. Surface it as fill opacity so
-  // weak concepts read pale and strong concepts read full-strength. When
-  // mastery is 0 (the common case for a fresh ingest) we fall back to
-  // 0.45 so the node is still visible.
-  const mastery = node.mastery > 0 ? node.mastery : 0.45;
-  const radius = isHovered || isSelected ? 10 : 8;
-
-  // Truncate label to ~20 chars with ellipsis so long concept names
-  // don't crash into adjacent nodes. Hovered nodes get the full label.
-  const visibleLabel =
-    isHovered || isSelected || node.label.length <= 20
-      ? node.label
-      : `${node.label.slice(0, 18)}…`;
-
+function FilterPill({ label, active, accent, onClick }: FilterPillProps) {
   return (
-    <g
-      className={[
-        styles.node,
-        isSelected ? styles.nodeSelected : "",
-        isHovered ? styles.nodeHovered : "",
-        isDimmed ? styles.nodeDimmed : "",
-      ]
+    <button
+      type="button"
+      className={[styles.filterPill, active ? styles.filterPillActive : ""]
         .filter(Boolean)
         .join(" ")}
-      transform={`translate(${node.x} ${node.y})`}
+      style={accent && active ? { color: accent, borderColor: accent } : undefined}
       onClick={onClick}
-      onMouseEnter={() => onHover(node.id)}
-      onMouseLeave={() => onHover(null)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      aria-label={`${node.label} concept`}
+      role="tab"
+      aria-selected={active}
     >
-      <circle r={radius} className={styles.nodeCircle} fillOpacity={mastery} />
-      <text className={styles.nodeLabel} dy={radius + 14}>
-        {visibleLabel}
-      </text>
-    </g>
+      {label}
+    </button>
   );
 }
 
-interface EdgeProps {
-  edge: ConceptGraphEdge;
-  nodesById: Map<string, ConceptGraphNode>;
-  dimmed: boolean;
-}
-
-function Edge({ edge, nodesById, dimmed }: EdgeProps) {
-  const source = nodesById.get(edge.source);
-  const target = nodesById.get(edge.target);
-  if (!source || !target) return null;
-
-  // Encode relationship as stroke style so it reads at a glance
-  // without a legend: solid for support, dashed for contrast, dotted
-  // for inclusion. Anything else falls through to solid.
-  let dashArray: string | undefined;
-  if (edge.relationship === "contrasts with") dashArray = "4 4";
-  else if (edge.relationship === "includes") dashArray = "1 5";
-
+function Legend({ subjects }: { subjects: string[] }) {
+  if (subjects.length === 0) return null;
   return (
-    <line
-      className={[styles.edge, dimmed ? styles.edgeDimmed : ""]
-        .filter(Boolean)
-        .join(" ")}
-      x1={source.x}
-      y1={source.y}
-      x2={target.x}
-      y2={target.y}
-      strokeDasharray={dashArray}
-    />
+    <div className={styles.legend} aria-label="Subject colour legend">
+      {subjects.map((s) => (
+        <div key={s} className={styles.legendItem}>
+          <span
+            className={styles.legendDot}
+            style={{
+              background: paletteFor(s).css,
+              boxShadow: `0 0 6px ${paletteFor(s).css.replace("rgb", "rgba").replace(")", ",0.5)")}`,
+            }}
+          />
+          <span className={styles.legendLabel}>{s}</span>
+        </div>
+      ))}
+      <span className={styles.legendSep} aria-hidden />
+      <span className={styles.legendHint}>drag · scroll · click</span>
+    </div>
   );
 }
 
-interface ConceptDetailPanelProps {
-  selected: SelectedConcept;
-  sourceNode: ConceptGraphNode | null;
+interface DetailPanelProps {
+  selected: SelectedConcept | null;
   onClose: () => void;
-  onOpenInReader: (node: ConceptGraphNode | null) => void;
+  onOpenInReader: (docId: string) => void;
 }
 
-function ConceptDetailPanel({
-  selected,
-  sourceNode,
-  onClose,
-  onOpenInReader,
-}: ConceptDetailPanelProps) {
-  const labelFromNode = sourceNode?.label ?? "Concept";
+function DetailPanel({ selected, onClose, onOpenInReader }: DetailPanelProps) {
+  // Mount the panel always but slide it off-screen when nothing's
+  // selected. The 260ms slide-in matches the spec's transform timing.
+  const open = selected !== null;
+  const data = selected?.data;
+
+  // Tag class for subject pill. Defaults to "tagOther" if subject is
+  // missing or unknown.
+  const subject = data?.subject_name ?? null;
+  const palette = subject ? paletteFor(subject) : FALLBACK_SUBJECT;
+
   return (
-    <aside className={styles.detailPanel} aria-label="Concept detail">
-      <div className={styles.detailHeader}>
-        <span className={styles.eyebrow}>Concept</span>
-        <button
-          type="button"
-          className={styles.detailClose}
-          onClick={onClose}
-          aria-label="Close concept detail"
-        >
-          <Icon name="x" size={14} />
-        </button>
-      </div>
-      <h2 className={styles.detailTitle}>
-        {selected.data?.concept ?? labelFromNode}
-      </h2>
-      {sourceNode ? (
-        <div className={styles.detailMeta}>
-          <span>{sourceNode.document_name ?? "Source"}</span>
-          {sourceNode.subject_name ? (
-            <>
-              <span aria-hidden> · </span>
-              <span>{sourceNode.subject_name}</span>
-            </>
+    <aside
+      className={[styles.detailPanel, open ? styles.detailPanelOpen : ""].filter(Boolean).join(" ")}
+      aria-label="Concept detail"
+      aria-hidden={!open}
+    >
+      <div className={styles.dpHead}>
+        <div className={styles.dpEyebrow}>
+          <span className={styles.dpLabel}>Concept</span>
+          <button type="button" className={styles.dpClose} onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <h2 className={styles.dpTitle}>{data?.concept ?? "Loading…"}</h2>
+        <div className={styles.dpTags}>
+          {subject ? (
+            <span
+              className={styles.dpTag}
+              style={{
+                background: palette.css.replace("rgb", "rgba").replace(")", ",0.14)"),
+                color: palette.css,
+              }}
+            >
+              {subject}
+            </span>
           ) : null}
+        </div>
+      </div>
+
+      {data?.document_name ? (
+        <div className={styles.dpSource}>
+          <div className={styles.dpSecLabelMuted}>Source</div>
+          <div className={styles.dpSourceText}>{data.document_name}</div>
         </div>
       ) : null}
 
-      {selected.loading ? (
-        <Text tone="secondary">Loading the concept's notes…</Text>
-      ) : selected.error ? (
-        <Text tone="secondary">Couldn't load this concept: {selected.error}</Text>
-      ) : selected.data ? (
-        <Stack gap={4}>
-          {selected.data.takeaway ? (
-            <div className={styles.detailSection}>
-              <span className={styles.detailLabel}>Takeaway</span>
-              <Text>{selected.data.takeaway}</Text>
-            </div>
-          ) : null}
+      <div className={styles.dpBody}>
+        {selected?.loading ? (
+          <Text tone="secondary">Loading the concept's notes…</Text>
+        ) : selected?.error ? (
+          <Text tone="secondary">{selected.error}</Text>
+        ) : data ? (
+          <>
+            {data.takeaway ? (
+              <div className={styles.dpSection}>
+                <div className={styles.dpSecLabelAccent}>Takeaway</div>
+                <p className={styles.dpTakeaway}>{data.takeaway}</p>
+              </div>
+            ) : null}
 
-          {selected.data.claims.length > 0 ? (
-            <div className={styles.detailSection}>
-              <span className={styles.detailLabel}>Claims</span>
-              <ul className={styles.detailList}>
-                {selected.data.claims.map((c) => (
-                  <li key={c.id}>{c.claim_text}</li>
+            {data.claims.length > 0 ? (
+              <div className={styles.dpSection}>
+                <div className={styles.dpSecLabelMuted}>Claims</div>
+                {data.claims.map((c, i) => (
+                  <div
+                    key={c.id}
+                    className={styles.dpClaim}
+                    style={{ animationDelay: `${i * 55}ms` }}
+                  >
+                    {c.claim_text}
+                  </div>
                 ))}
-              </ul>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {selected.data.examples.length > 0 ? (
-            <div className={styles.detailSection}>
-              <span className={styles.detailLabel}>Examples</span>
-              <ul className={styles.detailList}>
-                {selected.data.examples.map((e) => (
-                  <li key={e.id}>{e.example_text}</li>
+            {data.examples.length > 0 ? (
+              <div className={styles.dpSection}>
+                <div className={styles.dpSecLabelMuted}>Examples</div>
+                {data.examples.map((e, i) => (
+                  <div
+                    key={e.id}
+                    className={styles.dpClaim}
+                    style={{ animationDelay: `${i * 55}ms` }}
+                  >
+                    {e.example_text}
+                  </div>
                 ))}
-              </ul>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {selected.data.misconceptions.length > 0 ? (
-            <div className={styles.detailSection}>
-              <span className={styles.detailLabel}>Misconceptions</span>
-              <ul className={styles.detailList}>
-                {selected.data.misconceptions.map((m) => (
-                  <li key={m.id}>
-                    <strong>{m.label}.</strong>{" "}
-                    {m.description ?? ""}
-                  </li>
+            {data.misconceptions.length > 0 ? (
+              <div className={styles.dpSection}>
+                <div className={styles.dpSecLabelMuted}>Misconceptions</div>
+                {data.misconceptions.map((m, i) => (
+                  <div
+                    key={m.id}
+                    className={styles.dpClaim}
+                    style={{ animationDelay: `${i * 55}ms` }}
+                  >
+                    <strong>{m.label}.</strong> {m.description ?? ""}
+                  </div>
                 ))}
-              </ul>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {sourceNode ? (
-            <button
-              type="button"
-              className={styles.detailOpenButton}
-              onClick={() => onOpenInReader(sourceNode)}
-            >
-              Open the source in the Reader
-              <Icon name="arrow-right" size={14} />
-            </button>
-          ) : null}
-        </Stack>
+            {!data.takeaway &&
+            data.claims.length === 0 &&
+            data.examples.length === 0 &&
+            data.misconceptions.length === 0 ? (
+              <Text tone="tertiary">No indexed claims for this concept yet.</Text>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      {data ? (
+        <div className={styles.dpFoot}>
+          <button
+            type="button"
+            className={styles.dpCta}
+            // The explain payload has document_name but not the id —
+            // we need the source node's document_id for navigation.
+            // Fall back to no-op if it's somehow missing.
+            onClick={() => {
+              const node = selected ? findNodeDocId(selected.id) : null;
+              if (node) onOpenInReader(node);
+            }}
+          >
+            Open the source in Reader →
+          </button>
+        </div>
       ) : null}
     </aside>
   );
 }
 
-function GraphEmptyState() {
+// ConceptExplainResponse doesn't carry the source document_id (just the
+// filename), and we need an id to navigate. Stash a side-channel map of
+// concept-id → doc-id at module scope so the detail panel can resolve.
+//
+// Why module-scope rather than a context: the panel is rendered inside
+// the same component tree as the graph, but the graph's data isn't
+// reactive to React in a clean way (it lives inside three.js). A simple
+// map keeps the contract narrow.
+const conceptDocIdMap = new Map<string, string>();
+function findNodeDocId(conceptId: string): string | null {
+  return conceptDocIdMap.get(conceptId) ?? null;
+}
+
+function EmptyState() {
   return (
     <Card padding="lg">
       <Stack gap={3}>
@@ -456,13 +800,7 @@ function GraphEmptyState() {
   );
 }
 
-function GraphErrorState({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <Card padding="lg">
       <Stack gap={3}>
@@ -471,16 +809,11 @@ function GraphErrorState({
           Couldn't load the concept graph.
         </Text>
         <Text tone="secondary">{message}</Text>
-        <div>
-          <button
-            type="button"
-            className={styles.detailOpenButton}
-            onClick={onRetry}
-          >
-            Reload the graph
-          </button>
-        </div>
+        <button type="button" className={styles.retryButton} onClick={onRetry}>
+          Reload the graph
+        </button>
       </Stack>
     </Card>
   );
 }
+

@@ -1,18 +1,22 @@
 /*
- * Concept graph — the atlas view.
+ * Concept graph view (3D atlas).
  *
- * Layout: header, toolbar (subject filter + count), then a canvas-row
- * that holds the SVG graph and an optional detail panel. The panel
- * occupies the right side when a node is selected; the graph re-flows
- * to fit the remaining space (no fixed widths — everything's grid).
+ * Implements the spec at `~/Downloads/Einstein Design System (1)/
+ * Concepts View.html`. Layout: header (lab-notebook eyebrow + serif h1),
+ * toolbar (filter pills + counts), then a full-bleed canvas with an
+ * absolute-positioned legend at bottom-left, hover card following the
+ * pointer, and a slide-in detail panel on the right.
  */
 
 .wrap {
-  max-width: 1200px;
-  margin: 0 auto;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-5);
+  /* Reach the bottom of the page so the canvas frame can take all the
+   * remaining height. The shell's <main> already provides scroll if
+   * the toolbar pushes content off-screen. */
+  min-height: 0;
 }
 
 /* --- Header (shared lab-notebook pattern) --- */
@@ -52,48 +56,52 @@
   flex-wrap: wrap;
 }
 
-.filterLabel {
-  display: inline-flex;
+/* Filter pills replace the previous <select>. Reads as cockpit pill
+ * tabs per the spec: subtle border at rest, accent-tinted bg + accent
+ * text + accent border when active. Active colour swaps to the subject's
+ * own palette colour for non-"All" pills via inline style — so clicking
+ * "Finance" turns the pill teal, "Tax" turns it amber, etc. */
+.filterPills {
+  display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }
 
-.filterLabelText {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.filterPill {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-tertiary);
-}
-
-/*
- * Custom-styled select. Native <select> is hard to fully restyle across
- * platforms, so we keep enough native to inherit OS dropdown UI but
- * theme the chrome (border, bg, text, focus ring) to match Inputs.
- */
-.filterSelect {
-  height: var(--control-height-md);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-button);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
   font-family: var(--font-sans);
-  font-size: var(--text-sm);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-sans);
   cursor: pointer;
   transition:
-    border-color var(--dur-micro) var(--ease-out),
-    background-color var(--dur-micro) var(--ease-out);
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
 }
 
-.filterSelect:hover {
-  border-color: var(--color-border-strong);
+.filterPill:hover {
+  background: var(--state-bg-hover);
+  color: var(--text-primary);
 }
 
-.filterSelect:focus-visible {
+.filterPill:focus-visible {
   outline: none;
-  border-color: var(--color-accent);
   box-shadow: var(--shadow-focus);
+}
+
+.filterPillActive,
+.filterPillActive:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
 }
 
 .graphCount {
@@ -104,36 +112,45 @@
   margin-left: auto;
 }
 
-/* --- Canvas row --- */
+/* --- Canvas row: graph (left) + slide-in detail panel (right) --- */
 
 .canvasRow {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-5);
+  position: relative;
+  flex: 1 1 auto;
   min-height: 520px;
+  display: flex;
+  gap: 0;
+  /* Hide the slide-out panel's overflow so the closed panel doesn't
+   * push the layout out by 300px. */
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--hairline);
+  background: oklch(0.085 0.012 255); /* deeper than surface-0 — feels
+       like a study lamp at midnight, matches the spec's #0D1829-ish
+       lower band. */
 }
 
-/* When the detail panel is mounted, the row splits into graph + panel.
- * `:has()` is supported in Safari 15.4+ and Chrome 105+; Carrel ships
- * WKWebView 2024+ so this is safe. */
-.canvasRow:has(.detailPanel) {
-  grid-template-columns: minmax(0, 1fr) 360px;
-}
-
-@media (max-width: 920px) {
-  .canvasRow:has(.detailPanel) {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* Graph canvas takes all available width; the panel overlays. */
 .canvasFrame {
   position: relative;
-  min-height: 520px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-card);
-  background: var(--surface-1);
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
 }
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* When the detail panel is open we pad the canvas so the graph isn't
+ * obscured by the panel. The panel is 320px wide; we leave ~16px of
+ * breathing room. */
+.canvasRowWithPanel .canvasFrame {
+  padding-right: 0;
+}
+
+/* --- Skeleton (first paint while fetching) --- */
 
 .skeleton {
   position: absolute;
@@ -141,9 +158,9 @@
   background:
     linear-gradient(
       90deg,
-      var(--color-bg-muted),
-      color-mix(in srgb, var(--color-bg-hover) 70%, transparent),
-      var(--color-bg-muted)
+      oklch(0.10 0.012 255),
+      oklch(0.13 0.014 255),
+      oklch(0.10 0.012 255)
     );
   background-size: 200% 100%;
   animation: anim-graph-shimmer 1.6s linear infinite;
@@ -158,221 +175,307 @@
   .skeleton { animation: none; }
 }
 
-/* --- SVG graph --- */
+/* --- Legend (bottom-left overlay) --- */
 
-.graph {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.edgeLayer { pointer-events: none; }
-
-.edge {
-  stroke: var(--color-border-default);
-  stroke-width: 1.25;
-  transition: stroke var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out);
-}
-
-.edgeDimmed {
-  opacity: 0.18;
-}
-
-.node {
-  cursor: pointer;
-  transition: opacity var(--dur-micro) var(--ease-out);
-}
-
-.nodeDimmed {
-  opacity: 0.32;
-}
-
-.nodeCircle {
-  fill: var(--color-accent);
-  stroke: color-mix(in srgb, var(--color-accent) 80%, var(--surface-0));
-  stroke-width: 1.5;
-  transition:
-    r var(--dur-micro) var(--ease-out),
-    fill var(--dur-micro) var(--ease-out),
-    stroke var(--dur-micro) var(--ease-out);
-}
-
-.nodeHovered .nodeCircle {
-  fill: var(--color-accent-hover, var(--color-accent));
-  stroke: var(--color-accent);
-  stroke-width: 2;
-}
-
-.nodeSelected .nodeCircle {
-  fill: var(--color-accent);
-  stroke: var(--text-primary);
-  stroke-width: 2.5;
-}
-
-.nodeLabel {
-  font-family: var(--font-sans);
-  font-size: 10px;
-  fill: var(--text-secondary);
-  text-anchor: middle;
-  pointer-events: none;
-  user-select: none;
-  letter-spacing: var(--tracking-sans);
-  transition: fill var(--dur-micro) var(--ease-out);
-}
-
-.nodeHovered .nodeLabel,
-.nodeSelected .nodeLabel {
-  fill: var(--text-primary);
-  font-weight: var(--weight-medium);
-}
-
-.node:focus-visible .nodeCircle {
-  stroke: var(--text-primary);
-  stroke-width: 2;
-  filter: drop-shadow(0 0 0 var(--color-accent));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .edge,
-  .node,
-  .nodeCircle,
-  .nodeLabel { transition: none; }
-}
-
-/* --- Detail panel --- */
-
-.detailPanel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-card);
-  background: var(--surface-2);
-  box-shadow: var(--shadow-card);
-  height: fit-content;
-  position: sticky;
-  top: var(--space-5);
-  overflow-y: auto;
-  max-height: calc(100vh - 200px);
-}
-
-.detailHeader {
+.legend {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 5;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: oklch(0.10 0.014 255 / 0.78);
+  border: 1px solid oklch(1 0 0 / 0.09);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
-.detailClose {
-  display: inline-flex;
+.legendItem {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-button);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition:
-    color var(--dur-micro) var(--ease-out),
-    background-color var(--dur-micro) var(--ease-out),
-    border-color var(--dur-micro) var(--ease-out);
+  gap: 6px;
 }
 
-.detailClose:hover {
-  color: var(--text-primary);
-  background: var(--state-bg-hover);
-  border-color: var(--hairline-strong);
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.detailClose:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.detailTitle {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-weight: var(--weight-regular);
-  font-size: var(--text-2xl);
-  letter-spacing: var(--tracking-serif);
-  line-height: 1.15;
-  color: var(--text-primary);
-}
-
-.detailMeta {
+.legendLabel {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--text-tertiary);
 }
 
-.detailSection {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+.legendSep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: oklch(1 0 0 / 0.10);
 }
 
-.detailLabel {
+.legendHint {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-accent);
+  letter-spacing: 0.04em;
+  color: var(--text-disabled);
 }
 
-.detailList {
-  margin: 0;
-  padding-left: var(--space-5);
+/* --- Hover card (follows the pointer) --- */
+
+.hoverCard {
+  position: absolute;
+  z-index: 15;
+  pointer-events: none;
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: oklch(0.13 0.014 255 / 0.95);
+  border: 1px solid oklch(1 0 0 / 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px oklch(0 0 0 / 0.4);
+  top: 0;
+  left: 0;
+  /* `transform` is set inline by the component as the pointer moves
+   * (so we only animate transform, never top/left — motion guardrail). */
+  will-change: transform;
+}
+
+.hoverLabel {
+  font-size: 12px;
+}
+
+.hoverSubject {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+/* --- Detail panel (slides in from the right) --- */
+
+.detailPanel {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid oklch(1 0 0 / 0.07);
+  background: oklch(0.10 0.014 255 / 0.96);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  line-height: 1.5;
+  transform: translateX(330px);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 10;
 }
 
-.detailList li::marker {
+.detailPanelOpen {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detailPanel { transition: none; }
+}
+
+.dpHead {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid oklch(1 0 0 / 0.07);
+  flex-shrink: 0;
+}
+
+.dpEyebrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.dpLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
-.detailOpenButton {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: var(--control-height-md);
-  padding: 0 16px;
-  border-radius: var(--radius-button);
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+.dpClose {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: oklch(1 0 0 / 0.07);
+  color: var(--text-tertiary);
+  font-size: 11px;
   cursor: pointer;
-  align-self: flex-start;
-  transition:
-    background-color var(--dur-micro) var(--ease-out),
-    transform var(--dur-micro) var(--ease-out);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
 }
 
-.detailOpenButton:hover {
-  background: var(--color-accent-hover, var(--color-accent));
-  transform: translateY(-1px);
+.dpClose:hover {
+  background: oklch(1 0 0 / 0.12);
+  color: var(--text-primary);
 }
 
-.detailOpenButton:focus-visible {
+.dpClose:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .detailOpenButton:hover { transform: none; }
+.dpTitle {
+  margin: 0 0 10px;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: 26px;
+  line-height: 32px;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
 }
 
-/* --- State cards (empty / error inside the canvas frame) --- */
+.dpTags {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.dpTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dpSource {
+  padding: 10px 18px;
+  border-bottom: 1px solid oklch(1 0 0 / 0.07);
+  flex-shrink: 0;
+}
+
+.dpSecLabelMuted {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 5px;
+}
+
+.dpSecLabelAccent {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: 5px;
+}
+
+.dpSourceText {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mono);
+  line-height: 15px;
+}
+
+.dpBody {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dpSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dpTakeaway {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/*
+ * Claim card. Each animates in with a 55ms-staggered delay set inline
+ * by the component (so this CSS rule defines the "from"/"to" frames
+ * only). Stagger reads as "the answer arrived in beats" rather than
+ * "everything popped at once" — same idiom as the Ask view's claim
+ * cascade.
+ */
+.dpClaim {
+  padding: 8px 11px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--text-secondary);
+  background: oklch(1 0 0 / 0.04);
+  border: 1px solid oklch(1 0 0 / 0.07);
+  animation: anim-claim-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes anim-claim-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dpClaim { animation: none; }
+}
+
+.dpFoot {
+  padding: 12px 16px;
+  border-top: 1px solid oklch(1 0 0 / 0.07);
+  flex-shrink: 0;
+}
+
+.dpCta {
+  width: 100%;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.dpCta:hover {
+  background: var(--color-accent-hover, var(--color-accent));
+}
+
+.dpCta:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* --- State cards --- */
 
 .stateEyebrow {
   font-family: var(--font-mono);
@@ -390,4 +493,33 @@
   line-height: 1.15;
   letter-spacing: var(--tracking-serif);
   color: var(--text-primary);
+}
+
+.retryButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height-md);
+  padding: 0 16px;
+  border-radius: var(--radius-button);
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.retryButton:hover {
+  border-color: var(--color-border-strong);
+  background: var(--state-bg-hover);
+}
+
+.retryButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
