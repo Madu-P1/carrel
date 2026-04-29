@@ -111,7 +111,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     /// Load the bundled web app.
     ///
     /// `explicitFrontend` lets a caller force a specific frontend regardless
-    /// of the `EINSTEIN_FRONTEND` env var — used by the Einstein > Frontend
+    /// of the `EINSTEIN_FRONTEND` env var — used by the Carrel > Frontend
     /// menu so a user's click beats the launch-time env default. Normal boot
     /// (makeNSView) passes nil and goes through FrontendSelector.resolved().
     func loadBundledApp(into webView: WKWebView, explicitFrontend: Frontend? = nil) {
@@ -126,7 +126,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
                 <!DOCTYPE html>
                 <html>
                 <body style="font-family: -apple-system; background: #111; color: #f5f5f5; padding: 32px;">
-                  <h1>Einstein failed to load</h1>
+                  <h1>Carrel failed to load</h1>
                   <p>The bundled HTML resource was not found inside the app.</p>
                 </body>
                 </html>
@@ -372,7 +372,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     private func presentAlert(message: String, style: NSAlert.Style = .informational) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = style
-        alert.messageText = "Einstein"
+        alert.messageText = "Carrel"
         alert.informativeText = message
         return alert
     }
@@ -387,7 +387,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     ///
     /// The legacy HTML is a 310 KB blob we don't want to hand-edit, and it
     /// has no native UI of its own for switching back. The macOS menu bar
-    /// entry (Einstein → Frontend → Use New Frontend) works but is invisible
+    /// entry (Carrel → Frontend → Use New Frontend) works but is invisible
     /// unless the user knows to look. This pill is the in-app escape hatch
     /// so a user can always get back to the new frontend without knowing
     /// about the menu.

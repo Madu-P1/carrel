@@ -21,9 +21,9 @@ enum MainMenuBuilder {
 
     private static func buildAppMenu() -> NSMenuItem {
         let appMenuItem = NSMenuItem()
-        let appMenu = NSMenu(title: "Einstein")
+        let appMenu = NSMenu(title: "Carrel")
 
-        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Einstein"
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Carrel"
 
         appMenu.addItem(
             withTitle: "About \(appName)",
@@ -65,7 +65,7 @@ enum MainMenuBuilder {
         return appMenuItem
     }
 
-    /// Einstein > Frontend submenu. Lets the user flip between the new shell
+    /// Carrel > Frontend submenu. Lets the user flip between the new shell
     /// and the legacy `app.html` without dropping to the terminal. Works in
     /// both frontends because it's a native AppKit target/action, not a
     /// web-bridge command.
@@ -235,7 +235,7 @@ enum MainMenuBuilder {
             target: MenuCommandDispatcher.shared
         )
         menu.addItem(
-            titled: "Einstein Help",
+            titled: "Carrel Help",
             key: "",
             command: "help.open",
             target: MenuCommandDispatcher.shared
@@ -260,7 +260,7 @@ final class MenuCommandDispatcher: NSObject {
     }
 }
 
-/// Handles the native Einstein > Frontend submenu.
+/// Handles the native Carrel > Frontend submenu.
 ///
 /// Two items, one per Frontend case, sharing this target. Clicking an item
 /// persists the user's choice via FrontendSelector, then triggers a reload
@@ -335,7 +335,7 @@ enum WebViewBridgeDispatcher {
 
         webView.evaluateJavaScript("window.__dispatchNativeMenu?.(\"\(escaped)\")") { _, error in
             if let error {
-                NSLog("Einstein menu dispatch failed: %@", error.localizedDescription)
+                NSLog("Carrel menu dispatch failed: %@", error.localizedDescription)
             }
         }
         return true

@@ -151,7 +151,22 @@ PY
 
 prepare_frontend_resources() {
   if [[ "$FRONTEND_MODE" == "new" ]]; then
-    corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
+    # Pick whichever JS runner is on PATH. The script used to require
+    # `corepack pnpm`, which left bun-only environments stuck. The
+    # build:macos npm-script is now runner-agnostic (vite + node
+    # invocations only), so any of these work the same.
+    if command -v bun >/dev/null 2>&1; then
+      ( cd "$ROOT_DIR/frontend" && bun run build:macos )
+    elif command -v pnpm >/dev/null 2>&1; then
+      pnpm --dir "$ROOT_DIR/frontend" build:macos
+    elif command -v corepack >/dev/null 2>&1; then
+      corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
+    elif command -v npm >/dev/null 2>&1; then
+      ( cd "$ROOT_DIR/frontend" && npm run build:macos )
+    else
+      echo "No JS runner found (bun/pnpm/corepack/npm). Install one of them." >&2
+      exit 1
+    fi
   fi
 }
 
@@ -199,13 +214,13 @@ cat >"$INFO_PLIST" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Einstein</string>
+  <string>Carrel</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
 ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>Einstein</string>
+  <string>Carrel</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>

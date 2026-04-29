@@ -18,7 +18,31 @@ needs its own migration story.
 
 ---
 
-### Tier 1 — User-visible (shipped this commit)
+### Tier 1 — User-visible (shipped, two commits)
+
+**Follow-up:** the first rename commit missed the macOS Swift app's
+user-visible strings. Spotted when `script/build_and_run.sh` produced a
+window with the title bar still reading "Einstein". Fixed in a second
+commit:
+
+- `WindowGroup("Einstein")` → `WindowGroup("Carrel")` (window title bar)
+- `NSMenu(title: "Einstein")` → `NSMenu(title: "Carrel")` and the
+  `?? "Einstein"` fallback inside `MainMenuBuilder.buildAppMenu` →
+  `?? "Carrel"`. The macOS app menu (leftmost bold menu) is now
+  "Carrel" (resolved from `CFBundleDisplayName`, with the Swift
+  fallback also up-to-date).
+- "Einstein Help" → "Carrel Help" (Help menu item)
+- `<h1>Einstein failed to load</h1>` → `<h1>Carrel failed to load</h1>`
+  (error-fallback page rendered when the bundled HTML resource is
+  missing)
+- `alert.messageText = "Einstein"` → `alert.messageText = "Carrel"`
+  (alert dialog title)
+- `script/build_and_run.sh` — `CFBundleDisplayName` and `CFBundleName`
+  in the generated `Info.plist` flipped from `Einstein` to `Carrel`.
+  Bundle id, executable name, and `.app` filename stay on the
+  legacy `EinsteinDesktop` per Tier 3.
+
+
 
 What an end user sees, hears from the LLM, or reads in screenshot.
 
@@ -151,7 +175,24 @@ window for env vars / log namespaces operators are already using.
 - Plan: when ready, do the rename + a one-time read-old-write-new-delete-old
   migration on app start. Cheap, ~10 lines.
 
-#### G. macOS bundle identity
+#### G. Logo asset — `frontend/src/assets/logo.png`
+
+- Owner: the BrandMark component renders this PNG; it's a 1134×698
+  image with the ET monogram + "EINSTEIN TUTOR" wordmark baked in.
+- Risk: this is a designer asset, not a string. Replacing it requires a
+  Carrel-branded PNG (or SVG) from the design package — out of scope
+  for a string-rename pass.
+- Symptom you'll notice: the sidebar BrandMark tile and any other
+  surface that renders `logoUrl` shows the legacy ET monogram +
+  EINSTEIN TUTOR wordmark until the asset is swapped. The fallback
+  text monogram (`Cr`) only renders when the image fails to load,
+  which it doesn't.
+- Plan: drop a Carrel logo into `frontend/src/assets/logo.png` (same
+  filename, same dimensions, or update the import to a new asset
+  name). Vite picks up the new asset on next build. No code change
+  required if you keep the filename.
+
+#### H. macOS bundle identity
 
 - `com.madu.EinsteinDesktop` (bundle ID), `EinsteinDesktop.app` (bundle name),
   `macos-app/Sources/EinsteinDesktopApp/` (Swift target dir),
