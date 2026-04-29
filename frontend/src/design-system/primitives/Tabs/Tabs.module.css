@@ -21,11 +21,20 @@
  * clipping the last one. If a particular label + count combo still
  * overflows (e.g., 3-digit counts), the tablist scrolls horizontally
  * instead of clipping. */
+/*
+ * Phase B audit (Carrel design package preview/components-tabs.html):
+ * the spec's segmented variant uses --surface-0 as the band background —
+ * a deliberately recessed well that contrasts with the surrounding card
+ * (--surface-2). The previous bg-muted (≈3% white over current bg) read
+ * as flat. surface-0 reads as inset, and the active tab steps UP to
+ * surface-3 instead of surface-2 so the elevation arc is "well → card →
+ * pop" rather than "card → card → card".
+ */
 .variant-segmented {
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-button);
-  background: var(--color-bg-muted);
+  background: var(--surface-0);
   border: 1px solid var(--color-border-subtle);
   overflow-x: auto;
   scrollbar-width: none;
@@ -87,7 +96,7 @@
 
 .variant-segmented .tabActive,
 .variant-segmented .tabActive:hover {
-  background: var(--color-bg-elevated);
+  background: var(--surface-3);
   color: var(--color-text-primary);
   border-color: var(--color-border-default);
   box-shadow: 0 1px 2px oklch(0 0 0 / 0.25);
