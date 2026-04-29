@@ -169,6 +169,13 @@ export function ConceptGraphView() {
     highlightedLinks: Set<GraphLink>;
     pointLight: { intensity: number; position: { set: (x: number, y: number, z: number) => void } } | null;
   }>({ selectedId: null, highlightedNodes: new Set(), highlightedLinks: new Set(), pointLight: null });
+  // Stash a `refresh styles` callback that the graph-init effect
+  // populates on mount. The DetailPanel's onClose lives outside the
+  // effect's scope but still needs to reset the colour / width / particle
+  // accessors after clearing selection — without re-passing the original
+  // fn references, 3d-force-graph 1.80 misbehaves (the get-and-set
+  // pattern from the v1.73 spec produces TypeErrors on the next frame).
+  const refreshGraphStylesRef = useRef<() => void>(() => undefined);
 
   // Fetch concepts and subjects.
   useEffect(() => {
@@ -254,6 +261,45 @@ export function ConceptGraphView() {
     let graphInstance: ForceGraph3DInstance | null = null;
     let resizeObserver: ResizeObserver | null = null;
 
+    // Accessor fns hoisted to the effect's outer scope so the click /
+    // hover / clear handlers can re-pass them when they need to refresh
+    // styles. The previous "get the current accessor and set it again"
+    // pattern (lifted from the v1.73 spec HTML) was buggy in v1.80 — the
+    // setter overload accepts an accessor or a literal, and re-passing
+    // the result of `nodeColor()` round-tripped through the literal-
+    // detection path producing a TypeError on the next frame. Calling
+    // the same fn reference works reliably.
+    //
+    // The fns close over `selectionRef.current` (a ref), so they always
+    // see the current selection state without needing to be re-bound on
+    // every selection change.
+    const sel = selectionRef.current;
+    const nodeColorFn = (n: GraphNode) => {
+      const base = paletteFor(n.subject).css;
+      if (!sel.selectedId) return base;
+      if (n.id === sel.selectedId) return base;
+      if (sel.highlightedNodes.has(n.id)) return base;
+      return "rgba(255,255,255,0.15)";
+    };
+    const linkColorFn = (l: GraphLink) => {
+      if (sel.highlightedLinks.has(l)) return "rgba(87,214,195,0.85)";
+      if (sel.selectedId) return "rgba(255,255,255,0.05)";
+      return "rgba(255,255,255,0.22)";
+    };
+    const linkWidthFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 2 : 0.8);
+    const linkParticlesFn = (l: GraphLink) =>
+      sel.highlightedLinks.has(l) ? 4 : 0;
+
+    const refreshStyles = () => {
+      if (!graphInstance) return;
+      graphInstance
+        .nodeColor(nodeColorFn)
+        .linkColor(linkColorFn)
+        .linkWidth(linkWidthFn)
+        .linkDirectionalParticles(linkParticlesFn);
+    };
+    refreshGraphStylesRef.current = refreshStyles;
+
     (async () => {
       const [{ default: ForceGraph3D }, three] = await Promise.all([
         import("3d-force-graph"),
@@ -272,39 +318,20 @@ export function ConceptGraphView() {
       // generics chain doesn't quite line up with our explicit method
       // signatures (the runtime behavior is identical).
       //
-      // controlType: 'orbit' is more familiar than the default trackball
-      // for users who don't know 3D editors. Drag = orbit around centre,
-      // scroll = zoom (camera distance from look-at point), right-click
-      // drag = pan. Trackball would also rotate the up-axis on diagonal
-      // drags, which makes a graph feel disorientating.
+      // Use the default `controlType` (trackball) — switching to "orbit"
+      // in an earlier pass broke event dispatch in v1.80. The library's
+      // raycaster expects the trackball-controls' event shape; under
+      // orbit we got `TypeError: undefined is not an object (evaluating
+      // 't.x')` on every click/hover because the dispatched event's
+      // target was undefined in the orbit code path.
       graphInstance = new ForceGraph3D(container, {
-        controlType: "orbit",
         rendererConfig: { antialias: true, alpha: true },
       }) as unknown as ForceGraph3DInstance;
       graphRef.current = graphInstance;
 
-      const sel = selectionRef.current;
       sel.selectedId = null;
       sel.highlightedNodes = new Set();
       sel.highlightedLinks = new Set();
-
-      const nodeColorFn = (n: GraphNode) => {
-        const base = paletteFor(n.subject).css;
-        if (!sel.selectedId) return base;
-        if (n.id === sel.selectedId) return base;
-        if (sel.highlightedNodes.has(n.id)) return base;
-        return "rgba(255,255,255,0.15)";
-      };
-      const linkColorFn = (l: GraphLink) => {
-        if (sel.highlightedLinks.has(l)) return "rgba(87,214,195,0.85)";
-        // Idle edges: brighter than the previous 0.10 so the network
-        // shape reads at a glance. The selection mode dims to 0.05 so
-        // the highlighted path still pops.
-        if (sel.selectedId) return "rgba(255,255,255,0.05)";
-        return "rgba(255,255,255,0.22)";
-      };
-      const linkWidthFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 2 : 0.8);
-      const linkParticlesFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 4 : 0);
 
       const instanceWithEngine = graphInstance as unknown as {
         d3Force(name: string, fn?: unknown): unknown;
@@ -359,15 +386,25 @@ export function ConceptGraphView() {
       }
       instanceWithEngine.cooldownTicks(240);
 
-      // After the simulation settles, frame every node in view so the
-      // user sees the whole atlas on first paint. Otherwise the camera
-      // sits at the library's default position and the cluster ends up
-      // off-centre / clipped (the original screenshot you flagged).
-      instanceWithEngine.onEngineStop(() => {
-        if (!cancelled && graphInstance) {
-          graphInstance.zoomToFit(800, 80);
-        }
-      });
+      // After the simulation settles, frame every node in view. Two
+      // mechanisms because either alone has been unreliable:
+      //   1. onEngineStop fires when the d3 alpha-decay reaches zero.
+      //      Should always fire ≤ cooldownTicks * tickInterval, but on
+      //      sparse graphs without strong forces the engine sometimes
+      //      stops earlier than I expect.
+      //   2. A hard 2.5s timer as a fallback in case onEngineStop
+      //      doesn't fire OR fires too early (before nodes have settled
+      //      to their final positions).
+      // Whichever fires first wins; subsequent fires are idempotent
+      // since zoomToFit just reframes the camera.
+      let didAutoFit = false;
+      const autoFit = () => {
+        if (cancelled || didAutoFit || !graphInstance) return;
+        didAutoFit = true;
+        graphInstance.zoomToFit(800, 80);
+      };
+      instanceWithEngine.onEngineStop(autoFit);
+      window.setTimeout(autoFit, 2500);
 
       // Match the canvas to the container size + watch for resizes.
       const fit = () => {
@@ -459,16 +496,11 @@ export function ConceptGraphView() {
           }
         }
       }
-      // Trigger re-render of node/link styles by re-applying the
-      // accessors. 3d-force-graph re-pulls colours per node/link on the
-      // next frame after this call.
-      if (graphInstance) {
-        graphInstance
-          .nodeColor(graphInstance.nodeColor())
-          .linkColor(graphInstance.linkColor())
-          .linkWidth(graphInstance.linkWidth())
-          .linkDirectionalParticles(graphInstance.linkDirectionalParticles());
-      }
+      // Re-apply the accessors so 3d-force-graph re-pulls colours / widths
+      // / particle counts on the next frame. Using the same fn references
+      // we passed at init — see the comment on `refreshStyles` for why
+      // the get-then-set pattern from the v1.73 spec is unsafe here.
+      refreshStyles();
 
       // Camera fly-to.
       if (graphInstance && typeof node.x === "number") {
@@ -644,20 +676,14 @@ export function ConceptGraphView() {
           selected={selected}
           onClose={() => {
             setSelected(null);
-            if (graphRef.current) {
-              const sel = selectionRef.current;
-              sel.selectedId = null;
-              sel.highlightedNodes.clear();
-              sel.highlightedLinks.clear();
-              if (sel.pointLight) {
-                (sel.pointLight as unknown as { intensity: number }).intensity = 0;
-              }
-              graphRef.current
-                .nodeColor(graphRef.current.nodeColor())
-                .linkColor(graphRef.current.linkColor())
-                .linkWidth(graphRef.current.linkWidth())
-                .linkDirectionalParticles(graphRef.current.linkDirectionalParticles());
+            const sel = selectionRef.current;
+            sel.selectedId = null;
+            sel.highlightedNodes.clear();
+            sel.highlightedLinks.clear();
+            if (sel.pointLight) {
+              (sel.pointLight as unknown as { intensity: number }).intensity = 0;
             }
+            refreshGraphStylesRef.current();
           }}
           onOpenInReader={(docId) => navigateTo(`/reader/${encodeURIComponent(docId)}`)}
         />
