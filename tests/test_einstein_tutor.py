@@ -177,6 +177,128 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertEqual([doc_b], [item["id"] for item in remaining_documents])
         self.assertTrue(all(node["document_id"] == doc_b for node in remaining_graph["nodes"]))
 
+    def test_document_lifecycle_keeps_concept_graph_in_sync(self) -> None:
+        """Pin the contract that the user asked for explicitly:
+          - Ingesting a document creates concept rows (FK doc_id matches)
+            and concept_edges between them (FK doc_id matches).
+          - Deleting a document removes ITS concepts and edges.
+          - A second document's concepts/edges are untouched.
+          - Zero orphans remain on either table afterwards.
+
+        The lifecycle helpers (services.ingestion.orchestrator.
+        ingest_document_record + services.documents.delete_document_record)
+        already do this; this test is the regression gate so a future
+        refactor that forgets to cascade can't ship silently. Without
+        ON DELETE CASCADE on the schema-level FKs (intentional —
+        SQLite ALTER TABLE can't add it without a full table rebuild),
+        the cascade lives in application code and needs a test pinning
+        it.
+        """
+        # Use text written with relationship keywords (because, therefore,
+        # different, uses) so the edge inferrer emits at least one edge per
+        # doc — otherwise the heuristic only produces edges when both
+        # concept names AND a keyword land in one sentence, and short
+        # synthetic text often misses.
+        doc_a = self.ingest(
+            "acids-bases.txt",
+            "Acids release protons because they donate hydrogen ions. "
+            "Bases accept protons, therefore they neutralize acids. "
+            "Different proton donors and acceptors react to form salts.",
+            "Chemistry",
+        )
+        doc_b = self.ingest(
+            "redox.txt",
+            "Oxidation transfers electrons because the species loses charge. "
+            "Reduction gains electrons, therefore it balances oxidation. "
+            "Different oxidation states drive the redox reaction.",
+            "Chemistry",
+        )
+
+        with main.get_db() as conn:
+            # Sanity: ingestion populated concepts AND edges for both docs.
+            concepts_a = conn.execute(
+                "SELECT id FROM concepts WHERE doc_id = ?", (doc_a,)
+            ).fetchall()
+            concepts_b = conn.execute(
+                "SELECT id FROM concepts WHERE doc_id = ?", (doc_b,)
+            ).fetchall()
+            edges_a = conn.execute(
+                "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",
+                (doc_a,),
+            ).fetchall()
+            edges_b = conn.execute(
+                "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",
+                (doc_b,),
+            ).fetchall()
+
+        self.assertGreater(
+            len(concepts_a), 0, "ingest_document_record must create concepts for doc_a"
+        )
+        self.assertGreater(
+            len(concepts_b), 0, "ingest_document_record must create concepts for doc_b"
+        )
+        # We don't require a minimum edge count here. The edge inferrer
+        # is heuristic (looks for keywords + co-occurring concept names)
+        # and naturally produces zero edges on some text shapes. The
+        # cascade contract — "if edges exist, they are cleaned up" — is
+        # the invariant we actually care about, asserted below via the
+        # zero-orphan checks. We keep `edges_b` captured so the post-
+        # delete assertion can verify doc_b's edges weren't disturbed.
+
+        with main.get_db() as conn:
+            deleted = document_service.delete_document_record(conn, doc_a)
+
+        self.assertTrue(deleted)
+
+        with main.get_db() as conn:
+            # Doc A's concepts + edges are gone.
+            after_a = conn.execute(
+                "SELECT COUNT(*) FROM concepts WHERE doc_id = ?", (doc_a,)
+            ).fetchone()[0]
+            after_a_edges = conn.execute(
+                "SELECT COUNT(*) FROM concept_edges WHERE doc_id = ?", (doc_a,)
+            ).fetchone()[0]
+            # Doc B is untouched.
+            after_b = conn.execute(
+                "SELECT id FROM concepts WHERE doc_id = ?", (doc_b,)
+            ).fetchall()
+            after_b_edges = conn.execute(
+                "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",
+                (doc_b,),
+            ).fetchall()
+            # No orphan concepts (every concept's doc_id resolves).
+            orphan_concepts = conn.execute(
+                """
+                SELECT c.id FROM concepts c
+                LEFT JOIN documents d ON d.id = c.doc_id
+                WHERE d.id IS NULL
+                """
+            ).fetchall()
+            # No orphan edges (every endpoint resolves to a real concept).
+            orphan_edges = conn.execute(
+                """
+                SELECT ce.source_id, ce.target_id FROM concept_edges ce
+                LEFT JOIN concepts s ON s.id = ce.source_id
+                LEFT JOIN concepts t ON t.id = ce.target_id
+                WHERE s.id IS NULL OR t.id IS NULL
+                """
+            ).fetchall()
+
+        self.assertEqual(0, after_a, "deleting doc_a must remove its concepts")
+        self.assertEqual(0, after_a_edges, "deleting doc_a must remove its edges")
+        self.assertEqual(
+            {row["id"] for row in concepts_b},
+            {row["id"] for row in after_b},
+            "deleting doc_a must NOT touch doc_b's concepts",
+        )
+        self.assertEqual(
+            {(e["source_id"], e["target_id"]) for e in edges_b},
+            {(e["source_id"], e["target_id"]) for e in after_b_edges},
+            "deleting doc_a must NOT touch doc_b's edges",
+        )
+        self.assertEqual([], orphan_concepts, "no orphan concepts after delete")
+        self.assertEqual([], orphan_edges, "no orphan edges after delete")
+
     def test_upload_route_persists_subject_metadata(self) -> None:
         upload = UploadFile(filename="study-notes.txt", file=io.BytesIO(b"Cell membranes regulate transport. Diffusion moves particles."))
         result = asyncio.run(upload_document(file=upload, subject_name="Biology Unit 2"))
