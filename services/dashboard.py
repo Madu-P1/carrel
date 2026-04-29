@@ -235,6 +235,62 @@ def _last_studied_at(conn: sqlite3.Connection) -> str | None:
     return row["ts"] if row and row["ts"] else None
 
 
+# Threshold for "weak" — concepts at or below this mastery score are
+# surfaced on the dashboard rail. 0.7 is intentional: mastery_engine
+# computes mastery as recall*0.6 + transfer*0.4, so 0.7 means the user
+# is consistently below the band the engine considers "fluent" but
+# above the floor of "haven't started."
+WEAK_CONCEPT_MASTERY_CEILING = 0.7
+WEAK_CONCEPT_LIMIT = 5
+
+
+def _weak_concepts(conn: sqlite3.Connection) -> list[Dict[str, Any]]:
+    """The five concepts the user has actually studied AND is still
+    failing on. The Dashboard's feedback-loop signal.
+
+    Filters:
+      - `last_tested IS NOT NULL` — concept must have been tested at
+        least once. Mastery is 0 by default for fresh ingests; without
+        this filter the rail would surface "weakest" concepts that the
+        user has never seen, which isn't a struggle signal — it's a
+        coverage gap. The Library home is for coverage gaps; this rail
+        is for active struggle.
+      - `mastery <= WEAK_CONCEPT_MASTERY_CEILING` — the concept hasn't
+        cleared the fluency band yet.
+
+    Order: lowest mastery first (worst struggle), with most recent
+    last_tested as tiebreaker so a concept the user just failed on
+    today comes up before one they failed on a week ago at the same
+    mastery score.
+    """
+    rows = conn.execute(
+        """
+        SELECT c.id, c.name, c.mastery, c.last_tested,
+               d.id AS document_id, d.filename AS document_name,
+               d.subject_name
+        FROM concepts c
+        JOIN documents d ON d.id = c.doc_id
+        WHERE c.last_tested IS NOT NULL
+          AND c.mastery <= ?
+        ORDER BY c.mastery ASC, c.last_tested DESC
+        LIMIT ?
+        """,
+        (WEAK_CONCEPT_MASTERY_CEILING, WEAK_CONCEPT_LIMIT),
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "mastery": float(row["mastery"] or 0.0),
+            "last_tested": row["last_tested"],
+            "document_id": row["document_id"],
+            "document_name": row["document_name"],
+            "subject_name": row["subject_name"],
+        }
+        for row in rows
+    ]
+
+
 # ---------- next best action heuristic ----------
 
 
@@ -311,6 +367,7 @@ def build_dashboard_payload(conn: sqlite3.Connection) -> Dict[str, Any]:
     sources = _source_count(conn)
     last_at = _last_studied_at(conn)
     active = _active_session(conn)
+    weak = _weak_concepts(conn)
 
     now = _now_utc()
     return {
@@ -337,4 +394,11 @@ def build_dashboard_payload(conn: sqlite3.Connection) -> Dict[str, Any]:
             last_studied_at=last_at,
         ),
         "active_session": active,
+        # Carrel's analogue of IAF's bullet-priority feedback loop. The
+        # mastery_engine writes recall/transfer-derived mastery onto each
+        # concept after a session; this surfaces the bottom 5 the user
+        # has actually tested as a "needs revisiting" rail. Closes the
+        # loop: review outcome → mastery update → dashboard rail →
+        # operator drills back into the source.
+        "weak_concepts": weak,
     }

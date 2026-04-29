@@ -44,6 +44,7 @@ const BASE_PAYLOAD: DashboardPayload = {
     secondary: { path: "/session", label: "Skip" },
   },
   active_session: null,
+  weak_concepts: [],
 };
 
 function mockDashboard(payload: DashboardPayload) {

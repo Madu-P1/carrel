@@ -1,0 +1,182 @@
+/*
+ * WeakConceptsRail — horizontal strip of compact "needs revisiting" cards.
+ *
+ * Sits between NextBestAction and QuickActionGrid on the dashboard.
+ * Renders nothing when there's nothing to surface (empty list = clean
+ * dashboard, no "Great job!" filler).
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-h3);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-sans);
+  color: var(--text-primary);
+}
+
+/*
+ * Horizontal strip. Cards have intrinsic width; the strip scrolls
+ * horizontally if the user has many weak concepts and a narrow main
+ * column. Scrollbar is hidden for the strip itself (still scrollable
+ * by trackpad / shift+wheel) so the card row reads as a quiet rail.
+ */
+.strip {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Pad the right so the last card has a comfortable margin against the
+   * scroll edge; left padding lives on the wrap so the strip aligns with
+   * sibling sections. */
+  padding-right: var(--space-1);
+}
+
+.strip::-webkit-scrollbar { display: none; }
+
+.card {
+  flex: 0 0 auto;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  text-align: left;
+  font-family: var(--font-sans);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-3);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+
+.card:active {
+  transform: translateY(0);
+}
+
+.card:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-color: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+  .card:hover { transform: none; }
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.conceptName {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+  /* Two-line truncate so very long concept names don't blow out the
+   * card height; the title attr in the JSX shows the full name on
+   * hover via native tooltip. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.cardArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
+}
+
+.card:hover .cardArrow {
+  color: var(--color-accent);
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardArrow { transition: none; }
+  .card:hover .cardArrow { transform: none; }
+}
+
+.masteryRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.masteryBar {
+  flex: 1 1 auto;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--state-bg-hover);
+  overflow: hidden;
+}
+
+.masteryFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.masteryValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+}
+
+.cardMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  /* Truncate single-line so file + subject fits without wrapping. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

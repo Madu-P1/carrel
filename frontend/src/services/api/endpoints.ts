@@ -284,6 +284,26 @@ export interface ActiveSessionSummary {
   started_at: string;
 }
 
+/**
+ * One row of the Dashboard's "weak concepts" rail. Sourced from
+ * `services.dashboard._weak_concepts`: concepts the user has actually
+ * been tested on AND that score at or below the engine's fluency
+ * ceiling (mastery <= 0.7). Closes the SRS-feedback loop by surfacing
+ * what the mastery_engine has learned the user struggles with.
+ *
+ * `mastery` is a 0..1 float; the UI renders it as a small accent bar.
+ * `last_tested` is a UTC ISO datetime string from the server.
+ */
+export interface WeakConcept {
+  id: string;
+  name: string;
+  mastery: number;
+  last_tested: string | null;
+  document_id: string;
+  document_name: string | null;
+  subject_name: string | null;
+}
+
 export interface DashboardPayload {
   generated_at: string;
   greeting: {
@@ -311,6 +331,9 @@ export interface DashboardPayload {
     secondary: DashboardActionTarget | null;
   };
   active_session: ActiveSessionSummary | null;
+  /** Up to 5 concepts the user has tested on AND is still failing
+   *  (mastery <= 0.7). Empty list when nothing qualifies. */
+  weak_concepts: WeakConcept[];
 }
 
 /** Full active-session response from the dedicated endpoint. Dashboard

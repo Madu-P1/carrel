@@ -11,6 +11,7 @@ import { NextBestAction } from "./components/NextBestAction";
 import { QuickActionGrid } from "./components/QuickActionGrid";
 import { StreakRing } from "./components/StreakRing";
 import { useCountUp } from "./components/useCountUp";
+import { WeakConceptsRail } from "./components/WeakConceptsRail";
 import { WeekSparkline } from "./components/WeekSparkline";
 import styles from "./DashboardView.module.css";
 
@@ -124,6 +125,7 @@ export function DashboardView() {
         active={payload.active_session}
         onMutation={() => void refresh()}
       />
+      <WeakConceptsRail concepts={payload.weak_concepts ?? []} />
       <QuickActionGrid dueCards={payload.stats.due_cards} />
       <StatStrip stats={payload.stats} />
     </div>
