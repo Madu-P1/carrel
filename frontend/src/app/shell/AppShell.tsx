@@ -50,7 +50,8 @@ const navLinks: SidebarNavItem[] = [
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
   { key: "ask", label: "Ask", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  { key: "study", label: "Study", commandHint: "⌘6", icon: "study", path: "/study" }
+  { key: "study", label: "Study", commandHint: "⌘6", icon: "study", path: "/study" },
+  { key: "plan", label: "Plan", commandHint: "⌘7", icon: "command", path: "/plan" }
 ];
 
 function routeLabel(path: string): string {
@@ -72,6 +73,10 @@ function routeLabel(path: string): string {
 
   if (path.startsWith("/library")) {
     return "Library";
+  }
+
+  if (path.startsWith("/plan")) {
+    return "Plan";
   }
 
   return "Workspace";
@@ -146,6 +151,9 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           break;
         case "nav.study":
           navigateTo("/study");
+          break;
+        case "nav.plan":
+          navigateTo("/plan");
           break;
         case "view.toggleLeftSidebar":
           toggleLeft();

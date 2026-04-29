@@ -51,11 +51,21 @@ const indexJsPath = resolve(distDir, "index.js");
 const indexCssPath = resolve(distDir, "index.css");
 
 /** Entry JS budget — gzipped. Tripped if the entry chunk grows past
- *  this. Move only with an explicit explanation in the commit message. */
-const ENTRY_JS_GZIP_BUDGET = 72 * 1024; // 72 KB (current ~68 KB after Reader un-split)
+ *  this. Move only with an explicit explanation in the commit message.
+ *
+ *  History:
+ *    65 KB → 72 KB: ReaderView un-split (preact/compat Suspense bug)
+ *    72 KB → 78 KB: Plan feature added (calendar feeds + WeekTimeGrid +
+ *                    AddFeedDialog + SuggestionCard + usePlan + utils
+ *                    + 4 Pydantic-shaped API types) ~73.6 KB live. */
+const ENTRY_JS_GZIP_BUDGET = 78 * 1024;
 
-/** Entry CSS budget — gzipped. Same rule as JS. */
-const ENTRY_CSS_GZIP_BUDGET = 23 * 1024; // 23 KB (current ~21 KB after Reader un-split)
+/** Entry CSS budget — gzipped. Same rule as JS.
+ *
+ *  History:
+ *    20 KB → 23 KB: ReaderView un-split
+ *    23 KB → 25 KB: Plan feature CSS modules (~22.6 KB live) */
+const ENTRY_CSS_GZIP_BUDGET = 25 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

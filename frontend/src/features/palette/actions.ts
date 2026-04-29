@@ -42,6 +42,7 @@ const STATIC_ACTIONS: PaletteAction[] = [
   { id: "nav.reader", label: "Go to Reader", hint: "⌘4", group: "Navigate", command: "nav.reader", keywords: ["pdf", "document"] },
   { id: "nav.ask", label: "Go to Ask", hint: "⌘5", group: "Navigate", command: "nav.ask", keywords: ["tutor", "chat", "question"] },
   { id: "nav.study", label: "Go to Study", hint: "⌘6", group: "Navigate", command: "nav.study", keywords: ["srs", "flashcards", "review"] },
+  { id: "nav.plan", label: "Go to Plan", hint: "⌘7", group: "Navigate", command: "nav.plan", keywords: ["calendar", "schedule", "coach", "week"] },
   { id: "view.toggleLeftSidebar", label: "Toggle Left Sidebar", hint: "⌘B", group: "View", command: "view.toggleLeftSidebar", keywords: ["nav"] },
   { id: "view.toggleRightPanel", label: "Toggle Right Panel", hint: "⌘⌥B", group: "View", command: "view.toggleRightPanel", keywords: ["inspector", "source"] },
   { id: "view.toggleTheme", label: "Toggle Theme", hint: "⌘⇧T", group: "View", command: "view.toggleTheme", keywords: ["dark", "light"] },

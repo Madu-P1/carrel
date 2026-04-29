@@ -1,0 +1,94 @@
+/*
+ * WeekTimeGrid — 7-day time-grid layout.
+ *
+ * Outer grid: an hour gutter + 7 day columns. Each day column is its
+ * own grid: a header row (auto) + a body cell (1fr) where events get
+ * positioned absolutely.
+ *
+ * The hour rows in the body are CSS grid rows of equal height; their
+ * labels live in the gutter aligned to the row baselines. We don't
+ * use sticky positioning on the gutter because the grid is meant to
+ * be viewed as a unit, not scrolled.
+ */
+
+.grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--color-border-subtle);
+  overflow: hidden;
+  min-height: 480px;
+}
+
+.hourGutter {
+  display: grid;
+  grid-template-rows: 32px repeat(15, 1fr);
+  background: var(--color-bg-elevated);
+}
+
+.hourLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+  padding: 0 8px;
+  text-align: right;
+  align-self: start;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.hourLabel:first-child {
+  border-top: none;
+  visibility: hidden;     /* alignment placeholder under the day-header row */
+}
+
+.dayColumn {
+  display: grid;
+  grid-template-rows: 32px 1fr;
+  background: var(--color-bg-elevated);
+  min-height: 0;
+}
+
+.dayColumnToday .dayHeader {
+  color: var(--color-accent);
+}
+
+.dayHeader {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+}
+
+.dayBody {
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(15, 1fr);
+}
+
+.hourRow {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.hourRow:first-child {
+  border-top: none;
+}
+
+@media (max-width: 1080px) {
+  /* Below 1080px, give the grid horizontal scroll instead of squashing
+   * each day column to 60px wide. The hour gutter stays sticky-ish in
+   * its own column; users mostly look at one day at a time on narrow
+   * viewports anyway. */
+  .grid {
+    overflow-x: auto;
+    grid-template-columns: 56px repeat(7, minmax(140px, 1fr));
+  }
+}

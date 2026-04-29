@@ -8,9 +8,9 @@ import styles from "./WorkspaceSidebar.module.css";
 export interface SidebarNavItem {
   label: string;
   commandHint: string;
-  icon: "library" | "doc" | "ask" | "study" | "dashboard" | "sparkle";
+  icon: "library" | "doc" | "ask" | "study" | "dashboard" | "sparkle" | "command";
   path: string;
-  key: "dashboard" | "session" | "library" | "reader" | "ask" | "study";
+  key: "dashboard" | "session" | "library" | "reader" | "ask" | "study" | "plan";
 }
 
 interface WorkspaceSidebarProps {

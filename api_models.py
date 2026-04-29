@@ -332,3 +332,90 @@ class StudioGenerateRequest(BaseModel):
 class SynthesisRunRequest(BaseModel):
     source_ids: List[str]
     synthesis_type: str = "compare"
+
+
+# ----------------------------------------------------------------------
+# Calendar feeds + plan (Phase 1 of the coach feature)
+# ----------------------------------------------------------------------
+
+class CalendarFeedCreateRequest(BaseModel):
+    """Body for POST /api/calendar/feeds.
+
+    `color` is a hex string (#RRGGBB) the user picks at add time. Used
+    by the WeekTimeGrid to color-code events from this feed; if absent,
+    the frontend falls back to a deterministic per-feed default.
+    """
+    label: str
+    url: str
+    color: Optional[str] = None
+
+
+class CalendarFeedRow(BaseModel):
+    """Response shape for feed rows. The `url` field is ALWAYS the
+    masked form (`https://host/***`). Raw URL only echoes back on the
+    initial POST response so the user can copy/verify.
+    """
+    id: str
+    label: str
+    url: str                          # masked by route handler
+    color: Optional[str] = None
+    is_enabled: bool
+    last_synced_at: Optional[str] = None
+    last_successful_sync_at: Optional[str] = None
+    consecutive_failures: int
+    last_error: Optional[str] = None
+
+
+class CalendarFeedCreatedResponse(BaseModel):
+    """Initial POST response — echoes raw URL once for verification.
+
+    Subsequent GETs return the masked form via CalendarFeedRow.
+    """
+    feed: CalendarFeedRow
+    raw_url_echo: str
+
+
+class CalendarEventRow(BaseModel):
+    id: str
+    feed_id: str
+    summary: str
+    start_at: str
+    end_at: str
+    timezone: Optional[str] = None
+    all_day: bool
+    location: Optional[str] = None
+    status: str
+
+
+class StudySuggestionRow(BaseModel):
+    id: str
+    kind: str
+    status: str
+    start_at: str
+    end_at: str
+    due_at: Optional[str] = None
+    reason_code: str
+    reason_text: str
+    score: Optional[float] = None
+
+
+class PlanResponse(BaseModel):
+    """GET /api/plan — the main read for the Plan view.
+
+    `is_freshening` is the SWR signal: server has kicked off background
+    refreshes for stale feeds, frontend renders a subtle "syncing"
+    affordance until the next request returns it as false.
+    """
+    events: List[CalendarEventRow]
+    suggestions: List[StudySuggestionRow]
+    feeds: List[CalendarFeedRow]
+    is_freshening: bool
+
+
+class SyncFeedResponse(BaseModel):
+    feed: CalendarFeedRow
+    items_seen: int
+    items_upserted: int
+    items_deleted: int
+    status: str
+    error: Optional[str] = None

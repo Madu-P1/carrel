@@ -113,3 +113,114 @@ CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- ----------------------------------------------------------------------
+-- Calendar + study planning (Phase 1 of the coach feature)
+--
+-- Single-user app today, but `user_id` columns default to 'local' so the
+-- multi-tenant migration path is obvious without pretending today's
+-- product is multi-user.
+--
+-- All timestamps are ISO 8601 UTC strings (TEXT). Display TZ is browser
+-- territory; storage is unambiguous.
+--
+-- URL storage threat model: calendar feed URLs ARE secrets (a leaked
+-- Google Calendar "secret address" is read access to the calendar) but
+-- are revocable from the source UI in one click. v1 stores plaintext
+-- with a discipline that they NEVER leak into logs, error responses,
+-- or exports — see services/calendar/validators.py::mask_url. Storing
+-- with macOS Keychain is v2 work, planned alongside Gmail OAuth tokens
+-- which are NOT trivially revocable.
+-- ----------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS calendar_feeds (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    label TEXT NOT NULL,
+    url TEXT NOT NULL,                                -- plaintext; NEVER log this
+    url_hash TEXT NOT NULL,                           -- sha256(url) for dedup
+    color TEXT,                                       -- hex, set on add (not from CATEGORIES v1)
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    etag TEXT,                                        -- HTTP cache: If-None-Match
+    last_modified TEXT,                               -- HTTP cache: If-Modified-Since
+    last_synced_at TEXT,                              -- last attempt
+    last_successful_sync_at TEXT,                     -- last 200/304 + parse OK
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,  -- exponential backoff signal
+    last_error TEXT,                                  -- masked URL only
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, url_hash)
+);
+
+CREATE TABLE IF NOT EXISTS calendar_sync_runs (
+    id TEXT PRIMARY KEY,
+    feed_id TEXT NOT NULL REFERENCES calendar_feeds(id) ON DELETE CASCADE,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'success', 'error', 'not_modified')),
+    http_status INTEGER,
+    items_seen INTEGER NOT NULL DEFAULT 0,
+    items_upserted INTEGER NOT NULL DEFAULT 0,
+    items_deleted INTEGER NOT NULL DEFAULT 0,
+    error TEXT                                        -- masked URL only
+);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    feed_id TEXT NOT NULL REFERENCES calendar_feeds(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL,                                -- iCal UID
+    occurrence_key TEXT NOT NULL,                     -- uid + recurrence_id (RFC 5545 dedup)
+    master_event_id TEXT REFERENCES calendar_events(id) ON DELETE CASCADE,
+    recurrence_id TEXT,                               -- NULL on master + non-recurring
+    rrule TEXT,                                       -- only set on master rows
+    summary TEXT,
+    start_at TEXT NOT NULL,                           -- ISO 8601 UTC
+    end_at TEXT NOT NULL,                             -- ISO 8601 UTC
+    timezone TEXT,                                    -- source TZID for round-trip fidelity
+    all_day INTEGER NOT NULL DEFAULT 0,
+    location TEXT,
+    categories TEXT,                                  -- comma-separated iCal CATEGORIES (v2 color hint)
+    status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'tentative')),
+    source_updated_at TEXT,                           -- iCal LAST-MODIFIED
+    source_hash TEXT,                                 -- content fingerprint for change detection
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (feed_id, occurrence_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_events_window
+    ON calendar_events (user_id, start_at, end_at);
+
+CREATE TABLE IF NOT EXISTS study_suggestions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'local',
+    kind TEXT NOT NULL CHECK (kind IN ('study_block', 'review_block', 'catchup')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'dismissed', 'expired')),
+    start_at TEXT NOT NULL,
+    end_at TEXT NOT NULL,
+    due_at TEXT,
+    -- doc + event references with on-delete-set-null so a deleted source
+    -- doesn't leave a dangling FK; the suggestion still renders useful
+    -- explainability via reason_text even if its anchor disappeared.
+    doc_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+    source_event_id TEXT REFERENCES calendar_events(id) ON DELETE SET NULL,
+    -- reason_code is the stable analytics token; reason_text is the
+    -- user-facing line. Voice rules from Ship 7 apply (verb-led, sentence,
+    -- no AI-flavored phrasing). Whitelist v1 codes; extend as Phase 2's
+    -- deadline-aware coach lands.
+    reason_code TEXT NOT NULL CHECK (reason_code IN (
+        'free_block_overdue_srs',     -- v1 stub
+        'deadline_imminent',          -- Phase 2
+        'low_recent_review',           -- Phase 2
+        'gap_between_classes'         -- Phase 2
+    )),
+    reason_text TEXT NOT NULL,
+    score REAL,
+    accepted_at TEXT,
+    dismissed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_suggestions_active
+    ON study_suggestions (user_id, status, start_at);

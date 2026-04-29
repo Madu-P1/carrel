@@ -1,6 +1,8 @@
 fastapi
 uvicorn
 pydantic
+icalendar
+recurring-ical-events
 PyPDF2
 python-multipart
 anthropic

@@ -1,0 +1,105 @@
+/*
+ * SuggestionCard — sits inside a day column at its proposed time.
+ *
+ * Visually distinct from EventBlock (real events): accent-tint fill,
+ * dashed accent border, slightly elevated z-index so it sits above
+ * underlying events when timing overlaps. The actions row is two
+ * compact buttons; full button primitives are too heavy at this size.
+ */
+
+.card {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 60%, transparent);
+  border-radius: var(--radius-2);
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-bg-elevated));
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.timeRange {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.reason {
+  margin: 0;
+  font: var(--text-body-sm);
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.accept,
+.dismiss {
+  flex: 1 1 auto;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-2);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.accept {
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: oklch(0.14 0.012 265);
+}
+
+.accept:hover {
+  background: var(--color-accent-hover, var(--color-accent));
+}
+
+.dismiss {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.dismiss:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.accept:focus-visible,
+.dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}

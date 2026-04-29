@@ -14,6 +14,7 @@ export type MenuCommand =
   | "nav.reader"
   | "nav.ask"
   | "nav.study"
+  | "nav.plan"
   | "reader.nextPage"
   | "reader.prevPage"
   | "palette.open"
