@@ -78,11 +78,12 @@ Zero runtime motion libraries. CSS + WAAPI only.
 - **Test-gated, additive PRs.** Every PR ships small, keeps verify green, is independently shippable. Multi-day features land as 3-5 sub-PRs with visible sequencing.
 - **No em dashes in prose. No AI-slop vocabulary.** See `DESIGN.md` voice notes (skill-imported).
 
-## Current phase state (2026-04-21)
+## Current phase state (2026-04-29)
 
 - Phase 0 + 1: complete.
-- Phase 2 (frontend): functionally complete pending end-to-end human walkthrough. PR-E0 through PR-E8b landed. Motion system with 5 signature moments live. Cold launch p50 299 ms / p95 481 ms, well under 800 ms budget. Command palette (was PR-E6) deferred as post-MVP polish.
+- Phase 2 (frontend): functionally complete. The premium UI roadmap (8 ships) finished in this cycle. See `docs/roadmap/premium-ui-pass.md` for the spec and `docs/notes/2026-04-29-session-handoff.md` for the closeout notes. Motion system with 5 signature moments live. Cold launch p50 299 ms / p95 481 ms, well under 800 ms budget.
 - Phase 3 (retrieval + grounded answers + evals): ~60% through. Hybrid retrieval + quote validation + eval harness landed. Reranker + job queue deferred.
+- **Phase coach (NEW; Phase 1 of 2 complete):** calendar feed sync + WeekTimeGrid + stub coach landed in `169b84f`. Reads iCal feeds (Google / Apple / Outlook / Blackboard), renders the user's week, proposes study blocks where there's free time AND overdue SRS cards. Single rule (`free_block_overdue_srs`) ships; three more rules (`deadline_imminent`, `low_recent_review`, `gap_between_classes`) pre-listed in the schema CHECK and sketched in `services/planning/coach.py`. New tables via `migrations/0009_calendar_and_planning.sql`.
 - Phase 4 (signing / notarization / Sparkle / telemetry / monetization): not started. Requires Apple Developer credentials and monetization/telemetry platform decisions.
 - Phase 5 (sync / verticals / iOS companion / public API): not started.
 
@@ -93,3 +94,10 @@ Zero runtime motion libraries. CSS + WAAPI only.
 - `app.html.legacy` removal blocked on end-to-end human verification of the new bundle's full flow.
 - Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
 - FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
+- **Toast primitive doesn't accept action buttons.** Suggestion dismiss has a `restoreSuggestion` API + endpoint ready (`POST /api/plan/suggestions/{id}/restore`) but no Undo button on the toast. Small primitive extension; documented in the Phase 2 plan in `docs/notes/2026-04-29-session-handoff.md`.
+- **Calendar feed URLs stored plaintext-at-rest.** Bounded threat model: URLs are revocable secrets, redacted at every emission point via `services/calendar/validators.py::mask_url`. macOS Keychain is v2 work, planned alongside Gmail OAuth tokens (which are NOT trivially revocable).
+- **`preact/compat lazy() + Suspense` is fragile under file://.** Verified failure mode: chunk loads, Suspense never re-renders the tree. Don't use render-time Suspense for code-splitting the bundled WKWebView app. Trigger code splits via user-click `await import(...)` instead. See `docs/notes/2026-04-29-session-handoff.md` § preact/compat.
+
+## Handoff context
+
+If you are a new Claude session opening this repo, read **`HANDOFF.md`** first. It points at every other doc in the right order.
