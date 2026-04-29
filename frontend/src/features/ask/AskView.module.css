@@ -20,6 +20,20 @@
  * questions and big moments. "Ask the tutor from your actual source library"
  * is the biggest moment on this view — the product's promise in one line.
  */
+/*
+ * View eyebrow — mono uppercase label that sits above the serif heading.
+ * Phase D upgrade: replaces the previous `Badge tone="info"` chip per
+ * the Carrel design package §"Voice Rules": section labels are MONO
+ * UPPERCASE, headings are serif moments — not all-caps badges.
+ */
+.viewEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
 .viewHeading {
   margin: 0;
   font-family: var(--font-serif);

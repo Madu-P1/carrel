@@ -22,6 +22,30 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+/*
+ * Eyebrow + heading pattern — mono uppercase label + serif sentence-case
+ * h1. Replaces the previous `Badge tone="info"` chip per the Carrel
+ * design package §"Voice Rules". Shared with Dashboard, Session,
+ * Library, Study, Ask, Reader.
+ */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-3xl);
+  line-height: 44px;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
 .tzPill {
   display: inline-flex;
   align-items: center;

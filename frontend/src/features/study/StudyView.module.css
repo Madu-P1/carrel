@@ -85,3 +85,28 @@
     animation: none;
   }
 }
+
+/*
+ * Intro / done / error state cards now share the lab-notebook header
+ * pattern: mono uppercase eyebrow + serif sentence-case h1 + sans
+ * subhead. Replaces the previous Badge-led layout per the Carrel design
+ * package §"Voice Rules": section labels are MONO UPPERCASE, headings
+ * are serif moments — not all-caps badges.
+ */
+.stateEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.stateHeading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}

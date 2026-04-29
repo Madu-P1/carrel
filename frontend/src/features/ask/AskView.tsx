@@ -192,10 +192,10 @@ export function AskView() {
     <div className={styles.wrap}>
       <Stack gap={6}>
         <Stack gap={3}>
-          <Badge tone="info">Live Ask</Badge>
-          <h2 className={styles.viewHeading}>
+          <span className={styles.viewEyebrow}>Live ask</span>
+          <h1 className={styles.viewHeading}>
             Ask from your sources.
-          </h2>
+          </h1>
           <Text tone="secondary">
             Every claim shows the chunk it came from. Click a citation to
             jump into the Reader and verify the source for yourself.

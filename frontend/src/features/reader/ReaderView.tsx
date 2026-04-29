@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 
 import { appShell, clearRightPanelContent } from "@/app/shell/useAppShell";
 import { documents } from "@/services/api/endpoints";
-import { Badge, Stack, Text } from "@/design-system";
+import { Stack, Text } from "@/design-system";
 
 import { useCardFlight } from "./hooks/useCardFlight";
 import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
@@ -108,10 +108,8 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
       <div className={styles.reader}>
         <header className={styles.nonPdfHeader} ref={headerFlightRef}>
           <Stack gap={2}>
-            <Badge tone="info">Reader</Badge>
-            <Text as="h2" variant="h1" weight="bold">
-              {filename}
-            </Text>
+            <span className={styles.readerEyebrow}>Reader</span>
+            <h1 className={styles.readerHeading}>{filename}</h1>
             <Text tone="secondary">
               {chunks.length} chunk{chunks.length === 1 ? "" : "s"} · plain-text rendering
             </Text>

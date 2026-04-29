@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 
-import { Badge, Stack, Text, toast } from "@/design-system";
+import { Stack, Text, toast } from "@/design-system";
 import { browserTimeZone } from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
@@ -112,7 +112,7 @@ export function PlanView() {
       <header className={styles.header}>
         <Stack gap={2}>
           <Stack direction="horizontal" gap={2} align="center">
-            <Badge tone="info">Plan</Badge>
+            <span className={styles.eyebrow}>Plan</span>
             <span className={styles.tzPill} title="Times shown in your local time zone">
               {browserTimeZone()}
             </span>
@@ -120,9 +120,7 @@ export function PlanView() {
               <span className={styles.freshening}>Refreshing in background…</span>
             ) : null}
           </Stack>
-          <Text as="h2" variant="display" weight="bold">
-            Your week, source-grounded.
-          </Text>
+          <h1 className={styles.heading}>Your week, source-grounded.</h1>
           <Text tone="secondary">
             Your calendar plus the tutor's read of where to focus.
             Scheduled study blocks appear inline at the time the coach proposes.

@@ -74,6 +74,31 @@
   border: 1px solid var(--color-border-subtle);
 }
 
+/*
+ * Non-PDF reader header — mono eyebrow + serif filename. Phase D
+ * upgrade: replaces the previous Badge tone="info" chip per the
+ * Carrel design package §"Voice Rules".
+ */
+.readerEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.readerHeading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+  /* Filenames can be long; allow soft wrap rather than overflow. */
+  word-break: break-word;
+}
+
 /* =====================================================================
  * LOADING-STATE SKELETONS
  *

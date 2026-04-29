@@ -139,7 +139,10 @@ export function StudyView() {
       <div className={styles.wrap}>
         <Card padding="lg">
           <Stack gap={3}>
-            <Badge tone="danger">Could not load review queue</Badge>
+            <span className={styles.stateEyebrow}>Queue unavailable</span>
+            <Text as="h1" className={styles.stateHeading}>
+              Couldn't load the review queue.
+            </Text>
             <Text tone="secondary">{error.value.message}</Text>
             <Button onClick={() => void refetch()}>Reload the queue</Button>
           </Stack>
@@ -156,11 +159,13 @@ export function StudyView() {
         <Card padding="lg">
           <Stack className={styles.hero} gap={6}>
             <Stack gap={2}>
-              <Badge tone={totalDue === 0 ? "neutral" : "success"}>
-                {totalDue === 0 ? "Nothing due" : `${totalDue} card${totalDue === 1 ? "" : "s"} due`}
-              </Badge>
-              <Text as="h2" variant="display" weight="bold">
-                {totalDue === 0 ? "You’re caught up." : "Ready for review?"}
+              <span className={styles.stateEyebrow}>
+                {totalDue === 0
+                  ? "Nothing due"
+                  : `${totalDue} card${totalDue === 1 ? "" : "s"} due`}
+              </span>
+              <Text as="h1" className={styles.stateHeading}>
+                {totalDue === 0 ? "You're caught up." : "Ready for review?"}
               </Text>
               <Text tone="secondary">
                 {totalDue === 0
@@ -194,12 +199,12 @@ export function StudyView() {
       <div className={styles.wrap}>
         <Card padding="lg">
           <Stack gap={4}>
-            <Badge tone="success">Session complete</Badge>
-            <Text as="h2" variant="h1" weight="bold">
+            <span className={styles.stateEyebrow}>Session complete</span>
+            <Text as="h1" className={styles.stateHeading}>
               Reviewed {completedCount} card{completedCount === 1 ? "" : "s"}.
             </Text>
             <Text tone="secondary">
-              The scheduler has updated each card’s next review date based on your ratings.
+              The scheduler has updated each card's next review date based on your ratings.
             </Text>
             <Stack direction="horizontal" gap={3} wrap>
               <Button onClick={() => setPhase("intro")} variant="secondary">
@@ -218,7 +223,10 @@ export function StudyView() {
       <div className={styles.wrap}>
         <Card padding="lg">
           <Stack gap={3}>
-            <Badge tone="danger">Review failed to record</Badge>
+            <span className={styles.stateEyebrow}>Review not recorded</span>
+            <Text as="h1" className={styles.stateHeading}>
+              The rating didn't reach the scheduler.
+            </Text>
             <Text tone="secondary">{lastError ?? "Unknown error"}</Text>
             <Button onClick={() => setPhase(currentCard ? "back" : "intro")}>
               Re-rate this card

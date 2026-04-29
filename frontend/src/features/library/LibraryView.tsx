@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
-import { Badge, Button, Card, Icon, Input, Stack, Text } from "@/design-system";
+import { Button, Card, Icon, Input, Stack, Text } from "@/design-system";
 import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 
 import { groupBySubject } from "./utils/group-by-subject";
@@ -124,12 +124,11 @@ export function LibraryView() {
     <Stack className={styles.container} gap={6}>
       <header className={styles.header}>
         <div className={styles.headerCopy}>
-          <Badge tone="info">Library</Badge>
-          <Text as="h2" variant="display" weight="bold">
-            Source-grounded documents, grouped the way you study.
-          </Text>
+          <span className={styles.eyebrow}>Source library</span>
+          <h1 className={styles.heading}>Your sources.</h1>
           <Text tone="secondary">
-            Import files, regroup subjects, and jump straight into the Reader scaffold from here.
+            Source-grounded documents, grouped by subject. Import to add
+            material; click any subject to drill into its files.
           </Text>
         </div>
         <ImportDropzone onUploaded={refreshAll} />

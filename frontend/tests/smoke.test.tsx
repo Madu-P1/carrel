@@ -17,6 +17,6 @@ test("App renders the Library home when navigated to /library", async () => {
   render(<App />);
 
   expect(screen.getByText(/Carrel/i)).toBeDefined();
-  expect(screen.getByText(/Source-grounded documents, grouped the way you study\./i)).toBeDefined();
+  expect(screen.getByText(/Your sources\./i)).toBeDefined();
   expect(await screen.findByText(/No sources yet\./i)).toBeDefined();
 });
