@@ -151,7 +151,7 @@ test("AskView renders an in-place error and retry recovers", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: /^Ask$/i }));
 
-  expect(await screen.findByText(/Einstein could not reach the tutor service/i)).toBeDefined();
+  expect(await screen.findByText(/Could not reach the tutor service/i)).toBeDefined();
 
   fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
 

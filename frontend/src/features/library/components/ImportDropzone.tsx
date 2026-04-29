@@ -142,7 +142,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
           : "";
       toast.success(
         `${okCount} file${okCount === 1 ? "" : "s"} ingested${suffix}`,
-        "Einstein has extracted chunks and concepts. Open the Library to start reading."
+        "Carrel extracted chunks and concepts. Open the Library to start reading."
       );
     } else if (errCount > 0) {
       toast.error(

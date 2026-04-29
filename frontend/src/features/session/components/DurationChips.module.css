@@ -47,7 +47,7 @@
  * No pseudo hit-target expansion. A prior version expanded the click
  * region with a 40×40 ::before for touch screens, but the geometry
  * leaked downward into the next row (overlapping the objective input).
- * Einstein is a desktop app — 28px × 52px is already comfortable for
+ * Carrel is a desktop app — 28px × 52px is already comfortable for
  * mouse + trackpad. If we ever ship a touch surface, the chips become
  * larger inside that variant, not via a geometry hack here.
  */

@@ -12,7 +12,7 @@ export function InputsSection() {
       <div className={styles.grid}>
         <Input
           helpText="Ask about a concept, span, or source."
-          label="Ask Einstein"
+          label="Ask the tutor"
           leadingIcon={<Icon name="ask" />}
           placeholder="How does mitosis differ from meiosis?"
         />

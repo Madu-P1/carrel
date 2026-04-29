@@ -73,12 +73,17 @@ const safeInline = (source) => source.replace(/<\/script/gi, "<\\/script");
  * a code-split point matches this shape. Absolute URLs, http(s)://,
  * and import.meta.url-based paths are left alone.
  */
+// Runtime asset-base global. Renamed from __einsteinAssetBase to
+// __carrelAssetBase in the 2026-04-29 Carrel rename. The contract lives
+// entirely inside `frontend/` (this script writes it; pdfjs-setup.ts +
+// the inlined entry JS read it), so the rename is safe without a
+// backward-compat shim.
 const dynamicImportRewrite = /import\("\.\/([A-Za-z0-9_\-]+\.js)"\)/g;
 const rewrittenJsSource = [
-  'window.__einsteinAssetBase = window.__einsteinAssetBase ?? new URL("./assets.new/", window.location.href).href;',
+  'window.__carrelAssetBase = window.__carrelAssetBase ?? new URL("./assets.new/", window.location.href).href;',
   jsSource
-    .replace(dynamicImportRewrite, 'import(window.__einsteinAssetBase + "$1")')
-    .replaceAll("import.meta.url", "window.__einsteinAssetBase")
+    .replace(dynamicImportRewrite, 'import(window.__carrelAssetBase + "$1")')
+    .replaceAll("import.meta.url", "window.__carrelAssetBase")
 ].join("\n");
 
 // Build-time integrity check: after the rewrite, no relative dynamic
@@ -104,16 +109,16 @@ if (survivingRelativeImports.length > 0) {
 const workerShim = workerBase64
   ? `<script>
   (function() {
-    window.__einsteinAssetBase =
-      window.__einsteinAssetBase ?? new URL("./assets.new/", window.location.href).href;
-    if (window.__einsteinPdfWorkerUrl) {
+    window.__carrelAssetBase =
+      window.__carrelAssetBase ?? new URL("./assets.new/", window.location.href).href;
+    if (window.__carrelPdfWorkerUrl) {
       return;
     }
     const base64 = ${JSON.stringify(workerBase64)};
     const binary = atob(base64);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     const workerBlob = new Blob([bytes], { type: "text/javascript" });
-    window.__einsteinPdfWorkerUrl = URL.createObjectURL(workerBlob);
+    window.__carrelPdfWorkerUrl = URL.createObjectURL(workerBlob);
   })();
 </script>`
   : "";

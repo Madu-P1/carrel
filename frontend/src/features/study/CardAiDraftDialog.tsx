@@ -80,7 +80,7 @@ export function CardAiDraftDialog({ open, onClose, onCardsCreated }: CardAiDraft
         setPhase({
           kind: "review",
           status: "ai_disabled",
-          note: "The model is turned off. Set EINSTEIN_AI_PROVIDER to claude or ollama in .env and restart the backend to use this."
+          note: "The model is turned off. Set CARREL_AI_PROVIDER to claude or ollama in .env and restart the backend to use this."
         });
         setDrafts([]);
         return;

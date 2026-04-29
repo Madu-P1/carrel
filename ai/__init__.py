@@ -1,1 +1,1 @@
-# AI integration package for Einstein Tutor.
+# AI integration package for Carrel.

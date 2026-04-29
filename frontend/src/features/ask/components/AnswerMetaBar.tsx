@@ -9,7 +9,7 @@ interface AnswerMetaBarProps {
 /**
  * Quiet metadata beneath an answer. Mono voice, tertiary colour, right-aligned.
  *
- * Per the Einstein brief §9 "Provider / latency badge": no fill, no border.
+ * Per the Carrel brief §9 "Provider / latency badge": no fill, no border.
  * Just the provider model id + latency. The cold-load pulse is rendered by a
  * separate component (`ColdLoadIndicator`) that lives in the evidence row
  * during generation; this bar shows only after the answer lands.

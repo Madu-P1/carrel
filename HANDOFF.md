@@ -1,18 +1,29 @@
-# Einstein Tutor — repo entry point
+# Carrel — repo entry point
 
 Picking up `/Users/madu/Desktop/Codex` after a session that closed the
-8-ship premium-UI roadmap and shipped Plan + Coach Phase 1.
+8-ship premium-UI roadmap, shipped Plan + Coach Phase 1, and renamed
+the product from Einstein Tutor to **Carrel**.
 
 Last green snapshot: commit **`169b84f`** (`feat(plan): Phase 1 — calendar feed sync + WeekTimeGrid + stub coach`).
-Latest commit at handoff: **`c1a2e398`** (this doc + the session notes).
+Latest commit at handoff: see `git log -1 --oneline` (most recent
+commit at the time of this read carries the rename).
 
-This file isn't a template. It's specific to Einstein, specific to
+This file isn't a template. It's specific to Carrel, specific to
 this session's work, and specific to what the next agent (or future-
 you) needs to know to NOT recreate the conversations we already had.
 
+> **The rename is partial by design.** User-visible surfaces and
+> internal JS / Python identifiers are now Carrel. System-level
+> identifiers (`com.madu.EinsteinDesktop` macOS bundle ID,
+> `EinsteinDesktop.app` bundle name, `data/einstein_tutor.db` SQLite
+> path) stayed on the legacy names because renaming them is a data-
+> migration / code-signing concern. See
+> `docs/notes/2026-04-29-carrel-rename.md` for the deferred-rename
+> list and the migration plan when that work picks up.
+
 ---
 
-## What Einstein Tutor is
+## What Carrel is
 
 Local-first, source-grounded AI study workspace for macOS. Native
 Swift shell wraps a WKWebView loading a bundled Preact + TypeScript
@@ -59,7 +70,7 @@ pushback chain on the Plan spec — every decision that came out of
 The big ones to know before you touch `services/calendar/`,
 `services/planning/`, or `frontend/src/features/plan/`:
 
-- **Repositories are module functions, not classes.** Einstein's
+- **Repositories are module functions, not classes.** Carrel's
   pattern. We rejected per-table repository classes during the
   spec.
 - **No APScheduler.** SWR (stale-while-revalidate) instead. The
@@ -87,7 +98,7 @@ already locked.
 
 ---
 
-## Booting Einstein
+## Booting Carrel
 
 ```bash
 ./script/build_and_run.sh
@@ -222,9 +233,9 @@ fix. Small primitive change.
 
 ---
 
-## Conventions specific to Einstein that bite people
+## Conventions specific to Carrel that bite people
 
-These are Einstein-specific and non-obvious. New contributors
+These are Carrel-specific and non-obvious. New contributors
 miss them and re-introduce class-of-bug we already hunted down.
 
 ### Migrations are the schema source

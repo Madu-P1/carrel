@@ -17,7 +17,7 @@
 
 /*
  * Serif voice for the view header. Per the brief §3.3: serif is used for
- * questions and big moments. "Ask Einstein from your actual source library"
+ * questions and big moments. "Ask the tutor from your actual source library"
  * is the biggest moment on this view — the product's promise in one line.
  */
 .viewHeading {
@@ -229,7 +229,7 @@
 
 /*
  * Citation chip — mono voice, accent hover.
- * Per the Einstein brief: numeric index inside square brackets, mono font,
+ * Per the Carrel brief: numeric index inside square brackets, mono font,
  * hairline at rest, accent border + index underline on hover. The chip is
  * the single most-clicked affordance in the whole app; it must feel precise.
  */
@@ -375,10 +375,10 @@
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--accent);
-  animation: anim-einstein-pulse 1.2s ease-in-out infinite;
+  animation: anim-carrel-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes anim-einstein-pulse {
+@keyframes anim-carrel-pulse {
   0%, 100% { opacity: 0.4; transform: scale(0.85); }
   50%      { opacity: 1;   transform: scale(1); }
 }

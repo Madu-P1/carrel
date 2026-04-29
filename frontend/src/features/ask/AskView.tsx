@@ -30,7 +30,7 @@ function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
           <Badge tone="info">Source-grounded</Badge>
           <h3 className={styles.emptyStateHeadline}>Ask a question about your sources</h3>
           <Text className={styles.emptyStateHelper}>
-            Einstein retrieves supporting chunks first, then answers only with what those sources can actually support.
+            Carrel retrieves supporting chunks first, then answers only with what those sources can actually support.
           </Text>
           <div>
             <Button
@@ -54,7 +54,7 @@ function AskErrorState({ message, onRetry }: { message: string; onRetry: () => v
         <Stack gap={1}>
           <Badge tone="danger">Request failed</Badge>
           <Text as="h2" variant="h2" weight="bold">
-            Einstein could not reach the tutor service
+            Could not reach the tutor service
           </Text>
           <Text tone="secondary">{message}</Text>
         </Stack>
@@ -76,7 +76,7 @@ function AskErrorState({ message, onRetry }: { message: string; onRetry: () => v
  */
 function readAskQueryParams(rawPath: string): { question: string | null; auto: boolean } {
   try {
-    const url = new URL(rawPath || "/ask", "https://einstein.local");
+    const url = new URL(rawPath || "/ask", "https://carrel.local");
     const q = url.searchParams.get("q");
     const auto = url.searchParams.get("auto");
     return {
@@ -213,7 +213,7 @@ export function AskView() {
                   value={scope}
                 />
                 <Text tone="tertiary" variant="caption">
-                  Einstein only retrieves from this scope. Every answer shows where it was grounded.
+                  Retrieval is bounded to this scope. Every answer shows where it was grounded.
                 </Text>
               </div>
               <QuestionInput

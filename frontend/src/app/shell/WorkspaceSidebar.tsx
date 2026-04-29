@@ -68,7 +68,7 @@ export function WorkspaceSidebar({
       {/*
        * Sidebar brand: icon-only. Clicking it collapses the sidebar —
        * matches the Linear/Raycast pattern where the brand mark IS the
-       * toggle. The "Einstein / Study tutor" text that used to sit here
+       * toggle. The "Carrel / Study tutor" text that used to sit here
        * duplicated information already in the top bar.
        *
        * When collapsed (icon-rail mode), the brand tile is the ONLY

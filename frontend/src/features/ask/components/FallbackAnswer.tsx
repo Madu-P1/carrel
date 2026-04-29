@@ -165,7 +165,7 @@ export function FallbackAnswer({
                             claim.citations[0]?.document_name ?? "Saved from this fallback passage."
                           );
                         } catch {
-                          toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+                          toast.error("Save failed", "Could not write this anchor draft locally.");
                         }
                       }
                     }

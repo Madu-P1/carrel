@@ -24,7 +24,7 @@ from services.helpers import load_messages, split_sentences, tokenize
 LOGGER = get_logger("tutor")
 
 _GROUNDED_TUTOR_SYSTEM = """
-You are Einstein, a study and research assistant. You answer questions strictly from the provided source chunks. Do NOT use prior knowledge.
+You are Carrel, a study and research assistant. You answer questions strictly from the provided source chunks. Do NOT use prior knowledge.
 Rules:
 1. Every factual claim in your answer must cite at least one chunk by its 1-based index in the chunks list.
 2. Each citation includes the exact verbatim quote from that chunk supporting the claim.

@@ -85,7 +85,7 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
                       firstCitation?.document_name ?? "Saved from this answer card."
                     );
                   } catch {
-                    toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+                    toast.error("Save failed", "Could not write this anchor draft locally.");
                   }
                 }
               }

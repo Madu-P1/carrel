@@ -1,6 +1,6 @@
 """Anchor service.
 
-The Anchor is Einstein's atomic unit of learning: evidence tied to a source
+The Anchor is Carrel's atomic unit of learning: evidence tied to a source
 with an optional question, an optional claim, and a lifecycle state that can
 mature into an SRS card.
 

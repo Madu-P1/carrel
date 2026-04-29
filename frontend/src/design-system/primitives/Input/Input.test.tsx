@@ -15,7 +15,7 @@ test("Input emits input events", () => {
   render(<Input onInput={onInput} label="Name" />);
 
   fireEvent.input(screen.getByRole("textbox"), {
-    target: { value: "Einstein" }
+    target: { value: "Carrel" }
   });
 
   expect(onInput).toHaveBeenCalled();

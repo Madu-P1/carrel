@@ -1,4 +1,4 @@
-"""Provider selection for Einstein AI calls.
+"""Provider selection for Carrel AI calls.
 
 The app has two peer LLM providers now:
 
@@ -14,7 +14,11 @@ between Claude and Ollama via env flag without refactoring callers.
 
 Env vars:
 
-    EINSTEIN_AI_PROVIDER    "auto" (default) | "claude" | "ollama" | "off"
+    CARREL_AI_PROVIDER      "auto" (default) | "claude" | "ollama" | "off"
+    EINSTEIN_AI_PROVIDER    legacy alias, still honoured. The 2026-04-29
+                            rename keeps both names working until the
+                            deferred-rename pass migrates the rest of the
+                            system identifiers (DB filename, bundle ID).
 
       auto    prefer Claude when ANTHROPIC_API_KEY is set, otherwise Ollama
               when OLLAMA_BASE_URL resolves to something non-empty.
@@ -88,7 +92,8 @@ class AIProvider(Protocol):
 class NullProvider:
     """Provider of last resort. Every call returns a visible `ok=False`
     `ClaudeCallResult` with `error_code="ai_disabled"`. Used when
-    `EINSTEIN_AI_PROVIDER=off` or when auto-selection finds no candidate.
+    `CARREL_AI_PROVIDER=off` (or the legacy `EINSTEIN_AI_PROVIDER=off`)
+    or when auto-selection finds no candidate.
 
     This is intentionally not silent. Downstream tutor code inspects
     `ok`/`error_code` and renders an "AI synthesis unavailable" fallback,
@@ -161,7 +166,7 @@ def _null_result(*, task: Any, request_kind: str) -> ClaudeCallResult:
         text=None,
         json_payload=None,
         error_code="ai_disabled",
-        error_message="AI is disabled (EINSTEIN_AI_PROVIDER=off) or no provider is configured.",
+        error_message="AI is disabled (CARREL_AI_PROVIDER=off) or no provider is configured.",
         latency_ms=0.0,
         input_tokens=None,
         output_tokens=None,
@@ -190,11 +195,20 @@ def _ollama_has_endpoint() -> bool:
 def select_provider(kind: str | None = None) -> AIProvider:
     """Resolve the active provider.
 
-    `kind` overrides the `EINSTEIN_AI_PROVIDER` env var when provided.
-    Accepts: "claude" | "ollama" | "auto" | "off". Unknown values fall back
-    to "auto".
+    `kind` overrides the env var when provided. Accepts:
+    "claude" | "ollama" | "auto" | "off". Unknown values fall back to
+    "auto".
+
+    Env var resolution: prefer `CARREL_AI_PROVIDER` (canonical post-
+    rename), fall back to legacy `EINSTEIN_AI_PROVIDER` so existing
+    `.env` files keep working without a forced edit. The legacy name
+    will stay supported until the deferred-rename pass migrates the
+    rest of the system identifiers (DB filename, bundle ID).
     """
-    raw = (kind or os.getenv("EINSTEIN_AI_PROVIDER", "auto")).strip().lower()
+    env_value = os.getenv("CARREL_AI_PROVIDER") or os.getenv(
+        "EINSTEIN_AI_PROVIDER", "auto"
+    )
+    raw = (kind or env_value).strip().lower()
     if raw == "off":
         return NullProvider()
     if raw == "claude":

@@ -30,7 +30,7 @@ function routeWantsRightPanel(path: string): boolean {
 
 export function pathnameFromRoute(path: string): string {
   try {
-    return new URL(path, "https://einstein.local").pathname;
+    return new URL(path, "https://carrel.local").pathname;
   } catch {
     return path.split("?")[0] || "/library";
   }

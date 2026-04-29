@@ -1,6 +1,10 @@
-# Einstein Tutor
+# Carrel
 
-Local-first, source-grounded AI study and research workspace for macOS. Drop in PDFs, notes, slides. Get a concept graph, SRS cards, and grounded tutor answers that cite back to page-level spans.
+Local-first, source-grounded AI study and research workspace for macOS. Drop in PDFs, notes, slides. Get a concept graph, SRS cards, grounded tutor answers that cite back to page-level spans, and a coach that proposes study blocks against your real calendar.
+
+> A "carrel" is a small enclosed study booth in a library. The product is named after the room it tries to feel like.
+
+> **Renamed from Einstein Tutor.** Some internal identifiers (the macOS app bundle `EinsteinDesktop.app`, `com.madu.EinsteinDesktop` bundle ID, and the `data/einstein_tutor.db` SQLite file) are still on the old names because renaming them is a system-level / data-migration concern. See `docs/notes/2026-04-29-carrel-rename.md` for the full deferral list.
 
 Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN.md).
 

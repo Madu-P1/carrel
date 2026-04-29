@@ -123,7 +123,7 @@ export function ShortcutsOverlay() {
         <header className={styles.header}>
           <div>
             <span className={styles.eyebrow}>Keyboard shortcuts</span>
-            <h2 className={styles.title}>Fly through Einstein.</h2>
+            <h2 className={styles.title}>Fly through Carrel.</h2>
           </div>
           <button
             type="button"

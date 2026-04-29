@@ -34,7 +34,7 @@ import { AppShell, BundledAppShell } from "./shell/AppShell";
 function parseBundledRoute(path: string): URL {
   // Default landing is the Dashboard. Historically this defaulted to
   // /library; changed when the Dashboard home landed.
-  return new URL(path || "/", "https://einstein.local");
+  return new URL(path || "/", "https://carrel.local");
 }
 
 function bundledReaderId(path: string): string | undefined {

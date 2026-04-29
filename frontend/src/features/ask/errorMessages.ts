@@ -45,11 +45,11 @@ const MESSAGES: Record<string, { title: string; action?: string }> = {
   },
   missing_api_key: {
     title: "Grounded tutoring needs an API key.",
-    action: "Set ANTHROPIC_API_KEY in your .env, or switch EINSTEIN_AI_PROVIDER to ollama.",
+    action: "Set ANTHROPIC_API_KEY in your .env, or switch CARREL_AI_PROVIDER to ollama.",
   },
   grounded_tutor_disabled: {
     title: "Grounded tutoring is turned off.",
-    action: "Set EINSTEIN_AI_PROVIDER to claude or ollama in your .env.",
+    action: "Set CARREL_AI_PROVIDER to claude or ollama in your .env.",
   },
   grounded_tutor_unavailable: {
     title: "Grounded tutoring isn't available right now.",

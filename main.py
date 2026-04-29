@@ -96,7 +96,7 @@ def _kick_startup_calendar_sync() -> None:
         )
 
 
-app = FastAPI(title="Einstein Tutor", lifespan=lifespan)
+app = FastAPI(title="Carrel", lifespan=lifespan)
 
 # The app ships bundled inside a macOS WKWebView loading file:// HTML and, in dev,
 # is reached from localhost via uvicorn. Both surfaces produce a null / file origin

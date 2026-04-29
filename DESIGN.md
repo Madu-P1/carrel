@@ -1,10 +1,11 @@
-# Design System — Einstein
+# Design System — Carrel
 
-Source of truth for all visual and motion decisions. Do not deviate without explicit user approval. Authored via `/design-consultation` on 2026-04-21.
+Source of truth for all visual and motion decisions. Do not deviate without explicit user approval. Authored via `/design-consultation` on 2026-04-21. Renamed from Einstein on 2026-04-29 (the design language is unchanged; only the brand name changed).
 
 ## Product Context
 
-- **What this is:** Einstein is a local-first, source-grounded AI study and research workspace for macOS. Drop in PDFs, notes, slides. Get a concept graph, SRS cards, and grounded tutor answers that cite back to page-level spans.
+- **What this is:** Carrel is a local-first, source-grounded AI study and research workspace for macOS. Drop in PDFs, notes, slides. Get a concept graph, SRS cards, grounded tutor answers that cite back to page-level spans, and a coach that proposes study blocks against your real calendar.
+- **Why "Carrel":** A carrel is a small enclosed study booth in a library. The product is named after the room it tries to feel like.
 - **Who it's for:** People who read for a living. Students, researchers, analysts, clinicians, grad students.
 - **Space/industry:** Document intelligence, AI tutoring, local-first knowledge tools. Adjacent to NotebookLM, Humata, Readwise Reader, Khanmigo, Obsidian + AI plugins.
 - **Project type:** Native macOS desktop app. Swift + SwiftUI shell wraps a WKWebView that loads a bundled Preact + TypeScript + Vite app. SQLite storage. FastAPI backend. Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval.
@@ -222,7 +223,7 @@ Cold launch budget 800ms p50. Measured baselines (5-run, not post-purge):
 
 ## Voice
 
-The product talks like a serious study platform, not an AI demo. Codified in Ship 7 (premium UI pass) after a sweep that replaced "Ask Einstein," "AI assistant," and generic "Try again" strings across the app.
+The product talks like a serious study platform, not an AI demo. Codified in Ship 7 (premium UI pass) after a sweep that replaced "Ask Einstein," "AI assistant," and generic "Try again" strings across the app. (After the 2026-04-29 rename to Carrel, "Ask Einstein" no longer appears anywhere — the rule generalizes: never invoke the product by name in a button label; describe the action.)
 
 ### Rules
 

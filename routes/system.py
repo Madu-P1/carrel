@@ -57,7 +57,14 @@ def provider_status() -> Dict[str, Any]:
         "model_balanced": model_balanced,
         # Env echo so the UI can show "auto (preferred claude)" type text.
         # Trimmed and lowercased for stable comparison on the client.
-        "preference": (os.getenv("EINSTEIN_AI_PROVIDER", "auto") or "auto").strip().lower(),
+        # Prefer CARREL_AI_PROVIDER post-rename; fall back to legacy
+        # EINSTEIN_AI_PROVIDER so existing .env files keep working. Mirrors
+        # the resolution order in `ai/providers.py::select_provider`.
+        "preference": (
+            os.getenv("CARREL_AI_PROVIDER")
+            or os.getenv("EINSTEIN_AI_PROVIDER", "auto")
+            or "auto"
+        ).strip().lower(),
     }
 
 

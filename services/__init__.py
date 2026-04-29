@@ -1,1 +1,1 @@
-# Service package for Einstein Tutor backend modules.
+# Service package for Carrel backend modules.

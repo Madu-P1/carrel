@@ -1,6 +1,6 @@
 """SQL access for calendar feeds, events, sync runs, and study suggestions.
 
-Module functions instead of repository classes — Einstein's existing
+Module functions instead of repository classes — Carrel's existing
 pattern. SQLite is the only backend; abstracting it behind a class
 buys nothing today and makes test setup harder.
 

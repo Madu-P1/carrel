@@ -83,7 +83,7 @@ export function AnswerSummary({
                 citation?.document_name ?? "Saved from this grounded answer."
               );
             } catch {
-              toast.error("Save failed", "Einstein could not write this anchor draft locally.");
+              toast.error("Save failed", "Could not write this anchor draft locally.");
             }
           },
           disabled: citations.length === 0

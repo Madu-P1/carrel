@@ -1,5 +1,5 @@
 /*
- * Einstein visual system — theme tokens.
+ * Carrel visual system — theme tokens.
  *
  * Two themes: dark (default) + light. Both live on a single semantic
  * contract; callers use `--color-*`, `--surface-*`, `--text-*`, etc. and

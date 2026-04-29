@@ -16,7 +16,7 @@ Three concerns this layer owns:
    have URLs masked. Logs at this layer use mask_url for every URL
    reference so callers don't have to remember.
 
-Synchronous httpx — Einstein's existing pattern is sync FastAPI routes
+Synchronous httpx — Carrel's existing pattern is sync FastAPI routes
 that call sync services. We don't need an async client for this; one
 fetch per sync, sub-second normal case, 10s cap on the bad case. Keeps
 the call tree simple.
@@ -116,7 +116,7 @@ def fetch_feed(
         )
 
     headers: dict[str, str] = {
-        "User-Agent": "Einstein/1.0 (calendar feed sync)",
+        "User-Agent": "Carrel/1.0 (calendar feed sync)",
         "Accept": "text/calendar, text/plain;q=0.9, */*;q=0.5",
     }
     if etag:

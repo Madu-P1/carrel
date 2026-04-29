@@ -291,7 +291,7 @@ def tutor_response(
     response = _request_text(
         "tutor_response",
         system=(
-            "You are Einstein Tutor. Answer using only the supplied study material, keep the answer concise, "
+            "You are Carrel, a study tutor. Answer using only the supplied study material, keep the answer concise, "
             "and avoid unsupported claims."
         ),
         prompt=(
@@ -406,7 +406,7 @@ def tutor_response_v2(
     payload = _request_json(
         "tutor_response_v2",
         system=(
-            "You are Einstein Tutor, a source-grounded adaptive tutor. "
+            "You are Carrel, a source-grounded adaptive tutor. "
             "Answer ONLY from the supplied study material. Never invent claims. "
             "Return a JSON object with these keys:\n"
             "  answer: string (the main explanation, Markdown OK)\n"

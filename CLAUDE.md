@@ -1,6 +1,6 @@
-# Einstein — Project Context for Claude
+# Carrel — Project Context for Claude
 
-Local-first, source-grounded AI study and research workspace for macOS. Native Swift + SwiftUI shell wraps a WKWebView loading a bundled Preact + TypeScript + Vite app. SQLite storage, FastAPI backend, Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval.
+Local-first, source-grounded AI study and research workspace for macOS. Native Swift + SwiftUI shell wraps a WKWebView loading a bundled Preact + TypeScript + Vite app. SQLite storage, FastAPI backend, Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval. Renamed from Einstein Tutor; some internal identifiers (`com.madu.EinsteinDesktop` bundle, `EinsteinDesktop.app`, `data/einstein_tutor.db`) remain on the legacy names — see `docs/notes/2026-04-29-carrel-rename.md` for the deferred-rename list.
 
 ## Stack
 

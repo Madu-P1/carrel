@@ -1,11 +1,11 @@
-"""Ollama provider for Einstein.
+"""Ollama provider for Carrel.
 
 Peer to `ai/router.py::ClaudeRouter`, same call surface, same result shape.
 Anything in the app that currently calls a `ClaudeRouter` method can accept
 an `OllamaClient` in its place via the `AIProvider` protocol in
 `ai/providers.py`.
 
-Design choices specific to Einstein:
+Design choices specific to Carrel:
 
 * Returns `ClaudeCallResult` (not a new type) so tutor/concept-extraction code
   that already destructures that dataclass keeps working unchanged.
