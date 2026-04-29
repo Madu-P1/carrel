@@ -136,6 +136,58 @@ export const system = {
 };
 
 /**
+ * Hybrid (FTS + vector) library search. Wraps `/api/search`, which fuses
+ * BM25 keyword hits and dense-vector hits via reciprocal rank fusion in
+ * `services.retrieval.search_hybrid`. Each result carries enough context
+ * (filename, subject, page number) to render a result card without a
+ * follow-up fetch per hit.
+ *
+ * `sources` reports which retriever surfaced the chunk: `["fts"]`,
+ * `["vec"]`, or `["fts","vec"]`. Results that came from BOTH retrievers
+ * are typically the strongest matches — the UI surfaces them with a
+ * tighter accent.
+ */
+export interface SearchHit {
+  chunk_id: string;
+  doc_id: string;
+  section: string | null;
+  snippet: string;
+  /** RRF-fused score; rank-relative, not a probability. */
+  score: number;
+  /** Which retrievers surfaced the chunk. */
+  sources: ReadonlyArray<"fts" | "vec">;
+  filename: string | null;
+  subject_name: string | null;
+  page_num: number | null;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchHit[];
+}
+
+export interface SearchParams {
+  /** Required. Trimmed and length-capped server-side at 500 chars. */
+  q: string;
+  /** Optional cap on result count. Server enforces 1..50; default 12. */
+  limit?: number;
+  /** Optional subject filter, exact match. */
+  subjectName?: string;
+  /** Optional document filter; restricts hits to chunks of this doc. */
+  docId?: string;
+}
+
+export const search = {
+  query: (params: SearchParams) => {
+    const qs = new URLSearchParams({ q: params.q });
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params.subjectName) qs.set("subject_name", params.subjectName);
+    if (params.docId) qs.set("doc_id", params.docId);
+    return api<SearchResponse>(`/api/search?${qs.toString()}`);
+  }
+};
+
+/**
  * Aggregated Dashboard payload. One read, one round trip — the Dashboard
  * view renders everything on first paint without secondary fetches.
  */

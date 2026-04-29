@@ -51,7 +51,8 @@ const navLinks: SidebarNavItem[] = [
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
   { key: "ask", label: "Ask", commandHint: "⌘5", icon: "ask", path: "/ask" },
   { key: "study", label: "Study", commandHint: "⌘6", icon: "study", path: "/study" },
-  { key: "plan", label: "Plan", commandHint: "⌘7", icon: "command", path: "/plan" }
+  { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
+  { key: "plan", label: "Plan", commandHint: "⌘8", icon: "command", path: "/plan" }
 ];
 
 function routeLabel(path: string): string {
@@ -73,6 +74,10 @@ function routeLabel(path: string): string {
 
   if (path.startsWith("/library")) {
     return "Library";
+  }
+
+  if (path.startsWith("/search")) {
+    return "Search";
   }
 
   if (path.startsWith("/plan")) {

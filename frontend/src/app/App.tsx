@@ -7,6 +7,7 @@ import { LibraryView } from "@/features/library/LibraryView";
 import { NotFoundView } from "@/features/NotFoundView";
 import { PlanView } from "@/features/plan/PlanView";
 import { ReaderView } from "@/features/reader/ReaderView";
+import { SearchView } from "@/features/search/SearchView";
 import { SessionView } from "@/features/session/SessionView";
 import { StudyView } from "@/features/study/StudyView";
 
@@ -84,6 +85,10 @@ function renderBundledRoute(rawPath: string) {
     return <LibraryView />;
   }
 
+  if (path.startsWith("/search")) {
+    return <SearchView />;
+  }
+
   if (path.startsWith("/session")) {
     return <SessionView />;
   }
@@ -120,6 +125,7 @@ export function App() {
           <Route component={BrowserReaderRoute} path="/reader/:id?" />
           <Route component={AskView} path="/ask" />
           <Route component={StudyView} path="/study" />
+          <Route component={SearchView} path="/search" />
           <Route component={PlanView} path="/plan" />
           <Route component={NotFoundView} default />
         </Router>

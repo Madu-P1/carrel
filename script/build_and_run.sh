@@ -88,19 +88,27 @@ wait_for_backend() {
 ensure_backend() {
   mkdir -p "$DIST_DIR"
 
+  # Kill any uvicorn process bound to our slot, not just the one named in
+  # the pidfile. Two earlier failure modes prompted this:
+  #   1. The pidfile was stale (last build crashed before writing it) so
+  #      the previous backend kept running and the new launch saw "port
+  #      already bound" — opaque under `nohup`.
+  #   2. A previous backend launched against a different Python (e.g.,
+  #      brew vs venv) had stale imports that returned 200 on /health
+  #      but EPERM on every other route. The "is it healthy?" probe
+  #      below would return 0, the script would re-use the broken
+  #      backend, and the dashboard would render "Could not load."
+  # Always nuke first; the start cost is ~1s and predictability beats it.
   if [[ -f "$BACKEND_PIDFILE" ]]; then
     local old_pid
     old_pid="$(cat "$BACKEND_PIDFILE" 2>/dev/null || true)"
     if [[ -n "$old_pid" ]] && kill -0 "$old_pid" >/dev/null 2>&1; then
       kill "$old_pid" >/dev/null 2>&1 || true
-      sleep 1
     fi
     rm -f "$BACKEND_PIDFILE"
   fi
-
-  if curl -fsS "$BACKEND_URL" >/dev/null 2>&1; then
-    return 0
-  fi
+  pkill -f "uvicorn main:app" >/dev/null 2>&1 || true
+  sleep 1
 
   local python_bin
   python_bin="$(pick_python)" || {

@@ -1,0 +1,349 @@
+/*
+ * SearchView — library-wide hybrid search.
+ *
+ * Layout: clamped 760px column, header on top, search row, then results
+ * list. Matches the Ask view's column geometry so the two read as
+ * variations of the same single-column reading-first surface.
+ *
+ * Voice: mono eyebrow + serif h1 + sans subhead, per the Carrel design
+ * package's shared view-header pattern.
+ */
+
+.wrap {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* --- Header --- */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.heading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-3xl);
+  line-height: 44px;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
+/* --- Search row --- */
+
+.searchRow {
+  display: block;
+}
+
+/*
+ * Input well — recessed surface-0 inside the surface-2 page background,
+ * mirroring the Tabs-segmented "well" treatment. Focus lifts the border
+ * to accent + applies the standard --shadow-focus ring.
+ */
+.inputWell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.inputWell:focus-within {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.inputIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-sans);
+  caret-color: var(--color-accent);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.statusChip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  white-space: nowrap;
+  animation: anim-status-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes anim-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusChip { animation: none; }
+}
+
+/* --- Results header --- */
+
+.resultsCount {
+  font: var(--text-body-sm);
+  color: var(--text-secondary);
+  padding: 0 var(--space-1);
+}
+
+.resultsQuery {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* --- Results list --- */
+
+.resultsList {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/*
+ * Result row — clickable card. Border-subtle at rest, border-default on
+ * hover, accent border + subtle accent-tinted bg when the chunk came
+ * from BOTH retrievers (the "doubly retrieved" strong-relevance case).
+ *
+ * Hover lifts via translateY(-1px) + shadow-card per the package motion
+ * guardrail (transform/shadow only, never width/padding).
+ */
+.resultRow {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  color: inherit;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.resultRow:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-3);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+
+.resultRow:active {
+  transform: translateY(0);
+}
+
+.resultRow:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-color: var(--color-accent);
+}
+
+.resultRowStrong {
+  border-color: color-mix(in srgb, var(--color-accent) 32%, var(--hairline));
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--surface-2));
+}
+
+.resultRowStrong:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--hairline));
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--surface-3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resultRow {
+    transition: none;
+  }
+  .resultRow:hover { transform: none; }
+}
+
+/* --- Result row internals --- */
+
+.resultMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font: var(--text-caption);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.resultFilename {
+  color: var(--text-secondary);
+}
+
+.resultSubject {
+  color: var(--text-tertiary);
+}
+
+.resultPage {
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.resultMetaDot {
+  color: var(--text-disabled);
+}
+
+.snippet {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  /* Allow long source text to wrap; truncate to 5 lines so result rows
+   * stay scannable even when a chunk is very long. */
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+/*
+ * FTS-snippet match highlight. The retriever wraps matched tokens in
+ * `<<` / `>>` markers; the SnippetWithMarks helper splits on those and
+ * renders the inside as <mark>. We give it an accent underline + tinted
+ * bg, never a yellow highlighter (clashes with our cool palette).
+ */
+.snippetMark {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.resultFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.resultSection {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+/* --- State cards (idle / no-match / error) --- */
+
+.stateEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.stateHeading {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: var(--tracking-serif);
+  color: var(--text-primary);
+}
+
+.retryButton {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height-md);
+  padding: 0 16px;
+  border-radius: var(--radius-button);
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.retryButton:hover {
+  border-color: var(--color-border-strong);
+  background: var(--state-bg-hover);
+}
+
+.retryButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* --- Skeleton hold (only shows during the first response wait) --- */
+
+.skeletonList {
+  height: 320px;
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-bg-muted),
+      color-mix(in srgb, var(--color-bg-hover) 70%, transparent),
+      var(--color-bg-muted)
+    );
+  background-size: 200% 100%;
+  animation: anim-search-shimmer 1.6s linear infinite;
+}
+
+@keyframes anim-search-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonList { animation: none; }
+}
