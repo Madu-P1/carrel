@@ -78,7 +78,19 @@ const safeInline = (source) => source.replace(/<\/script/gi, "<\\/script");
 // entirely inside `frontend/` (this script writes it; pdfjs-setup.ts +
 // the inlined entry JS read it), so the rename is safe without a
 // backward-compat shim.
-const dynamicImportRewrite = /import\("\.\/([A-Za-z0-9_\-]+\.js)"\)/g;
+//
+// The chunk-name body allows alphanumeric, dash, underscore, AND dot
+// (the dot was added 2026-04-29 to match `three.module.js` — Vite
+// preserves the original `.module` suffix when the source file is named
+// `three.module.mjs`). Without it the regex stopped at "three" and
+// failed to match `import("./three.module.js")`, so the rewrite skipped
+// it AND the integrity check skipped it (same regex), and the bundled
+// app shipped a relative dynamic import that 404'd at runtime under
+// file:// with "Importing a module script failed." The dot lives only
+// inside the body, never at the start or end, so a chunk literally
+// named `..js` can't slip through.
+const dynamicImportRewrite =
+  /import\("\.\/([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*\.js)"\)/g;
 const rewrittenJsSource = [
   'window.__carrelAssetBase = window.__carrelAssetBase ?? new URL("./assets.new/", window.location.href).href;',
   jsSource
@@ -87,12 +99,17 @@ const rewrittenJsSource = [
 ].join("\n");
 
 // Build-time integrity check: after the rewrite, no relative dynamic
-// imports of the form `import("./*.js")` should survive. If one does,
-// it means the regex above missed a shape Vite emitted (e.g., a chunk
-// imported without quotes, or with extra whitespace). Fail the build
-// loudly so we don't ship another silently-broken Reader page.
+// imports of the form `import("./*.js")` should survive. The check
+// regex is intentionally MORE permissive than the rewrite regex
+// (`[\w.\-]+\.js` matches anything alphanumeric + dots + dashes +
+// underscores) so a chunk shape the rewrite hasn't been taught about
+// fails the build LOUDLY here instead of silently reaching runtime.
+// History: a previous regression shipped because the rewrite missed
+// `three.module.js` and the check used the SAME regex, so the survivor
+// passed the check too.
+const integrityCheckRegex = /import\("\.\/([\w.\-]+\.js)"\)/g;
 const survivingRelativeImports = [
-  ...rewrittenJsSource.matchAll(dynamicImportRewrite),
+  ...rewrittenJsSource.matchAll(integrityCheckRegex),
 ];
 if (survivingRelativeImports.length > 0) {
   const examples = survivingRelativeImports
