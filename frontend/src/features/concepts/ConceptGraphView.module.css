@@ -118,24 +118,23 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 520px;
-  display: flex;
-  gap: 0;
-  /* Hide the slide-out panel's overflow so the closed panel doesn't
-   * push the layout out by 300px. */
-  overflow: hidden;
+  /* Single child layout (canvasFrame). The detail panel is positioned
+   * absolutely over the right edge — so the canvas always gets 100%
+   * row width, regardless of whether the panel is open. zoomToFit
+   * then computes against the real viewport instead of one that's
+   * 320px narrower than it looks. */
+  display: block;
   border-radius: var(--radius-card);
   border: 1px solid var(--hairline);
-  background: oklch(0.085 0.012 255); /* deeper than surface-0 — feels
-       like a study lamp at midnight, matches the spec's #0D1829-ish
-       lower band. */
+  background: oklch(0.085 0.012 255);
+  overflow: hidden;
 }
 
-/* Graph canvas takes all available width; the panel overlays. */
 .canvasFrame {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
+  width: 100%;
   height: 100%;
+  min-height: 520px;
 }
 
 .canvas {
@@ -143,12 +142,10 @@
   inset: 0;
 }
 
-/* When the detail panel is open we pad the canvas so the graph isn't
- * obscured by the panel. The panel is 320px wide; we leave ~16px of
- * breathing room. */
-.canvasRowWithPanel .canvasFrame {
-  padding-right: 0;
-}
+/* No-op kept so existing className concatenation in the JSX doesn't
+ * have to special-case the absence of the class. The class used to
+ * shrink the canvas frame; now the panel overlays so no shrinkage. */
+.canvasRowWithPanel { /* intentionally empty */ }
 
 /* --- Skeleton (first paint while fetching) --- */
 
@@ -315,9 +312,26 @@
 
 /* --- Detail panel (slides in from the right) --- */
 
+/*
+ * Detail panel — overlays the canvas's right edge instead of taking
+ * its own flex slot. Two consequences:
+ *   1. The canvas frame gets 100% width regardless of whether the
+ *      panel is open. zoomToFit then computes the correct viewport
+ *      — nodes don't get clipped by a hidden 320px panel slot.
+ *   2. When the panel is closed, no part of the layout shifts.
+ *      Opening / closing animates only the panel itself.
+ *
+ * `pointer-events: none` when closed prevents the off-screen panel
+ * from intercepting clicks that would otherwise reach the canvas
+ * underneath (the panel is at z-index 10; the canvas div is at the
+ * default z-index inside the absolute canvasFrame).
+ */
 .detailPanel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
   width: 320px;
-  flex-shrink: 0;
   border-left: 1px solid oklch(1 0 0 / 0.07);
   background: oklch(0.10 0.014 255 / 0.96);
   display: flex;
@@ -325,10 +339,12 @@
   transform: translateX(330px);
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 10;
+  pointer-events: none;
 }
 
 .detailPanelOpen {
   transform: translateX(0);
+  pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
