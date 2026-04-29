@@ -105,15 +105,33 @@ const SUBJECT_PALETTE: Record<string, { css: string; hex: number; tag: string }>
   Finance: { css: "rgb(87, 214, 195)", hex: 0x57d6c3, tag: "tagFinance" },
   Tax: { css: "rgb(200, 155, 40)", hex: 0xc89b28, tag: "tagTax" },
   Law: { css: "rgb(155, 120, 210)", hex: 0x9b78d2, tag: "tagLaw" },
-  Stats: { css: "rgb(220, 140, 130)", hex: 0xdc8c82, tag: "tagOther" },
+  Stats: { css: "rgb(232, 138, 138)", hex: 0xe88a8a, tag: "tagOther" },
   Biology: { css: "rgb(130, 200, 140)", hex: 0x82c88c, tag: "tagOther" },
+  General: { css: "rgb(140, 175, 230)", hex: 0x8cafe6, tag: "tagOther" },
+  Other: { css: "rgb(180, 180, 200)", hex: 0xb4b4c8, tag: "tagOther" },
 };
-const FALLBACK_SUBJECT = { css: "rgb(180, 180, 200)", hex: 0xb4b4c8, tag: "tagOther" };
+// Backup palette for any subject not pinned in SUBJECT_PALETTE. Picked
+// deterministically by hashing the subject name into the array index so
+// each subject always reads the same colour across reloads.
+const PALETTE_BACKUP: Array<{ css: string; hex: number; tag: string }> = [
+  { css: "rgb(140, 200, 230)", hex: 0x8cc8e6, tag: "tagOther" },
+  { css: "rgb(220, 170, 110)", hex: 0xdcaa6e, tag: "tagOther" },
+  { css: "rgb(190, 160, 230)", hex: 0xbea0e6, tag: "tagOther" },
+  { css: "rgb(150, 220, 180)", hex: 0x96dcb4, tag: "tagOther" },
+];
+const FALLBACK_SUBJECT = SUBJECT_PALETTE.Other;
+
+function _hashSubject(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 
 function paletteFor(subject: string | null | undefined) {
-  if (subject && SUBJECT_PALETTE[subject]) return SUBJECT_PALETTE[subject];
-  // Fallback: deterministic pastel from a hash of the subject name.
-  return FALLBACK_SUBJECT;
+  if (!subject) return FALLBACK_SUBJECT;
+  const pinned = SUBJECT_PALETTE[subject];
+  if (pinned) return pinned;
+  return PALETTE_BACKUP[_hashSubject(subject) % PALETTE_BACKUP.length];
 }
 
 interface SelectedConcept {
@@ -253,7 +271,14 @@ export function ConceptGraphView() {
       // Cast through `unknown` to our local interface since the library's
       // generics chain doesn't quite line up with our explicit method
       // signatures (the runtime behavior is identical).
+      //
+      // controlType: 'orbit' is more familiar than the default trackball
+      // for users who don't know 3D editors. Drag = orbit around centre,
+      // scroll = zoom (camera distance from look-at point), right-click
+      // drag = pan. Trackball would also rotate the up-axis on diagonal
+      // drags, which makes a graph feel disorientating.
       graphInstance = new ForceGraph3D(container, {
+        controlType: "orbit",
         rendererConfig: { antialias: true, alpha: true },
       }) as unknown as ForceGraph3DInstance;
       graphRef.current = graphInstance;
@@ -271,12 +296,21 @@ export function ConceptGraphView() {
         return "rgba(255,255,255,0.15)";
       };
       const linkColorFn = (l: GraphLink) => {
-        if (sel.highlightedLinks.has(l)) return "rgba(87,214,195,0.7)";
-        if (sel.selectedId) return "rgba(255,255,255,0.03)";
-        return "rgba(255,255,255,0.10)";
+        if (sel.highlightedLinks.has(l)) return "rgba(87,214,195,0.85)";
+        // Idle edges: brighter than the previous 0.10 so the network
+        // shape reads at a glance. The selection mode dims to 0.05 so
+        // the highlighted path still pops.
+        if (sel.selectedId) return "rgba(255,255,255,0.05)";
+        return "rgba(255,255,255,0.22)";
       };
-      const linkWidthFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 1.8 : 0.5);
+      const linkWidthFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 2 : 0.8);
       const linkParticlesFn = (l: GraphLink) => (sel.highlightedLinks.has(l) ? 4 : 0);
+
+      const instanceWithEngine = graphInstance as unknown as {
+        d3Force(name: string, fn?: unknown): unknown;
+        cooldownTicks(n: number): unknown;
+        onEngineStop(fn: () => void): unknown;
+      };
 
       graphInstance
         .backgroundColor("rgba(0,0,0,0)")
@@ -284,12 +318,15 @@ export function ConceptGraphView() {
         .nodeId("id")
         .nodeLabel(() => "")
         .nodeColor(nodeColorFn)
-        .nodeVal((n: GraphNode) => Math.pow(n.weight, 1.6))
+        // Slightly flatter exponent than the previous pow(weight, 1.6)
+        // so hub nodes are bigger but not 3× their neighbours. Floor at
+        // ~6 so even a degree-1 node has a clickable target on screen.
+        .nodeVal((n: GraphNode) => 6 + Math.pow(n.weight, 1.4))
         .nodeOpacity(0.95)
         .nodeResolution(20)
         .linkColor(linkColorFn)
         .linkWidth(linkWidthFn)
-        .linkOpacity(0.8)
+        .linkOpacity(0.85)
         .linkDirectionalParticles(linkParticlesFn)
         .linkDirectionalParticleWidth(1.8)
         .linkDirectionalParticleColor(() => "rgb(87,214,195)")
@@ -298,6 +335,39 @@ export function ConceptGraphView() {
         .onNodeHover((n) => handleNodeHover(n))
         .onBackgroundClick(() => handleClearSelection())
         .graphData(graphData);
+
+      // Tune the d3-force simulation. Defaults assume a denser graph
+      // than ours (43 nodes / 27 edges has many isolated stubs); the
+      // result reads as scattered specks. Tighten so:
+      //   - nodes repel each other more weakly (charge strength less
+      //     negative) — they settle closer together.
+      //   - linked nodes pull in tighter (smaller link distance).
+      // Also cap the simulation at 240 ticks so it stops running
+      // perpetually (defaults to 15000, which holds the CPU forever
+      // on weak graphs that never converge).
+      const chargeForce = instanceWithEngine.d3Force("charge") as
+        | { strength: (s: number) => unknown }
+        | undefined;
+      if (chargeForce && typeof chargeForce.strength === "function") {
+        chargeForce.strength(-180);
+      }
+      const linkForce = instanceWithEngine.d3Force("link") as
+        | { distance: (n: number) => unknown }
+        | undefined;
+      if (linkForce && typeof linkForce.distance === "function") {
+        linkForce.distance(45);
+      }
+      instanceWithEngine.cooldownTicks(240);
+
+      // After the simulation settles, frame every node in view so the
+      // user sees the whole atlas on first paint. Otherwise the camera
+      // sits at the library's default position and the cluster ends up
+      // off-centre / clipped (the original screenshot you flagged).
+      instanceWithEngine.onEngineStop(() => {
+        if (!cancelled && graphInstance) {
+          graphInstance.zoomToFit(800, 80);
+        }
+      });
 
       // Match the canvas to the container size + watch for resizes.
       const fit = () => {
