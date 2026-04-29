@@ -59,12 +59,13 @@ type ForceGraph3DInstance = {
   onNodeClick(fn: (n: GraphNode | null, e?: MouseEvent) => void): ForceGraph3DInstance;
   onNodeHover(fn: (n: GraphNode | null) => void): ForceGraph3DInstance;
   onBackgroundClick(fn: () => void): ForceGraph3DInstance;
-  onRenderFramePre(fn: () => void): ForceGraph3DInstance;
+  cameraPosition(): { x: number; y: number; z: number };
   cameraPosition(
     pos: { x: number; y: number; z: number },
-    look: { x: number; y: number; z: number },
-    transitionMs: number
+    look?: { x: number; y: number; z: number },
+    transitionMs?: number
   ): ForceGraph3DInstance;
+  zoomToFit(durationMs?: number, padding?: number): ForceGraph3DInstance;
   scene(): unknown;
   width(n: number): ForceGraph3DInstance;
   height(n: number): ForceGraph3DInstance;
@@ -197,7 +198,13 @@ export function ConceptGraphView() {
       id: n.id,
       label: n.label,
       subject: n.subject_name ?? "Other",
-      weight: Math.max(2, degree.get(n.id) ?? 1),
+      // Clamp weight to a small range so a hub concept doesn't render
+      // as a huge ball that visually dominates the cloud. The spec
+      // sized nodes 4..9; we map degree count into the same band so a
+      // single highly-connected node reads as "more important", not
+      // "the only thing on screen". `nodeVal` below applies the
+      // pow(weight, 1.6) curve on top of this clamped input.
+      weight: Math.min(9, Math.max(2, Math.ceil(Math.sqrt((degree.get(n.id) ?? 1) * 4)))),
       mastery: n.mastery,
       document_id: n.document_id,
       document_name: n.document_name,
@@ -343,14 +350,21 @@ export function ConceptGraphView() {
       });
       scene.add(new THREE.Points(starGeo, starMat));
 
-      // Pulse the selection light per frame.
-      graphInstance.onRenderFramePre(() => {
+      // Pulse the selection light. 3d-force-graph 1.80 dropped the
+      // `onRenderFramePre` hook (it was on 1.73 — the spec HTML uses it
+      // because it's fixed to a CDN copy), so we run our own
+      // requestAnimationFrame loop. The loop self-cancels on unmount via
+      // the captured `cancelled` flag.
+      const pulseLoop = () => {
+        if (cancelled) return;
         if (sel.selectedId && sel.pointLight) {
           const t = Date.now() / 1200;
           (sel.pointLight as unknown as { intensity: number }).intensity =
             2.5 + Math.sin(t) * 0.8;
         }
-      });
+        requestAnimationFrame(pulseLoop);
+      };
+      requestAnimationFrame(pulseLoop);
     })();
 
     function handleNodeSelect(node: GraphNode | null) {
@@ -535,6 +549,7 @@ export function ConceptGraphView() {
             <>
               <div ref={containerRef} className={styles.canvas} role="figure" aria-label="3D concept graph" />
               <Legend subjects={subjectsInGraph} />
+              <ZoomControls graphRef={graphRef} />
               {hoverInfo ? (
                 <div
                   className={styles.hoverCard}
@@ -602,6 +617,80 @@ function FilterPill({ label, active, accent, onClick }: FilterPillProps) {
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * Zoom controls — small floating cluster at the bottom-right of the
+ * canvas. Three buttons: zoom in, zoom out, fit-all. Each operates on
+ * the live graphInstance (passed via ref) and animates the camera move
+ * over 320ms so the change reads as deliberate, not a jump cut.
+ *
+ * Zoom math: scale the camera's distance from origin by 0.78 (in) /
+ * 1.28 (out). The graph's force layout centres on the origin, so scaling
+ * the camera distance is equivalent to changing the field-of-view
+ * without messing with FOV (which has clamping issues in three.js
+ * perspective cameras and feels jarring).
+ *
+ * Fit-all calls 3d-force-graph's built-in zoomToFit which frames every
+ * node in view with 60px padding — useful escape hatch when the user
+ * gets lost orbiting.
+ */
+function ZoomControls({
+  graphRef,
+}: {
+  graphRef: { current: ForceGraph3DInstance | null };
+}) {
+  const transition = 320;
+
+  const scaleCamera = (factor: number) => {
+    const g = graphRef.current;
+    if (!g) return;
+    const pos = g.cameraPosition();
+    if (!pos) return;
+    g.cameraPosition(
+      { x: pos.x * factor, y: pos.y * factor, z: pos.z * factor },
+      undefined as unknown as { x: number; y: number; z: number },
+      transition
+    );
+  };
+
+  return (
+    <div className={styles.zoomControls} role="group" aria-label="Zoom controls">
+      <button
+        type="button"
+        className={styles.zoomButton}
+        onClick={() => scaleCamera(0.78)}
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M8 4v8 M4 8h8" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className={styles.zoomButton}
+        onClick={() => scaleCamera(1.28)}
+        aria-label="Zoom out"
+        title="Zoom out"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M4 8h8" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className={styles.zoomButton}
+        onClick={() => graphRef.current?.zoomToFit(transition * 2.5, 60)}
+        aria-label="Fit all to view"
+        title="Fit all (frame the whole graph)"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6V3h3 M10 3h3v3 M3 10v3h3 M10 13h3v-3" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
