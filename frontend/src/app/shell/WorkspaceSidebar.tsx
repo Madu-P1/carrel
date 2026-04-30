@@ -136,7 +136,10 @@ export function WorkspaceSidebar({
         onStartReview={() => onNavigate("/study")}
       />
 
-      <ProviderFooter provider={signals.provider} />
+      <ProviderFooter
+        provider={signals.provider}
+        backend={signals.backend}
+      />
     </div>
   );
 }
@@ -188,7 +191,35 @@ function TodayPanel({ dueCount, docCount, onStartReview }: TodayPanelProps) {
   );
 }
 
-function ProviderFooter({ provider }: { provider: ReturnType<typeof useSidebarSignals>["provider"] }) {
+function ProviderFooter({
+  provider,
+  backend
+}: {
+  provider: ReturnType<typeof useSidebarSignals>["provider"];
+  backend: ReturnType<typeof useSidebarSignals>["backend"];
+}) {
+  // Backend liveness takes priority over the provider chip. If the
+  // FastAPI process is unreachable, EVERY API call is failing — the
+  // user needs to see "backend offline" first, before the AI chip's
+  // "AI disabled" reading (which is a downstream symptom: the
+  // provider check fails because it can't reach the backend).
+  if (backend === "down") {
+    return (
+      <footer className={styles.footer} aria-label="Backend status">
+        <span
+          className={[styles.footerDot, styles.footerDotErr].join(" ")}
+          aria-hidden
+        />
+        <span
+          className={styles.footerText}
+          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure — this should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
+        >
+          Backend offline
+        </span>
+      </footer>
+    );
+  }
+
   if (!provider) {
     return (
       <footer className={styles.footer} aria-label="Provider status">

@@ -131,8 +131,26 @@ export interface ProviderStatus {
   preference: string;
 }
 
+/**
+ * Lightweight backend liveness check. The /api/health endpoint
+ * touches no DB, no AI provider — just confirms the FastAPI process
+ * is up and responding. The sidebar polls this every 10s to surface
+ * a "backend offline" state to the user when the process dies (e.g.,
+ * SIGTERM, OOM kill, BackendSupervisor's gap before it respawns).
+ *
+ * Returns the raw payload for callers that want to show the resolved
+ * paths or document count; throws on any non-2xx or connection error.
+ */
+export interface BackendHealth {
+  status: string;
+  mode: string;
+  documents: number;
+  paths: { base_dir: string; db_path: string };
+}
+
 export const system = {
-  provider: () => api<ProviderStatus>("/api/system/provider")
+  provider: () => api<ProviderStatus>("/api/system/provider"),
+  health: () => api<BackendHealth>("/api/health")
 };
 
 /**

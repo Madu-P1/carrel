@@ -294,6 +294,29 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-warn) 22%, transparent);
 }
 
+/* Backend offline — louder than `Warn` because the user actually
+ * needs to act. Pulses gently so it reads as "live status," not
+ * just a logged event from the past. Drops to a static dot under
+ * prefers-reduced-motion. */
+.footerDotErr {
+  background: var(--state-err);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-err) 22%, transparent);
+  animation: anim-backend-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes anim-backend-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--state-err) 22%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--state-err) 32%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footerDotErr { animation: none; }
+}
+
 .footerDotLoading {
   background: var(--text-tertiary);
   opacity: 0.5;

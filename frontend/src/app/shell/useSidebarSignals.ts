@@ -11,37 +11,45 @@ import {
  * Shell-level data that feeds the left sidebar's live signals.
  *
  * The sidebar is visible on every route, so polling happens at the shell
- * level rather than from each feature. Three independent signals:
- *   - dueCount     — SRS cards the scheduler considers due today. Drives
- *                    the badge next to the Study nav entry and the
- *                    "N cards due" line in the Today panel.
- *   - docCount     — Total sources in the library. Used for the Library
- *                    hint and the Today "X sources" rollup.
- *   - provider     — Which AI backend is active. Rendered as the trust
- *                    signal in the sidebar footer.
+ * level rather than from each feature. Four independent signals:
+ *   - dueCount  — SRS cards the scheduler considers due today.
+ *   - docCount  — Total sources in the library.
+ *   - provider  — Which AI backend is active. Rendered in the footer.
+ *   - backend   — FastAPI liveness. "ok" when /api/health returns 2xx,
+ *                 "down" on connection refused / timeout / 5xx. Drives
+ *                 the footer's "Backend offline" override when the
+ *                 BackendSupervisor hasn't yet respawned uvicorn.
  *
- * Polling cadence: 30s. Long enough to avoid noise, short enough that a
- * card rated "Good" drops off the Study badge within one study break.
+ * Polling cadence:
+ *   - dueCount / docCount / provider: 30s (long enough to avoid noise).
+ *   - backend: 10s (short enough that a recovered backend updates the
+ *     UI within one beat — the BackendSupervisor's monitor interval is
+ *     60s on the Swift side, so 10s on the frontend means the user sees
+ *     the recovery within the same minute).
+ *
  * Each signal fetches independently so a slow backend on one endpoint
- * doesn't stall the others.
- *
- * Everything is best-effort. Fetch errors leave the previous value in
- * place and set `provider.kind = "unknown"` in the footer. The sidebar
- * never shows a spinner or blocks interaction.
+ * doesn't stall the others. Errors leave the previous value in place
+ * (sidebar stays on last known) except for `backend`, which flips to
+ * "down" on any failure so the user gets immediate visible feedback.
  */
 const POLL_INTERVAL_MS = 30_000;
+const HEALTH_POLL_INTERVAL_MS = 10_000;
+
+export type BackendStatus = "ok" | "down";
 
 export interface SidebarSignals {
   dueCount: number | null;
   docCount: number | null;
   provider: ProviderStatus | null;
+  backend: BackendStatus | null;
 }
 
 export function useSidebarSignals(): SidebarSignals {
   const [signals, setSignals] = useState<SidebarSignals>({
     dueCount: null,
     docCount: null,
-    provider: null
+    provider: null,
+    backend: null
   });
 
   useEffect(() => {
@@ -90,17 +98,35 @@ export function useSidebarSignals(): SidebarSignals {
       }
     };
 
-    const refreshAll = () => {
+    const refreshBackend = async () => {
+      try {
+        await system.health();
+        if (!cancelled) {
+          setSignals((prev) => ({ ...prev, backend: "ok" }));
+        }
+      } catch {
+        if (!cancelled) {
+          setSignals((prev) => ({ ...prev, backend: "down" }));
+        }
+      }
+    };
+
+    const refreshHeavy = () => {
       void refreshDue();
       void refreshDocs();
       void refreshProvider();
     };
 
-    refreshAll();
-    const timer = window.setInterval(refreshAll, POLL_INTERVAL_MS);
+    // First paint: kick everything off immediately.
+    refreshHeavy();
+    void refreshBackend();
+
+    const heavyTimer = window.setInterval(refreshHeavy, POLL_INTERVAL_MS);
+    const healthTimer = window.setInterval(refreshBackend, HEALTH_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      window.clearInterval(heavyTimer);
+      window.clearInterval(healthTimer);
     };
   }, []);
 
