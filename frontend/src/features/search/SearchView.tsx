@@ -4,6 +4,7 @@ import type { JSX } from "preact";
 import { Badge, Card, Icon, Stack, Text } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
 import { search, type SearchHit } from "@/services/api/endpoints";
+import { friendlyError } from "@/services/api/errorMessages";
 
 import styles from "./SearchView.module.css";
 
@@ -45,7 +46,10 @@ type Phase = "idle" | "loading" | "ready" | "error";
 interface SearchState {
   phase: Phase;
   hits: SearchHit[];
-  error: string | null;
+  /** Raw error from the search request — Error subclass when present,
+   *  null otherwise. The renderer pipes it through friendlyError() so
+   *  BackendOfflineError gets a different copy than ApiError. */
+  error: unknown;
   /** The query string that produced `hits`. May lag the input value
    *  while a new debounced search is in flight. */
   resolvedQuery: string;
@@ -98,7 +102,7 @@ export function SearchView() {
         setState({
           phase: "error",
           hits: [],
-          error: (err as Error).message ?? "Unknown error",
+          error: err,
           resolvedQuery: trimmed,
         });
       });
@@ -202,14 +206,18 @@ function ResultsBlock({ state, onResultClick, onRetry }: ResultsBlockProps) {
   }
 
   if (state.phase === "error") {
+    const friendly = friendlyError(state.error, { surface: "Search" });
     return (
       <Card padding="lg">
         <Stack gap={3}>
-          <span className={styles.stateEyebrow}>Search failed</span>
+          <span className={styles.stateEyebrow}>{friendly.title}</span>
           <Text as="h2" className={styles.stateHeading}>
             Couldn't run the search.
           </Text>
-          <Text tone="secondary">{state.error}</Text>
+          <Text tone="secondary">{friendly.detail}</Text>
+          {friendly.recovery ? (
+            <Text tone="tertiary">{friendly.recovery}</Text>
+          ) : null}
           <div>
             <button type="button" className={styles.retryButton} onClick={onRetry}>
               Run the search again

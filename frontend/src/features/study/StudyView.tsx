@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 
 import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
 import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
+import { friendlyError } from "@/services/api/errorMessages";
 import { useQuery } from "@/lib/query";
 
 import { ManageCardsView } from "./ManageCardsView";
@@ -135,15 +136,19 @@ export function StudyView() {
   }
 
   if (error.value && phase !== "error") {
+    const friendly = friendlyError(error.value, { surface: "Review queue" });
     return (
       <div className={styles.wrap}>
         <Card padding="lg">
           <Stack gap={3}>
-            <span className={styles.stateEyebrow}>Queue unavailable</span>
+            <span className={styles.stateEyebrow}>{friendly.title}</span>
             <Text as="h1" className={styles.stateHeading}>
               Couldn't load the review queue.
             </Text>
-            <Text tone="secondary">{error.value.message}</Text>
+            <Text tone="secondary">{friendly.detail}</Text>
+            {friendly.recovery ? (
+              <Text tone="tertiary">{friendly.recovery}</Text>
+            ) : null}
             <Button onClick={() => void refetch()}>Reload the queue</Button>
           </Stack>
         </Card>

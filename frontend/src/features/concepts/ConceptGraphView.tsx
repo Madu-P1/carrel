@@ -8,6 +8,7 @@ import {
   type ConceptGraphResponse,
   type SubjectSummary,
 } from "@/services/api/endpoints";
+import { friendlyError } from "@/services/api/errorMessages";
 import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "./ConceptGraphView.module.css";
@@ -143,7 +144,7 @@ interface SelectedConcept {
 
 export function ConceptGraphView() {
   const [graph, setGraph] = useState<ConceptGraphResponse | null>(null);
-  const [graphError, setGraphError] = useState<string | null>(null);
+  const [graphError, setGraphError] = useState<unknown>(null);
   const [graphLoading, setGraphLoading] = useState(true);
   // `subjects` is fetched but not currently displayed in this view —
   // the filter pills derive their list from concepts present in the
@@ -203,7 +204,7 @@ export function ConceptGraphView() {
         }
       })
       .catch((err) => {
-        setGraphError((err as Error).message ?? "Unknown error");
+        setGraphError(err);
       })
       .finally(() => {
         setGraphLoading(false);
@@ -640,7 +641,7 @@ export function ConceptGraphView() {
         <div className={styles.canvasFrame}>
           {graphError ? (
             <ErrorState
-              message={graphError}
+              error={graphError}
               onRetry={() => setFilter((prev) => prev)}
             />
           ) : graphLoading && !graphData ? (
@@ -985,15 +986,19 @@ function EmptyState() {
   );
 }
 
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const friendly = friendlyError(error, { surface: "Concept graph" });
   return (
     <Card padding="lg">
       <Stack gap={3}>
-        <span className={styles.stateEyebrow}>Graph unavailable</span>
+        <span className={styles.stateEyebrow}>{friendly.title}</span>
         <Text as="h2" className={styles.stateHeading}>
           Couldn't load the concept graph.
         </Text>
-        <Text tone="secondary">{message}</Text>
+        <Text tone="secondary">{friendly.detail}</Text>
+        {friendly.recovery ? (
+          <Text tone="tertiary">{friendly.recovery}</Text>
+        ) : null}
         <button type="button" className={styles.retryButton} onClick={onRetry}>
           Reload the graph
         </button>

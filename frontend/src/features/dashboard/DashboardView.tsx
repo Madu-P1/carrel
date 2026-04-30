@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 
 import { Icon } from "@/design-system";
 import { dashboard, type DashboardPayload } from "@/services/api/endpoints";
+import { friendlyError } from "@/services/api/errorMessages";
 import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 
 import { ActiveSessionCard } from "./components/ActiveSessionCard";
@@ -49,7 +50,11 @@ import styles from "./DashboardView.module.css";
  */
 export function DashboardView() {
   const [payload, setPayload] = useState<DashboardPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Hold the raw Error so the error renderer can branch on its kind
+  // (BackendOfflineError vs ApiError vs anything else). Storing just
+  // .message would discard the type info we need to give the user a
+  // useful recovery hint.
+  const [error, setError] = useState<unknown>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -70,7 +75,7 @@ export function DashboardView() {
         setActiveSession(null);
       }
     } catch (caught) {
-      setError((caught as Error).message);
+      setError(caught);
     }
   }, []);
 
@@ -88,11 +93,15 @@ export function DashboardView() {
   }, [refresh]);
 
   if (error) {
+    const friendly = friendlyError(error, { surface: "Dashboard" });
     return (
       <div className={styles.wrap}>
         <div className={styles.errorCard}>
-          <strong>Could not load your dashboard.</strong>
-          <span className={styles.errorMessage}>{error}</span>
+          <strong>{friendly.title}</strong>
+          <span className={styles.errorMessage}>{friendly.detail}</span>
+          {friendly.recovery ? (
+            <span className={styles.errorMessage}>{friendly.recovery}</span>
+          ) : null}
           <button
             type="button"
             className={styles.retryButton}
