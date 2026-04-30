@@ -247,8 +247,7 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
 PLIST
 
 launch_app() {
-  nohup env EINSTEIN_FRONTEND="$FRONTEND_MODE" "$APP_BINARY" >/dev/null 2>&1 &
-  APP_PID=$!
+  /usr/bin/open -n --env "EINSTEIN_FRONTEND=$FRONTEND_MODE" "$APP_BUNDLE"
 }
 
 ensure_backend
