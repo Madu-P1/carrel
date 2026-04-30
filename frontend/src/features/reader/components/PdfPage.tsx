@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
+import type {
+  PDFDocumentProxy,
+  RenderTask
+} from "pdfjs-dist/types/src/display/api";
 
 import { Spinner } from "@/design-system";
 
@@ -20,6 +23,7 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
 
   useEffect(() => {
     let cancelled = false;
+    let renderTask: RenderTask | null = null;
     setRendered(false);
 
     const render = async () => {
@@ -51,7 +55,28 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
         textLayerRef.current.style.height = `${viewport.height}px`;
       }
 
-      await page.render({ canvasContext: context, viewport }).promise;
+      // Hold the RenderTask so the cleanup can cancel it. The
+      // previous "let cancelled = true" pattern aborted BEFORE the
+      // render started but couldn't interrupt one in flight; when
+      // the effect re-ran (pageNumber/scale changed, parent
+      // remounted, etc.), the new render hit the same canvas while
+      // the old one was still painting, and pdf.js threw
+      // "Cannot use the same canvas during multiple render()
+      // operations." page.render() returns a RenderTask with both
+      // a .promise and a .cancel() — using both is what the docs
+      // recommend.
+      renderTask = page.render({ canvasContext: context, viewport });
+      try {
+        await renderTask.promise;
+      } catch (err) {
+        // pdf.js throws RenderingCancelledException on cancel; that's
+        // expected, swallow it. Anything else, propagate.
+        const name = (err as { name?: string } | null)?.name;
+        if (name === "RenderingCancelledException") return;
+        throw err;
+      } finally {
+        renderTask = null;
+      }
 
       if (cancelled || !textLayerRef.current) {
         return;
@@ -73,6 +98,12 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
 
     return () => {
       cancelled = true;
+      // Signal pdf.js to abort the in-flight render. The await in
+      // render() will reject with RenderingCancelledException, which
+      // we catch above. Without this, the next render() call on the
+      // same canvas (after the effect re-runs) would race the still-
+      // painting one and throw the [REJECT] error the user saw.
+      renderTask?.cancel();
     };
   }, [pageNumber, pdf, scale]);
 
