@@ -215,16 +215,13 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         )
 
         with main.get_db() as conn:
-            # Sanity: ingestion populated concepts AND edges for both docs.
+            # Sanity: ingestion populated concepts for both docs, and capture
+            # doc_b edges so the post-delete assertion can verify they remain.
             concepts_a = conn.execute(
                 "SELECT id FROM concepts WHERE doc_id = ?", (doc_a,)
             ).fetchall()
             concepts_b = conn.execute(
                 "SELECT id FROM concepts WHERE doc_id = ?", (doc_b,)
-            ).fetchall()
-            edges_a = conn.execute(
-                "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",
-                (doc_a,),
             ).fetchall()
             edges_b = conn.execute(
                 "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",

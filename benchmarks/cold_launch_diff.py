@@ -1,10 +1,14 @@
 import argparse
 import json
 from pathlib import Path
+from typing import Any, cast
 
 
-def load_report(path: str) -> dict:
-    data = json.loads(Path(path).read_text())
+def load_report(path: str) -> dict[str, Any]:
+    raw = json.loads(Path(path).read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path} is not a valid cold-launch report")
+    data = cast(dict[str, Any], raw)
     if "p50_ms" not in data or "p95_ms" not in data:
         raise ValueError(f"{path} is not a valid cold-launch report")
     return data

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -236,7 +237,7 @@ def _normalized_substring_match(needle: str, haystack: str) -> bool:
 
 
 def _resolve_expected_chunks(
-    conn,
+    conn: sqlite3.Connection,
     case: EvalCase,
     filename_to_doc_id: dict[str, str],
 ) -> set[str]:
@@ -281,7 +282,7 @@ def _detect_scope_fallback(answer: GroundedAnswer) -> bool:
 
 def run_case(
     case: EvalCase,
-    conn,
+    conn: sqlite3.Connection,
     mode: str,
     filename_to_doc_id: dict[str, str],
     router: ClaudeRouter | None = None,
