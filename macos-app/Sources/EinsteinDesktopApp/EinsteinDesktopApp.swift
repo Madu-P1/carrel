@@ -17,13 +17,7 @@ struct EinsteinDesktopApp: App {
                 .frame(minWidth: 1100, minHeight: 720)
         }
         .defaultSize(width: 1440, height: 920)
-    }
-}
-
-struct ContentView: View {
-    var body: some View {
-        WebAppView()
-            .background(Color.black)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
     }
 }
 

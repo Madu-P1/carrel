@@ -20,7 +20,10 @@ if (!scriptMatch || !stylesheetMatch) {
 
 const jsPath = join(dist, scriptMatch[1].replace(/^\.\//, ""));
 const cssPath = join(dist, stylesheetMatch[1].replace(/^\.\//, ""));
-const jsSource = readFileSync(jsPath, "utf8");
+const jsSource = readFileSync(jsPath, "utf8").replace(
+  /\n?\/\/# sourceMappingURL=[^\r\n]+[\r\n]*$/u,
+  "\n",
+);
 const cssRaw = readFileSync(cssPath, "utf8");
 
 // Vite emits CSS url()s relative to dist/assets/. When the CSS is inlined into
@@ -44,9 +47,6 @@ const css = cssRaw.replace(
     return `url(${quote}./assets.new/${path}${quote})`;
   },
 );
-const workerPath = resolve(root, "node_modules", "pdfjs-dist", "build", "pdf.worker.min.mjs");
-const workerSource = existsSync(workerPath) ? readFileSync(workerPath, "utf8") : "";
-const workerBase64 = workerSource ? Buffer.from(workerSource, "utf8").toString("base64") : "";
 const safeInline = (source) => source.replace(/<\/script/gi, "<\\/script");
 
 /*
@@ -123,23 +123,6 @@ if (survivingRelativeImports.length > 0) {
   );
 }
 
-const workerShim = workerBase64
-  ? `<script>
-  (function() {
-    window.__carrelAssetBase =
-      window.__carrelAssetBase ?? new URL("./assets.new/", window.location.href).href;
-    if (window.__carrelPdfWorkerUrl) {
-      return;
-    }
-    const base64 = ${JSON.stringify(workerBase64)};
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const workerBlob = new Blob([bytes], { type: "text/javascript" });
-    window.__carrelPdfWorkerUrl = URL.createObjectURL(workerBlob);
-  })();
-</script>`
-  : "";
-
 const bundledHtml = `<!doctype html>
 <html lang="en">
   <head>
@@ -153,7 +136,6 @@ ${css}
     <script type="module">
 ${safeInline(rewrittenJsSource)}
     </script>
-${workerShim}
   </head>
   <body>
     <div id="root"></div>
@@ -191,6 +173,10 @@ if (openCount !== closeCount) {
   );
 }
 
+if (bundledHtml.includes("sourceMappingURL=")) {
+  throw new Error("Bundled HTML integrity check failed: source map reference found in app.new.html");
+}
+
 // No asset path should reference the pre-bundle Vite output directory, because
 // ./assets/ is not copied into macos-app/Resources/ — only ./assets.new/ is.
 if (bundledHtml.includes('src="./assets/index.js"')) {
@@ -222,6 +208,15 @@ if (missingAssets.length > 0) {
   throw new Error(
     `Bundled HTML integrity check failed: CSS references missing asset(s): ${[...new Set(missingAssets)].join(", ")}. ` +
     "Ensure the files exist in frontend/src/assets/ and are imported by a bundled stylesheet."
+  );
+}
+
+// The PDF.js worker stays as a normal file under assets.new/ so app launch does
+// not eagerly decode a large base64 blob. Reader code resolves this URL lazily.
+if (!existsSync(join(dist, "assets", "pdf.worker.min.mjs"))) {
+  throw new Error(
+    "Bundled HTML integrity check failed: pdf.worker.min.mjs is missing from dist/assets. " +
+    "The Reader expects the worker to be copied to Resources/assets.new/."
   );
 }
 

@@ -4,8 +4,10 @@ import SwiftUI
 import WebKit
 
 struct WebAppView: NSViewRepresentable {
+    var onLoadPhaseChange: (WebAppLoadPhase) -> Void = { _ in }
+
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(onLoadPhaseChange: onLoadPhaseChange)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -66,7 +68,9 @@ struct WebAppView: NSViewRepresentable {
         return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        context.coordinator.onLoadPhaseChange = onLoadPhaseChange
+    }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeScriptMessageHandler(
@@ -92,6 +96,7 @@ struct WebAppView: NSViewRepresentable {
 final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
     private weak var webView: WKWebView?
     private var didLogInteractive = false
+    var onLoadPhaseChange: (WebAppLoadPhase) -> Void
     /// Which frontend is currently loaded. Tracked here (not via
     /// FrontendSelector.resolved()) because resolved() honors the launch
     /// env var even after a user clicks "Switch to new frontend." The
@@ -102,6 +107,11 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         subsystem: Bundle.main.bundleIdentifier ?? "com.madu.EinsteinDesktop",
         category: "webview"
     )
+
+    init(onLoadPhaseChange: @escaping (WebAppLoadPhase) -> Void) {
+        self.onLoadPhaseChange = onLoadPhaseChange
+        super.init()
+    }
 
     func attach(to webView: WKWebView) {
         self.webView = webView
@@ -115,12 +125,14 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     /// menu so a user's click beats the launch-time env default. Normal boot
     /// (makeNSView) passes nil and goes through FrontendSelector.resolved().
     func loadBundledApp(into webView: WKWebView, explicitFrontend: Frontend? = nil) {
+        onLoadPhaseChange(.loading)
         didLogInteractive = false
         let activeFrontend = explicitFrontend ?? FrontendSelector.resolved()
         self.activeFrontend = activeFrontend
         let resource = FrontendSelector.bundledResource(for: activeFrontend)
         guard let htmlURL = Bundle.main.url(forResource: resource.name, withExtension: resource.ext) else {
             logger.error("Missing bundled HTML resource \(resource.name).\(resource.ext)")
+            onLoadPhaseChange(.failed("The bundled frontend resource was not found inside the app."))
             webView.loadHTMLString(
                 """
                 <!DOCTYPE html>
@@ -157,6 +169,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         if activeFrontend == .legacy {
             guard let html = try? String(contentsOf: htmlURL, encoding: .utf8) else {
                 logger.error("Failed to read legacy HTML at \(htmlURL.path(percentEncoded: false), privacy: .public)")
+                onLoadPhaseChange(.failed("The legacy frontend resource could not be read."))
                 return
             }
             let baseURL = URL(string: "http://einstein.local/")
@@ -377,8 +390,13 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         return alert
     }
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        onLoadPhaseChange(.loading)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         logger.info("Finished loading bundled web app")
+        onLoadPhaseChange(.ready)
         probeInteractiveMarker()
         installLegacyEscapeHatchIfNeeded(webView)
     }
@@ -479,10 +497,12 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         logger.error("Navigation failed: \(error.localizedDescription, privacy: .public)")
+        onLoadPhaseChange(.failed(error.localizedDescription))
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         logger.error("Provisional navigation failed: \(error.localizedDescription, privacy: .public)")
+        onLoadPhaseChange(.failed(error.localizedDescription))
     }
 
     func webView(

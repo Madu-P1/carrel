@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { expect, test, vi } from "vitest";
 
+import { readerState } from "../../src/features/reader/state";
 import { mockJson } from "../support/mockFetch";
 
 vi.mock("pdfjs-dist", () => {
@@ -114,4 +115,82 @@ test("ReaderView shows toolbar and viewer shell for PDFs", async () => {
   await waitFor(() => {
     expect(document.querySelector("[data-page-number='1']")).toBeTruthy();
   });
+});
+
+test("ReaderView reopens the last selected PDF when no route id is provided", async () => {
+  mockJson("GET", "/api/documents/pdf-doc", {
+    chunks: [],
+    concept_options: [],
+    concepts: [],
+    counts: { cards: 0, chunks: 12, concepts: 0, questions: 0 },
+    document: {
+      concept_count: 0,
+      confidence: 0.97,
+      filename: "biology.pdf",
+      file_type: "pdf",
+      id: "pdf-doc",
+      page_count: 12,
+      parser_diagnostics: {},
+      question_count: 0,
+      status: "ready",
+      summary: "",
+      subject_name: "Biology"
+    },
+    questions: [],
+    summary: "Biology deck"
+  });
+
+  const firstView = render(<ReaderView id="pdf-doc" />);
+  expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
+  expect(window.localStorage.getItem("carrel.reader.last-document-id")).toBe("pdf-doc");
+  firstView.unmount();
+
+  render(<ReaderView />);
+
+  expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
+  expect(screen.queryByText(/No source selected yet\./i)).toBeNull();
+});
+
+test("ReaderView exposes PDF focus mode from the toolbar", async () => {
+  mockJson("GET", "/api/documents/pdf-doc", {
+    chunks: [
+      {
+        content: "Retrieval practice strengthens recall.",
+        id: "chunk-1",
+        page_num: 1,
+        section: "Practice"
+      }
+    ],
+    concept_options: [],
+    concepts: [],
+    counts: { cards: 0, chunks: 1, concepts: 0, questions: 0 },
+    document: {
+      concept_count: 0,
+      confidence: 0.97,
+      filename: "biology.pdf",
+      file_type: "pdf",
+      id: "pdf-doc",
+      page_count: 12,
+      parser_diagnostics: {},
+      question_count: 0,
+      status: "ready",
+      summary: "",
+      subject_name: "Biology"
+    },
+    questions: [],
+    summary: "Biology deck"
+  });
+
+  render(<ReaderView id="pdf-doc" />);
+
+  const focusButton = await screen.findByRole("button", { name: /Enter focus mode/i });
+  await waitFor(() => {
+    expect(readerState.focusAvailable.value).toBe(true);
+  });
+  fireEvent.click(focusButton);
+
+  expect(readerState.focusMode.value).toBe(true);
+  expect(screen.getByTestId("pdf-reader").getAttribute("data-focus-mode")).toBe("true");
+  expect(screen.getByRole("button", { name: /Exit focus mode/i })).toBeDefined();
+  expect(screen.queryByLabelText(/Document outline/i)).toBeNull();
 });

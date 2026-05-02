@@ -77,9 +77,23 @@ export function Dialog({
       focusable[nextIndex].focus();
     };
 
+    const onOutsidePress = (event: MouseEvent | PointerEvent) => {
+      const target = event.target;
+      if (!node || !(target instanceof Node)) {
+        return;
+      }
+      if (!node.contains(target)) {
+        onClose();
+      }
+    };
+
     window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onOutsidePress, true);
+    document.addEventListener("mousedown", onOutsidePress, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onOutsidePress, true);
+      document.removeEventListener("mousedown", onOutsidePress, true);
       restoreFocusRef.current?.focus();
     };
   }, [open, onClose]);

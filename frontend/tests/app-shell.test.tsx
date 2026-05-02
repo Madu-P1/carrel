@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, expect, test } from "vitest";
 
 import { App } from "../src/app/App";
+import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import shellStyles from "../src/app/shell/AppShell.module.css";
 import { readerState } from "../src/features/reader/state";
 import { dispatchMenuCommand } from "../src/services/native/menu";
@@ -63,12 +64,77 @@ test("toggle left sidebar command collapses the sidebar", async () => {
   });
 });
 
+test("shell resize handles adjust the left and right bars", async () => {
+  await renderAppReady();
+
+  const leftHandle = screen.getByRole("separator", {
+    name: /Resize navigation sidebar/i,
+  });
+  fireEvent.keyDown(leftHandle, { key: "ArrowRight" });
+  expect(appShell.leftRailWidth.value).toBe(SHELL_PANEL_WIDTHS.left.default + 16);
+  fireEvent.keyDown(leftHandle, { key: "Home" });
+  expect(appShell.leftRailWidth.value).toBe(SHELL_PANEL_WIDTHS.left.min);
+
+  dispatchMenuCommand("nav.reader");
+  expect(await screen.findByText(/No source selected yet\./i)).toBeDefined();
+  await waitFor(() => {
+    expect(appShell.rightOpen.value).toBe(true);
+  });
+
+  const rightHandle = screen.getByRole("separator", {
+    name: /Resize source panel/i,
+  });
+  fireEvent.keyDown(rightHandle, { key: "ArrowLeft" });
+  expect(appShell.rightPanelWidth.value).toBe(SHELL_PANEL_WIDTHS.right.default + 16);
+  fireEvent.keyDown(rightHandle, { key: "End" });
+  expect(appShell.rightPanelWidth.value).toBe(SHELL_PANEL_WIDTHS.right.max);
+});
+
 test("menu dispatch navigates to Ask route", async () => {
   await renderAppReady();
 
   dispatchMenuCommand("nav.ask");
 
   expect(await screen.findByText(/Ask a question about your sources/i)).toBeDefined();
+});
+
+test("route changes carry directional page transition state", async () => {
+  await renderAppReady();
+
+  expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("none");
+
+  dispatchMenuCommand("nav.ask");
+
+  expect(await screen.findByText(/Ask a question about your sources/i)).toBeDefined();
+  expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("forward");
+  expect(screen.getByTestId("page-transition").className).toContain(shellStyles.pageTransitionForward);
+
+  dispatchMenuCommand("nav.dashboard");
+
+  expect(await screen.findByText(/Your study environment is ready/i)).toBeDefined();
+  expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("backward");
+  expect(screen.getByTestId("page-transition").className).toContain(shellStyles.pageTransitionBackward);
+});
+
+test("topbar tour button replays the first-run tour", async () => {
+  await renderAppReady();
+
+  fireEvent.click(screen.getByRole("button", { name: /Replay first-run tour/i }));
+
+  expect(await screen.findByRole("dialog", { name: /Bring in a source you trust/i })).toBeDefined();
+});
+
+test("jobs tray closes when clicking outside the dialog", async () => {
+  await renderAppReady();
+
+  fireEvent.click(screen.getByRole("button", { name: /Open jobs tray/i }));
+  expect(await screen.findByRole("dialog", { name: /Jobs Tray/i })).toBeDefined();
+
+  fireEvent.mouseDown(document.body);
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: /Jobs Tray/i })).toBeNull();
+  });
 });
 
 test("theme toggle command cycles html theme classes", async () => {
@@ -107,6 +173,29 @@ test("menu zoom commands update reader state", async () => {
 
   dispatchMenuCommand("view.zoomReset");
   expect(readerState.scale.value).toBe(1);
+});
+
+test("reader focus mode command toggles only when the reader can focus", async () => {
+  await renderAppReady();
+
+  dispatchMenuCommand("reader.toggleFocusMode");
+  expect(readerState.focusMode.value).toBe(false);
+
+  dispatchMenuCommand("nav.reader");
+  expect(await screen.findByText(/No source selected yet\./i)).toBeDefined();
+  await waitFor(() => {
+    expect(appShell.currentRoute.value).toContain("/reader");
+  });
+  dispatchMenuCommand("reader.toggleFocusMode");
+  expect(readerState.focusMode.value).toBe(false);
+
+  act(() => {
+    readerState.focusAvailable.value = true;
+  });
+  dispatchMenuCommand("reader.toggleFocusMode");
+  expect(readerState.focusMode.value).toBe(true);
+  dispatchMenuCommand("reader.toggleFocusMode");
+  expect(readerState.focusMode.value).toBe(false);
 });
 
 test("meta+b keydown inside the web app does not toggle the sidebar by itself", async () => {

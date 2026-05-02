@@ -13,7 +13,9 @@ describe("palette actions registry", () => {
       "view.toggleLeftSidebar",
       "view.toggleRightPanel",
       "view.toggleTheme",
+      "reader.toggleFocusMode",
       "file.import",
+      "help.tour",
       "system.switch-frontend-legacy",
       "system.switch-frontend-new"
     ]) {

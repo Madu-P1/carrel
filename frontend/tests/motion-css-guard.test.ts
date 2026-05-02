@@ -72,4 +72,12 @@ describe("motion CSS guardrails", () => {
     expect(animations).toContain(".anim-focusRing");
     expect(animations).toContain(".anim-caretBlink");
   });
+
+  test("route transition wrapper preserves full-height reader layouts", () => {
+    const shell = read(resolve(root, "app/shell/AppShell.module.css"));
+    const match = shell.match(/\.pageTransition\s*\{([\s\S]*?)\}/);
+
+    expect(match?.[1]).toContain("height: 100%;");
+    expect(match?.[1]).toContain("min-height: 0;");
+  });
 });

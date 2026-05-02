@@ -68,6 +68,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ["⌘", "="], label: "Zoom in (Reader)" },
       { keys: ["⌘", "-"], label: "Zoom out (Reader)" },
       { keys: ["⌘", "0"], label: "Actual size (Reader)" },
+      { keys: ["⌘", "⇧", "F"], label: "Toggle Reader focus mode" },
       { keys: ["⌘", "/"], label: "Find in document (Reader)", note: "Esc to close" }
     ]
   },

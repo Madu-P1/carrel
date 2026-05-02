@@ -3,6 +3,8 @@ from fastapi import Query
 from typing import List, Optional
 
 from db import get_db
+from api_models import EvidenceResolution
+from services import evidence_resolution
 from services import provenance_service
 from services import stale_tracker
 
@@ -23,6 +25,23 @@ def register_evidence_routes(app) -> None:
             else:
                 evidence = provenance_service.fetch_recent_evidence(conn, limit=limit)
             return {"evidence": evidence}
+
+    @app.get("/api/evidence/resolve", response_model=EvidenceResolution)
+    def resolve_evidence(
+        document_id: str = Query(...),
+        chunk_id: Optional[str] = Query(None),
+    ):
+        with get_db() as conn:
+            resolved = evidence_resolution.resolve_evidence(
+                conn,
+                document_id=document_id,
+                chunk_id=chunk_id,
+            )
+            if resolved is None:
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=404, detail="Evidence not found")
+            return resolved
 
     @app.get("/api/evidence/concept/{concept_id}")
     def get_evidence_for_concept(concept_id: str, limit: int = Query(10)):

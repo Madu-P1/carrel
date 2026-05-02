@@ -33,6 +33,7 @@ export const icons = {
   // Arrow-right for inline CTAs ("Start review →"). Swaps in for the
   // literal Unicode arrow character so stroke weight matches siblings.
   "arrow-right": "M3 8h10 M9 4l4 4-4 4",
+  focus: "M5.5 2.5 H2.5 v3 M10.5 2.5 h3 v3 M13.5 10.5 v3 h-3 M5.5 13.5 h-3 v-3",
 
   settings:
     "M8 2.5 9.2 3l1-.5 1 1-.5 1 1.1 1H13v2h-1.2l-1.1 1 .5 1-1 1-1-.5-1 .5-1-1 .5-1-1.1-1H3v-2h1.2l1.1-1-.5-1 1-1 1 .5L8 2.5Z M8 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",

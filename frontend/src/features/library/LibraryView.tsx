@@ -157,7 +157,7 @@ export function LibraryView() {
 
       {loading.value && !data.value ? <LibrarySkeleton /> : null}
       {error.value ? <LibraryErrorState error={error.value} onRetry={() => void refetch()} /> : null}
-      {data.value && data.value.length === 0 ? <LibraryEmptyState /> : null}
+      {data.value && data.value.length === 0 ? <LibraryEmptyState onDemoLoaded={refreshAll} /> : null}
 
       {data.value && data.value.length > 0 && !isSearching ? (
         <DuplicateCleanupPanel onCleanupComplete={refreshAll} />

@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { expect, test, vi } from "vitest";
 
 import { ClaimList } from "../src/features/ask/components/ClaimList";
 import { FallbackAnswer } from "../src/features/ask/components/FallbackAnswer";
 import { UnsupportedSpans } from "../src/features/ask/components/UnsupportedSpans";
 import { DEMO_ANSWER, DEMO_FALLBACK } from "../src/features/ask/fixtures/grounded-answer.fixture";
+import { mockJson } from "./support/mockFetch";
 
 test("claim list renders claims and clicking a citation chip fires the handler", () => {
   const onCitationClick = vi.fn();
@@ -16,6 +17,34 @@ test("claim list renders claims and clicking a citation chip fires the handler",
 
   expect(onCitationClick).toHaveBeenCalledTimes(1);
   expect(onCitationClick.mock.calls[0]?.[0]?.chunk_id).toBe("demo-1");
+});
+
+test("citation chip hover renders an inspectable evidence preview card", async () => {
+  mockJson("GET", "/api/evidence/resolve", {
+    document_id: "demo-doc-biology",
+    chunk_id: "demo-1",
+    document_name: "cell-division.md",
+    section: "Cell division basics",
+    page_num: 1,
+    quote_text: "Mitosis creates two genetically identical daughter cells.",
+    confidence: 0.93,
+    location_kind: "chunk",
+    bbox: null,
+    text_offset_start: null,
+    text_offset_end: null
+  });
+  render(<ClaimList claims={DEMO_ANSWER.claims} onCitationClick={() => {}} />);
+
+  fireEvent.mouseOver(screen.getByRole("button", { name: /Cell division basics/i }));
+
+  await waitFor(
+    () => {
+      expect(screen.getByRole("tooltip")).toBeDefined();
+      expect(screen.getByText(/Approximate passage/i)).toBeDefined();
+      expect(screen.getByText(/93%/i)).toBeDefined();
+    },
+    { timeout: 1000 }
+  );
 });
 
 test("fallback answer renders the visible unavailable state and snippet claims", () => {

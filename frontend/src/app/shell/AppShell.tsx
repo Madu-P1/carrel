@@ -1,14 +1,17 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useLocation } from "preact-iso";
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 
 import { Box, Button, Card, Divider, Icon, ScrollArea, Stack, Text, ToastHost } from "@/design-system";
 import { WorkspaceSidebar, type SidebarNavItem } from "./WorkspaceSidebar";
 import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
+import { JobsTray } from "@/features/shell/JobsTray";
+import { FirstRunTour, openFirstRunTour } from "@/features/onboarding/FirstRunTour";
 import type { PaletteAction } from "@/features/palette/actions";
 import {
   requestReaderPage,
   readerState,
+  setReaderFocusMode,
   setReaderScale,
   zoomReaderBy
 } from "@/features/reader/state";
@@ -28,7 +31,10 @@ import {
   navigateTo,
   pathnameFromRoute,
   registerNavigator,
+  setLeftRailWidth,
   setCurrentRoute,
+  setRightPanelWidth,
+  SHELL_PANEL_WIDTHS,
   toggleLeft,
   toggleRight,
   toggleTheme
@@ -46,11 +52,11 @@ interface ShellFrameProps extends AppShellProps {
 
 const navLinks: SidebarNavItem[] = [
   { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
-  { key: "session", label: "Session", commandHint: "⌘2", icon: "sparkle", path: "/session" },
+  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "sparkle", path: "/session" },
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
-  { key: "ask", label: "Ask", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  { key: "study", label: "Study", commandHint: "⌘6", icon: "study", path: "/study" },
+  { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
+  { key: "study", label: "Review Queue", commandHint: "⌘6", icon: "study", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
   { key: "plan", label: "Plan", commandHint: "⌘9", icon: "command", path: "/plan" }
@@ -92,6 +98,60 @@ function routeLabel(path: string): string {
   return "Workspace";
 }
 
+function routeMotionIndex(path: string): number {
+  if (path === "/") return 0;
+  if (path.startsWith("/session")) return 1;
+  if (path.startsWith("/library")) return 2;
+  if (path.startsWith("/reader")) return 3;
+  if (path.startsWith("/ask")) return 4;
+  if (path.startsWith("/study")) return 5;
+  if (path.startsWith("/search")) return 6;
+  if (path.startsWith("/concepts")) return 7;
+  if (path.startsWith("/plan")) return 8;
+  return 9;
+}
+
+function useRouteMotion(pathname: string): "backward" | "forward" | "none" {
+  const previousPathRef = useRef(pathname);
+  const previousIndexRef = useRef(routeMotionIndex(pathname));
+  const motionRef = useRef<"backward" | "forward" | "none">("none");
+
+  if (previousPathRef.current !== pathname) {
+    const nextIndex = routeMotionIndex(pathname);
+    if (nextIndex > previousIndexRef.current) {
+      motionRef.current = "forward";
+    } else if (nextIndex < previousIndexRef.current) {
+      motionRef.current = "backward";
+    } else {
+      motionRef.current = "none";
+    }
+    previousPathRef.current = pathname;
+    previousIndexRef.current = nextIndex;
+  }
+
+  return motionRef.current;
+}
+
+type ResizablePanel = "left" | "right";
+
+function panelWidthFor(panel: ResizablePanel): number {
+  return panel === "left"
+    ? appShell.leftRailWidth.value
+    : appShell.rightPanelWidth.value;
+}
+
+function setPanelWidth(panel: ResizablePanel, width: number): void {
+  if (panel === "left") {
+    setLeftRailWidth(width);
+  } else {
+    setRightPanelWidth(width);
+  }
+}
+
+function resizeLimits(panel: ResizablePanel) {
+  return panel === "left" ? SHELL_PANEL_WIDTHS.left : SHELL_PANEL_WIDTHS.right;
+}
+
 function DefaultRightPanelEmpty({ path }: { path: string }) {
   const isReader = path.startsWith("/reader");
 
@@ -122,11 +182,87 @@ function DefaultRightPanelEmpty({ path }: { path: string }) {
 function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   const isLeftOpen = appShell.leftOpen.value;
   const isRightOpen = appShell.rightOpen.value;
+  const leftRailWidth = appShell.leftRailWidth.value;
+  const rightPanelWidth = appShell.rightPanelWidth.value;
   const theme = appShell.theme.value;
   const pathname = pathnameFromRoute(path);
+  const isReaderFocusMode = pathname.startsWith("/reader") && readerState.focusMode.value;
   const activeLabel = routeLabel(pathname);
+  const routeMotion = useRouteMotion(pathname);
   const panelContent = appShell.rightPanelContent.value;
   const playBootMotion = isColdBootMotionEnabled();
+  const shellSizingStyle = {
+    "--left-rail-width": `${leftRailWidth}px`,
+    "--right-panel-width": `${rightPanelWidth}px`
+  } as JSX.CSSProperties;
+
+  const startPanelResize = (
+    panel: ResizablePanel,
+    event: JSX.TargetedPointerEvent<HTMLDivElement>
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = panelWidthFor(panel);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = panel === "left"
+        ? startWidth + delta
+        : startWidth - delta;
+      setPanelWidth(panel, nextWidth);
+    };
+
+    const stopResize = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  };
+
+  const resizePanelFromKeyboard = (
+    panel: ResizablePanel,
+    event: JSX.TargetedKeyboardEvent<HTMLDivElement>
+  ) => {
+    const limits = resizeLimits(panel);
+    const step = event.shiftKey ? 32 : 16;
+    let nextWidth: number | null = null;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        nextWidth = panel === "left"
+          ? panelWidthFor(panel) - step
+          : panelWidthFor(panel) + step;
+        break;
+      case "ArrowRight":
+        nextWidth = panel === "left"
+          ? panelWidthFor(panel) + step
+          : panelWidthFor(panel) - step;
+        break;
+      case "Home":
+        nextWidth = limits.min;
+        break;
+      case "End":
+        nextWidth = limits.max;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    setPanelWidth(panel, nextWidth);
+  };
 
   useEffect(() => {
     initializeTheme();
@@ -183,6 +319,13 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         case "view.zoomReset":
           setReaderScale(1);
           break;
+        case "reader.toggleFocusMode": {
+          const currentPath = pathnameFromRoute(appShell.currentRoute.value);
+          if (currentPath.startsWith("/reader") && readerState.focusAvailable.value) {
+            setReaderFocusMode(!readerState.focusMode.value);
+          }
+          break;
+        }
         case "reader.nextPage":
           requestReaderPage(readerState.currentPage.value + 1);
           break;
@@ -195,9 +338,11 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         case "help.shortcuts":
           openShortcutsOverlay();
           break;
+        case "help.open":
+          openFirstRunTour();
+          break;
         case "app.preferences":
         case "file.new":
-        case "help.open":
           console.info("Menu command not wired yet", cmd);
           break;
         case "file.import":
@@ -239,6 +384,12 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         return;
       }
 
+      if (event.key === "Escape" && readerState.focusMode.value) {
+        event.preventDefault();
+        setReaderFocusMode(false);
+        return;
+      }
+
       if (isEditableTarget(event.target)) return;
 
       // `?` — show the shortcuts overlay. Toggle if already open.
@@ -273,7 +424,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   }, []);
 
   return (
-    <div className={styles.shell}>
+    <div className={[styles.shell, isReaderFocusMode ? styles.readerFocusShell : ""].filter(Boolean).join(" ")}>
       <header
         className={[styles.topbar, playBootMotion ? styles.bootTopbar : ""]
           .filter(Boolean)
@@ -289,6 +440,15 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           </Stack>
         </div>
         <div className={styles.topbarActions}>
+          <JobsTray />
+          <Button
+            aria-label="Replay first-run tour"
+            leadingIcon={<Icon name="sparkle" />}
+            onClick={() => openFirstRunTour()}
+            variant="ghost"
+          >
+            Tour
+          </Button>
           <Button
             aria-label="Toggle theme"
             leadingIcon={<Icon name="sparkle" />}
@@ -309,7 +469,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         </div>
       </header>
 
-      <div className={styles.body}>
+      <div className={styles.body} style={shellSizingStyle}>
         <aside
           // NOTE: the rail is NOT aria-hidden when collapsed, because the
           // BrandMark inside it is still a live control the user can
@@ -319,6 +479,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           className={[
             styles.leftRail,
             !isLeftOpen ? styles.leftRailCollapsed : "",
+            isReaderFocusMode ? styles.leftRailFocusHidden : "",
             playBootMotion ? styles.bootLeftRail : ""
           ]
             .filter(Boolean)
@@ -340,6 +501,26 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
             </Card>
           </div>
         </aside>
+        <div
+          aria-hidden={!isLeftOpen || isReaderFocusMode}
+          aria-label="Resize navigation sidebar"
+          aria-orientation="vertical"
+          aria-valuemax={SHELL_PANEL_WIDTHS.left.max}
+          aria-valuemin={SHELL_PANEL_WIDTHS.left.min}
+          aria-valuenow={leftRailWidth}
+          className={[
+            styles.resizeHandle,
+            styles.leftResizeHandle,
+            !isLeftOpen || isReaderFocusMode ? styles.resizeHandleHidden : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          data-testid="left-resize-handle"
+          onKeyDown={(event) => resizePanelFromKeyboard("left", event)}
+          onPointerDown={(event) => startPanelResize("left", event)}
+          role="separator"
+          tabIndex={isLeftOpen && !isReaderFocusMode ? 0 : -1}
+        />
 
         <main
           className={[styles.main, playBootMotion ? styles.bootMain : ""]
@@ -347,14 +528,50 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
             .join(" ")}
           data-testid="main-content"
         >
-          <ScrollArea className={styles.mainInner}>{children}</ScrollArea>
+          <ScrollArea className={styles.mainInner}>
+            <div
+              className={[
+                styles.pageTransition,
+                routeMotion === "forward" ? styles.pageTransitionForward : "",
+                routeMotion === "backward" ? styles.pageTransitionBackward : ""
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              data-route-motion={routeMotion}
+              data-testid="page-transition"
+              key={pathname}
+            >
+              {children}
+            </div>
+          </ScrollArea>
         </main>
+        <div
+          aria-hidden={!isRightOpen || isReaderFocusMode}
+          aria-label="Resize source panel"
+          aria-orientation="vertical"
+          aria-valuemax={SHELL_PANEL_WIDTHS.right.max}
+          aria-valuemin={SHELL_PANEL_WIDTHS.right.min}
+          aria-valuenow={rightPanelWidth}
+          className={[
+            styles.resizeHandle,
+            styles.rightResizeHandle,
+            !isRightOpen || isReaderFocusMode ? styles.resizeHandleHidden : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          data-testid="right-resize-handle"
+          onKeyDown={(event) => resizePanelFromKeyboard("right", event)}
+          onPointerDown={(event) => startPanelResize("right", event)}
+          role="separator"
+          tabIndex={isRightOpen && !isReaderFocusMode ? 0 : -1}
+        />
 
         <aside
           aria-hidden={!isRightOpen}
           className={[
             styles.rightPanel,
             !isRightOpen ? styles.rightPanelCollapsed : "",
+            isReaderFocusMode ? styles.rightPanelFocusHidden : "",
             playBootMotion ? styles.bootRightPanel : ""
           ]
             .filter(Boolean)
@@ -386,6 +603,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         }}
       />
       <ShortcutsOverlay />
+      <FirstRunTour />
       <ToastHost />
     </div>
   );

@@ -1,4 +1,5 @@
 import type { CitationRecord } from "./types";
+import { anchors } from "@/services/api/endpoints";
 
 export const ASK_ANCHOR_DRAFTS_STORAGE_KEY = "einstein.ask.anchor-drafts";
 
@@ -95,4 +96,35 @@ export async function copyAskCardText(text: string): Promise<void> {
     throw new Error("clipboard_unavailable");
   }
   await navigator.clipboard.writeText(text);
+}
+
+export async function saveCitationAnchor({
+  citation,
+  claimText,
+  quoteText,
+  sourceKind
+}: {
+  citation?: CitationRecord | null;
+  claimText: string;
+  quoteText: string;
+  sourceKind: AskAnchorDraft["sourceKind"];
+}) {
+  if (!citation?.document_id) {
+    return saveAskAnchorDraft({
+      title: claimText,
+      body: quoteText,
+      sourceKind,
+      citation
+    });
+  }
+  const response = await anchors.create({
+    document_id: citation.document_id,
+    chunk_id: citation.chunk_id ?? null,
+    page_num: citation.page_num ?? null,
+    quote_text: quoteText || citation.snippet || citation.content || claimText,
+    claim_text: claimText,
+    origin: "ai_answer_citation",
+    confidence: citation.score ?? 0.7
+  });
+  return { anchor: response.anchor, status: "created" as const };
 }

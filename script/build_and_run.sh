@@ -199,6 +199,10 @@ fi
 if [[ -d "$PROJECT_DIR/Resources/assets.new" ]]; then
   cp -R "$PROJECT_DIR/Resources/assets.new" "$APP_RESOURCES/assets.new"
 fi
+if [[ -d "$ROOT_DIR/assets/demo-library" ]]; then
+  mkdir -p "$APP_RESOURCES/demo-library"
+  cp -R "$ROOT_DIR/assets/demo-library/." "$APP_RESOURCES/demo-library/"
+fi
 # Bundle the app icon when the generator produced one. Missing icon is not
 # a build failure — just an unbranded Dock tile until the asset is added.
 ICON_PRESENT=0

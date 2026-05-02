@@ -93,6 +93,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             [
                 (8, "0008_anchors.sql"),
                 (9, "0009_calendar_and_planning.sql"),
+                (10, "0010_jobs_onboarding.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -116,9 +117,10 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
 
-        # +2 for 0008_anchors and 0009_calendar_and_planning, which
+        # +3 for 0008_anchors, 0009_calendar_and_planning, and
+        # 0010_jobs_onboarding, which
         # always apply (no runtime gate like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 2
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 3
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -149,6 +151,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             [
                 "0008_anchors.sql",
                 "0009_calendar_and_planning.sql",
+                "0010_jobs_onboarding.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

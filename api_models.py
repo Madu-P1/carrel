@@ -419,3 +419,87 @@ class SyncFeedResponse(BaseModel):
     items_deleted: int
     status: str
     error: Optional[str] = None
+
+
+# ----------------------------------------------------------------------
+# Public beta product-loop APIs
+# ----------------------------------------------------------------------
+
+
+class IngestionJob(BaseModel):
+    id: str
+    kind: str
+    status: str
+    stage: str
+    filename: str
+    subject_name: Optional[str] = None
+    document_id: Optional[str] = None
+    error: Optional[str] = None
+    progress: float = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class JobEvent(BaseModel):
+    id: int
+    job_id: str
+    event_type: str
+    status: str
+    stage: str
+    message: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
+
+
+class EvidenceResolution(BaseModel):
+    document_id: str
+    chunk_id: Optional[str] = None
+    document_name: str
+    section: Optional[str] = None
+    page_num: Optional[int] = None
+    quote_text: str = ""
+    confidence: float = 0.5
+    location_kind: str = "page"
+    bbox: Optional[List[float]] = None
+    text_offset_start: Optional[int] = None
+    text_offset_end: Optional[int] = None
+
+
+class AnchorCreateRequest(BaseModel):
+    document_id: str
+    quote_text: str
+    origin: str = "manual"
+    promotion_state: str = "weak"
+    chunk_id: Optional[str] = None
+    page_num: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    text_offset_start: Optional[int] = None
+    text_offset_end: Optional[int] = None
+    user_question: Optional[str] = None
+    claim_text: Optional[str] = None
+    thread_id: Optional[str] = None
+    confidence: Optional[float] = None
+
+
+class AnchorTransitionRequest(BaseModel):
+    promotion_state: str
+    srs_card_id: Optional[str] = None
+
+
+class AnchorCardDraftRequest(BaseModel):
+    count: int = Field(default=3, ge=1, le=3)
+
+
+class AnchorPromotionRequest(BaseModel):
+    front: str = Field(..., min_length=1, max_length=4000)
+    back: str = Field(..., min_length=1, max_length=4000)
+    card_type: str = Field(default="anchor", max_length=64)
+    concept_id: Optional[str] = None
+
+
+class DemoLibrarySeedResponse(BaseModel):
+    seeded: bool
+    documents: List[DocumentUploadResponse] = Field(default_factory=list)
+    skipped_reason: Optional[str] = None

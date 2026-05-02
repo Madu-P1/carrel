@@ -9,6 +9,7 @@ import type {
 
 import { readerState } from "../state";
 import { loadPdfJs } from "../lib/pdfjs-setup";
+import type { DocumentDetail } from "@/services/api/endpoints";
 
 interface PdfOutlineItem {
   dest?: string | null | unknown[] | undefined;
@@ -29,6 +30,8 @@ export interface PdfState {
   outline: Signal<PdfOutlineNode[]>;
   pageCount: Signal<number>;
 }
+
+type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];
 
 async function resolveDestinationPage(
   pdf: PDFDocumentProxy,
@@ -72,7 +75,24 @@ async function normalizeOutline(
   );
 }
 
-export function usePdfDocument(url: string | null): PdfState {
+function deriveOutlineFromChunks(chunks: ReaderChunk[]): PdfOutlineNode[] {
+  const nodes: PdfOutlineNode[] = [];
+  let lastKey = "";
+  for (const chunk of chunks) {
+    const title = (chunk.section || "").trim() || "Source section";
+    const key = `${title}::${chunk.page_num ?? ""}`;
+    if (key === lastKey) continue;
+    lastKey = key;
+    nodes.push({
+      title,
+      pageNumber: chunk.page_num ?? null,
+      children: []
+    });
+  }
+  return nodes;
+}
+
+export function usePdfDocument(url: string | null, chunks: ReaderChunk[] = []): PdfState {
   const stateRef = useRef<PdfState | null>(null);
   if (!stateRef.current) {
     stateRef.current = {
@@ -121,7 +141,8 @@ export function usePdfDocument(url: string | null): PdfState {
         state.doc.value = pdf;
         state.pageCount.value = pdf.numPages;
         readerState.totalPages.value = pdf.numPages;
-        state.outline.value = await normalizeOutline(pdf, rawOutline);
+        const normalized = await normalizeOutline(pdf, rawOutline);
+        state.outline.value = normalized.length > 0 ? normalized : deriveOutlineFromChunks(chunks);
       } catch (error) {
         if (!disposed) {
           state.error.value = error as Error;
@@ -148,7 +169,7 @@ export function usePdfDocument(url: string | null): PdfState {
         state.doc.value = null;
       }
     };
-  }, [url]);
+  }, [url, chunks]);
 
   return stateRef.current;
 }

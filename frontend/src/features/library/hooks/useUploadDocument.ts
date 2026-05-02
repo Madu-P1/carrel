@@ -1,7 +1,7 @@
 import { useSignal } from "@preact/signals";
 
 import { ApiError } from "@/services/api/client";
-import { documents } from "@/services/api/endpoints";
+import { jobs } from "@/services/api/endpoints";
 
 /**
  * Outcome shape for a single file in a batch upload.
@@ -17,6 +17,7 @@ export type UploadOutcome =
       kind: "ok";
       filename: string;
       docId: string;
+      jobId?: string;
     }
   | {
       kind: "duplicate";
@@ -70,11 +71,12 @@ export function useUploadDocument() {
     try {
       for (const file of Array.from(files)) {
         try {
-          const response = await documents.upload(file, subjectName);
+          const response = await jobs.import(file, subjectName);
           results.push({
             kind: "ok",
             filename: file.name,
-            docId: response.doc_id
+            docId: response.job.document_id ?? "",
+            jobId: response.job.id
           });
         } catch (caught) {
           if (caught instanceof ApiError && caught.status === 409) {

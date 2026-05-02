@@ -8,8 +8,8 @@
 .rail {
   position: sticky;
   top: 0;
-  width: 280px;
-  min-width: 280px;
+  width: var(--outline-rail-width, 280px);
+  min-width: var(--outline-rail-width, 280px);
   max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
@@ -99,6 +99,43 @@
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  z-index: var(--z-elevated);
+  width: 12px;
+  display: flex;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizeHandle::before {
+  content: "";
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.resizeHandle:hover::before,
+.resizeHandle:focus-visible::before {
+  background: color-mix(in srgb, var(--color-accent) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.resizeHandle:focus-visible {
+  outline: none;
+}
+
+.resizeHandleHidden {
+  display: none;
 }
 
 .node {

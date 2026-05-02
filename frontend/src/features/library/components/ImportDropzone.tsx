@@ -90,8 +90,8 @@ function OutcomeSummary({
         {ok.length > 0 && (
           <Text tone="secondary">
             {ok.length === 1
-              ? "1 file ingested."
-              : `${ok.length} files ingested.`}
+              ? "1 file queued for ingestion."
+              : `${ok.length} files queued for ingestion.`}
           </Text>
         )}
 
@@ -142,7 +142,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
           : "";
       toast.success(
         `${okCount} file${okCount === 1 ? "" : "s"} ingested${suffix}`,
-        "Carrel extracted chunks and concepts. Open the Library to start reading."
+        "Watch progress in Jobs. Ready sources appear in the Library."
       );
     } else if (errCount > 0) {
       toast.error(

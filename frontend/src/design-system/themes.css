@@ -86,6 +86,21 @@ html.theme-dark {
   --accent-glow: oklch(0.80 0.11 182 / 0.35);
   --accent-glow-soft: oklch(0.80 0.11 182 / 0.14);
 
+  /* Liquid Glass tokens. These are intentionally visible in the web app
+   * because the native macOS glass sits behind WKWebView and otherwise
+   * disappears under the HTML surface. */
+  --glass-bg: color-mix(in srgb, var(--surface-2) 64%, transparent);
+  --glass-bg-strong: color-mix(in srgb, var(--surface-3) 76%, transparent);
+  --glass-bg-soft: color-mix(in srgb, var(--surface-1) 46%, transparent);
+  --glass-border: oklch(1 0 0 / 0.16);
+  --glass-border-strong: oklch(1 0 0 / 0.24);
+  --glass-highlight: oklch(1 0 0 / 0.12);
+  --glass-highlight-strong: oklch(1 0 0 / 0.20);
+  --glass-shadow: 0 18px 52px oklch(0 0 0 / 0.34),
+                  inset 0 1px 0 oklch(1 0 0 / 0.12);
+  --glass-shadow-soft: 0 10px 34px oklch(0 0 0 / 0.26),
+                       inset 0 1px 0 oklch(1 0 0 / 0.10);
+
   /* ---------------------------------------------------------------------
    * STATE COLORS — semantic only. Never used decoratively.
    *
@@ -239,6 +254,18 @@ html.theme-light {
   --accent-muted: oklch(0.74 0.08 182);
   --accent-glow: oklch(0.56 0.13 182 / 0.24);
   --accent-glow-soft: oklch(0.56 0.13 182 / 0.10);
+
+  --glass-bg: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  --glass-bg-strong: color-mix(in srgb, var(--surface-3) 84%, transparent);
+  --glass-bg-soft: color-mix(in srgb, var(--surface-1) 58%, transparent);
+  --glass-border: oklch(0.18 0.012 230 / 0.12);
+  --glass-border-strong: oklch(0.18 0.012 230 / 0.18);
+  --glass-highlight: oklch(1 0 0 / 0.72);
+  --glass-highlight-strong: oklch(1 0 0 / 0.88);
+  --glass-shadow: 0 18px 54px oklch(0.22 0.018 230 / 0.16),
+                  inset 0 1px 0 oklch(1 0 0 / 0.72);
+  --glass-shadow-soft: 0 10px 30px oklch(0.22 0.018 230 / 0.10),
+                       inset 0 1px 0 oklch(1 0 0 / 0.74);
 
   --state-ok: oklch(0.48 0.14 155);
   --state-warn: oklch(0.60 0.15 60);

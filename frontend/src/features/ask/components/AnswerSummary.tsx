@@ -1,6 +1,6 @@
 import { Stack, toast } from "@/design-system";
 
-import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
+import { copyAskCardText, saveCitationAnchor } from "../anchorDrafts";
 import type { CitationRecord } from "../types";
 import styles from "../AskView.module.css";
 import { AnswerFeedCard } from "./AnswerFeedCard";
@@ -72,18 +72,20 @@ export function AnswerSummary({
           label: "Save as anchor",
           onClick: () => {
             try {
-              const saved = saveAskAnchorDraft({
-                title: "Grounded answer",
-                body: summary,
+              void saveCitationAnchor({
+                claimText: "Grounded answer",
+                quoteText: citation?.snippet || citation?.content || summary,
                 sourceKind: "answer-summary",
                 citation
-              });
-              toast.success(
-                saved.status === "created" ? "Anchor saved" : "Anchor refreshed",
-                citation?.document_name ?? "Saved from this grounded answer."
-              );
+              })
+                .then(() => {
+                  toast.success("Anchor saved", citation?.document_name ?? "Saved from this grounded answer.");
+                })
+                .catch(() => {
+                  toast.error("Save failed", "Could not write this anchor.");
+                });
             } catch {
-              toast.error("Save failed", "Could not write this anchor draft locally.");
+              toast.error("Save failed", "Could not write this anchor.");
             }
           },
           disabled: citations.length === 0

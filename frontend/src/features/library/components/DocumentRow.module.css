@@ -1,28 +1,53 @@
 .row {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
   border-radius: var(--radius-4);
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-elevated);
+  border: 1px solid var(--glass-border);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 50%),
+    var(--glass-bg);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
   text-align: left;
   transition:
     border-color var(--dur-fast) var(--ease-out),
     transform var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out);
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0 42%, color-mix(in srgb, var(--glass-highlight-strong) 32%, transparent) 50%, transparent 60%);
+  opacity: 0.32;
+  pointer-events: none;
 }
 
 .row:hover {
   transform: translateY(-1px);
-  border-color: var(--color-border-default);
-  background: color-mix(in srgb, var(--color-bg-elevated) 92%, var(--color-accent) 8%);
+  border-color: var(--glass-border-strong);
+  background:
+    linear-gradient(145deg, var(--glass-highlight-strong), transparent 42%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 50%),
+    var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow);
 }
 
 /* On light surfaces, 8% accent mix reads as mint. Drop to 4% and let the
  * shadow carry the lift signal instead. */
 :global(html.theme-light) .row:hover {
-  background: color-mix(in srgb, var(--color-bg-elevated) 96%, var(--color-accent) 4%);
+  background:
+    linear-gradient(145deg, var(--glass-highlight-strong), transparent 42%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 50%),
+    var(--glass-bg-strong);
   box-shadow: var(--shadow-card);
 }
 
@@ -44,6 +69,8 @@
 .header,
 .meta,
 .actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2);

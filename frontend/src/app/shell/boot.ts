@@ -6,6 +6,6 @@ export function markAppBootedAfterInteractive(): void {
   requestAnimationFrame(() => {
     window.setTimeout(() => {
       document.body.setAttribute("data-app-booted", "true");
-    }, 260);
+    }, 120);
   });
 }

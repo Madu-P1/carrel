@@ -1,7 +1,7 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
-import { appShell, clearRightPanelContent } from "@/app/shell/useAppShell";
-import { documents } from "@/services/api/endpoints";
+import { appShell, clearRightPanelContent, rememberReaderDocument } from "@/app/shell/useAppShell";
+import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
 import { Stack, Text } from "@/design-system";
 
 import { useCardFlight } from "./hooks/useCardFlight";
@@ -9,7 +9,7 @@ import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
 import { useCitationFlight } from "./hooks/useCitationFlight";
 import { usePdfDocument } from "./hooks/usePdfDocument";
 import { useReaderDetail } from "./hooks/useReaderDetail";
-import { resetReaderState } from "./state";
+import { readerState, resetReaderState, setReaderFocusAvailable } from "./state";
 import { NonPdfReader } from "./components/NonPdfReader";
 import { OutlineRail } from "./components/OutlineRail";
 import { PdfSearchBar } from "./components/PdfSearchBar";
@@ -33,8 +33,15 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const chunks = detail?.chunks ?? [];
   const isPdf = document?.file_type?.toLowerCase() === "pdf";
   const fileUrl = isPdf ? documents.fileUrl(id) : null;
-  const pdfState = usePdfDocument(fileUrl);
+  const pdfState = usePdfDocument(fileUrl, chunks);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceResolution | null>(null);
+  const focusMode = readerState.focusMode.value;
+  const preFocusChromeRef = useRef<{
+    leftOpen: boolean;
+    outlineOpen: boolean;
+    rightOpen: boolean;
+  } | null>(null);
 
   // SM-1: if the user arrived via Library card click, FLIP this element
   // from the card's source rect. The ref now lives on the toolbar (PDF
@@ -49,20 +56,84 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
 
   useEffect(() => {
     resetReaderState();
+    rememberReaderDocument(id);
   }, [id]);
 
+  useEffect(() => {
+    setReaderFocusAvailable(Boolean(detail && isPdf));
+    return () => setReaderFocusAvailable(false);
+  }, [detail, isPdf]);
+
+  useEffect(() => {
+    if (focusMode) {
+      if (!preFocusChromeRef.current) {
+        preFocusChromeRef.current = {
+          leftOpen: appShell.leftOpen.value,
+          outlineOpen: readerState.outlineOpen.value,
+          rightOpen: appShell.rightOpen.value
+        };
+      }
+      appShell.leftOpen.value = false;
+      appShell.rightOpen.value = false;
+      readerState.outlineOpen.value = false;
+      return undefined;
+    }
+
+    if (preFocusChromeRef.current) {
+      const previous = preFocusChromeRef.current;
+      appShell.leftOpen.value = previous.leftOpen;
+      appShell.rightOpen.value = previous.rightOpen;
+      readerState.outlineOpen.value = previous.outlineOpen;
+      preFocusChromeRef.current = null;
+    }
+
+    return undefined;
+  }, [focusMode]);
+
+  useEffect(() => {
+    return () => {
+      const previous = preFocusChromeRef.current;
+      if (previous) {
+        appShell.leftOpen.value = previous.leftOpen;
+        appShell.rightOpen.value = previous.rightOpen;
+        readerState.outlineOpen.value = previous.outlineOpen;
+      }
+      readerState.focusMode.value = false;
+    };
+  }, []);
+
   useChunkDeepLink(chunkId, chunks);
+
+  useEffect(() => {
+    if (!chunkId || !detail) {
+      setSelectedEvidence(null);
+      return;
+    }
+    let cancelled = false;
+    void evidence.resolve({ documentId: id, chunkId })
+      .then((resolved) => {
+        if (!cancelled) setSelectedEvidence(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedEvidence(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chunkId, detail, id]);
 
   useEffect(() => {
     if (!detail) {
       return;
     }
 
-    appShell.rightPanelContent.value = <SourcePanel detail={detail} docId={id} />;
+    appShell.rightPanelContent.value = (
+      <SourcePanel detail={detail} docId={id} selectedEvidence={selectedEvidence} />
+    );
     return () => {
       clearRightPanelContent();
     };
-  }, [detail, id]);
+  }, [detail, id, selectedEvidence]);
 
   // ⌘/ opens the in-doc search. ⌘F is owned by WKWebView / the macOS Edit
   // menu; intercepting it cleanly would need Swift-side routing. `/`
@@ -115,17 +186,21 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
             </Text>
           </Stack>
         </header>
-        <NonPdfReader chunks={chunks} />
+        <NonPdfReader chunks={chunks} docId={id} />
       </div>
     );
   }
 
   // ---- PDF branch: three-column shell with the toolbar owning the title.
   return (
-    <div className={styles.reader}>
-      <div className={styles.readerRoot}>
+    <div
+      className={[styles.reader, focusMode ? styles.readerFocus : ""].filter(Boolean).join(" ")}
+      data-focus-mode={focusMode ? "true" : "false"}
+      data-testid="pdf-reader"
+    >
+      <div className={[styles.readerRoot, focusMode ? styles.readerRootFocus : ""].filter(Boolean).join(" ")}>
         <OutlineRail outline={pdfState.outline.value} />
-        <div className={styles.readerMain}>
+        <div className={[styles.readerMain, focusMode ? styles.readerMainFocus : ""].filter(Boolean).join(" ")}>
           <PdfToolbar
             filename={filename}
             fileType={fileType}
@@ -138,8 +213,8 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
             onClose={() => setSearchOpen(false)}
             open={searchOpen}
           />
-          <div className={styles.canvasWrap}>
-            <PdfViewer pdfState={pdfState} />
+          <div className={[styles.canvasWrap, focusMode ? styles.canvasWrapFocus : ""].filter(Boolean).join(" ")}>
+            <PdfViewer docId={id} pdfState={pdfState} />
           </div>
         </div>
       </div>
@@ -148,14 +223,16 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
 }
 
 export function ReaderView({ chunkId = null, id }: ReaderViewProps) {
-  if (!id) {
+  const resolvedId = id ?? appShell.lastReaderDocumentId.value ?? undefined;
+
+  if (!resolvedId) {
     return <ReaderPlaceholder reason="no-doc-selected" />;
   }
 
   // key ensures the whole subtree remounts on doc change so hooks
   // restart cleanly (was silently working before because internal
   // state reset fired on id change).
-  return <ReaderDocumentView chunkId={chunkId} id={id} key={id} />;
+  return <ReaderDocumentView chunkId={chunkId} id={resolvedId} key={resolvedId} />;
 }
 
 // Legacy named export retained so useCardFlight import paths stay stable

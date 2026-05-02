@@ -23,6 +23,23 @@ const AUTO_LIGHT_START_HOUR = 7;
 
 const navigatorSignal = signal<NavigateFn | null>(null);
 let autoThemeTimer: number | null = null;
+const LAST_READER_DOCUMENT_KEY = "carrel.reader.last-document-id";
+const LEFT_RAIL_WIDTH_KEY = "carrel.shell.left-rail-width";
+const RIGHT_PANEL_WIDTH_KEY = "carrel.shell.right-panel-width";
+
+export const SHELL_PANEL_WIDTHS = {
+  left: {
+    collapsed: 108,
+    default: 248,
+    max: 380,
+    min: 196
+  },
+  right: {
+    default: 320,
+    max: 560,
+    min: 280
+  }
+} as const;
 
 function routeWantsRightPanel(path: string): boolean {
   return pathnameFromRoute(path).startsWith("/reader");
@@ -38,6 +55,54 @@ export function pathnameFromRoute(path: string): string {
 
 function prefersDarkMode(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
+}
+
+function readLastReaderDocumentId(): string | null {
+  try {
+    const value = window.localStorage.getItem(LAST_READER_DOCUMENT_KEY);
+    return value && value.trim().length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastReaderDocumentId(id: string | null): void {
+  try {
+    if (id) {
+      window.localStorage.setItem(LAST_READER_DOCUMENT_KEY, id);
+    } else {
+      window.localStorage.removeItem(LAST_READER_DOCUMENT_KEY);
+    }
+  } catch {
+    // Native storage can be unavailable in constrained WebViews; the
+    // in-memory signal still keeps the current app session coherent.
+  }
+}
+
+function clampWidth(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function readStoredWidth(key: string, fallback: number, min: number, max: number): number {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return clampWidth(parsed, min, max);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredWidth(key: string, value: number): void {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    // Storage can be unavailable in constrained WebViews. The signal still
+    // keeps this app session responsive; persistence is a bonus.
+  }
 }
 
 /**
@@ -123,7 +188,24 @@ export const appShell = {
   // "/library" when the app had no Dashboard surface.
   currentRoute: signal("/"),
   rightPanelContent: signal<ComponentChild | null>(null),
-  activeSession: signal<ActiveSessionContext | null>(null)
+  activeSession: signal<ActiveSessionContext | null>(null),
+  lastReaderDocumentId: signal<string | null>(readLastReaderDocumentId()),
+  leftRailWidth: signal(
+    readStoredWidth(
+      LEFT_RAIL_WIDTH_KEY,
+      SHELL_PANEL_WIDTHS.left.default,
+      SHELL_PANEL_WIDTHS.left.min,
+      SHELL_PANEL_WIDTHS.left.max
+    )
+  ),
+  rightPanelWidth: signal(
+    readStoredWidth(
+      RIGHT_PANEL_WIDTH_KEY,
+      SHELL_PANEL_WIDTHS.right.default,
+      SHELL_PANEL_WIDTHS.right.min,
+      SHELL_PANEL_WIDTHS.right.max
+    )
+  )
 };
 
 export function setActiveSession(context: ActiveSessionContext | null): void {
@@ -138,6 +220,16 @@ export function initializeTheme(): void {
 export function setCurrentRoute(path: string): void {
   appShell.currentRoute.value = path;
   appShell.rightOpen.value = routeWantsRightPanel(path);
+}
+
+export function rememberReaderDocument(id: string): void {
+  appShell.lastReaderDocumentId.value = id;
+  writeLastReaderDocumentId(id);
+}
+
+export function clearRememberedReaderDocument(): void {
+  appShell.lastReaderDocumentId.value = null;
+  writeLastReaderDocumentId(null);
 }
 
 export function registerNavigator(navigate: NavigateFn): () => void {
@@ -165,6 +257,26 @@ export function toggleLeft(): void {
 
 export function toggleRight(): void {
   appShell.rightOpen.value = !appShell.rightOpen.value;
+}
+
+export function setLeftRailWidth(width: number): void {
+  const next = clampWidth(
+    width,
+    SHELL_PANEL_WIDTHS.left.min,
+    SHELL_PANEL_WIDTHS.left.max
+  );
+  appShell.leftRailWidth.value = next;
+  writeStoredWidth(LEFT_RAIL_WIDTH_KEY, next);
+}
+
+export function setRightPanelWidth(width: number): void {
+  const next = clampWidth(
+    width,
+    SHELL_PANEL_WIDTHS.right.min,
+    SHELL_PANEL_WIDTHS.right.max
+  );
+  appShell.rightPanelWidth.value = next;
+  writeStoredWidth(RIGHT_PANEL_WIDTH_KEY, next);
 }
 
 export function toggleTheme(): void {

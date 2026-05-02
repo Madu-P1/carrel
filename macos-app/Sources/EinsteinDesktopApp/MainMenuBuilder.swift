@@ -161,6 +161,12 @@ enum MainMenuBuilder {
             command: "view.toggleTheme",
             target: MenuCommandDispatcher.shared
         )
+        menu.addItem(
+            titled: "Toggle Reader Focus Mode",
+            key: "F",
+            command: "reader.toggleFocusMode",
+            target: MenuCommandDispatcher.shared
+        )
         menu.addItem(NSMenuItem.separator())
         menu.addItem(
             titled: "Zoom In",
@@ -235,7 +241,7 @@ enum MainMenuBuilder {
             target: MenuCommandDispatcher.shared
         )
         menu.addItem(
-            titled: "Carrel Help",
+            titled: "Replay First-Run Tour",
             key: "",
             command: "help.open",
             target: MenuCommandDispatcher.shared

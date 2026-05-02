@@ -7,6 +7,7 @@ import {
   readerState,
   requestReaderPage,
   setReaderFitMode,
+  setReaderFocusMode,
   setReaderScale,
   zoomReaderBy
 } from "../state";
@@ -51,6 +52,7 @@ export function PdfToolbar({
 }: PdfToolbarProps) {
   const currentPage = readerState.currentPage.value;
   const fitMode = readerState.fitMode.value;
+  const focusMode = readerState.focusMode.value;
   const scale = readerState.scale.value;
   const [pageInput, setPageInput] = useState(String(currentPage));
 
@@ -70,7 +72,7 @@ export function PdfToolbar({
   const ft = (fileType || "FILE").toUpperCase();
 
   return (
-    <div className={styles.toolbar} ref={flightRef}>
+    <div className={[styles.toolbar, focusMode ? styles.toolbarFocus : ""].filter(Boolean).join(" ")} ref={flightRef}>
       {/* --- LEFT ZONE: title + file-type chip ------------------------ */}
       <div className={styles.zoneLeft}>
         <span aria-label={`File type: ${ft}`} className={styles.fileChip}>
@@ -191,6 +193,22 @@ export function PdfToolbar({
 
       {/* --- RIGHT ZONE: actions -------------------------------------- */}
       <div className={styles.zoneRight}>
+        <Tooltip content={focusMode ? "Exit focus mode" : "Enter focus mode"}>
+          <button
+            aria-label={focusMode ? "Exit focus mode" : "Enter focus mode"}
+            aria-pressed={focusMode}
+            className={[
+              styles.iconBtn,
+              focusMode ? styles.iconBtnActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setReaderFocusMode(!focusMode)}
+            type="button"
+          >
+            <Icon name="focus" size={14} />
+          </button>
+        </Tooltip>
         <Button
           keyHint="⌘/"
           leadingIcon={<Icon name="search" size={14} />}

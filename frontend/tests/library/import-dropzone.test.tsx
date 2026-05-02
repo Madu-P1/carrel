@@ -4,13 +4,31 @@ import { expect, test, vi } from "vitest";
 import { ImportDropzone } from "../../src/features/library/components/ImportDropzone";
 import { getFetchCalls, jsonResponse, mockJson, registerFetchHandler } from "../support/mockFetch";
 
+function jobResponse(id: string, filename: string, documentId: string | null = null) {
+  return {
+    job: {
+      id,
+      kind: "import",
+      status: "queued",
+      stage: "importing",
+      filename,
+      subject_name: "General",
+      document_id: documentId,
+      error: null,
+      progress: 0,
+      created_at: null,
+      updated_at: null,
+      started_at: null,
+      finished_at: null
+    }
+  };
+}
+
 test("ImportDropzone uploads dropped files and calls onUploaded", async () => {
   const onUploaded = vi.fn();
-  mockJson("POST", "/api/documents/upload", () => ({
-    confidence: 0.88,
-    doc_id: crypto.randomUUID(),
-    filename: "uploaded.pdf"
-  }));
+  mockJson("POST", "/api/jobs/import", () =>
+    jobResponse(crypto.randomUUID(), "uploaded.pdf", crypto.randomUUID())
+  );
 
   render(<ImportDropzone onUploaded={onUploaded} />);
 
@@ -24,16 +42,12 @@ test("ImportDropzone uploads dropped files and calls onUploaded", async () => {
   });
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1));
-  expect(getFetchCalls().filter((call) => call.url.endsWith("/api/documents/upload"))).toHaveLength(2);
+  expect(getFetchCalls().filter((call) => call.url.endsWith("/api/jobs/import"))).toHaveLength(2);
 });
 
 test("ImportDropzone choose-files flow triggers the hidden input and uploads on change", async () => {
   const onUploaded = vi.fn();
-  mockJson("POST", "/api/documents/upload", {
-    confidence: 0.88,
-    doc_id: "doc-1",
-    filename: "uploaded.pdf"
-  });
+  mockJson("POST", "/api/jobs/import", jobResponse("job-1", "uploaded.pdf", "doc-1"));
 
   render(<ImportDropzone onUploaded={onUploaded} />);
 
@@ -57,14 +71,14 @@ test("ImportDropzone surfaces a Retry button after a failed upload; clicking it 
   let uploadAttempts = 0;
   // First upload call fails with 500; second (the retry) succeeds.
   registerFetchHandler((url, init) => {
-    if (!url.pathname.endsWith("/api/documents/upload") || init.method !== "POST") {
+    if (!url.pathname.endsWith("/api/jobs/import") || init.method !== "POST") {
       return undefined;
     }
     uploadAttempts += 1;
     if (uploadAttempts === 1) {
       return jsonResponse({ detail: "server went sideways" }, 500);
     }
-    return jsonResponse({ confidence: 0.9, doc_id: "doc-retry-ok", filename: "retry.txt" });
+    return jsonResponse(jobResponse("job-retry-ok", "retry.txt", "doc-retry-ok"));
   });
 
   render(<ImportDropzone onUploaded={onUploaded} />);
@@ -88,7 +102,7 @@ test("ImportDropzone surfaces a Retry button after a failed upload; clicking it 
 test("ImportDropzone keeps duplicates behind a disclosure and doesn't offer Retry for them", async () => {
   const onUploaded = vi.fn();
   registerFetchHandler((url, init) => {
-    if (!url.pathname.endsWith("/api/documents/upload") || init.method !== "POST") {
+    if (!url.pathname.endsWith("/api/jobs/import") || init.method !== "POST") {
       return undefined;
     }
     return jsonResponse(

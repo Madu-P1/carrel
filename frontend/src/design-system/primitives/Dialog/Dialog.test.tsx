@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { useState } from "preact/hooks";
 import { expect, test } from "vitest";
 
@@ -40,6 +40,19 @@ test("Dialog closes on escape and restores focus", () => {
 
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(document.activeElement).toBe(trigger);
+});
+
+test("Dialog closes when pointer starts outside the panel", async () => {
+  render(<Harness />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+  expect(screen.getByRole("dialog")).toBeDefined();
+
+  fireEvent.mouseDown(document.body);
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });
 
 test("Dialog traps focus inside", () => {

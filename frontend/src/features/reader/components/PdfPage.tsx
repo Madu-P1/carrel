@@ -30,7 +30,6 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
       const pdfjsLib = await loadPdfJs();
       const page = await pdf.getPage(pageNumber);
       const viewport = page.getViewport({ scale });
-      const textViewport = viewport.clone({ dontFlip: true });
 
       if (cancelled || !canvasRef.current) {
         return;
@@ -51,6 +50,7 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
 
       if (textLayerRef.current) {
         textLayerRef.current.innerHTML = "";
+        textLayerRef.current.style.setProperty("--scale-factor", String(viewport.scale));
         textLayerRef.current.style.width = `${viewport.width}px`;
         textLayerRef.current.style.height = `${viewport.height}px`;
       }
@@ -85,7 +85,7 @@ export function PdfPage({ pageNumber, pdf, scale }: PdfPageProps) {
       const textLayer = new pdfjsLib.TextLayer({
         container: textLayerRef.current,
         textContentSource: await page.getTextContent(),
-        viewport: textViewport
+        viewport
       });
       await textLayer.render();
 

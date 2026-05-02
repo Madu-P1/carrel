@@ -17,17 +17,32 @@
 }
 
 .toast {
+  position: relative;
+  overflow: hidden;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: start;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-3);
-  background: var(--color-bg-elevated);
-  box-shadow: var(--shadow-soft);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(24px) saturate(165%);
+  -webkit-backdrop-filter: blur(24px) saturate(165%);
   pointer-events: auto;
   animation: toast-enter var(--dur-base) var(--ease-out) both;
+}
+
+.toast::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0 44%, color-mix(in srgb, var(--glass-highlight-strong) 34%, transparent) 52%, transparent 62%);
+  opacity: 0.38;
+  pointer-events: none;
 }
 
 @keyframes toast-enter {
@@ -43,22 +58,32 @@
  * reads at a glance without being neon. */
 .kind-success {
   border-left: 3px solid var(--state-ok);
-  background: color-mix(in srgb, var(--state-ok) 6%, var(--color-bg-elevated));
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--state-ok) 8%, var(--glass-bg-strong));
 }
 .kind-warning {
   border-left: 3px solid var(--state-warn);
-  background: color-mix(in srgb, var(--state-warn) 6%, var(--color-bg-elevated));
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--state-warn) 8%, var(--glass-bg-strong));
 }
 .kind-error {
   border-left: 3px solid var(--state-err);
-  background: color-mix(in srgb, var(--state-err) 6%, var(--color-bg-elevated));
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--state-err) 8%, var(--glass-bg-strong));
 }
 .kind-info {
   border-left: 3px solid var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-elevated));
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    color-mix(in srgb, var(--color-accent) 7%, var(--glass-bg-strong));
 }
 
 .icon {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -73,6 +98,8 @@
 .kind-info .icon { color: var(--color-accent); }
 
 .body {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: var(--space-1);
   min-width: 0;
@@ -94,6 +121,8 @@
 }
 
 .dismiss {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;

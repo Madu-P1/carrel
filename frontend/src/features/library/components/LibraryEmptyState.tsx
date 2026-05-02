@@ -1,7 +1,13 @@
 import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
+import { toast } from "@/design-system";
+import { onboarding } from "@/services/api/endpoints";
 import { dispatchMenuCommand } from "@/services/native/menu";
 
-export function LibraryEmptyState() {
+interface LibraryEmptyStateProps {
+  onDemoLoaded?: () => void;
+}
+
+export function LibraryEmptyState({ onDemoLoaded }: LibraryEmptyStateProps) {
   return (
     <Card padding="lg">
       <Stack gap={4}>
@@ -25,6 +31,26 @@ export function LibraryEmptyState() {
             onClick={() => dispatchMenuCommand("file.import")}
           >
             Import a source
+          </Button>
+          <Button
+            leadingIcon={<Icon name="library" />}
+            variant="secondary"
+            onClick={() => {
+              void onboarding.seedDemoLibrary()
+                .then((result) => {
+                  if (result.seeded) {
+                    toast.success("Demo library loaded", "Open a sample source to inspect evidence and create anchors.");
+                    onDemoLoaded?.();
+                  } else {
+                    toast.info("Demo library skipped", "Your library already has sources.");
+                  }
+                })
+                .catch(() => {
+                  toast.error("Demo load failed", "Carrel could not create the sample library.");
+                });
+            }}
+          >
+            Load sample library
           </Button>
         </Stack>
       </Stack>

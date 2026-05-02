@@ -2,7 +2,8 @@ import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 
 import type { DocumentDetail } from "@/services/api/endpoints";
-import { Text } from "@/design-system";
+import { Button, Text, toast } from "@/design-system";
+import { anchors } from "@/services/api/endpoints";
 
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import { readerState } from "../state";
@@ -12,9 +13,10 @@ type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];
 
 interface NonPdfReaderProps {
   chunks: ReaderChunk[];
+  docId: string;
 }
 
-export function NonPdfReader({ chunks }: NonPdfReaderProps) {
+export function NonPdfReader({ chunks, docId }: NonPdfReaderProps) {
   const articleRef = useRef<HTMLElement>(null);
   const highlightedChunkId = readerState.highlightedChunkId.value;
 
@@ -34,6 +36,27 @@ export function NonPdfReader({ chunks }: NonPdfReaderProps) {
 
   return (
     <article className={styles.article} ref={articleRef}>
+      {readerState.selectedText.value ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            void anchors.create({
+              document_id: docId,
+              quote_text: readerState.selectedText.value,
+              origin: "highlight",
+              confidence: 0.7
+            })
+              .then(() => {
+                readerState.selectedText.value = "";
+                toast.success("Anchor saved", "The highlight is now available in the Anchor Column.");
+              })
+              .catch(() => toast.error("Save failed", "Carrel could not save this highlight."));
+          }}
+        >
+          Save selected text as anchor
+        </Button>
+      ) : null}
       {chunks.map((chunk) => {
         const showHeading = Boolean(chunk.section && chunk.section !== lastSection);
         if (chunk.section) {

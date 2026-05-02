@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:macos": "tsc --noEmit && vite build && node ./scripts/build-macos.mjs",
+    "build:macos": "tsc --noEmit && CARREL_MACOS_BUNDLE=1 vite build && node ./scripts/build-macos.mjs",
     "launch:macos": "cd .. && ./script/build_and_run.sh",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

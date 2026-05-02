@@ -64,15 +64,36 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    3d-force-graph) so the entry chunk only carries
  *                    the dynamic-import wiring and the new view module
  *                    IDs (~7 KB gz delta). Entry now lands at ~81.5 KB
- *                    gz live. */
-const ENTRY_JS_GZIP_BUDGET = 84 * 1024;
+ *                    gz live.
+ *    84 KB → 85 KB: Public-beta Jobs Tray, first-run tour, evidence
+ *                    inspector, and Anchor Column wiring. Core loop
+ *                    visibility is entry-shell behavior, not route-only.
+ *    85 KB → 87 KB: resolver-backed citation preview cards plus the
+ *                    replayable animated first-run tour. Both are
+ *                    trust/onboarding shell affordances and need to be
+ *                    present before route-level lazy boundaries.
+ *    87 KB → 89 KB: tutorial mockup upgraded with state-specific visual
+ *                    narration and SVG citation-to-anchor guidance.
+ *    89 KB → 92 KB: shell-level Reader focus command, route motion,
+ *                    persistent resizable panels, and public-beta chrome
+ *                    all execute before route-level lazy boundaries. */
+const ENTRY_JS_GZIP_BUDGET = 92 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
  *  History:
  *    20 KB → 23 KB: ReaderView un-split
- *    23 KB → 25 KB: Plan feature CSS modules (~22.6 KB live) */
-const ENTRY_CSS_GZIP_BUDGET = 25 * 1024;
+ *    23 KB → 25 KB: Plan feature CSS modules (~22.6 KB live)
+ *    25 KB → 26 KB: Public-beta Jobs Tray, evidence, and Anchor Drawer
+ *                    module styles.
+ *    26 KB → 28 KB: custom first-run tour motion stage and rich citation
+ *                    preview card styling.
+ *    28 KB → 29 KB: centered first-run app frame, SVG arrow animation,
+ *                    and denser responsive polish for the tutorial.
+ *    29 KB → 32 KB: visible Liquid Glass treatment moved into shared
+ *                    shell/primitives so the effect shows inside the
+ *                    WKWebView app surface, not only behind it. */
+const ENTRY_CSS_GZIP_BUDGET = 32 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

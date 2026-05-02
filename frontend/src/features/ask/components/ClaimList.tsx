@@ -1,6 +1,6 @@
 import { toast } from "@/design-system";
 
-import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
+import { copyAskCardText, saveCitationAnchor } from "../anchorDrafts";
 import type { CitationRecord, ClaimRecord } from "../types";
 import { AnswerFeedCard } from "./AnswerFeedCard";
 import { CitationChip } from "./CitationChip";
@@ -74,18 +74,20 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
                 label: "Save as anchor",
                 onClick: () => {
                   try {
-                    const saved = saveAskAnchorDraft({
-                      title: claim.text,
-                      body: supportTextForClaim(claim),
+                    void saveCitationAnchor({
+                      claimText: claim.text,
+                      quoteText: supportTextForClaim(claim),
                       sourceKind: "claim",
                       citation: firstCitation
-                    });
-                    toast.success(
-                      saved.status === "created" ? "Anchor saved" : "Anchor refreshed",
-                      firstCitation?.document_name ?? "Saved from this answer card."
-                    );
+                    })
+                      .then(() => {
+                        toast.success("Anchor saved", firstCitation?.document_name ?? "Saved from this answer card.");
+                      })
+                      .catch(() => {
+                        toast.error("Save failed", "Could not write this anchor.");
+                      });
                   } catch {
-                    toast.error("Save failed", "Could not write this anchor draft locally.");
+                    toast.error("Save failed", "Could not write this anchor.");
                   }
                 }
               }

@@ -16,12 +16,44 @@
  * the title.
  */
 .reader {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+.readerFocus {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  padding: clamp(12px, 2vw, 28px);
+  background:
+    radial-gradient(ellipse 90% 78% at 50% 10%, color-mix(in srgb, var(--glass-highlight-strong) 38%, transparent), transparent 68%),
+    radial-gradient(ellipse 58% 54% at 24% 24%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%),
+    radial-gradient(ellipse 56% 52% at 82% 78%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 74%),
+    color-mix(in srgb, var(--surface-0) 90%, transparent);
+  isolation: isolate;
+  backdrop-filter: blur(20px) saturate(165%);
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
+}
+
+.readerFocus::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, transparent 8%, color-mix(in srgb, var(--glass-highlight) 52%, transparent) 13%, transparent 22%),
+    linear-gradient(142deg, transparent 40%, color-mix(in srgb, var(--accent) 10%, transparent) 48%, transparent 58%),
+    linear-gradient(72deg, transparent 62%, color-mix(in srgb, var(--glass-highlight) 42%, transparent) 70%, transparent 78%);
+  filter: blur(22px) saturate(170%);
+  opacity: 0.86;
+}
+
 .readerRoot {
+  position: relative;
+  flex: 1;
   min-height: 0;
   display: flex;
   align-items: stretch;
@@ -29,18 +61,45 @@
   /* Visual boundary: the shell as a whole reads as one connected panel
    * that contains the outline rail + canvas. Surface-1 background with
    * --radius-panel edges. */
-  background: var(--surface-1);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 34%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 50%),
+    var(--glass-bg-soft);
   border-radius: var(--radius-panel);
   overflow: hidden;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(22px) saturate(155%);
+  -webkit-backdrop-filter: blur(22px) saturate(155%);
+}
+
+.readerRootFocus {
+  width: 100%;
+  height: 100%;
+  border-color: var(--glass-border-strong);
+  border-radius: clamp(18px, 2vw, 28px);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--glass-highlight-strong) 62%, transparent), transparent 32%),
+    radial-gradient(ellipse 90% 50% at 50% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
+    color-mix(in srgb, var(--glass-bg-strong) 72%, transparent);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
 }
 
 .readerMain {
   min-width: 0;
+  min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-base);
+  background:
+    radial-gradient(ellipse 90% 40% at 50% 0%, color-mix(in srgb, var(--glass-highlight) 22%, transparent), transparent 70%),
+    color-mix(in srgb, var(--color-bg-base) 86%, transparent);
+}
+
+.readerMainFocus {
+  background: transparent;
 }
 
 /*
@@ -50,9 +109,20 @@
  */
 .canvasWrap {
   flex: 1;
+  display: flex;
   min-height: 0;
   padding: var(--space-5) var(--space-6);
-  background: var(--color-bg-base);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--glass-highlight) 18%, transparent), transparent 44%),
+    color-mix(in srgb, var(--color-bg-base) 88%, transparent);
+}
+
+.canvasWrapFocus {
+  padding: clamp(12px, 2vw, 28px);
+  background:
+    radial-gradient(ellipse 82% 56% at 50% 0%, color-mix(in srgb, var(--glass-highlight) 32%, transparent), transparent 72%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 48%),
+    transparent;
 }
 
 @media (max-width: 1100px) {
@@ -70,8 +140,13 @@
   padding: var(--space-6);
   margin-bottom: var(--space-4);
   border-radius: var(--radius-card);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 42%),
+    var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
 }
 
 /*
@@ -147,8 +222,10 @@
   gap: var(--space-4);
   height: 44px;
   padding: 0 var(--space-4);
-  background: var(--color-bg-elevated);
-  border-bottom: 1px solid var(--color-border-subtle);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 58%),
+    var(--glass-bg-strong);
+  border-bottom: 1px solid var(--glass-border);
   border-top-left-radius: var(--radius-card);
   border-top-right-radius: var(--radius-card);
 }
@@ -201,33 +278,71 @@
  * ===================================================================*/
 
 .viewerShell {
+  flex: 1;
+  height: 100%;
   min-height: 0;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
 }
 
 .selectionBanner {
-  background: color-mix(in srgb, var(--color-info) 14%, var(--color-bg-elevated));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-highlight) 44%, transparent), transparent 58%),
+    color-mix(in srgb, var(--color-info) 14%, var(--glass-bg));
 }
 
 .viewerScroll {
-  min-height: 70vh;
-  max-height: calc(100vh - 180px);
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   overflow: auto;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  background:
+    radial-gradient(ellipse 70% 46% at 50% 0%, color-mix(in srgb, var(--glass-highlight) 22%, transparent), transparent 68%),
+    color-mix(in srgb, var(--color-bg-base) 82%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-highlight) 42%, transparent);
+}
+
+.readerFocus .viewerShell {
+  gap: var(--space-4);
+}
+
+.readerFocus .viewerScroll {
+  border-color: var(--glass-border-strong);
+  border-radius: clamp(18px, 1.6vw, 26px);
+  background:
+    radial-gradient(ellipse 78% 46% at 50% 0%, color-mix(in srgb, var(--glass-highlight-strong) 30%, transparent), transparent 70%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 46%),
+    color-mix(in srgb, var(--surface-0) 68%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-highlight-strong) 46%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-highlight) 20%, transparent),
+    0 28px 72px oklch(0 0 0 / 0.28);
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
 }
 
 .viewerRail {
   position: relative;
-  width: 100%;
+  min-width: 100%;
+  margin-inline: auto;
 }
 
 .pageSlot {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 50%;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   justify-content: center;
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
+  transform: translateX(-50%);
+}
+
+.readerFocus .pageSlot {
+  padding: var(--space-5) var(--space-8);
 }
 
 .pageCard,

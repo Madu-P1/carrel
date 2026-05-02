@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -344,6 +345,8 @@ def initialize_database() -> None:
 
 
 def seed_demo_data(conn: sqlite3.Connection, ingest_document_record) -> None:
+    if os.getenv("CARREL_SEED_LEGACY_DEMO", "").lower() not in {"1", "true", "yes"}:
+        return
     existing = conn.execute("SELECT COUNT(*) AS total FROM documents").fetchone()["total"]
     if existing:
         return

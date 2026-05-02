@@ -1,10 +1,10 @@
 import { act, cleanup } from "@testing-library/preact";
 import { afterEach, beforeEach } from "vitest";
 
-import { appShell } from "../src/app/shell/useAppShell";
+import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import { resetDocumentsQuery } from "../src/features/library/hooks/useDocumentsQuery";
 import { resetReaderDetailQueries } from "../src/features/reader/hooks/useReaderDetail";
-import { resetReaderState } from "../src/features/reader/state";
+import { readerState, READER_OUTLINE_WIDTH, resetReaderState } from "../src/features/reader/state";
 import { installFetchMock, resetFetchMock } from "./support/mockFetch";
 
 installFetchMock();
@@ -107,17 +107,24 @@ if (!Element.prototype.animate) {
 beforeEach(() => {
   document.documentElement.className = "";
   delete document.body.dataset.appBooted;
+  window.localStorage.setItem("carrel.first-run-tour.completed", "1");
+  window.localStorage.setItem("carrel.first-run-tour.version", "5");
   prefersDark = true;
   prefersReducedMotion = false;
   act(() => {
     appShell.leftOpen.value = true;
     appShell.rightOpen.value = false;
     appShell.rightPanelContent.value = null;
+    appShell.leftRailWidth.value = SHELL_PANEL_WIDTHS.left.default;
+    appShell.rightPanelWidth.value = SHELL_PANEL_WIDTHS.right.default;
     appShell.theme.value = "system";
     appShell.currentRoute.value = "/library";
+    appShell.lastReaderDocumentId.value = null;
+    window.localStorage.removeItem("carrel.reader.last-document-id");
     resetDocumentsQuery();
     resetReaderDetailQueries();
     resetReaderState();
+    readerState.outlineWidth.value = READER_OUTLINE_WIDTH.default;
   });
   window.history.pushState({}, "", "/");
   resetFetchMock();

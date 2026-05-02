@@ -1,8 +1,11 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: var(--color-bg-overlay);
-  backdrop-filter: blur(4px);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%),
+    color-mix(in srgb, var(--color-bg-base) 62%, transparent);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -17,16 +20,38 @@
 }
 
 .palette {
+  position: relative;
   width: min(560px, calc(100vw - var(--space-12)));
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-strong);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 38%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 52%),
+    var(--glass-bg-strong);
+  border: 1px solid var(--glass-border-strong);
   border-radius: var(--radius-4);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
   overflow: hidden;
   animation: palette-slide-in var(--dur-medium) var(--ease-out);
+}
+
+.palette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg, transparent 0 40%, color-mix(in srgb, var(--glass-highlight-strong) 44%, transparent) 49%, transparent 60%);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.inputRow,
+.list,
+.footer {
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes palette-slide-in {
@@ -82,7 +107,9 @@
 }
 
 .rowActive {
-  background: var(--color-bg-hover);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 56%),
+    color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .empty {
@@ -93,7 +120,7 @@
 .footer {
   padding: var(--space-2) var(--space-5);
   border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-base);
+  background: color-mix(in srgb, var(--glass-bg-soft) 82%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

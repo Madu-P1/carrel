@@ -1,9 +1,10 @@
 import { useMemo } from "preact/hooks";
+import type { JSX } from "preact";
 
 import { Icon, Text } from "@/design-system";
 
 import type { PdfOutlineNode } from "../hooks/usePdfDocument";
-import { readerState } from "../state";
+import { readerState, READER_OUTLINE_WIDTH, setReaderOutlineWidth } from "../state";
 import { OutlineNode } from "./OutlineNode";
 import styles from "./OutlineRail.module.css";
 
@@ -28,12 +29,18 @@ interface OutlineRailProps {
  * needing to emit separate outline events.
  */
 export function OutlineRail({ outline }: OutlineRailProps) {
+  const focusMode = readerState.focusMode.value;
   const open = readerState.outlineOpen.value;
   const currentPage = readerState.currentPage.value;
+  const outlineWidth = readerState.outlineWidth.value;
   const activeTitle = useMemo(
     () => findActiveTitle(outline, currentPage),
     [outline, currentPage]
   );
+
+  if (focusMode) {
+    return null;
+  }
 
   if (outline.length === 0) {
     // Minimal collapsed chip so the user can see a rail exists but empty.
@@ -52,10 +59,61 @@ export function OutlineRail({ outline }: OutlineRailProps) {
     );
   }
 
+  const startResize = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = readerState.outlineWidth.value;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      setReaderOutlineWidth(startWidth + moveEvent.clientX - startX);
+    };
+    const stopResize = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  };
+
+  const resizeFromKeyboard = (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 32 : 16;
+    let nextWidth: number | null = null;
+    switch (event.key) {
+      case "ArrowLeft":
+        nextWidth = outlineWidth - step;
+        break;
+      case "ArrowRight":
+        nextWidth = outlineWidth + step;
+        break;
+      case "Home":
+        nextWidth = READER_OUTLINE_WIDTH.min;
+        break;
+      case "End":
+        nextWidth = READER_OUTLINE_WIDTH.max;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    setReaderOutlineWidth(nextWidth);
+  };
+
   return (
     <aside
       aria-label="Document outline"
       className={[styles.rail, !open ? styles.collapsed : ""].filter(Boolean).join(" ")}
+      style={{ "--outline-rail-width": `${outlineWidth}px` } as JSX.CSSProperties}
     >
       <div className={styles.header}>
         {open ? (
@@ -85,6 +143,22 @@ export function OutlineRail({ outline }: OutlineRailProps) {
           ))}
         </nav>
       ) : null}
+      <div
+        aria-hidden={!open}
+        aria-label="Resize document outline"
+        aria-orientation="vertical"
+        aria-valuemax={READER_OUTLINE_WIDTH.max}
+        aria-valuemin={READER_OUTLINE_WIDTH.min}
+        aria-valuenow={outlineWidth}
+        className={[styles.resizeHandle, !open ? styles.resizeHandleHidden : ""]
+          .filter(Boolean)
+          .join(" ")}
+        data-testid="outline-resize-handle"
+        onKeyDown={resizeFromKeyboard}
+        onPointerDown={startResize}
+        role="separator"
+        tabIndex={open ? 0 : -1}
+      />
     </aside>
   );
 }

@@ -51,6 +51,22 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const signals = useSidebarSignals();
   const dueCount = signals.dueCount ?? 0;
+  const sections = [
+    {
+      label: "Overview",
+      items: items.filter((item) => item.key === "dashboard")
+    },
+    {
+      label: "Study",
+      items: items.filter((item) =>
+        ["session", "study", "library", "reader", "ask"].includes(item.key)
+      )
+    },
+    {
+      label: "Tools",
+      items: items.filter((item) => ["search", "concepts", "plan"].includes(item.key))
+    }
+  ].filter((section) => section.items.length > 0);
 
   const isItemActive = (item: SidebarNavItem) => {
     // "/" only matches the Dashboard exactly — otherwise Library would
@@ -86,48 +102,52 @@ export function WorkspaceSidebar({
       </header>
 
       <nav className={styles.nav} aria-label="Workspace navigation">
-        <span className={styles.sectionLabel}>Navigate</span>
-        <ul className={styles.navList}>
-          {items.map((item) => {
-            const active = isItemActive(item);
-            const badge = item.key === "study" && dueCount > 0 ? dueCount : null;
-            return (
-              <li key={item.path}>
-                <button
-                  type="button"
-                  className={[styles.navItem, active ? styles.navItemActive : ""]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => onNavigate(item.path)}
-                  aria-current={active ? "page" : undefined}
-                  // Distinct aria-label so the nav entry doesn't collide
-                  // with the feature-level action buttons that share the
-                  // same short label (e.g. the "Ask" submit button on the
-                  // Ask view). "Open Library" is unambiguous navigation.
-                  aria-label={`Open ${item.label}${
-                    item.key === "study" && badge !== null ? `, ${badge} due` : ""
-                  }`}
-                >
-                  <span className={styles.navIcon} aria-hidden>
-                    <Icon name={item.icon} size={16} />
-                  </span>
-                  <span className={styles.navLabel}>{item.label}</span>
-                  {badge !== null && (
-                    <span
-                      className={styles.navBadge}
-                      aria-label={`${badge} cards due`}
+        {sections.map((section) => (
+          <div className={styles.navSection} key={section.label}>
+            <span className={styles.sectionLabel}>{section.label}</span>
+            <ul className={styles.navList}>
+              {section.items.map((item) => {
+                const active = isItemActive(item);
+                const badge = item.key === "study" && dueCount > 0 ? dueCount : null;
+                return (
+                  <li key={item.path}>
+                    <button
+                      type="button"
+                      className={[styles.navItem, active ? styles.navItemActive : ""]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => onNavigate(item.path)}
+                      aria-current={active ? "page" : undefined}
+                      // Distinct aria-label so the nav entry doesn't collide
+                      // with the feature-level action buttons that share the
+                      // same short label (e.g. the "Ask" submit button on the
+                      // Ask view). "Open Library" is unambiguous navigation.
+                      aria-label={`Open ${item.label}${
+                        item.key === "study" && badge !== null ? `, ${badge} due` : ""
+                      }`}
                     >
-                      {badge}
-                    </span>
-                  )}
-                  <span className={styles.navHint} aria-hidden>
-                    {item.commandHint}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                      <span className={styles.navIcon} aria-hidden>
+                        <Icon name={item.icon} size={16} />
+                      </span>
+                      <span className={styles.navLabel}>{item.label}</span>
+                      {badge !== null && (
+                        <span
+                          className={styles.navBadge}
+                          aria-label={`${badge} cards due`}
+                        >
+                          {badge}
+                        </span>
+                      )}
+                      <span className={styles.navHint} aria-hidden>
+                        {item.commandHint}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <TodayPanel

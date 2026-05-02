@@ -1,0 +1,102 @@
+.trayButton {
+  min-width: 0;
+}
+
+.modalBody {
+  display: grid;
+  gap: var(--space-3);
+  max-height: 56vh;
+  overflow: auto;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(145deg, var(--glass-highlight), transparent 44%),
+    var(--glass-bg);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(105deg, transparent 0 42%, color-mix(in srgb, var(--glass-highlight-strong) 42%, transparent) 50%, transparent 60%),
+    linear-gradient(315deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 46%);
+  opacity: 0.54;
+  pointer-events: none;
+}
+
+.rowTop,
+.pipeline,
+.error,
+.actions {
+  position: relative;
+  z-index: 1;
+}
+
+.rowTop {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.filename {
+  margin: 0;
+  color: var(--color-text-primary);
+  font: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.meta {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font: var(--text-label-md);
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.stage {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-text-primary) 11%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-highlight) 68%, transparent);
+}
+
+.stageActive {
+  background: var(--color-accent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 36%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.stageFailed {
+  background: var(--color-danger);
+}
+
+.error {
+  color: var(--color-danger);
+  font: var(--text-body-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

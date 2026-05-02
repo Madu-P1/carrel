@@ -34,8 +34,13 @@
   gap: 2px;
   padding: 3px;
   border-radius: var(--radius-button);
-  background: var(--surface-0);
-  border: 1px solid var(--color-border-subtle);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--glass-highlight) 52%, transparent), transparent 54%),
+    var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-highlight) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -90,16 +95,22 @@
 }
 
 .variant-segmented .tab:hover:not(:disabled) {
-  background: var(--state-bg-hover);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-highlight) 46%, transparent), transparent 60%),
+    var(--state-bg-hover);
   color: var(--color-text-primary);
 }
 
 .variant-segmented .tabActive,
 .variant-segmented .tabActive:hover {
-  background: var(--surface-3);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 58%),
+    var(--glass-bg-strong);
   color: var(--color-text-primary);
-  border-color: var(--color-border-default);
-  box-shadow: 0 1px 2px oklch(0 0 0 / 0.25);
+  border-color: var(--glass-border-strong);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-highlight-strong) 72%, transparent),
+    0 6px 18px oklch(0 0 0 / 0.18);
 }
 
 /* ---------- Inline variant ---------- */

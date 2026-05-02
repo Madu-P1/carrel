@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
-import { Card, Text } from "@/design-system";
+import { Button, Card, Text, toast } from "@/design-system";
+import { anchors } from "@/services/api/endpoints";
 
 import { usePageVirtualizer } from "../hooks/usePageVirtualizer";
 import type { PdfState } from "../hooks/usePdfDocument";
@@ -14,6 +15,7 @@ import { PdfPage } from "./PdfPage";
 import styles from "../ReaderView.module.css";
 
 interface PdfViewerProps {
+  docId: string;
   pdfState: PdfState;
 }
 
@@ -26,10 +28,11 @@ async function firstPageSize(pdf: PDFDocumentProxy, scale: number) {
   };
 }
 
-export function PdfViewer({ pdfState }: PdfViewerProps) {
+export function PdfViewer({ docId, pdfState }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { doc, error, loading, pageCount } = pdfState;
   const fitMode = readerState.fitMode.value;
+  const focusMode = readerState.focusMode.value;
   const requestedPage = readerState.requestedPage.value;
   const scale = readerState.scale.value;
   const selectedText = readerState.selectedText.value;
@@ -88,20 +91,28 @@ export function PdfViewer({ pdfState }: PdfViewerProps) {
   }, [doc.value]);
 
   const effectiveScale = useMemo(() => {
+    const horizontalChrome = focusMode ? 96 : 48;
+    const verticalChrome = focusMode ? 96 : 48;
+    const availableWidth = Math.max(1, (focusMode ? Math.min(containerWidth, 1180) : containerWidth) - horizontalChrome);
+    const availableHeight = Math.max(1, (focusMode ? Math.min(containerHeight, 1400) : containerHeight) - verticalChrome);
+
     if (fitMode === "fit-width") {
-      return Math.max(0.4, (containerWidth - 48) / Math.max(baseWidth, 1));
+      return Math.max(0.4, availableWidth / Math.max(baseWidth, 1));
     }
     if (fitMode === "fit-page") {
       return Math.max(
         0.4,
-        Math.min((containerWidth - 48) / Math.max(baseWidth, 1), (containerHeight - 48) / Math.max(baseHeight, 1))
+        Math.min(availableWidth / Math.max(baseWidth, 1), availableHeight / Math.max(baseHeight, 1))
       );
     }
     return scale;
-  }, [baseHeight, baseWidth, containerHeight, containerWidth, fitMode, scale]);
+  }, [baseHeight, baseWidth, containerHeight, containerWidth, fitMode, focusMode, scale]);
 
-  const estimatedPageHeight = Math.max(320, baseHeight * effectiveScale + 32);
+  const pageGap = focusMode ? 48 : 32;
+  const railChrome = focusMode ? 96 : 48;
+  const estimatedPageHeight = Math.max(320, baseHeight * effectiveScale + pageGap);
   const estimatedPageWidth = Math.max(240, baseWidth * effectiveScale);
+  const railWidth = Math.max(containerWidth, estimatedPageWidth + railChrome);
   const { totalHeight, visiblePages } = usePageVirtualizer({
     containerRef,
     pageCount: pageCount.value,
@@ -140,13 +151,33 @@ export function PdfViewer({ pdfState }: PdfViewerProps) {
       {selectedText ? (
         <Card className={styles.selectionBanner} padding="sm">
           <Text tone="secondary">
-            Selection captured for PR-E5: "{selectedText.slice(0, 140)}
+            Selection captured: "{selectedText.slice(0, 140)}
             {selectedText.length > 140 ? "..." : ""}"
           </Text>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void anchors.create({
+                document_id: docId,
+                quote_text: selectedText,
+                origin: "highlight",
+                page_num: readerState.currentPage.value || null,
+                confidence: 0.7
+              })
+                .then(() => {
+                  readerState.selectedText.value = "";
+                  toast.success("Anchor saved", "The highlight is now available in the Anchor Column.");
+                })
+                .catch(() => toast.error("Save failed", "Carrel could not save this highlight."));
+            }}
+          >
+            Save anchor
+          </Button>
         </Card>
       ) : null}
       <div className={styles.viewerScroll} ref={containerRef}>
-        <div className={styles.viewerRail} style={{ height: `${totalHeight}px` }}>
+        <div className={styles.viewerRail} style={{ height: `${totalHeight}px`, width: `${railWidth}px` }}>
           {Array.from({ length: pageCount.value }, (_, index) => {
             const pageNumber = index + 1;
             const top = index * estimatedPageHeight;
@@ -155,7 +186,7 @@ export function PdfViewer({ pdfState }: PdfViewerProps) {
               <div
                 className={styles.pageSlot}
                 key={pageNumber}
-                style={{ height: `${estimatedPageHeight}px`, top: `${top}px` }}
+                style={{ height: `${estimatedPageHeight}px`, top: `${top}px`, width: `${railWidth}px` }}
               >
                 {visibleSet.has(pageNumber) ? (
                   <PdfPage pageNumber={pageNumber} pdf={pdf} scale={effectiveScale} />

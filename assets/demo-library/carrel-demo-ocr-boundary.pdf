@@ -1,0 +1,67 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 638 >>
+stream
+BT
+/F1 18 Tf
+72 740 Td
+22 TL
+(OCR Boundary Sample) Tj
+T*
+/F1 10.5 Tf
+14 TL
+() Tj
+T*
+(License: CC0-1.0. Synthetic sample generated for the Carrel public beta demo library.) Tj
+T*
+() Tj
+T*
+(This short source represents a scanned-document boundary case for first-run testing.) Tj
+T*
+() Tj
+T*
+(A real scanned PDF may need OCR before Carrel can extract reliable chunks.) Tj
+T*
+() Tj
+T*
+(When extraction quality is low, the app should say so directly and keep the source) Tj
+T*
+(visible in the Jobs Tray.) Tj
+T*
+() Tj
+T*
+(Trust comes from clear status: importing, extracting text, indexing, ready, partial,) Tj
+T*
+(or failed.) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000317 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1006
+%%EOF

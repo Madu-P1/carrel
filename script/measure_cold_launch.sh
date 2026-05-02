@@ -7,6 +7,7 @@ APP_NAME="EinsteinDesktop"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BINARY="$ROOT_DIR/dist/$APP_NAME.app/Contents/MacOS/$APP_NAME"
 APP_PID=""
+WAIT_SECONDS="${CARREL_COLD_LAUNCH_WAIT_SECONDS:-8}"
 
 usage() {
   echo "usage: $0 [--frontend new|legacy] [--runs N]" >&2
@@ -67,6 +68,11 @@ if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   exit 2
 fi
 
+if ! [[ "$WAIT_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v value="$WAIT_SECONDS" 'BEGIN { exit !(value > 0) }'; then
+  echo "CARREL_COLD_LAUNCH_WAIT_SECONDS must be a positive number." >&2
+  exit 2
+fi
+
 # TODO(cold-launch): replace this unified-log fallback with a deterministic one-shot
 # handshake once the native telemetry path is reliable during direct app launches too.
 
@@ -80,7 +86,7 @@ for ((run_index = 1; run_index <= RUNS; run_index++)); do
 
   env EINSTEIN_FRONTEND="$FRONTEND_MODE" "$APP_BINARY" >/dev/null 2>/dev/null &
   APP_PID=$!
-  sleep 4
+  sleep "$WAIT_SECONDS"
 
   log_window="$(
     /usr/bin/log show \

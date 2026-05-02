@@ -1,13 +1,17 @@
-import { fireEvent, render, screen, within } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { ASK_ANCHOR_DRAFTS_STORAGE_KEY } from "../../src/features/ask/anchorDrafts";
 import { AnswerSummary } from "../../src/features/ask/components/AnswerSummary";
 import { ClaimList } from "../../src/features/ask/components/ClaimList";
 import { FallbackAnswer } from "../../src/features/ask/components/FallbackAnswer";
 import { DEMO_ANSWER, DEMO_FALLBACK } from "../../src/features/ask/fixtures/grounded-answer.fixture";
 
 const writeText = vi.fn<() => Promise<void>>();
+const fetchMock = vi.fn() as unknown as ReturnType<typeof vi.fn> & {
+  mockResolvedValue: (value: Response) => void;
+  mockReset: () => void;
+  mock: { calls: Array<[RequestInfo | URL, RequestInit?]> };
+};
 
 beforeEach(() => {
   writeText.mockResolvedValue(undefined);
@@ -15,15 +19,44 @@ beforeEach(() => {
     configurable: true,
     value: { writeText }
   });
+  fetchMock.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        anchor: {
+          id: "anchor-1",
+          document_id: "doc-1",
+          chunk_id: "demo-1",
+          page_num: 1,
+          bbox: null,
+          text_offset_start: null,
+          text_offset_end: null,
+          quote_text: "quote",
+          user_question: null,
+          claim_text: "claim",
+          origin: "ai_answer_citation",
+          promotion_state: "weak",
+          srs_card_id: null,
+          thread_id: null,
+          confidence: 0.9,
+          created_at: "now",
+          updated_at: "now"
+        }
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )
+  );
+  vi.stubGlobal("fetch", fetchMock);
   window.localStorage.clear();
 });
 
 afterEach(() => {
   window.localStorage.clear();
   writeText.mockReset();
+  fetchMock.mockReset();
+  vi.unstubAllGlobals();
 });
 
-test("AnswerSummary renders metadata and utility actions for the grounded answer card", () => {
+test("AnswerSummary renders metadata and utility actions for the grounded answer card", async () => {
   const onRetry = vi.fn();
 
   render(
@@ -46,12 +79,11 @@ test("AnswerSummary renders metadata and utility actions for the grounded answer
 
   fireEvent.click(screen.getByRole("button", { name: /Save as anchor/i }));
 
-  const drafts = JSON.parse(window.localStorage.getItem(ASK_ANCHOR_DRAFTS_STORAGE_KEY) ?? "[]");
-  expect(drafts).toHaveLength(1);
-  expect(drafts[0]?.sourceKind).toBe("answer-summary");
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/anchors");
 });
 
-test("ClaimList renders tiered support copy, source locations, and card utilities", () => {
+test("ClaimList renders tiered support copy, source locations, and card utilities", async () => {
   render(<ClaimList claims={DEMO_ANSWER.claims} onCitationClick={() => {}} />);
 
   const firstClaim = screen.getByText(/Mitosis creates two genetically identical daughter cells\./i);
@@ -67,10 +99,9 @@ test("ClaimList renders tiered support copy, source locations, and card utilitie
 
   fireEvent.click(card.getByRole("button", { name: /Save as anchor/i }));
 
-  const drafts = JSON.parse(window.localStorage.getItem(ASK_ANCHOR_DRAFTS_STORAGE_KEY) ?? "[]");
-  expect(drafts).toHaveLength(1);
-  expect(drafts[0]?.sourceKind).toBe("claim");
-  expect(drafts[0]?.citation?.chunkId).toBe("demo-1");
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+  expect(String(init?.body)).toContain("demo-1");
 });
 
 test("FallbackAnswer keeps the refusal recovery actions in the summary card", () => {

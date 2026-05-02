@@ -40,6 +40,159 @@ export const documents = {
     })
 };
 
+export interface IngestionJob {
+  id: string;
+  kind: string;
+  status: "queued" | "running" | "ready" | "partial" | "failed" | "cancelled";
+  stage: "importing" | "extracting_text" | "ocr_fallback" | "indexing" | "generating_cards" | "ready";
+  filename: string;
+  subject_name: string | null;
+  document_id: string | null;
+  error: string | null;
+  progress: number;
+  created_at: string | null;
+  updated_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface JobEvent {
+  id: number;
+  job_id: string;
+  event_type: string;
+  status: IngestionJob["status"];
+  stage: IngestionJob["stage"];
+  message: string | null;
+  payload: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export const jobs = {
+  import: (file: File, subjectName: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("subject_name", subjectName);
+    return api<{ job: IngestionJob }>("/api/jobs/import", {
+      method: "POST",
+      body: form
+    });
+  },
+  list: (limit = 50) => api<{ jobs: IngestionJob[] }>(`/api/jobs?limit=${limit}`),
+  events: (afterId = 0) => api<{ events: JobEvent[]; last_event_id: number }>(`/api/jobs/events?after_id=${afterId}`),
+  retry: (jobId: string) =>
+    api<{ job: IngestionJob }>(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: "POST"
+    }),
+  delete: (jobId: string) =>
+    api<{ deleted: boolean }>(`/api/jobs/${encodeURIComponent(jobId)}`, {
+      method: "DELETE"
+    }),
+  streamUrl: (afterId = 0) => `${API_BASE}/api/jobs/stream?after_id=${afterId}`
+};
+
+export interface EvidenceResolution {
+  document_id: string;
+  chunk_id: string | null;
+  document_name: string;
+  section: string | null;
+  page_num: number | null;
+  quote_text: string;
+  confidence: number;
+  location_kind: "bbox" | "text_offset" | "chunk" | "page";
+  bbox: number[] | null;
+  text_offset_start: number | null;
+  text_offset_end: number | null;
+}
+
+export const evidence = {
+  resolve: (params: { documentId: string; chunkId?: string | null }) => {
+    const qs = new URLSearchParams({ document_id: params.documentId });
+    if (params.chunkId) qs.set("chunk_id", params.chunkId);
+    return api<EvidenceResolution>(`/api/evidence/resolve?${qs.toString()}`);
+  }
+};
+
+export interface AnchorRecord {
+  id: string;
+  document_id: string;
+  chunk_id: string | null;
+  page_num: number | null;
+  bbox: number[] | null;
+  text_offset_start: number | null;
+  text_offset_end: number | null;
+  quote_text: string;
+  user_question: string | null;
+  claim_text: string | null;
+  origin: "highlight" | "ai_answer_citation" | "manual" | "imported";
+  promotion_state: "weak" | "saved" | "carded" | "mastered" | "archived";
+  srs_card_id: string | null;
+  thread_id: string | null;
+  confidence: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnchorCreatePayload {
+  document_id: string;
+  quote_text: string;
+  origin: AnchorRecord["origin"];
+  promotion_state?: AnchorRecord["promotion_state"];
+  chunk_id?: string | null;
+  page_num?: number | null;
+  bbox?: number[] | null;
+  text_offset_start?: number | null;
+  text_offset_end?: number | null;
+  user_question?: string | null;
+  claim_text?: string | null;
+  thread_id?: string | null;
+  confidence?: number | null;
+}
+
+export interface AnchorCardDraft {
+  front: string;
+  back: string;
+  duplicate_warning: boolean;
+  source_anchor_id: string;
+  supporting_chunk_ids: string[];
+}
+
+export const anchors = {
+  create: (payload: AnchorCreatePayload) =>
+    api<{ anchor: AnchorRecord }>("/api/anchors", {
+      method: "POST",
+      body: payload
+    }),
+  listForDocument: (documentId: string, pageNum?: number | null) => {
+    const qs = new URLSearchParams();
+    if (pageNum != null) qs.set("page_num", String(pageNum));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<{ anchors: AnchorRecord[] }>(`/api/anchors/document/${encodeURIComponent(documentId)}${suffix}`);
+  },
+  transition: (anchorId: string, promotionState: AnchorRecord["promotion_state"]) =>
+    api<{ anchor: AnchorRecord }>(`/api/anchors/${encodeURIComponent(anchorId)}/transition`, {
+      method: "POST",
+      body: { promotion_state: promotionState }
+    }),
+  draftCards: (anchorId: string, count = 3) =>
+    api<{ cards: AnchorCardDraft[] }>(`/api/anchors/${encodeURIComponent(anchorId)}/draft-cards`, {
+      method: "POST",
+      body: { count }
+    }),
+  promoteCard: (anchorId: string, payload: { front: string; back: string; card_type?: string }) =>
+    api<{ anchor: AnchorRecord; card: unknown }>(`/api/anchors/${encodeURIComponent(anchorId)}/promote-card`, {
+      method: "POST",
+      body: payload
+    })
+};
+
+export const onboarding = {
+  seedDemoLibrary: (force = false) =>
+    api<{ seeded: boolean; documents: DocumentUploadResponse[]; skipped_reason: string | null }>(
+      `/api/onboarding/demo-library${force ? "?force=true" : ""}`,
+      { method: "POST" }
+    )
+};
+
 /**
  * Library-level operations (not tied to a single document). Separate object
  * because the backend groups them under /api/library/* for the same reason —

@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     from services.retrieval.backfill import maybe_run_backfill
 
     maybe_run_backfill()
+    _resume_ingestion_jobs()
     _kick_startup_calendar_sync()
     log_event(
         LOGGER,
@@ -92,6 +93,20 @@ def _kick_startup_calendar_sync() -> None:
             LOGGER,
             logging.WARNING,
             "calendar_startup_sync_skipped",
+            reason=exc.__class__.__name__,
+        )
+
+
+def _resume_ingestion_jobs() -> None:
+    try:
+        from services.jobs import resume_unfinished_jobs
+
+        resume_unfinished_jobs()
+    except Exception as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "jobs_resume_skipped",
             reason=exc.__class__.__name__,
         )
 

@@ -1,7 +1,7 @@
-import { useRef } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 
-import { Tooltip } from "@/design-system";
 import { registerFlight } from "@/features/shared/flightRegistry";
+import { evidence, type EvidenceResolution } from "@/services/api/endpoints";
 
 import type { CitationRecord } from "../types";
 import styles from "../AskView.module.css";
@@ -27,6 +27,18 @@ function previewTextFor(citation: CitationRecord): string {
 
 export function CitationChip({ citation, index, delayMs = 0, onClick }: CitationChipProps) {
   const chipRef = useRef<HTMLButtonElement>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+  const requestKeyRef = useRef<string>("");
+  const previewId = useId();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [resolved, setResolved] = useState<EvidenceResolution | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+
+  useEffect(() => {
+    setResolved(null);
+    setPreviewError(false);
+    requestKeyRef.current = "";
+  }, [citation.chunk_id, citation.document_id]);
 
   const handleClick = () => {
     // SM-2: capture the chip's rect + HTML before navigation so the Reader
@@ -52,12 +64,79 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
   const srLabel = `citation ${index ?? ""}, ${label}. Click to open in reader.`.trim();
 
   const preview = previewTextFor(citation);
-  // Compose the tooltip as source-first, then the short quote: "Document.pdf
-  // · p.12: 'exact citation text'." Reads naturally when a screen reader
-  // announces it and keeps the source context attached to the quote.
-  const tooltipContent = preview
-    ? `${citation.document_name ?? "Source"}${citation.page_num ? ` · p.${citation.page_num}` : ""}: "${preview}"`
-    : "";
+  const confidence = Math.round(((resolved?.confidence ?? citation.score ?? 0.7) || 0) * 100);
+  const resolvedQuote = (resolved?.quote_text ?? preview).trim();
+  const locationKind = resolved?.location_kind ?? (citation.chunk_id ? "chunk" : "page");
+  const locationCopy = locationKind === "bbox" || locationKind === "text_offset"
+    ? "Exact span"
+    : "Approximate passage";
+  const pageNum = resolved?.page_num ?? citation.page_num ?? null;
+  const section = resolved?.section ?? citation.section ?? null;
+  const documentName = resolved?.document_name ?? citation.document_name ?? "Source";
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const openPreview = () => {
+    clearHoverTimer();
+    hoverTimerRef.current = window.setTimeout(() => setPreviewOpen(true), 220);
+  };
+
+  const closePreview = () => {
+    clearHoverTimer();
+    setPreviewOpen(false);
+  };
+
+  useEffect(() => {
+    if (!previewOpen) {
+      return undefined;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewOpen]);
+
+  useEffect(() => {
+    if (!previewOpen || !citation.document_id) {
+      return undefined;
+    }
+
+    const requestKey = `${citation.document_id}:${citation.chunk_id ?? ""}`;
+    if (requestKey === requestKeyRef.current && (resolved || previewError)) {
+      return undefined;
+    }
+    requestKeyRef.current = requestKey;
+    let active = true;
+    setPreviewError(false);
+    void evidence.resolve({
+      documentId: citation.document_id,
+      chunkId: citation.chunk_id
+    })
+      .then((result) => {
+        if (active) {
+          setResolved(result);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPreviewError(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [citation.chunk_id, citation.document_id, previewError, previewOpen, resolved]);
+
+  useEffect(() => () => clearHoverTimer(), []);
 
   const chip = (
     <button
@@ -68,6 +147,7 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
       style={{ animationDelay: `${delayMs}ms` }}
       type="button"
       aria-label={srLabel}
+      aria-describedby={previewOpen && resolvedQuote ? previewId : undefined}
     >
       {typeof index === "number" && (
         <span className={styles.citationChipIndex} aria-hidden>
@@ -80,13 +160,32 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
     </button>
   );
 
-  if (!tooltipContent) {
-    return chip;
-  }
-
   return (
-    <Tooltip content={tooltipContent} delay={260} multiline>
+    <span
+      className={styles.citationPreviewWrap}
+      onBlur={closePreview}
+      onFocus={openPreview}
+      onMouseLeave={closePreview}
+      onMouseOver={openPreview}
+    >
       {chip}
-    </Tooltip>
+      {previewOpen && resolvedQuote ? (
+        <span className={styles.citationPreviewCard} id={previewId} role="tooltip">
+          <span className={styles.citationPreviewHeader}>
+            <span className={styles.citationPreviewSource}>{documentName}</span>
+            <span className={styles.citationPreviewConfidence}>{confidence}%</span>
+          </span>
+          <span className={styles.citationPreviewMeta}>
+            {pageNum ? `Page ${pageNum}` : "Page unknown"}
+            {section ? ` · ${section}` : ""}
+          </span>
+          <span className={styles.citationPreviewQuote}>“{resolvedQuote}”</span>
+          <span className={styles.citationPreviewFooter}>
+            <span>{locationCopy}</span>
+            <span>Click to inspect</span>
+          </span>
+        </span>
+      ) : null}
+    </span>
   );
 }

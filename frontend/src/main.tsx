@@ -100,6 +100,7 @@ function scheduleInteractiveMarker(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(emit);
   });
+  window.setTimeout(emit, 320);
   window.setTimeout(emit, 1500);
 }
 
