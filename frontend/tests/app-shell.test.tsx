@@ -98,6 +98,25 @@ test("menu dispatch navigates to Ask route", async () => {
   expect(await screen.findByText(/Ask a question about your sources/i)).toBeDefined();
 });
 
+test("file new command opens the Session surface", async () => {
+  await renderAppReady();
+
+  dispatchMenuCommand("file.new");
+
+  expect(await screen.findByText(/Set the focus/i)).toBeDefined();
+});
+
+test("slash shortcut focuses Ask via the stable focus target", async () => {
+  await renderAppReady();
+
+  fireEvent.keyDown(document.body, { key: "/" });
+
+  const field = await screen.findByLabelText(/Question/i);
+  await waitFor(() => {
+    expect(document.activeElement).toBe(field);
+  });
+});
+
 test("route changes carry directional page transition state", async () => {
   await renderAppReady();
 

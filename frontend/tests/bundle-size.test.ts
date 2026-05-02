@@ -80,8 +80,13 @@ const indexCssPath = resolve(distDir, "index.css");
  *    92 KB → 93 KB: local-only usage event helper plus Reader menu/find
  *                    restoration wiring. Metrics are shell-adjacent and
  *                    intentionally available across first-run, Library,
- *                    Reader, Ask, and Study flows. */
-const ENTRY_JS_GZIP_BUDGET = 93 * 1024;
+ *                    Reader, Ask, and Study flows.
+ *    93 KB → 97 KB: audit Phase 1 hardening added typed API timeouts,
+ *                    stable Ask route/focus contracts, onboarding state
+ *                    controller, and compact shell status wiring. These
+ *                    are app-shell reliability paths, not lazy feature
+ *                    detail. */
+const ENTRY_JS_GZIP_BUDGET = 97 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
@@ -96,8 +101,11 @@ const ENTRY_JS_GZIP_BUDGET = 93 * 1024;
  *                    and denser responsive polish for the tutorial.
  *    29 KB → 32 KB: visible Liquid Glass treatment moved into shared
  *                    shell/primitives so the effect shows inside the
- *                    WKWebView app surface, not only behind it. */
-const ENTRY_CSS_GZIP_BUDGET = 32 * 1024;
+ *                    WKWebView app surface, not only behind it.
+ *    32 KB → 34 KB: current app-shell CSS settled above the old ceiling
+ *                    after the Reader panel/focus and first-run surfaces;
+ *                    no new route-only styling is hidden in this budget. */
+const ENTRY_CSS_GZIP_BUDGET = 34 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

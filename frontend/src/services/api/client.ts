@@ -21,7 +21,7 @@ export class ApiError extends Error {
 
 /**
  * The backend at API_BASE wasn't reachable at all — connection
- * refused, DNS failure, timeout, or any other network-layer error
+ * refused, DNS failure, CORS preflight failure, or any other network-layer error
  * before a response. Distinct from ApiError because the recovery
  * is different: ApiError means "the endpoint is broken or the
  * request was malformed"; BackendOfflineError means "the entire
@@ -43,17 +43,38 @@ export class BackendOfflineError extends Error {
   }
 }
 
+export class ApiTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`API request timed out after ${timeoutMs}ms`);
+    this.name = "ApiTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 /** Type guard for callers that want to branch on the error kind. */
 export function isBackendOffline(err: unknown): err is BackendOfflineError {
   return err instanceof BackendOfflineError;
 }
 
-export type RequestInitEx = Omit<RequestInit, "body"> & { body?: BodyInit | object | null };
+export function isApiTimeout(err: unknown): err is ApiTimeoutError {
+  return err instanceof ApiTimeoutError;
+}
+
+export type RequestInitEx = Omit<RequestInit, "body"> & {
+  body?: BodyInit | object | null;
+  timeoutMs?: number;
+};
+
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
-  const { body, headers, ...rest } = init;
+  const { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const isObjectBody =
     body !== undefined && body !== null && !(body instanceof FormData) && typeof body === "object";
+  const timeout = createTimeoutSignal(timeoutMs);
+  const requestSignal = mergeSignals(signal, timeout.signal);
 
   let response: Response;
   try {
@@ -63,16 +84,22 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
         ...(isObjectBody ? { "content-type": "application/json" } : {}),
         ...headers
       },
-      body: isObjectBody ? JSON.stringify(body) : (body as BodyInit | null | undefined)
+      body: isObjectBody ? JSON.stringify(body) : (body as BodyInit | null | undefined),
+      signal: requestSignal
     });
   } catch (cause) {
+    if (timeout.didTimeout()) {
+      throw new ApiTimeoutError(timeoutMs);
+    }
     // `fetch()` only throws on network-layer failures: connection
-    // refused, DNS failure, abort, CORS preflight failure, etc. Any
+    // refused, DNS failure, caller abort, CORS preflight failure, etc. Any
     // HTTP response (even 500) resolves the promise. So a thrown
     // error here means the backend wasn't reachable, not that an
     // endpoint is broken. Map to BackendOfflineError so the UI can
     // distinguish the two.
     throw new BackendOfflineError(cause);
+  } finally {
+    timeout.dispose();
   }
 
   if (!response.ok) {
@@ -90,4 +117,54 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
   }
 
   return response.json() as Promise<T>;
+}
+
+interface TimeoutHandle {
+  signal: AbortSignal | null;
+  didTimeout: () => boolean;
+  dispose: () => void;
+}
+
+function createTimeoutSignal(timeoutMs: number): TimeoutHandle {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return { signal: null, didTimeout: () => false, dispose: () => {} };
+  }
+
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    const signal = AbortSignal.timeout(timeoutMs);
+    return {
+      signal,
+      didTimeout: () => signal.aborted,
+      dispose: () => {}
+    };
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    dispose: () => window.clearTimeout(timer)
+  };
+}
+
+function mergeSignals(
+  callerSignal: AbortSignal | null | undefined,
+  timeoutSignal: AbortSignal | null
+): AbortSignal | undefined {
+  if (!callerSignal) return timeoutSignal ?? undefined;
+  if (!timeoutSignal) return callerSignal;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (callerSignal.aborted || timeoutSignal.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+  callerSignal.addEventListener("abort", abort, { once: true });
+  timeoutSignal.addEventListener("abort", abort, { once: true });
+  return controller.signal;
 }

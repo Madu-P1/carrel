@@ -339,13 +339,13 @@ def _format_expansion_markdown(title: str, payload: Dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
-def _try_ai_expansion(title: str, content: str) -> Optional[Dict[str, Any]]:
+def _try_ai_expansion(title: str, content: str) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Call the configured provider. Returns the tool payload dict on success,
-    None on any failure so the caller can fall back to the deterministic path.
+    plus an error code so deterministic fallbacks do not masquerade as AI.
     """
     provider = get_default_provider()
     if not provider.ai_enabled():
-        return None
+        return None, "ai_disabled"
     # task="fast" — notes expansion is a structured-output task, not a
     # reasoning task. On Ollama the 8B "balanced" model takes 3-4 minutes
     # on this tool schema (measured in prod logs) and routinely times out.
@@ -361,16 +361,16 @@ def _try_ai_expansion(title: str, content: str) -> Optional[Dict[str, Any]]:
         task="fast",
     )
     if not result.ok or not isinstance(result.json_payload, dict):
-        return None
+        return None, result.error_code or "ai_failed"
     payload = result.json_payload
     # Defensive shape check. The tool schema enforces this, but a model that
     # ignores the schema shouldn't 500 the endpoint.
     required_lists = ("key_ideas", "organized_notes", "review_prompts")
     if not isinstance(payload.get("summary"), str):
-        return None
+        return None, "malformed_payload"
     if any(not isinstance(payload.get(key), list) for key in required_lists):
-        return None
-    return payload
+        return None, "malformed_payload"
+    return payload, None
 
 
 def _build_deterministic_expansion(title: str, content: str) -> str:
@@ -416,7 +416,7 @@ def _build_deterministic_expansion(title: str, content: str) -> str:
 
 
 @router.post("/api/notes/expand")
-def expand_note(payload: NoteExpandRequest) -> Dict[str, str]:
+def expand_note(payload: NoteExpandRequest) -> Dict[str, Optional[str]]:
     content = (payload.content or "").strip()
     if not content:
         raise HTTPException(status_code=400, detail="Content is required.")
@@ -426,11 +426,19 @@ def expand_note(payload: NoteExpandRequest) -> Dict[str, str]:
     # Try the LLM path first. The deterministic fallback exists so a disabled
     # provider, rate limit, or schema mismatch never 500s the endpoint; the
     # user still gets something, just less rich.
-    ai_payload = _try_ai_expansion(title, content)
+    ai_payload, error_code = _try_ai_expansion(title, content)
     if ai_payload is not None:
-        return {"expanded_markdown": _format_expansion_markdown(title, ai_payload)}
+        return {
+            "expanded_markdown": _format_expansion_markdown(title, ai_payload),
+            "mode": "ai",
+            "error_code": None,
+        }
 
-    return {"expanded_markdown": _build_deterministic_expansion(title, content)}
+    return {
+        "expanded_markdown": _build_deterministic_expansion(title, content),
+        "mode": "deterministic",
+        "error_code": error_code or "ai_failed",
+    }
 
 
 @router.post("/api/dialogue/start")

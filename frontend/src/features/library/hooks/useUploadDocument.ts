@@ -73,6 +73,10 @@ export function useUploadDocument() {
     const results: UploadOutcome[] = [];
     try {
       for (const file of batch) {
+        void events.track("first_source_import_started", {
+          bytes: file.size,
+          file_type: file.type || file.name.split(".").pop()?.toLowerCase() || "unknown"
+        }, "library");
         try {
           const response = await jobs.import(file, subjectName);
           results.push({

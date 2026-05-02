@@ -59,7 +59,12 @@ async def lifespan(app: FastAPI):
         data_dir=str(DATA_DIR),
         db_path=str(DB_PATH),
     )
-    yield
+    try:
+        yield
+    finally:
+        from services.calendar.sync_queue import shutdown_calendar_sync_queue
+
+        shutdown_calendar_sync_queue()
 
 
 def _kick_startup_calendar_sync() -> None:

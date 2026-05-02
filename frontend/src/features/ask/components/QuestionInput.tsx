@@ -45,6 +45,7 @@ export function QuestionInput({
       <Input
         autoFocus
         className={styles.questionInputField}
+        data-focus-target="ask-question"
         error={error ?? undefined}
         helpText={
           error

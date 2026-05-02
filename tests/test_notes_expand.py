@@ -160,6 +160,8 @@ class NotesExpandTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("expanded_markdown", body)
+        self.assertEqual("ai", body["mode"])
+        self.assertIsNone(body["error_code"])
         md = body["expanded_markdown"]
 
         # Structure checks.
@@ -189,7 +191,10 @@ class NotesExpandTests(unittest.TestCase):
         # The endpoint must still return something. Even if the content is
         # sparse (deterministic path), the shape is stable.
         self.assertEqual(response.status_code, 200)
-        md = response.json()["expanded_markdown"]
+        body = response.json()
+        self.assertEqual("deterministic", body["mode"])
+        self.assertEqual("ai_disabled", body["error_code"])
+        md = body["expanded_markdown"]
         self.assertIn("# Bonds", md)
         self.assertIn("## Summary", md)
 
@@ -204,7 +209,10 @@ class NotesExpandTests(unittest.TestCase):
                 json={"content": "Bonds are debt instruments.", "title": "Bonds"},
             )
         self.assertEqual(response.status_code, 200)
-        md = response.json()["expanded_markdown"]
+        body = response.json()
+        self.assertEqual("deterministic", body["mode"])
+        self.assertEqual("malformed_payload", body["error_code"])
+        md = body["expanded_markdown"]
         # The deterministic fallback is what we should see — it still has a
         # Summary section populated from the user's input.
         self.assertIn("## Summary", md)
@@ -245,7 +253,10 @@ class NotesExpandTests(unittest.TestCase):
                 json={"content": "Bonds are issued by governments.", "title": "Bonds"},
             )
         self.assertEqual(response.status_code, 200)
-        md = response.json()["expanded_markdown"]
+        body = response.json()
+        self.assertEqual("ai", body["mode"])
+        self.assertIsNone(body["error_code"])
+        md = body["expanded_markdown"]
 
         # Junk filtered out.
         for bad in [
@@ -275,7 +286,10 @@ class NotesExpandTests(unittest.TestCase):
                 json={"content": "Bonds are debt instruments."},
             )
         self.assertEqual(response.status_code, 200)
-        md = response.json()["expanded_markdown"]
+        body = response.json()
+        self.assertEqual("deterministic", body["mode"])
+        self.assertEqual("http_429", body["error_code"])
+        md = body["expanded_markdown"]
         self.assertIn("## Summary", md)
 
 

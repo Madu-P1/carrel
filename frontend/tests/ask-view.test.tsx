@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { expect, test } from "vitest";
 
 import { App } from "../src/app/App";
+import { appShell } from "../src/app/shell/useAppShell";
 import { AskView } from "../src/features/ask/AskView";
 import { useAskTutor } from "../src/features/ask/hooks/useAskTutor";
 import { DEMO_ANSWER, DEMO_FALLBACK } from "../src/features/ask/fixtures/grounded-answer.fixture";
-import { jsonResponse, mockJson, registerFetchHandler } from "./support/mockFetch";
+import { getFetchCalls, jsonResponse, mockJson, registerFetchHandler } from "./support/mockFetch";
 
 function HookHarness() {
   const { answer, error, pending, submit } = useAskTutor();
@@ -156,6 +157,27 @@ test("AskView renders an in-place error and retry recovers", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
 
   expect(await screen.findByText(/Mitosis creates two genetically identical daughter cells\./i)).toBeDefined();
+});
+
+test("AskView hydrates scoped auto-submit route params before asking", async () => {
+  appShell.currentRoute.value = "/ask?q=Explain%20capex&auto=1&scope_kind=document&doc_id=doc-1";
+  mockJson("GET", "/api/documents", [
+    { id: "doc-1", filename: "finance.pdf", subject_name: "Finance" }
+  ]);
+  mockJson("GET", "/api/srs/subjects", { subjects: [] });
+
+  render(<AskView />);
+
+  expect(await screen.findByText(/Doc: finance\.pdf/i)).toBeDefined();
+  await waitFor(() => {
+    const tutorCall = getFetchCalls().find((call) => call.url.includes("/api/tutor/query"));
+    expect(tutorCall).toBeDefined();
+    const body = JSON.parse(String(tutorCall?.body ?? "{}"));
+    expect(body).toMatchObject({
+      question: "Explain capex",
+      doc_id: "doc-1"
+    });
+  });
 });
 
 test("Ask flow navigates to the reader deep link when a citation chip is clicked", async () => {

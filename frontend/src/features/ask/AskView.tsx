@@ -9,6 +9,7 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
+import { recordOnboardingStep } from "@/features/onboarding/FirstRunController";
 
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { AnswerSummary } from "./components/AnswerSummary";
@@ -17,6 +18,8 @@ import { FallbackAnswer } from "./components/FallbackAnswer";
 import { QuestionInput } from "./components/QuestionInput";
 import { ScopePill, type AskScopeValue } from "./components/ScopePill";
 import { UnsupportedSpans } from "./components/UnsupportedSpans";
+import { focusAskInput } from "./focusRegistry";
+import { readAskQueryParams, scopeFromRoute } from "./askRoute";
 import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
 import styles from "./AskView.module.css";
@@ -29,6 +32,7 @@ import styles from "./AskView.module.css";
 const ASK_EMPTY_SAMPLE =
   "Summarise the main argument across my sources.";
 const FIRST_ASK_EVENT_KEY = "carrel.metrics.first-ask-recorded";
+const FIRST_GROUNDED_EVENT_KEY = "carrel.metrics.first-grounded-answer-recorded";
 
 function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
   return (
@@ -74,26 +78,6 @@ function AskErrorState({ message, onRetry }: { message: string; onRetry: () => v
       </Stack>
     </Card>
   );
-}
-
-/**
- * Parse `?q=<question>&auto=1` from the current route. Used when the
- * Dashboard's Hero Ask prompt routes into this view with a pre-filled
- * question — the auto flag tells us to kick off retrieval immediately
- * without the user having to press Enter a second time.
- */
-function readAskQueryParams(rawPath: string): { question: string | null; auto: boolean } {
-  try {
-    const url = new URL(rawPath || "/ask", "https://carrel.local");
-    const q = url.searchParams.get("q");
-    const auto = url.searchParams.get("auto");
-    return {
-      question: q && q.trim().length > 0 ? q : null,
-      auto: auto === "1" || auto === "true"
-    };
-  } catch {
-    return { question: null, auto: false };
-  }
 }
 
 export function AskView() {
@@ -145,7 +129,7 @@ export function AskView() {
     []
   );
 
-  const trackFirstAsk = useCallback(() => {
+  const trackFirstAsk = useCallback((scopeKind: AskScopeValue["kind"] = scope.kind) => {
     try {
       if (window.localStorage.getItem(FIRST_ASK_EVENT_KEY) === "1") return;
       window.localStorage.setItem(FIRST_ASK_EVENT_KEY, "1");
@@ -153,22 +137,37 @@ export function AskView() {
       // If localStorage is unavailable, still record the coarse local event.
     }
     void events.track("ask.first_question", {
-      scope_kind: scope.kind
+      scope_kind: scopeKind
     }, "ask");
   }, [scope.kind]);
+
+  const trackScopedSubmit = useCallback((current: AskScopeValue) => {
+    void events.track(
+      "first_scoped_question_submitted",
+      {
+        scope_kind: current.kind,
+        doc_id: current.kind === "document" ? current.docId ?? null : null,
+        has_subject: current.kind === "subject"
+      },
+      "ask"
+    );
+    recordOnboardingStep({
+      step: "asked_first_question",
+      firstDocId: current.kind === "document" ? current.docId : undefined,
+      firstQuestionSet: true
+    });
+  }, []);
 
   const handleSubmit = async () => {
     if (question.trim().length > 0) {
       trackFirstAsk();
+      trackScopedSubmit(scope);
     }
     await submit(question, scopeToPayload(scope));
   };
 
   const focusQuestionInput = useCallback(() => {
-    const field = document.querySelector(
-      "input[placeholder*='source say' i]"
-    ) as HTMLInputElement | null;
-    field?.focus();
+    focusAskInput();
   }, []);
 
   // Consume ?q=…&auto=1 on mount. Guarded by prefilledRef so navigating
@@ -176,17 +175,44 @@ export function AskView() {
   useEffect(() => {
     const params = readAskQueryParams(appShell.currentRoute.value);
     if (!params.question) return;
-    if (prefilledRef.current === params.question) return;
-    prefilledRef.current = params.question;
+    if (prefilledRef.current === params.cacheKey) return;
+    prefilledRef.current = params.cacheKey;
+    const routeScope = scopeFromRoute(params, docs);
+    setScope(routeScope);
     setQuestion(params.question);
     if (params.auto) {
-      trackFirstAsk();
-      void submit(params.question);
+      trackFirstAsk(routeScope.kind);
+      trackScopedSubmit(routeScope);
+      void submit(params.question, scopeToPayload(routeScope));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [docs, scopeToPayload, submit, trackFirstAsk, trackScopedSubmit]);
+
+  useEffect(() => {
+    if (scope.kind !== "document" || scope.docTitle || !scope.docId) return;
+    const doc = docs.find((item) => item.id === scope.docId);
+    if (!doc?.filename) return;
+    setScope((current) =>
+      current.kind === "document" && current.docId === scope.docId && !current.docTitle
+        ? { ...current, docTitle: doc.filename ?? undefined }
+        : current
+    );
+  }, [docs, scope]);
 
   const handleCitationClick = (citation: CitationRecord) => {
+    void events.track(
+      "first_citation_verified",
+      {
+        doc_id: citation.document_id,
+        chunk_id: citation.chunk_id,
+        page_num: citation.page_num ?? null
+      },
+      "reader"
+    );
+    recordOnboardingStep({
+      step: "verified_first_citation",
+      firstDocId: citation.document_id
+    });
     navigateTo(
       `/reader/${encodeURIComponent(citation.document_id)}?chunk=${encodeURIComponent(citation.chunk_id)}`
     );
@@ -211,6 +237,25 @@ export function AskView() {
       setLastProvider(activeAnswer.model ?? undefined);
     }
   }, [activeAnswer, responseSerial.value]);
+
+  useEffect(() => {
+    if (!activeAnswer) return;
+    try {
+      if (window.localStorage.getItem(FIRST_GROUNDED_EVENT_KEY) === "1") return;
+      window.localStorage.setItem(FIRST_GROUNDED_EVENT_KEY, "1");
+    } catch {
+      // Still record the local-only event when storage is unavailable.
+    }
+    void events.track(
+      "first_grounded_answer_rendered",
+      {
+        grounded: Boolean(activeAnswer.grounded),
+        citation_count: activeAnswer.citations.length,
+        latency_ms: typeof activeAnswer.latency_ms === "number" ? activeAnswer.latency_ms : null
+      },
+      "ask"
+    );
+  }, [activeAnswer]);
 
   return (
     <div className={styles.wrap}>

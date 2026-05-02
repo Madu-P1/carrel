@@ -7,6 +7,7 @@ import { WorkspaceSidebar, type SidebarNavItem } from "./WorkspaceSidebar";
 import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
 import { JobsTray } from "@/features/shell/JobsTray";
 import { FirstRunTour, openFirstRunTour } from "@/features/onboarding/FirstRunTour";
+import { focusAskInput } from "@/features/ask/focusRegistry";
 import type { PaletteAction } from "@/features/palette/actions";
 import { events } from "@/services/metrics/events";
 import {
@@ -363,8 +364,10 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           openFirstRunTour();
           break;
         case "app.preferences":
+          openPalette();
+          break;
         case "file.new":
-          console.info("Menu command not wired yet", cmd);
+          navigateTo("/session");
           break;
         case "file.import":
           navigateTo("/library");
@@ -432,12 +435,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         event.preventDefault();
         navigateTo("/ask");
         window.setTimeout(() => {
-          // The Input primitive renders the actual field as a plain <input>
-          // inside a labeled wrapper. We find it via the label text.
-          const field = document.querySelector(
-            "input[placeholder*='source say' i]"
-          ) as HTMLInputElement | null;
-          field?.focus();
+          focusAskInput();
         }, 60);
       }
     };
@@ -632,9 +630,9 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { path, route } = useLocation();
+  const { route, url } = useLocation();
   return (
-    <ShellFrame navigate={route} path={path}>
+    <ShellFrame navigate={route} path={url}>
       {children}
     </ShellFrame>
   );

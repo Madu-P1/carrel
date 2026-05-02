@@ -26,6 +26,7 @@ let autoThemeTimer: number | null = null;
 const LAST_READER_DOCUMENT_KEY = "carrel.reader.last-document-id";
 const LEFT_RAIL_WIDTH_KEY = "carrel.shell.left-rail-width";
 const RIGHT_PANEL_WIDTH_KEY = "carrel.shell.right-panel-width";
+const THEME_MODE_KEY = "carrel.shell.theme";
 
 export const SHELL_PANEL_WIDTHS = {
   left: {
@@ -102,6 +103,27 @@ function writeStoredWidth(key: string, value: number): void {
   } catch {
     // Storage can be unavailable in constrained WebViews. The signal still
     // keeps this app session responsive; persistence is a bonus.
+  }
+}
+
+function readStoredTheme(): ThemeMode {
+  if (typeof window === "undefined") return "system";
+  try {
+    const value = window.localStorage.getItem(THEME_MODE_KEY);
+    if (value === "system" || value === "dark" || value === "light" || value === "auto") {
+      return value;
+    }
+  } catch {
+    // Storage can be unavailable in constrained WebViews.
+  }
+  return "system";
+}
+
+function writeStoredTheme(theme: ThemeMode): void {
+  try {
+    window.localStorage.setItem(THEME_MODE_KEY, theme);
+  } catch {
+    // Session-only theme still applies through the signal.
   }
 }
 
@@ -183,7 +205,7 @@ export interface ActiveSessionContext {
 export const appShell = {
   leftOpen: signal(true),
   rightOpen: signal(false),
-  theme: signal<ThemeMode>("system"),
+  theme: signal<ThemeMode>(readStoredTheme()),
   // Default landing route. "/" renders the Dashboard; historically this was
   // "/library" when the app had no Dashboard surface.
   currentRoute: signal("/"),
@@ -288,6 +310,7 @@ export function toggleTheme(): void {
   };
 
   appShell.theme.value = next[appShell.theme.value];
+  writeStoredTheme(appShell.theme.value);
   applyThemeClass(appShell.theme.value);
   refreshAutoThemeTimer();
 }

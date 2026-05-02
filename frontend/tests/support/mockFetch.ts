@@ -19,6 +19,9 @@ function installDefaultHandlers() {
     if (url.pathname === "/api/srs/due" && method === "GET") {
       return jsonResponse({ cards: [] });
     }
+    if (url.pathname === "/api/srs/subjects" && method === "GET") {
+      return jsonResponse({ subjects: [] });
+    }
     // Library home + dashboard both poll their own summary endpoints. Giving
     // each a zero-state default means tests don't have to mock them unless
     // they specifically exercise those surfaces.
@@ -39,6 +42,26 @@ function installDefaultHandlers() {
         ai_enabled: false,
         model_balanced: "",
         preference: "off"
+      });
+    }
+    if (url.pathname === "/api/shell/status" && method === "GET") {
+      return jsonResponse({
+        due_count: 0,
+        doc_count: 0,
+        provider: {
+          kind: "null",
+          ai_enabled: false,
+          model_balanced: "",
+          preference: "off"
+        }
+      });
+    }
+    if (url.pathname === "/api/health" && method === "GET") {
+      return jsonResponse({
+        status: "ok",
+        mode: "local",
+        documents: 0,
+        paths: { base_dir: "/tmp/carrel", db_path: "/tmp/carrel/test.db" }
       });
     }
     if (url.pathname === "/api/usage-events" && method === "POST") {

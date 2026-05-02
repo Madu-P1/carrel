@@ -1,8 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 
 import {
-  documents,
-  study,
   system,
   type ProviderStatus
 } from "@/services/api/endpoints";
@@ -11,7 +9,9 @@ import {
  * Shell-level data that feeds the left sidebar's live signals.
  *
  * The sidebar is visible on every route, so polling happens at the shell
- * level rather than from each feature. Four independent signals:
+ * level rather than from each feature. The heavy counts come from the compact
+ * /api/shell/status endpoint so this hook does not pull full document/card
+ * lists just to show two badges.
  *   - dueCount  — SRS cards the scheduler considers due today.
  *   - docCount  — Total sources in the library.
  *   - provider  — Which AI backend is active. Rendered in the footer.
@@ -27,10 +27,9 @@ import {
  *     60s on the Swift side, so 10s on the frontend means the user sees
  *     the recovery within the same minute).
  *
- * Each signal fetches independently so a slow backend on one endpoint
- * doesn't stall the others. Errors leave the previous value in place
- * (sidebar stays on last known) except for `backend`, which flips to
- * "down" on any failure so the user gets immediate visible feedback.
+ * Errors leave the previous value in place (sidebar stays on last known)
+ * except for `backend`, which flips to "down" on any failure so the user
+ * gets immediate visible feedback.
  */
 const POLL_INTERVAL_MS = 30_000;
 const HEALTH_POLL_INTERVAL_MS = 10_000;
@@ -55,46 +54,19 @@ export function useSidebarSignals(): SidebarSignals {
   useEffect(() => {
     let cancelled = false;
 
-    const refreshDue = async () => {
+    const refreshStatus = async () => {
       try {
-        const data = await study.due();
-        if (!cancelled) {
-          setSignals((prev) => ({ ...prev, dueCount: data.cards.length }));
-        }
-      } catch {
-        // Swallow — the sidebar stays on the last known value.
-      }
-    };
-
-    const refreshDocs = async () => {
-      try {
-        const data = await documents.list();
-        if (!cancelled) {
-          setSignals((prev) => ({ ...prev, docCount: data.length }));
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-
-    const refreshProvider = async () => {
-      try {
-        const data = await system.provider();
-        if (!cancelled) {
-          setSignals((prev) => ({ ...prev, provider: data }));
-        }
-      } catch {
+        const data = await system.status();
         if (!cancelled) {
           setSignals((prev) => ({
             ...prev,
-            provider: {
-              kind: "unknown",
-              ai_enabled: false,
-              model_balanced: "",
-              preference: "auto"
-            }
+            dueCount: data.due_count,
+            docCount: data.doc_count,
+            provider: data.provider
           }));
         }
+      } catch {
+        // Swallow — the sidebar stays on the last known value.
       }
     };
 
@@ -112,9 +84,7 @@ export function useSidebarSignals(): SidebarSignals {
     };
 
     const refreshHeavy = () => {
-      void refreshDue();
-      void refreshDocs();
-      void refreshProvider();
+      void refreshStatus();
     };
 
     // First paint: kick everything off immediately.

@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Upload
 from fastapi.responses import StreamingResponse
 
 from services import jobs as jobs_service
+from services.uploads import save_upload_bounded, validate_upload_suffix
 
 
 router = APIRouter()
@@ -20,13 +21,10 @@ async def import_document_job(
     file: UploadFile = File(...),
     subject_name: str = Form("General"),
 ) -> Dict[str, Any]:
-    suffix = Path(file.filename or "").suffix.lower()
-    if not suffix:
-        raise HTTPException(status_code=400, detail="File must have an extension.")
-    content = await file.read()
+    suffix = validate_upload_suffix(file.filename)
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(content)
         tmp_path = Path(tmp.name)
+    await save_upload_bounded(file, tmp_path)
     try:
         job = jobs_service.enqueue_import(
             source_path=tmp_path,

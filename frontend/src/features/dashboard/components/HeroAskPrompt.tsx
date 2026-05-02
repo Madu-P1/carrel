@@ -3,6 +3,7 @@ import type { JSX } from "preact";
 
 import { Icon } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { buildAskUrl } from "@/features/ask/askRoute";
 
 import styles from "./HeroAskPrompt.module.css";
 
@@ -34,8 +35,7 @@ const SUGGESTION_PROMPTS: readonly string[] = [
 function askWith(prompt: string): void {
   const trimmed = prompt.trim();
   if (!trimmed) return;
-  const url = `/ask?q=${encodeURIComponent(trimmed)}&auto=1`;
-  navigateTo(url);
+  navigateTo(buildAskUrl({ q: trimmed, auto: true, scope_kind: "library" }));
 }
 
 export function HeroAskPrompt() {

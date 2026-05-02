@@ -17,6 +17,7 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from fastapi.testclient import TestClient
 
@@ -110,12 +111,43 @@ class ManualTextDedupeTests(UploadDedupeBase):
 
 
 class FileUploadDedupeTests(UploadDedupeBase):
+    def test_file_without_extension_returns_400_and_writes_nothing(self) -> None:
+        response = self._upload_file("notes", _TEXT_BYTES)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
+
+    def test_unsupported_extension_returns_400_and_writes_nothing(self) -> None:
+        response = self._upload_file("notes.exe", _TEXT_BYTES)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported file type", response.json()["detail"])
+        self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
+
+    def test_oversized_upload_returns_413_and_cleans_partial_file(self) -> None:
+        with mock.patch("services.uploads.MAX_UPLOAD_BYTES", 8):
+            response = self._upload_file("large.txt", b"0123456789abcdef")
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
+
+    def test_extraction_failure_returns_422_and_cleans_file(self) -> None:
+        response = self._upload_file("blank.txt", b"   \n\n\t")
+
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "extraction_failed")
+        self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
+
     def test_identical_bytes_second_upload_returns_409(self) -> None:
         first = self._upload_file("a.txt", _TEXT_BYTES)
         self.assertEqual(first.status_code, 200, first.text)
+        stored_after_first = list(main.UPLOAD_DIR.iterdir())
+        self.assertEqual(len(stored_after_first), 1)
 
         second = self._upload_file("a-copy.txt", _TEXT_BYTES)
         self.assertEqual(second.status_code, 409)
+        self.assertEqual(stored_after_first, list(main.UPLOAD_DIR.iterdir()))
         detail = second.json()["detail"]
         self.assertEqual(detail["code"], "duplicate_source")
         self.assertEqual(detail["existing_doc_id"], first.json()["doc_id"])

@@ -3,9 +3,16 @@ import { api } from "@/services/api/client";
 
 export type UsageEventName =
   | "app.first_launch"
+  | "onboarding.step"
   | "import.started"
   | "import.completed"
   | "import.failed"
+  | "first_source_import_started"
+  | "first_source_ready"
+  | "first_scoped_question_submitted"
+  | "first_grounded_answer_rendered"
+  | "first_citation_verified"
+  | "activation_completed"
   | "onboarding.demo_library_loaded"
   | "library.search_used"
   | "reader.find_used"

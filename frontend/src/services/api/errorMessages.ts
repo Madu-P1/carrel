@@ -1,4 +1,4 @@
-import { ApiError, BackendOfflineError, isBackendOffline } from "./client";
+import { ApiError, ApiTimeoutError, BackendOfflineError, isApiTimeout, isBackendOffline } from "./client";
 
 /**
  * Translate a fetch error into UI copy that distinguishes the two
@@ -33,6 +33,14 @@ export function friendlyError(err: unknown, context: { surface?: string } = {}):
       detail:
         "Carrel's backend isn't responding at 127.0.0.1:8000. The desktop app's supervisor probes every 60s and respawns it on failure.",
       recovery: "Wait ~60s for the supervisor to restart it, or run `bash script/build_and_run.sh`.",
+    };
+  }
+
+  if (isApiTimeout(err)) {
+    return {
+      title: "Request timed out",
+      detail: `Carrel waited ${Math.round(err.timeoutMs / 1000)}s for the backend and did not get a response.`,
+      recovery: "Retry once; if it repeats, check Jobs for a long import or restart the app.",
     };
   }
 
@@ -74,4 +82,4 @@ function surfaceTitle(surface: string | undefined, status?: number): string {
 
 // Re-export BackendOfflineError + isBackendOffline so callers don't
 // have to import from two places.
-export { BackendOfflineError, isBackendOffline };
+export { ApiTimeoutError, BackendOfflineError, isApiTimeout, isBackendOffline };

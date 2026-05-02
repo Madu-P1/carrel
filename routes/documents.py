@@ -34,6 +34,7 @@ from services.documents import (
     set_document_subject,
 )
 from services.ingestion import ingest_document_record, normalize_subject_name
+from services.uploads import save_upload_bounded, validate_upload_suffix
 
 
 LOGGER = get_logger("documents_api")
@@ -149,27 +150,46 @@ async def upload_document(
     file: UploadFile = File(...),
     subject_name: str = Form("General"),
 ) -> Dict[str, object]:
-    suffix = Path(file.filename or "").suffix.lower()
-    if not suffix:
-        raise HTTPException(status_code=400, detail="File must have an extension.")
-
-    content = await file.read()
+    suffix = validate_upload_suffix(file.filename)
     log_event(
         LOGGER,
         logging.INFO,
         "document_upload_started",
         filename=file.filename or "",
         subject_name=subject_name,
-        bytes=len(content),
     )
     stored_name = f"{uuid.uuid4()}{suffix}"
     path = db.UPLOAD_DIR / stored_name
-    path.write_bytes(content)
+    saved_bytes = await save_upload_bounded(file, path)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "document_upload_bytes_saved",
+        filename=file.filename or "",
+        subject_name=subject_name,
+        bytes=saved_bytes,
+    )
     try:
         asset = extraction_pipeline.extract_asset(path)
+    except HTTPException as exc:
+        path.unlink(missing_ok=True)
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "document_upload_extraction_failed",
+            filename=file.filename or "",
+            subject_name=subject_name,
+            status_code=exc.status_code,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "extraction_failed",
+                "message": str(exc.detail),
+            },
+        ) from exc
     except Exception as exc:
-        if path.exists():
-            path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
         log_event(
             LOGGER,
             logging.ERROR,
@@ -178,7 +198,13 @@ async def upload_document(
             subject_name=subject_name,
             error=str(exc),
         )
-        raise
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "extraction_failed",
+                "message": "Could not extract readable text from this file.",
+            },
+        ) from exc
 
     # Duplicate gate. Runs AFTER extraction because `asset.content_hash` is
     # the raw-bytes hash — same derivation the orchestrator stores. Before
@@ -190,8 +216,7 @@ async def upload_document(
         existing = find_canonical_duplicate(conn, source_hash)
     if existing:
         # Clean up the bytes we wrote — we're not ingesting this one.
-        if path.exists():
-            path.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
         log_event(
             LOGGER,
             logging.INFO,
@@ -203,27 +228,31 @@ async def upload_document(
         )
         raise _duplicate_http_error(existing)
 
-    with db.get_db() as conn:
-        result = ingest_document_record(
-            conn=conn,
-            filename=file.filename or stored_name,
-            file_type=asset.detected_type,
-            extracted_text=str(asset.cleaned_text or asset.raw_text),
-            page_count=asset.quality.metrics.get("page_count"),
-            storage_name=stored_name,
-            subject_name=subject_name,
-            asset=asset,
-        )
-        log_study_event(
-            conn,
-            "document_uploaded",
-            doc_id=result["doc_id"],
-            payload={
-                "filename": file.filename or stored_name,
-                "file_type": asset.detected_type,
-                "subject_name": normalize_subject_name(subject_name),
-            },
-        )
+    try:
+        with db.get_db() as conn:
+            result = ingest_document_record(
+                conn=conn,
+                filename=file.filename or stored_name,
+                file_type=asset.detected_type,
+                extracted_text=str(asset.cleaned_text or asset.raw_text),
+                page_count=asset.quality.metrics.get("page_count"),
+                storage_name=stored_name,
+                subject_name=subject_name,
+                asset=asset,
+            )
+            log_study_event(
+                conn,
+                "document_uploaded",
+                doc_id=result["doc_id"],
+                payload={
+                    "filename": file.filename or stored_name,
+                    "file_type": asset.detected_type,
+                    "subject_name": normalize_subject_name(subject_name),
+                },
+            )
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
     log_event(
         LOGGER,
         logging.INFO,

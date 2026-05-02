@@ -17,13 +17,10 @@ hook on a short delay) will return the post-refresh state.
 
 from __future__ import annotations
 
-import asyncio
-import logging
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 import db
 from api_models import (
@@ -31,13 +28,12 @@ from api_models import (
     PlanResponse,
     StudySuggestionRow,
 )
-from app_logging import get_logger
 from routes.calendar import _row_to_response
-from services.calendar import repository, sync_service
+from services.calendar import repository
+from services.calendar.sync_queue import get_calendar_sync_queue
 from services.planning import coach
 
 
-LOGGER = get_logger("plan_api")
 router = APIRouter()
 
 
@@ -51,32 +47,15 @@ PLAN_WINDOW_PAST_DAYS = 1
 PLAN_WINDOW_FUTURE_DAYS = 7
 
 
-# Single shared executor for background syncs. Sync work is I/O-bound
-# (httpx + sqlite); a small pool is plenty. Lives at module scope so
-# the same workers serve every /api/plan call without per-request
-# spin-up cost.
-_BG_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cal-bg-sync")
-
-
 def _kick_background_sync(feed_id: str) -> None:
-    """Submit a sync_service.run_one_feed call to the background pool.
+    """Submit a calendar sync call to the lifecycle-managed background pool.
 
     Each task opens its OWN db connection — connections are not
     shareable across threads. Errors are logged, never raised; the
     next /api/plan call will see the resulting last_error on the feed
     row.
     """
-    def _run() -> None:
-        try:
-            with db.get_db() as conn:
-                sync_service.run_one_feed(conn, feed_id)
-        except Exception as exc:
-            LOGGER.warning(
-                "Background sync for feed %s failed: %s",
-                feed_id,
-                exc.__class__.__name__,
-            )
-    _BG_EXECUTOR.submit(_run)
+    get_calendar_sync_queue().submit(feed_id)
 
 
 def _events_to_response(rows: List[repository.EventRow]) -> List[CalendarEventRow]:

@@ -9,27 +9,18 @@ indicator. Does not touch document or SRS state — that lives under
 from __future__ import annotations
 
 import os
+from datetime import date
 from typing import Any, Dict
 
 from fastapi import APIRouter
 
+import db
 from ai.providers import get_default_provider
 
 router = APIRouter()
 
 
-@router.get("/api/system/provider")
-def provider_status() -> Dict[str, Any]:
-    """Which AI backend is active, and what model will balanced-tier
-    requests hit?
-
-    The sidebar renders this as a trust signal — local (Ollama) vs cloud
-    (Claude) vs disabled (NullProvider) — so the user always knows what's
-    synthesising their answers. Never cached; cheap to compute. Does NOT
-    make a network call to verify reachability; `ai_enabled()` is a config
-    check, not a ping. A real call surfacing ok=False is still the canonical
-    "reachable or not" signal.
-    """
+def _provider_payload() -> Dict[str, Any]:
     provider = get_default_provider()
     kind = getattr(provider, "kind", None)
     if kind is None:
@@ -65,6 +56,47 @@ def provider_status() -> Dict[str, Any]:
             or os.getenv("EINSTEIN_AI_PROVIDER", "auto")
             or "auto"
         ).strip().lower(),
+    }
+
+
+@router.get("/api/system/provider")
+def provider_status() -> Dict[str, Any]:
+    """Which AI backend is active, and what model will balanced-tier
+    requests hit?
+
+    The sidebar renders this as a trust signal — local (Ollama) vs cloud
+    (Claude) vs disabled (NullProvider) — so the user always knows what's
+    synthesising their answers. Never cached; cheap to compute. Does NOT
+    make a network call to verify reachability; `ai_enabled()` is a config
+    check, not a ping. A real call surfacing ok=False is still the canonical
+    "reachable or not" signal.
+    """
+    return _provider_payload()
+
+
+@router.get("/api/shell/status")
+def shell_status() -> Dict[str, Any]:
+    today = date.today().isoformat()
+    with db.get_db() as conn:
+        docs = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM documents
+            WHERE COALESCE(status, '') != 'deleted'
+            """
+        ).fetchone()
+        due = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM srs_cards
+            WHERE due_date IS NULL OR due_date <= ?
+            """,
+            (today,),
+        ).fetchone()
+    return {
+        "due_count": int(due["count"] if due else 0),
+        "doc_count": int(docs["count"] if docs else 0),
+        "provider": _provider_payload(),
     }
 
 

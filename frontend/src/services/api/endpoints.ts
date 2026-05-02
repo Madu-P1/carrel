@@ -176,7 +176,8 @@ export const anchors = {
   draftCards: (anchorId: string, count = 3) =>
     api<{ cards: AnchorCardDraft[] }>(`/api/anchors/${encodeURIComponent(anchorId)}/draft-cards`, {
       method: "POST",
-      body: { count }
+      body: { count },
+      timeoutMs: 120_000
     }),
   promoteCard: (anchorId: string, payload: { front: string; back: string; card_type?: string }) =>
     api<{ anchor: AnchorRecord; card: unknown }>(`/api/anchors/${encodeURIComponent(anchorId)}/promote-card`, {
@@ -301,8 +302,15 @@ export interface BackendHealth {
   paths: { base_dir: string; db_path: string };
 }
 
+export interface ShellStatus {
+  due_count: number;
+  doc_count: number;
+  provider: ProviderStatus;
+}
+
 export const system = {
   provider: () => api<ProviderStatus>("/api/system/provider"),
+  status: () => api<ShellStatus>("/api/shell/status"),
   health: () => api<BackendHealth>("/api/health")
 };
 
@@ -625,9 +633,10 @@ export const notes = {
       }
     }),
   expand: (payload: { title: string; content: string }) =>
-    api<{ expanded_markdown: string }>("/api/notes/expand", {
+    api<{ expanded_markdown: string; mode: "ai" | "deterministic"; error_code: string | null }>("/api/notes/expand", {
       method: "POST",
-      body: payload
+      body: payload,
+      timeoutMs: 90_000
     })
 };
 
@@ -635,7 +644,8 @@ export const tutor = {
   ask: (payload: TutorQueryRequest) =>
     api<TutorQueryResponse>("/api/tutor/query", {
       method: "POST",
-      body: payload
+      body: payload,
+      timeoutMs: 180_000
     })
 };
 
@@ -805,6 +815,7 @@ export const study = {
         topic: payload.topic,
         context: payload.context ?? null,
         count: payload.count ?? 5
-      }
+      },
+      timeoutMs: 120_000
     })
 };

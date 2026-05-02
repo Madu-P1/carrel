@@ -30,12 +30,6 @@ enum MainMenuBuilder {
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
-        appMenu.addItem(
-            titled: "Preferences…",
-            key: ",",
-            command: "app.preferences",
-            target: MenuCommandDispatcher.shared
-        )
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(
             withTitle: "Hide \(appName)",
@@ -99,7 +93,7 @@ enum MainMenuBuilder {
         let item = NSMenuItem()
         let menu = NSMenu(title: "File")
         menu.addItem(
-            titled: "New Workspace",
+            titled: "New Study Session",
             key: "n",
             command: "file.new",
             target: MenuCommandDispatcher.shared
