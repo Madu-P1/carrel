@@ -23,6 +23,8 @@ jobs:
         run: ruff check .
       - name: Mypy
         run: mypy --config-file mypy.ini
+      - name: Validate prompt catalog
+        run: python script/validate_prompts.py
 
   python-tests:
     runs-on: ubuntu-latest

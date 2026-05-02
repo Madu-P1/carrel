@@ -94,6 +94,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (8, "0008_anchors.sql"),
                 (9, "0009_calendar_and_planning.sql"),
                 (10, "0010_jobs_onboarding.sql"),
+                (11, "0011_usage_events.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -103,6 +104,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertIn("artifacts", tables)
         self.assertIn("mastery_states", tables)
         self.assertIn("chunks_fts", tables)
+        self.assertIn("usage_events", tables)
         self.assertTrue({"chunks_ai", "chunks_ad", "chunks_au"} <= triggers)
         if db.sqlite_vec_runtime_supported():
             self.assertIn("chunks_vec", tables)
@@ -117,10 +119,10 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
 
-        # +3 for 0008_anchors, 0009_calendar_and_planning, and
-        # 0010_jobs_onboarding, which
+        # +4 for 0008_anchors, 0009_calendar_and_planning,
+        # 0010_jobs_onboarding, and 0011_usage_events, which
         # always apply (no runtime gate like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 3
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 4
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -152,6 +154,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0008_anchors.sql",
                 "0009_calendar_and_planning.sql",
                 "0010_jobs_onboarding.sql",
+                "0011_usage_events.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

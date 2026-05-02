@@ -196,6 +196,10 @@ test("reader focus mode command toggles only when the reader can focus", async (
   expect(readerState.focusMode.value).toBe(true);
   dispatchMenuCommand("reader.toggleFocusMode");
   expect(readerState.focusMode.value).toBe(false);
+
+  const findSerial = readerState.findRequestSerial.value;
+  dispatchMenuCommand("reader.find");
+  expect(readerState.findRequestSerial.value).toBe(findSerial + 1);
 });
 
 test("meta+b keydown inside the web app does not toggle the sidebar by itself", async () => {

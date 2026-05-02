@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
@@ -8,7 +8,12 @@ import { anchors } from "@/services/api/endpoints";
 import { usePageVirtualizer } from "../hooks/usePageVirtualizer";
 import type { PdfState } from "../hooks/usePdfDocument";
 import { useReaderSelection } from "../hooks/useReaderSelection";
-import { readerState } from "../state";
+import {
+  persistReaderRestorationState,
+  readerState,
+  readReaderRestorationState,
+  setReaderCurrentPage
+} from "../state";
 import { ReaderErrorState } from "./ReaderErrorState";
 import { ReaderLoadingState } from "./ReaderLoadingState";
 import { PdfPage } from "./PdfPage";
@@ -30,6 +35,8 @@ async function firstPageSize(pdf: PDFDocumentProxy, scale: number) {
 
 export function PdfViewer({ docId, pdfState }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const restoreAppliedRef = useRef<string | null>(null);
+  const lastPersistedAtRef = useRef(0);
   const { doc, error, loading, pageCount } = pdfState;
   const fitMode = readerState.fitMode.value;
   const focusMode = readerState.focusMode.value;
@@ -113,12 +120,63 @@ export function PdfViewer({ docId, pdfState }: PdfViewerProps) {
   const estimatedPageHeight = Math.max(320, baseHeight * effectiveScale + pageGap);
   const estimatedPageWidth = Math.max(240, baseWidth * effectiveScale);
   const railWidth = Math.max(containerWidth, estimatedPageWidth + railChrome);
+  const persistScrollState = useCallback((state: { currentPage: number; scrollTop: number }) => {
+    const now = Date.now();
+    if (now - lastPersistedAtRef.current < 350) {
+      return;
+    }
+    lastPersistedAtRef.current = now;
+    persistReaderRestorationState(docId, {
+      page: state.currentPage,
+      scrollTop: state.scrollTop
+    });
+  }, [docId]);
   const { totalHeight, visiblePages } = usePageVirtualizer({
     containerRef,
+    onScrollStateChange: persistScrollState,
     pageCount: pageCount.value,
     pageHeight: estimatedPageHeight
   });
   const visibleSet = useMemo(() => new Set(visiblePages), [visiblePages]);
+
+  useEffect(() => {
+    restoreAppliedRef.current = null;
+    lastPersistedAtRef.current = 0;
+  }, [docId]);
+
+  useEffect(() => {
+    if (restoreAppliedRef.current !== docId) {
+      return;
+    }
+    persistReaderRestorationState(docId, {
+      fitMode,
+      scale
+    });
+  }, [docId, fitMode, scale]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !doc.value || pageCount.value <= 0 || restoreAppliedRef.current === docId) {
+      return;
+    }
+
+    const restored = readReaderRestorationState(docId);
+    restoreAppliedRef.current = docId;
+    if (!restored) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const top = restored.scrollTop > 0
+        ? restored.scrollTop
+        : estimatedPageHeight * (restored.page - 1);
+      container.scrollTo({
+        behavior: "auto",
+        top
+      });
+      setReaderCurrentPage(restored.page);
+    });
+  }, [doc.value, docId, estimatedPageHeight, pageCount.value]);
 
   useEffect(() => {
     if (!containerRef.current || requestedPage === null) {
@@ -131,6 +189,17 @@ export function PdfViewer({ docId, pdfState }: PdfViewerProps) {
     });
     readerState.requestedPage.value = null;
   }, [estimatedPageHeight, requestedPage]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    return () => {
+      if (!container) return;
+      persistReaderRestorationState(docId, {
+        page: readerState.currentPage.value,
+        scrollTop: container.scrollTop
+      });
+    };
+  }, [docId]);
 
   if (loading.value && !doc.value) {
     return <ReaderLoadingState />;

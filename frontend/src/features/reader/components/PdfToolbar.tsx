@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { MutableRef } from "preact/hooks";
 
 import { Button, Icon, Tooltip } from "@/design-system";
+import { events } from "@/services/metrics/events";
 
 import {
   readerState,
@@ -16,8 +17,14 @@ import styles from "./PdfToolbar.module.css";
 interface PdfToolbarProps {
   filename: string;
   fileType: string;
+  leftPanelOpen: boolean;
+  outlineOpen: boolean;
   pageCount: number;
   onOpenSearch: () => void;
+  onToggleAppSidebar: () => void;
+  onToggleOutline: () => void;
+  onToggleSourcePanel: () => void;
+  rightPanelOpen: boolean;
   /** Ref attached to the toolbar root so SM-1 (library card flight) can
    *  morph from the clicked card into this bar. Previously attached to a
    *  separate page header; moved here so the reader gains vertical space
@@ -46,8 +53,14 @@ interface PdfToolbarProps {
 export function PdfToolbar({
   filename,
   fileType,
+  leftPanelOpen,
+  outlineOpen,
   pageCount,
   onOpenSearch,
+  onToggleAppSidebar,
+  onToggleOutline,
+  onToggleSourcePanel,
+  rightPanelOpen,
   flightRef,
 }: PdfToolbarProps) {
   const currentPage = readerState.currentPage.value;
@@ -70,6 +83,11 @@ export function PdfToolbar({
   };
 
   const ft = (fileType || "FILE").toUpperCase();
+  const toggleFocusMode = () => {
+    const enabled = !focusMode;
+    setReaderFocusMode(enabled);
+    void events.track("reader.focus_toggled", { enabled }, "reader");
+  };
 
   return (
     <div className={[styles.toolbar, focusMode ? styles.toolbarFocus : ""].filter(Boolean).join(" ")} ref={flightRef}>
@@ -193,6 +211,57 @@ export function PdfToolbar({
 
       {/* --- RIGHT ZONE: actions -------------------------------------- */}
       <div className={styles.zoneRight}>
+        <div className={styles.panelGroup} aria-label="Reader panels" role="group">
+          <Tooltip content={leftPanelOpen ? "Hide app sidebar" : "Show app sidebar"}>
+            <button
+              aria-label={leftPanelOpen ? "Hide app sidebar" : "Show app sidebar"}
+              aria-pressed={leftPanelOpen}
+              className={[
+                styles.iconBtn,
+                leftPanelOpen ? styles.iconBtnActive : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={onToggleAppSidebar}
+              type="button"
+            >
+              <Icon name="dashboard" size={14} />
+            </button>
+          </Tooltip>
+          <Tooltip content={outlineOpen ? "Hide document outline" : "Show document outline"}>
+            <button
+              aria-label={outlineOpen ? "Hide document outline" : "Show document outline"}
+              aria-pressed={outlineOpen}
+              className={[
+                styles.iconBtn,
+                outlineOpen ? styles.iconBtnActive : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={onToggleOutline}
+              type="button"
+            >
+              <Icon name="library" size={14} />
+            </button>
+          </Tooltip>
+          <Tooltip content={rightPanelOpen ? "Hide source panel" : "Show source panel"}>
+            <button
+              aria-label={rightPanelOpen ? "Hide source panel" : "Show source panel"}
+              aria-pressed={rightPanelOpen}
+              className={[
+                styles.iconBtn,
+                rightPanelOpen ? styles.iconBtnActive : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={onToggleSourcePanel}
+              type="button"
+            >
+              <Icon name="doc" size={14} />
+            </button>
+          </Tooltip>
+        </div>
+        <div className={styles.divider} aria-hidden />
         <Tooltip content={focusMode ? "Exit focus mode" : "Enter focus mode"}>
           <button
             aria-label={focusMode ? "Exit focus mode" : "Enter focus mode"}
@@ -203,14 +272,14 @@ export function PdfToolbar({
             ]
               .filter(Boolean)
               .join(" ")}
-            onClick={() => setReaderFocusMode(!focusMode)}
+            onClick={toggleFocusMode}
             type="button"
           >
             <Icon name="focus" size={14} />
           </button>
         </Tooltip>
         <Button
-          keyHint="⌘/"
+          keyHint="⌘F"
           leadingIcon={<Icon name="search" size={14} />}
           onClick={onOpenSearch}
           size="sm"

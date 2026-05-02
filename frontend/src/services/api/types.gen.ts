@@ -123,6 +123,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active Session
+         * @description Return the current active session, or an empty envelope.
+         *
+         *     Used by the Dashboard's status card to refetch after any session
+         *     mutation (start or complete). Separate from the full session list
+         *     because the Dashboard only needs the one active row — serializing
+         *     everything every time would be wasteful.
+         *
+         *     Abandonment: rows with `status='active'` but `started_at` older than
+         *     ACTIVE_SESSION_MAX_AGE_HOURS are treated as dormant and NOT returned.
+         *     This mirrors services.dashboard._active_session so both endpoints
+         *     agree on what "active" means. Without the filter, a closed-then-
+         *     reopened app would show a 96-hour timer on a session the user
+         *     already forgot about.
+         *
+         *     Defensive: multiple eligible rows → return the most recent.
+         */
+        get: operations["get_active_session_api_sessions_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -237,6 +271,78 @@ export interface paths {
         put?: never;
         /** Upload Document */
         post: operations["upload_document_api_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Subjects
+         * @description Subject dashboard payload. One row per subject with the stats the
+         *     Library home grid needs — source count, failed-parse count, flashcard
+         *     count, last-studied timestamp, plus the first failed doc for inline
+         *     error rendering.
+         */
+        get: operations["library_subjects_api_library_subjects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Duplicate Groups
+         * @description Surface every cluster of documents that share a source hash.
+         *
+         *     UI consumes this to render a "Review duplicates" panel before the user
+         *     confirms a cleanup. Safe to call repeatedly; read-only.
+         */
+        get: operations["preview_duplicate_groups_api_library_duplicates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/duplicates/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Duplicate Cleanup
+         * @description Remove every non-canonical document in every duplicate cluster.
+         *
+         *     Pass `dry_run=true` to get the same summary shape without writing.
+         *     Without `dry_run`, each duplicate is cascaded via
+         *     `delete_document_record` — same semantics as clicking "Delete" on the
+         *     row — so concepts, SRS cards, notes, chunks, and chunk vectors all go
+         *     with it. The canonical stays.
+         */
+        post: operations["run_duplicate_cleanup_api_library_duplicates_cleanup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -408,6 +514,125 @@ export interface paths {
         get: operations["due_cards_api_srs_due_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/srs/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cards
+         * @description List flashcards for the Manage Cards view.
+         *
+         *     Filters stack — subject + search + doc_id all AND together. Paged so the
+         *     UI can render 857-card libraries without shipping the whole thing in one
+         *     response.
+         */
+        get: operations["list_cards_api_srs_cards_get"];
+        put?: never;
+        /**
+         * Create Card
+         * @description Create a flashcard from the Manage Cards "New card" dialog.
+         *
+         *     The dialog posts raw front + back text (required). concept_id is
+         *     optional: orphan cards are allowed and show up in the All-subjects
+         *     filter. We return the new row in the same shape list_cards emits so
+         *     the client can drop it straight into its cached list without a
+         *     round-trip.
+         */
+        post: operations["create_card_api_srs_cards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/srs/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Subjects
+         * @description Subjects aggregated with card + due counts for filter chips.
+         */
+        get: operations["list_subjects_api_srs_subjects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/srs/cards/ai-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ai Draft Cards
+         * @description Generate flashcard drafts for a topic. The New Card dialog's
+         *     "Generate with AI" mode posts here. The user then edits and bulk-saves
+         *     selected drafts via /api/srs/cards, one card per save.
+         */
+        post: operations["ai_draft_cards_api_srs_cards_ai_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/srs/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Card
+         * @description Delete a single card. 404 when it's already gone so the client can
+         *     distinguish stale UI from a silent noop.
+         */
+        delete: operations["delete_card_api_srs_cards__card_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/srs/cards/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Cards
+         * @description Delete many cards in one transaction. Returns the actual row count
+         *     deleted, which can be less than len(payload.ids) if some were already
+         *     gone — no error in that case, just an accurate count.
+         */
+        post: operations["bulk_delete_cards_api_srs_cards_bulk_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -602,6 +827,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Anchor */
+        post: operations["create_anchor_api_anchors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/anchors/document/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Anchors */
+        get: operations["list_document_anchors_api_anchors_document__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/anchors/{anchor_id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition Anchor */
+        post: operations["transition_anchor_api_anchors__anchor_id__transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/anchors/{anchor_id}/draft-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft Anchor Cards */
+        post: operations["draft_anchor_cards_api_anchors__anchor_id__draft_cards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/anchors/{anchor_id}/promote-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote Anchor Card */
+        post: operations["promote_anchor_card_api_anchors__anchor_id__promote_card_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/studio/generate": {
         parameters: {
             query?: never;
@@ -704,6 +1014,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evidence/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve Evidence */
+        get: operations["resolve_evidence_api_evidence_resolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evidence/concept/{concept_id}": {
         parameters: {
             query?: never;
@@ -789,6 +1116,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/usage-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Track Usage Event */
+        post: operations["track_usage_event_api_usage_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/usage-events/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent Usage Events */
+        get: operations["recent_usage_events_api_usage_events_recent_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exports/artifact/{artifact_id}": {
         parameters: {
             query?: never;
@@ -857,10 +1218,420 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Document Job */
+        post: operations["import_document_job_api_jobs_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Job Events */
+        get: operations["list_job_events_api_jobs_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream Jobs */
+        get: operations["stream_jobs_api_jobs_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Job */
+        delete: operations["delete_job_api_jobs__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Job */
+        post: operations["retry_job_api_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/demo-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seed Demo Library Route */
+        post: operations["seed_demo_library_route_api_onboarding_demo_library_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Status
+         * @description Which AI backend is active, and what model will balanced-tier
+         *     requests hit?
+         *
+         *     The sidebar renders this as a trust signal — local (Ollama) vs cloud
+         *     (Claude) vs disabled (NullProvider) — so the user always knows what's
+         *     synthesising their answers. Never cached; cheap to compute. Does NOT
+         *     make a network call to verify reachability; `ai_enabled()` is a config
+         *     check, not a ping. A real call surfacing ok=False is still the canonical
+         *     "reachable or not" signal.
+         */
+        get: operations["provider_status_api_system_provider_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Payload */
+        get: operations["dashboard_payload_api_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Feeds */
+        get: operations["list_feeds_api_calendar_feeds_get"];
+        put?: never;
+        /**
+         * Create Feed
+         * @description Add a new feed.
+         *
+         *     Steps:
+         *       1. Validate URL (scheme + private-IP + DNS resolution)
+         *       2. Insert (handles duplicate-URL case via unique index)
+         *       3. Run initial sync inline so the user sees their data on first
+         *          render — this is the one path where sync is intentionally
+         *          coupled to a write request, because the user is watching.
+         *
+         *     The initial sync may fail (4xx, network, parse error) — we still
+         *     keep the feed so the user can retry; we surface the error in the
+         *     response feed row's `last_error` field.
+         */
+        post: operations["create_feed_api_calendar_feeds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/feeds/{feed_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Feed */
+        delete: operations["delete_feed_api_calendar_feeds__feed_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Feed */
+        patch: operations["rename_feed_api_calendar_feeds__feed_id__patch"];
+        trace?: never;
+    };
+    "/api/calendar/feeds/{feed_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Feed
+         * @description Manual 'Sync now' button. Runs the same sync service as everything
+         *     else, blocking on the response so the user gets immediate feedback.
+         */
+        post: operations["sync_feed_api_calendar_feeds__feed_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan
+         * @description Read the user's plan: events in the window, active suggestions,
+         *     feeds. Kick stale-feed refreshes in the background.
+         */
+        get: operations["get_plan_api_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/suggestions/{suggestion_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Suggestion */
+        post: operations["accept_suggestion_api_plan_suggestions__suggestion_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/suggestions/{suggestion_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Suggestion
+         * @description Dismiss a suggestion. Frontend implements 5-second-undo via
+         *     POST /api/plan/suggestions/{id}/restore (below) — we just record
+         *     the final state here.
+         */
+        post: operations["dismiss_suggestion_api_plan_suggestions__suggestion_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/suggestions/{suggestion_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Suggestion
+         * @description Reverse a dismiss (the 5-second undo affordance).
+         *
+         *     No timing window enforced server-side — the timing is a frontend
+         *     UX concern. Backend just allows the transition.
+         */
+        post: operations["restore_suggestion_api_plan_suggestions__suggestion_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnchorCardDraftRequest */
+        AnchorCardDraftRequest: {
+            /**
+             * Count
+             * @default 3
+             */
+            count: number;
+        };
+        /** AnchorCreateRequest */
+        AnchorCreateRequest: {
+            /** Document Id */
+            document_id: string;
+            /** Quote Text */
+            quote_text: string;
+            /**
+             * Origin
+             * @default manual
+             */
+            origin: string;
+            /**
+             * Promotion State
+             * @default weak
+             */
+            promotion_state: string;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Page Num */
+            page_num?: number | null;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Text Offset Start */
+            text_offset_start?: number | null;
+            /** Text Offset End */
+            text_offset_end?: number | null;
+            /** User Question */
+            user_question?: string | null;
+            /** Claim Text */
+            claim_text?: string | null;
+            /** Thread Id */
+            thread_id?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+        };
+        /** AnchorPromotionRequest */
+        AnchorPromotionRequest: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+            /**
+             * Card Type
+             * @default anchor
+             */
+            card_type: string;
+            /** Concept Id */
+            concept_id?: string | null;
+        };
+        /** AnchorTransitionRequest */
+        AnchorTransitionRequest: {
+            /** Promotion State */
+            promotion_state: string;
+            /** Srs Card Id */
+            srs_card_id?: string | null;
+        };
+        /** Body_import_document_job_api_jobs_import_post */
+        Body_import_document_job_api_jobs_import_post: {
+            /** File */
+            file: string;
+            /**
+             * Subject Name
+             * @default General
+             */
+            subject_name: string;
+        };
         /** Body_upload_document_api_documents_upload_post */
         Body_upload_document_api_documents_upload_post: {
             /** File */
@@ -870,6 +1641,148 @@ export interface components {
              * @default General
              */
             subject_name: string;
+        };
+        /**
+         * BulkDeleteCardsRequest
+         * @description Used by POST /api/srs/cards/bulk-delete. The frontend posts up to a
+         *     few hundred ids at a time from the Manage Cards view. Keep it a plain
+         *     list — SQLite can comfortably handle this size in one DELETE.
+         */
+        BulkDeleteCardsRequest: {
+            /** Ids */
+            ids?: string[];
+        };
+        /** CalendarEventRow */
+        CalendarEventRow: {
+            /** Id */
+            id: string;
+            /** Feed Id */
+            feed_id: string;
+            /** Summary */
+            summary: string;
+            /** Start At */
+            start_at: string;
+            /** End At */
+            end_at: string;
+            /** Timezone */
+            timezone?: string | null;
+            /** All Day */
+            all_day: boolean;
+            /** Location */
+            location?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * CalendarFeedCreateRequest
+         * @description Body for POST /api/calendar/feeds.
+         *
+         *     `color` is a hex string (#RRGGBB) the user picks at add time. Used
+         *     by the WeekTimeGrid to color-code events from this feed; if absent,
+         *     the frontend falls back to a deterministic per-feed default.
+         */
+        CalendarFeedCreateRequest: {
+            /** Label */
+            label: string;
+            /** Url */
+            url: string;
+            /** Color */
+            color?: string | null;
+        };
+        /**
+         * CalendarFeedCreatedResponse
+         * @description Initial POST response — echoes raw URL once for verification.
+         *
+         *     Subsequent GETs return the masked form via CalendarFeedRow.
+         */
+        CalendarFeedCreatedResponse: {
+            feed: components["schemas"]["CalendarFeedRow"];
+            /** Raw Url Echo */
+            raw_url_echo: string;
+        };
+        /**
+         * CalendarFeedRow
+         * @description Response shape for feed rows. The `url` field is ALWAYS the
+         *     masked form (`https://host/***`). Raw URL only echoes back on the
+         *     initial POST response so the user can copy/verify.
+         */
+        CalendarFeedRow: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Url */
+            url: string;
+            /** Color */
+            color?: string | null;
+            /** Is Enabled */
+            is_enabled: boolean;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Successful Sync At */
+            last_successful_sync_at?: string | null;
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /** Last Error */
+            last_error?: string | null;
+        };
+        /** CardAiDraftItem */
+        CardAiDraftItem: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+        };
+        /**
+         * CardAiDraftRequest
+         * @description POST /api/srs/cards/ai-draft payload. The "Generate with AI" mode of
+         *     the New Card dialog sends a topic (required) and optional long-form
+         *     context (pasted notes, a textbook excerpt). count is clamped server-side
+         *     to 3-10 regardless of what the client sends.
+         */
+        CardAiDraftRequest: {
+            /** Topic */
+            topic: string;
+            /** Context */
+            context?: string | null;
+            /**
+             * Count
+             * @default 5
+             */
+            count: number;
+        };
+        /** CardAiDraftResponse */
+        CardAiDraftResponse: {
+            /** Cards */
+            cards: components["schemas"]["CardAiDraftItem"][];
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * CardCreateRequest
+         * @description POST /api/srs/cards payload. The Manage Cards view posts this from
+         *     the New Card dialog. concept_id is optional; orphan cards are allowed
+         *     and surface in the "All" filter via LEFT JOIN. card_type defaults to
+         *     "custom" so we can distinguish user-authored cards from those that
+         *     the ingestion pipeline produced.
+         */
+        CardCreateRequest: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+            /** Concept Id */
+            concept_id?: string | null;
+            /**
+             * Card Type
+             * @default custom
+             */
+            card_type: string;
         };
         /** CompareRequest */
         CompareRequest: {
@@ -882,6 +1795,15 @@ export interface components {
         DeleteResponse: {
             /** Deleted */
             deleted: boolean;
+        };
+        /** DemoLibrarySeedResponse */
+        DemoLibrarySeedResponse: {
+            /** Seeded */
+            seeded: boolean;
+            /** Documents */
+            documents?: components["schemas"]["DocumentUploadResponse"][];
+            /** Skipped Reason */
+            skipped_reason?: string | null;
         };
         /** DialogueMessageRequest */
         DialogueMessageRequest: {
@@ -1065,6 +1987,45 @@ export interface components {
             /** Duplicate Of */
             duplicate_of?: string | null;
         };
+        /** EvidenceResolution */
+        EvidenceResolution: {
+            /** Document Id */
+            document_id: string;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Document Name */
+            document_name: string;
+            /** Section */
+            section?: string | null;
+            /** Page Num */
+            page_num?: number | null;
+            /**
+             * Quote Text
+             * @default
+             */
+            quote_text: string;
+            /**
+             * Confidence
+             * @default 0.5
+             */
+            confidence: number;
+            /**
+             * Location Kind
+             * @default page
+             */
+            location_kind: string;
+            /** Bbox */
+            bbox?: number[] | null;
+            /** Text Offset Start */
+            text_offset_start?: number | null;
+            /** Text Offset End */
+            text_offset_end?: number | null;
+        };
+        /** FeedRenameRequest */
+        FeedRenameRequest: {
+            /** Label */
+            label: string;
+        };
         /** FlashcardDraftCard */
         FlashcardDraftCard: {
             /** Q */
@@ -1160,6 +2121,24 @@ export interface components {
             session_id?: string | null;
             /** Evidence Reference Ids */
             evidence_reference_ids?: string[] | null;
+        };
+        /**
+         * PlanResponse
+         * @description GET /api/plan — the main read for the Plan view.
+         *
+         *     `is_freshening` is the SWR signal: server has kicked off background
+         *     refreshes for stale feeds, frontend renders a subtle "syncing"
+         *     affordance until the next request returns it as false.
+         */
+        PlanResponse: {
+            /** Events */
+            events: components["schemas"]["CalendarEventRow"][];
+            /** Suggestions */
+            suggestions: components["schemas"]["StudySuggestionRow"][];
+            /** Feeds */
+            feeds: components["schemas"]["CalendarFeedRow"][];
+            /** Is Freshening */
+            is_freshening: boolean;
         };
         /** QuizGenerateRequest */
         QuizGenerateRequest: {
@@ -1296,6 +2275,41 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** StudySuggestionRow */
+        StudySuggestionRow: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Start At */
+            start_at: string;
+            /** End At */
+            end_at: string;
+            /** Due At */
+            due_at?: string | null;
+            /** Reason Code */
+            reason_code: string;
+            /** Reason Text */
+            reason_text: string;
+            /** Score */
+            score?: number | null;
+        };
+        /** SyncFeedResponse */
+        SyncFeedResponse: {
+            feed: components["schemas"]["CalendarFeedRow"];
+            /** Items Seen */
+            items_seen: number;
+            /** Items Upserted */
+            items_upserted: number;
+            /** Items Deleted */
+            items_deleted: number;
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
         };
         /** SynthesisRunRequest */
         SynthesisRunRequest: {
@@ -1501,6 +2515,32 @@ export interface components {
             momentum?: {
                 [key: string]: unknown;
             };
+        };
+        /** UsageEventRequest */
+        UsageEventRequest: {
+            /** Event Name */
+            event_name: string;
+            /** Surface */
+            surface?: string | null;
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
+        };
+        /** UsageEventResponse */
+        UsageEventResponse: {
+            /** Id */
+            id: number;
+            /** Event Name */
+            event_name: string;
+            /** Surface */
+            surface?: string | null;
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1713,6 +2753,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_active_session_api_sessions_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -1951,6 +3013,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_subjects_api_library_subjects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    preview_duplicate_groups_api_library_duplicates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    run_duplicate_cleanup_api_library_duplicates_cleanup_post: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -2309,6 +3448,203 @@ export interface operations {
                             [key: string]: unknown;
                         }[];
                     };
+                };
+            };
+        };
+    };
+    list_cards_api_srs_cards_get: {
+        parameters: {
+            query?: {
+                subject?: string | null;
+                doc_id?: string | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_api_srs_cards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subjects_api_srs_subjects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    ai_draft_cards_api_srs_cards_ai_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardAiDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardAiDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_card_api_srs_cards__card_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_cards_api_srs_cards_bulk_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteCardsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2736,6 +4072,189 @@ export interface operations {
             };
         };
     };
+    create_anchor_api_anchors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_anchors_api_anchors_document__document_id__get: {
+        parameters: {
+            query?: {
+                page_num?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_anchor_api_anchors__anchor_id__transition_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_anchor_cards_api_anchors__anchor_id__draft_cards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorCardDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_anchor_card_api_anchors__anchor_id__promote_card_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorPromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     studio_generate_api_studio_generate_post: {
         parameters: {
             query?: never;
@@ -2938,6 +4457,38 @@ export interface operations {
             };
         };
     };
+    resolve_evidence_api_evidence_resolve_get: {
+        parameters: {
+            query: {
+                document_id: string;
+                chunk_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_evidence_for_concept_api_evidence_concept__concept_id__get: {
         parameters: {
             query?: {
@@ -3097,6 +4648,70 @@ export interface operations {
             };
         };
     };
+    track_usage_event_api_usage_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UsageEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageEventResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recent_usage_events_api_usage_events_recent_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_artifact_api_exports_artifact__artifact_id__post: {
         parameters: {
             query?: {
@@ -3214,6 +4829,622 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_document_job_api_jobs_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_document_job_api_jobs_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: unknown;
+                        }[];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_job_events_api_jobs_events_get: {
+        parameters: {
+            query?: {
+                after_id?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_jobs_api_jobs_stream_get: {
+        parameters: {
+            query?: {
+                after_id?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_job_api_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_job_api_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seed_demo_library_route_api_onboarding_demo_library_post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoLibrarySeedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_status_api_system_provider_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    dashboard_payload_api_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+                subject_name?: string | null;
+                doc_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feeds_api_calendar_feeds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedRow"][];
+                };
+            };
+        };
+    };
+    create_feed_api_calendar_feeds_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalendarFeedCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedCreatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_feed_api_calendar_feeds__feed_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_feed_api_calendar_feeds__feed_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarFeedRow"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_feed_api_calendar_feeds__feed_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncFeedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+        };
+    };
+    accept_suggestion_api_plan_suggestions__suggestion_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_suggestion_api_plan_suggestions__suggestion_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_suggestion_api_plan_suggestions__suggestion_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */

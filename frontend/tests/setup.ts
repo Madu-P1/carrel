@@ -120,7 +120,15 @@ beforeEach(() => {
     appShell.theme.value = "system";
     appShell.currentRoute.value = "/library";
     appShell.lastReaderDocumentId.value = null;
+    window.localStorage.removeItem("carrel.metrics.first-ask-recorded");
+    window.localStorage.removeItem("carrel.metrics.first-launch-recorded");
     window.localStorage.removeItem("carrel.reader.last-document-id");
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith("carrel.reader.restore.")) {
+        window.localStorage.removeItem(key);
+      }
+    }
     resetDocumentsQuery();
     resetReaderDetailQueries();
     resetReaderState();

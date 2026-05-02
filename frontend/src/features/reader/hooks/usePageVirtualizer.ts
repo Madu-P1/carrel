@@ -1,11 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
 import type { RefObject } from "preact";
 
-import { readerState } from "../state";
+import { setReaderCurrentPage } from "../state";
 
 interface UsePageVirtualizerOptions {
   containerRef: RefObject<HTMLElement>;
   overscan?: number;
+  onScrollStateChange?: (state: { currentPage: number; scrollTop: number }) => void;
   pageCount: number;
   pageHeight: number;
 }
@@ -25,6 +26,7 @@ function buildRange(start: number, end: number): number[] {
 
 export function usePageVirtualizer({
   containerRef,
+  onScrollStateChange,
   overscan = 1,
   pageCount,
   pageHeight
@@ -43,7 +45,10 @@ export function usePageVirtualizer({
       const visibleCount = Math.max(Math.ceil(container.clientHeight / pageHeight), 1);
       const endIndex = Math.min(pageCount - 1, topIndex + visibleCount + overscan * 2);
       setVisiblePages(buildRange(topIndex + 1, endIndex + 1));
-      readerState.currentPage.value = Math.min(pageCount, Math.floor(container.scrollTop / pageHeight) + 1);
+      const anchorY = container.scrollTop + Math.min(container.clientHeight * 0.42, pageHeight * 0.9);
+      const currentPage = Math.min(pageCount, Math.max(1, Math.floor(anchorY / pageHeight) + 1));
+      setReaderCurrentPage(currentPage);
+      onScrollStateChange?.({ currentPage, scrollTop: container.scrollTop });
     };
 
     update();
@@ -65,7 +70,7 @@ export function usePageVirtualizer({
         window.removeEventListener("resize", update);
       }
     };
-  }, [containerRef, overscan, pageCount, pageHeight]);
+  }, [containerRef, onScrollStateChange, overscan, pageCount, pageHeight]);
 
   return {
     totalHeight: pageCount * pageHeight,

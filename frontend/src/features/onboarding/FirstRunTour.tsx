@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Button, Icon, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
 import { onboarding } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 
 import { OnboardingMockup, type TourStepIndex } from "./OnboardingMockup";
 import { ProgressSegments } from "./ProgressSegments";
@@ -231,6 +232,9 @@ export function FirstRunTour() {
     if (current.key === "import") {
       void onboarding.seedDemoLibrary()
         .then((result) => {
+          if (result.seeded) {
+            void events.track("onboarding.demo_library_loaded", { force: false }, "onboarding");
+          }
           toast.success(
             result.seeded ? "Sample library ready" : "Sample library already ready",
             "Open Library to inspect the demo sources."

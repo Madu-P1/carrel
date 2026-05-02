@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { navigateTo } from "@/app/shell/useAppShell";
 import { Button, Card, Icon, Input, Stack, Text } from "@/design-system";
 import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 
 import { groupBySubject } from "./utils/group-by-subject";
 import { useDocumentsQuery } from "./hooks/useDocumentsQuery";
@@ -56,6 +57,7 @@ export function LibraryView() {
   const [mutationKey, setMutationKey] = useState(0);
   const [query, setQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchTrackedRef = useRef(false);
   const { deleteDocument } = useDeleteDocument();
 
   const documents = data.value ?? [];
@@ -101,6 +103,19 @@ export function LibraryView() {
     // keeps the memo stable for typical typing without walking the array each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documents.length, trimmed, mutationKey]);
+
+  useEffect(() => {
+    if (!isSearching) {
+      searchTrackedRef.current = false;
+      return;
+    }
+    if (searchTrackedRef.current) return;
+    searchTrackedRef.current = true;
+    void events.track("library.search_used", {
+      library_size: documents.length,
+      result_count: results.length
+    }, "library");
+  }, [documents.length, isSearching, results.length]);
 
   // Note: we don't bind `/` to focus this input because AppShell already
   // owns `/` as "jump to Ask." The search bar is reached via mouse or by

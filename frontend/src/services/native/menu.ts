@@ -8,6 +8,7 @@ export type MenuCommand =
   | "view.zoomIn"
   | "view.zoomOut"
   | "view.zoomReset"
+  | "reader.find"
   | "reader.toggleFocusMode"
   | "nav.dashboard"
   | "nav.session"

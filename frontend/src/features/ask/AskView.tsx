@@ -8,6 +8,7 @@ import {
   type DocumentRow,
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { AnswerSummary } from "./components/AnswerSummary";
@@ -27,6 +28,7 @@ import styles from "./AskView.module.css";
 // finance / law / stats library.
 const ASK_EMPTY_SAMPLE =
   "Summarise the main argument across my sources.";
+const FIRST_ASK_EVENT_KEY = "carrel.metrics.first-ask-recorded";
 
 function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
   return (
@@ -143,7 +145,22 @@ export function AskView() {
     []
   );
 
+  const trackFirstAsk = useCallback(() => {
+    try {
+      if (window.localStorage.getItem(FIRST_ASK_EVENT_KEY) === "1") return;
+      window.localStorage.setItem(FIRST_ASK_EVENT_KEY, "1");
+    } catch {
+      // If localStorage is unavailable, still record the coarse local event.
+    }
+    void events.track("ask.first_question", {
+      scope_kind: scope.kind
+    }, "ask");
+  }, [scope.kind]);
+
   const handleSubmit = async () => {
+    if (question.trim().length > 0) {
+      trackFirstAsk();
+    }
     await submit(question, scopeToPayload(scope));
   };
 
@@ -163,6 +180,7 @@ export function AskView() {
     prefilledRef.current = params.question;
     setQuestion(params.question);
     if (params.auto) {
+      trackFirstAsk();
       void submit(params.question);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

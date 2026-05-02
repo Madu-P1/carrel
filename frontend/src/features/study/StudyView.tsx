@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
 import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
+import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
 import { ManageCardsView } from "./ManageCardsView";
@@ -51,6 +52,9 @@ export function StudyView() {
     setLastError(null);
     await refetch();
     const count = data.value?.cards.length ?? 0;
+    if (count > 0) {
+      void events.track("srs.review_started", { card_count: count }, "study");
+    }
     setPhase(count === 0 ? "done" : "front");
   };
 
@@ -65,8 +69,13 @@ export function StudyView() {
     try {
       await study.review(currentCard.id, rating);
       const nextIndex = currentIndex + 1;
+      const reviewedCount = completedCount + 1;
       setCompletedCount((c) => c + 1);
       if (nextIndex >= cards.length) {
+        void events.track("srs.review_completed", {
+          card_count: reviewedCount,
+          last_rating: rating
+        }, "study");
         setPhase("done");
       } else {
         setCurrentIndex(nextIndex);

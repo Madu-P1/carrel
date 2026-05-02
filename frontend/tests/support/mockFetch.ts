@@ -41,6 +41,15 @@ function installDefaultHandlers() {
         preference: "off"
       });
     }
+    if (url.pathname === "/api/usage-events" && method === "POST") {
+      return jsonResponse({
+        id: 1,
+        event_name: "app.first_launch",
+        surface: null,
+        properties: {},
+        created_at: "2026-05-02T00:00:00Z"
+      });
+    }
     if (url.pathname === "/api/dashboard" && method === "GET") {
       return jsonResponse({
         generated_at: "2026-04-22T12:00:00+00:00",

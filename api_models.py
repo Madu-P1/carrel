@@ -81,6 +81,20 @@ class StudyEventRequest(BaseModel):
     payload: Optional[Dict[str, Any]] = None
 
 
+class UsageEventRequest(BaseModel):
+    event_name: str = Field(..., min_length=1, max_length=80)
+    surface: Optional[str] = Field(default=None, max_length=64)
+    properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class UsageEventResponse(BaseModel):
+    id: int
+    event_name: str
+    surface: Optional[str] = None
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
 class TutorQueryRequest(BaseModel):
     question: str
     doc_id: Optional[str] = None

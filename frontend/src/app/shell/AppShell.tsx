@@ -8,8 +8,10 @@ import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
 import { JobsTray } from "@/features/shell/JobsTray";
 import { FirstRunTour, openFirstRunTour } from "@/features/onboarding/FirstRunTour";
 import type { PaletteAction } from "@/features/palette/actions";
+import { events } from "@/services/metrics/events";
 import {
   requestReaderPage,
+  requestReaderFind,
   readerState,
   setReaderFocusMode,
   setReaderScale,
@@ -61,6 +63,8 @@ const navLinks: SidebarNavItem[] = [
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
   { key: "plan", label: "Plan", commandHint: "⌘9", icon: "command", path: "/plan" }
 ];
+
+const FIRST_LAUNCH_EVENT_KEY = "carrel.metrics.first-launch-recorded";
 
 function routeLabel(path: string): string {
   if (path === "/") {
@@ -266,6 +270,14 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
 
   useEffect(() => {
     initializeTheme();
+    try {
+      if (window.localStorage.getItem(FIRST_LAUNCH_EVENT_KEY) !== "1") {
+        window.localStorage.setItem(FIRST_LAUNCH_EVENT_KEY, "1");
+        void events.track("app.first_launch", { theme: appShell.theme.value }, "app");
+      }
+    } catch {
+      void events.track("app.first_launch", { theme: appShell.theme.value }, "app");
+    }
   }, []);
 
   useEffect(() => {
@@ -322,7 +334,16 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         case "reader.toggleFocusMode": {
           const currentPath = pathnameFromRoute(appShell.currentRoute.value);
           if (currentPath.startsWith("/reader") && readerState.focusAvailable.value) {
-            setReaderFocusMode(!readerState.focusMode.value);
+            const enabled = !readerState.focusMode.value;
+            setReaderFocusMode(enabled);
+            void events.track("reader.focus_toggled", { enabled }, "reader");
+          }
+          break;
+        }
+        case "reader.find": {
+          const currentPath = pathnameFromRoute(appShell.currentRoute.value);
+          if (currentPath.startsWith("/reader") && readerState.focusAvailable.value) {
+            requestReaderFind();
           }
           break;
         }
@@ -387,6 +408,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
       if (event.key === "Escape" && readerState.focusMode.value) {
         event.preventDefault();
         setReaderFocusMode(false);
+        void events.track("reader.focus_toggled", { enabled: false }, "reader");
         return;
       }
 

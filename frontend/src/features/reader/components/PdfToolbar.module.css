@@ -71,6 +71,13 @@
   justify-self: end;
 }
 
+.panelGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
 /* --- Left zone: file chip + title ------------------------------------ */
 .fileChip {
   display: inline-flex;

@@ -1,6 +1,7 @@
 import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
 import { toast } from "@/design-system";
 import { onboarding } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 import { dispatchMenuCommand } from "@/services/native/menu";
 
 interface LibraryEmptyStateProps {
@@ -39,6 +40,7 @@ export function LibraryEmptyState({ onDemoLoaded }: LibraryEmptyStateProps) {
               void onboarding.seedDemoLibrary()
                 .then((result) => {
                   if (result.seeded) {
+                    void events.track("onboarding.demo_library_loaded", { force: false }, "library");
                     toast.success("Demo library loaded", "Open a sample source to inspect evidence and create anchors.");
                     onDemoLoaded?.();
                   } else {

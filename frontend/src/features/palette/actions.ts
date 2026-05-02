@@ -46,6 +46,7 @@ const STATIC_ACTIONS: PaletteAction[] = [
   { id: "view.toggleLeftSidebar", label: "Toggle Left Sidebar", hint: "⌘B", group: "View", command: "view.toggleLeftSidebar", keywords: ["nav"] },
   { id: "view.toggleRightPanel", label: "Toggle Right Panel", hint: "⌘⌥B", group: "View", command: "view.toggleRightPanel", keywords: ["inspector", "source"] },
   { id: "view.toggleTheme", label: "Toggle Theme", hint: "⌘⇧T", group: "View", command: "view.toggleTheme", keywords: ["dark", "light"] },
+  { id: "reader.find", label: "Find in Reader", hint: "⌘F", group: "View", command: "reader.find", keywords: ["reader", "pdf", "search", "find"] },
   { id: "reader.toggleFocusMode", label: "Toggle Reader Focus Mode", hint: "⌘⇧F", group: "View", command: "reader.toggleFocusMode", keywords: ["reader", "focus", "fullscreen", "distraction"] },
   { id: "file.import", label: "Import Source…", hint: "⌘I", group: "Sources", command: "file.import", keywords: ["upload", "pdf", "new"] },
   { id: "help.shortcuts", label: "Keyboard Shortcuts", hint: "?", group: "Help", command: "help.shortcuts", keywords: ["keys", "hotkeys", "cheat sheet", "help"] },

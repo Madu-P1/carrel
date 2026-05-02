@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
-import { appShell, clearRightPanelContent, rememberReaderDocument } from "@/app/shell/useAppShell";
+import {
+  appShell,
+  clearRightPanelContent,
+  rememberReaderDocument,
+  toggleLeft,
+  toggleRight
+} from "@/app/shell/useAppShell";
 import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 import { Stack, Text } from "@/design-system";
 
 import { useCardFlight } from "./hooks/useCardFlight";
@@ -9,7 +16,15 @@ import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
 import { useCitationFlight } from "./hooks/useCitationFlight";
 import { usePdfDocument } from "./hooks/usePdfDocument";
 import { useReaderDetail } from "./hooks/useReaderDetail";
-import { readerState, resetReaderState, setReaderFocusAvailable } from "./state";
+import {
+  persistReaderRestorationState,
+  readerState,
+  readReaderRestorationState,
+  resetReaderState,
+  restoreReaderState,
+  setReaderFocusAvailable,
+  toggleReaderOutline
+} from "./state";
 import { NonPdfReader } from "./components/NonPdfReader";
 import { OutlineRail } from "./components/OutlineRail";
 import { PdfSearchBar } from "./components/PdfSearchBar";
@@ -36,7 +51,12 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const pdfState = usePdfDocument(fileUrl, chunks);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceResolution | null>(null);
+  const findRequestSerial = readerState.findRequestSerial.value;
   const focusMode = readerState.focusMode.value;
+  const leftPanelOpen = appShell.leftOpen.value;
+  const outlineOpen = readerState.outlineOpen.value;
+  const rightPanelOpen = appShell.rightOpen.value;
+  const restoredReaderRef = useRef<string | null>(null);
   const preFocusChromeRef = useRef<{
     leftOpen: boolean;
     outlineOpen: boolean;
@@ -49,12 +69,17 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   // ref and a usePdf=false ref and attach whichever path renders.
   const toolbarFlightRef = useCardFlight<HTMLDivElement>(id);
   const headerFlightRef = useCardFlight<HTMLDivElement>(id);
+  const openSearch = useCallback((mode: "keyboard" | "menu" | "toolbar") => {
+    setSearchOpen(true);
+    void events.track("reader.find_used", { mode }, "reader");
+  }, []);
 
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
   // animate it to the target chunk.
   useCitationFlight(id, chunkId);
 
   useEffect(() => {
+    restoredReaderRef.current = null;
     resetReaderState();
     rememberReaderDocument(id);
   }, [id]);
@@ -63,6 +88,32 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
     setReaderFocusAvailable(Boolean(detail && isPdf));
     return () => setReaderFocusAvailable(false);
   }, [detail, isPdf]);
+
+  useEffect(() => {
+    if (!detail || !isPdf || restoredReaderRef.current === id) {
+      return;
+    }
+    const restored = readReaderRestorationState(id);
+    if (restored) {
+      restoreReaderState(restored);
+    }
+    restoredReaderRef.current = id;
+  }, [detail, id, isPdf]);
+
+  useEffect(() => {
+    if (!detail || !isPdf || restoredReaderRef.current !== id || focusMode) {
+      return;
+    }
+    persistReaderRestorationState(id, {
+      outlineOpen
+    });
+  }, [
+    detail,
+    focusMode,
+    id,
+    isPdf,
+    outlineOpen
+  ]);
 
   useEffect(() => {
     if (focusMode) {
@@ -135,24 +186,29 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
     };
   }, [detail, id, selectedEvidence]);
 
-  // ⌘/ opens the in-doc search. ⌘F is owned by WKWebView / the macOS Edit
-  // menu; intercepting it cleanly would need Swift-side routing. `/`
-  // alone is already bound at the AppShell level to jump to Ask. Cmd+/
-  // is unused elsewhere and keeps the search affordance local to the
-  // Reader.
+  useEffect(() => {
+    if (!isPdf || findRequestSerial === 0) return;
+    openSearch("menu");
+  }, [findRequestSerial, isPdf, openSearch]);
+
+  // Native Edit > Find in Reader dispatches reader.find, while Cmd+F and
+  // Cmd+/ both open the in-doc search from the web layer. Plain "/" stays
+  // global and jumps to Ask.
   useEffect(() => {
     if (!isPdf) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "/" || !(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (!(key === "/" || key === "f") || !(e.metaKey || e.ctrlKey)) return;
       if (e.shiftKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      if (target?.isContentEditable) return;
+      const tag = target?.tagName;
+      if (target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       e.preventDefault();
-      setSearchOpen(true);
+      openSearch("keyboard");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPdf]);
+  }, [isPdf, openSearch]);
 
   if (loading.value && !detail) {
     return <ReaderLoadingState filename={document?.filename} />;
@@ -205,8 +261,14 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
             filename={filename}
             fileType={fileType}
             flightRef={toolbarFlightRef}
-            onOpenSearch={() => setSearchOpen(true)}
+            leftPanelOpen={leftPanelOpen}
+            onOpenSearch={() => openSearch("toolbar")}
+            onToggleAppSidebar={toggleLeft}
+            onToggleOutline={toggleReaderOutline}
+            onToggleSourcePanel={toggleRight}
+            outlineOpen={outlineOpen}
             pageCount={pageCount}
+            rightPanelOpen={rightPanelOpen}
           />
           <PdfSearchBar
             chunks={chunks}

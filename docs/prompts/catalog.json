@@ -1,0 +1,400 @@
+{
+  "version": "2026.05.02",
+  "source": "Prompt-Driven Improvement Plan for Carrel.pdf",
+  "description": "Versioned prompt catalog for Carrel product, engineering, and quality audits. Prompts are advisory and run local-first unless explicit credentials/config are added.",
+  "prompts": [
+    {
+      "id": "ui-audit-premium-carrel",
+      "category": "ui_audit",
+      "intent": "Audit a Carrel surface against DESIGN.md and the premium UI roadmap, then produce a prioritized implementation punch list.",
+      "inputs": [
+        { "key": "surface", "description": "Dashboard, Library, Reader, Ask, Study, Session, or Onboarding.", "required": true },
+        { "key": "route", "description": "App route or navigation destination under review.", "required": true },
+        { "key": "target_files", "description": "Relevant frontend files or components.", "required": true },
+        { "key": "constraints", "description": "Design-system, performance, and scope constraints.", "required": true }
+      ],
+      "outputs": [
+        "Findings ordered by user-visible severity.",
+        "Concrete code-change checklist with file ownership.",
+        "Visual verification plan for desktop and narrow widths."
+      ],
+      "success_criteria": [
+        "Recommendations preserve the Carrel design language.",
+        "No decorative surfaces or animation choices conflict with DESIGN.md.",
+        "Every finding maps to a route, component, and verification step."
+      ],
+      "risks": [
+        "Over-styling operational screens.",
+        "Adding animation or layout churn that hurts reading and review speed.",
+        "Duplicating already-shipped components."
+      ],
+      "model_notes": [
+        "Prefer existing tokens, components, and icons before proposing new primitives.",
+        "Flag any suggestion that requires new runtime dependencies."
+      ],
+      "template": "You are auditing {surface} at {route}. Review {target_files} against {constraints}. Return findings, a scoped implementation checklist, and verification steps. Optimize for a premium Carrel experience without decorative noise.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["findings", "implementation_checklist", "verification"],
+        "must_reference_inputs": ["surface", "route", "target_files"]
+      }
+    },
+    {
+      "id": "ux-flow-friction-map",
+      "category": "ux_flow",
+      "intent": "Map a learner workflow from intent to completion, identify friction, and define fixes that fit the local-first Carrel product model.",
+      "inputs": [
+        { "key": "surface", "description": "Workflow surface being evaluated.", "required": true },
+        { "key": "persona", "description": "Learner context and intent.", "required": true },
+        { "key": "route", "description": "Entry route or feature path.", "required": true },
+        { "key": "constraints", "description": "Product and privacy constraints.", "required": true }
+      ],
+      "outputs": [
+        "End-to-end journey map.",
+        "Top friction points with user impact.",
+        "Implementation plan with copy, states, and telemetry events."
+      ],
+      "success_criteria": [
+        "The flow reduces decision cost for first-run and returning learners.",
+        "Every proposed state has a clear empty, loading, success, and error shape.",
+        "Telemetry uses only local, PII-free event metadata."
+      ],
+      "risks": [
+        "Adding educational copy that explains UI mechanics in-app.",
+        "Treating demo data as if it were user data.",
+        "Logging search terms, filenames, or document text."
+      ],
+      "model_notes": [
+        "Ground recommendations in the user's immediate learning goal.",
+        "Prefer smaller workflow changes that can be verified with Playwright."
+      ],
+      "template": "Trace the {persona} workflow through {surface} starting at {route}. Within {constraints}, identify friction, missing states, and local-only telemetry. Return a journey map, fixes, and acceptance checks.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["journey_map", "friction_points", "fixes", "events"],
+        "must_reference_inputs": ["surface", "persona", "route"]
+      }
+    },
+    {
+      "id": "frontend-performance-reader",
+      "category": "frontend_perf",
+      "intent": "Review Reader, Library, and study surfaces for render, scroll, animation, and bundle regressions.",
+      "inputs": [
+        { "key": "surface", "description": "Frontend surface being profiled.", "required": true },
+        { "key": "target_files", "description": "Components, hooks, and CSS modules under review.", "required": true },
+        { "key": "constraints", "description": "Runtime, design, and dependency constraints.", "required": true },
+        { "key": "evidence", "description": "Screenshots, traces, test output, or measurements.", "required": false }
+      ],
+      "outputs": [
+        "Likely performance bottlenecks.",
+        "Low-risk refactors with expected impact.",
+        "Measurement plan before and after implementation."
+      ],
+      "success_criteria": [
+        "Scroll and page navigation remain stable at large document sizes.",
+        "Animations use transform and opacity only.",
+        "Bundle impact is measured or explicitly bounded."
+      ],
+      "risks": [
+        "Adding heavy libraries for narrow UI behavior.",
+        "Re-rendering large PDF/page lists on unrelated state changes.",
+        "Breaking keyboard-driven reader workflows."
+      ],
+      "model_notes": [
+        "Treat smooth reading as the primary performance metric.",
+        "Prefer virtualized, memoized, and signal-local changes."
+      ],
+      "template": "Profile {surface} using {target_files} and {evidence}. Under {constraints}, identify render, scroll, animation, and bundle risks. Return fixes and before/after measurements.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["risks", "fixes", "measurements"],
+        "must_reference_inputs": ["surface", "target_files"]
+      }
+    },
+    {
+      "id": "backend-api-hardening",
+      "category": "backend_api",
+      "intent": "Audit FastAPI routes for consistency, validation, local safety, and additive compatibility.",
+      "inputs": [
+        { "key": "route", "description": "API route family or endpoint list.", "required": true },
+        { "key": "target_files", "description": "Route, service, and model files.", "required": true },
+        { "key": "constraints", "description": "Compatibility, localhost, and local-first rules.", "required": true },
+        { "key": "evidence", "description": "Current tests, logs, or reported failures.", "required": false }
+      ],
+      "outputs": [
+        "Validation and error-envelope gaps.",
+        "Compatibility-safe API changes.",
+        "Focused backend test plan."
+      ],
+      "success_criteria": [
+        "Existing frontend calls remain compatible.",
+        "Upload and heavy-operation inputs are bounded.",
+        "Errors are useful without exposing secrets or document content."
+      ],
+      "risks": [
+        "Breaking established response shapes.",
+        "Leaking local paths, API keys, filenames, or document text.",
+        "Adding external queues before exhausting local jobs infrastructure."
+      ],
+      "model_notes": [
+        "Use additive models and routes when possible.",
+        "Check frontend endpoint wrappers before changing route responses."
+      ],
+      "template": "Audit {route} in {target_files} using {evidence}. Preserve {constraints}. Return compatibility risks, validation fixes, and tests for the backend/API layer.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["api_gaps", "safe_changes", "tests"],
+        "must_reference_inputs": ["route", "target_files"]
+      }
+    },
+    {
+      "id": "database-local-safety",
+      "category": "database",
+      "intent": "Review SQLite migrations, indexes, backups, and local vector fallback behavior for durability and speed.",
+      "inputs": [
+        { "key": "target_files", "description": "Migration, db, and service files.", "required": true },
+        { "key": "constraints", "description": "SQLite, local-only, and migration safety constraints.", "required": true },
+        { "key": "evidence", "description": "EXPLAIN output, test failures, logs, or runtime symptoms.", "required": false }
+      ],
+      "outputs": [
+        "Schema and migration findings.",
+        "Index proposals tied to concrete queries.",
+        "Backup, WAL, and fallback verification plan."
+      ],
+      "success_criteria": [
+        "Migrations are idempotent and covered by tests.",
+        "Indexes target due cards, search, concepts, jobs, or usage events.",
+        "sqlite-vec unavailability remains clear and non-fatal."
+      ],
+      "risks": [
+        "Adding indexes without query justification.",
+        "Using unsafe SQL string interpolation.",
+        "Making vector support mandatory on machines where it is unavailable."
+      ],
+      "model_notes": [
+        "Keep migration files append-only.",
+        "Prefer parameterization tests for risky query builders."
+      ],
+      "template": "Review database files {target_files} with evidence {evidence}. Under {constraints}, propose safe migrations, indexes, backup/WAL checks, and sqlite-vec fallback verification.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["schema_findings", "index_plan", "verification"],
+        "must_reference_inputs": ["target_files"]
+      }
+    },
+    {
+      "id": "accessibility-key-views",
+      "category": "accessibility",
+      "intent": "Audit key Carrel views for keyboard, screen-reader labels, focus order, and contrast-sensitive UI.",
+      "inputs": [
+        { "key": "surface", "description": "View or flow under test.", "required": true },
+        { "key": "route", "description": "Route to load in smoke checks.", "required": true },
+        { "key": "target_files", "description": "Components and CSS modules under review.", "required": true },
+        { "key": "constraints", "description": "Accessibility and design constraints.", "required": true }
+      ],
+      "outputs": [
+        "Keyboard and focus findings.",
+        "ARIA/name/role fixes.",
+        "Playwright plus axe smoke plan."
+      ],
+      "success_criteria": [
+        "Primary actions have accessible names.",
+        "Focus never disappears during panel toggles or mode changes.",
+        "Color-dependent indicators also have semantic labels or text."
+      ],
+      "risks": [
+        "Icon-only buttons without aria-label.",
+        "Focus traps in search, tour, modal, or reader focus mode.",
+        "Contrast regressions in glass surfaces."
+      ],
+      "model_notes": [
+        "Prioritize actual learner workflows over broad theoretical coverage.",
+        "Write checks that can run in CI without external services."
+      ],
+      "template": "Audit accessibility for {surface} at {route}. Review {target_files} under {constraints}. Return keyboard, focus, ARIA, contrast findings and a Playwright plus axe test plan.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["findings", "fixes", "axe_smoke_plan"],
+        "must_reference_inputs": ["surface", "route"]
+      }
+    },
+    {
+      "id": "metrics-local-only-events",
+      "category": "metrics",
+      "intent": "Define local-only usage events and privacy-safe payloads for Carrel flows.",
+      "inputs": [
+        { "key": "surface", "description": "Feature surface or flow.", "required": true },
+        { "key": "metric_names", "description": "Candidate event names.", "required": true },
+        { "key": "constraints", "description": "Privacy, local-only, and payload constraints.", "required": true },
+        { "key": "target_files", "description": "Client/server files to instrument.", "required": true }
+      ],
+      "outputs": [
+        "Event taxonomy with payload allowlists.",
+        "Instrumentation points.",
+        "Tests proving PII is not persisted."
+      ],
+      "success_criteria": [
+        "No document text, filenames, questions, answers, API keys, or identifiers leave local storage.",
+        "Event helper has one stable client API.",
+        "Backend storage is additive and queryable for local debugging."
+      ],
+      "risks": [
+        "Logging raw queries or selected text.",
+        "Treating local metrics as external analytics.",
+        "Creating event names that drift across surfaces."
+      ],
+      "model_notes": [
+        "Use event names from the roadmap unless there is a compatibility reason.",
+        "Prefer booleans, counts, enum states, and durations."
+      ],
+      "template": "For {surface}, define local-only events from {metric_names}. Instrument {target_files} within {constraints}. Return payload allowlists, call sites, and privacy tests.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["events", "instrumentation", "privacy_tests"],
+        "must_reference_inputs": ["surface", "metric_names", "target_files"]
+      }
+    },
+    {
+      "id": "ci-regression-plan",
+      "category": "ci",
+      "intent": "Extend CI with deterministic validation, smoke checks, and advisory gates without paid services.",
+      "inputs": [
+        { "key": "target_files", "description": "Workflow, script, and test files.", "required": true },
+        { "key": "constraints", "description": "CI runtime and dependency constraints.", "required": true },
+        { "key": "evidence", "description": "Current check output or flake notes.", "required": false }
+      ],
+      "outputs": [
+        "Blocking and advisory job split.",
+        "Exact commands to run locally and in CI.",
+        "Artifact and flake-handling notes."
+      ],
+      "success_criteria": [
+        "Prompt validation is blocking and deterministic.",
+        "Visual/accessibility checks are lightweight and scoped to key views.",
+        "AI prompt execution remains advisory unless credentials are explicitly configured."
+      ],
+      "risks": [
+        "Creating slow CI that discourages frequent PRs.",
+        "Failing CI on unavailable external credentials.",
+        "Hiding real regressions behind continue-on-error."
+      ],
+      "model_notes": [
+        "Keep local verification commands copy-pasteable.",
+        "Separate required quality gates from exploratory audits."
+      ],
+      "template": "Review CI files {target_files} with evidence {evidence}. Under {constraints}, propose blocking and advisory gates, exact commands, artifacts, and flake handling.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["blocking_gates", "advisory_gates", "commands"],
+        "must_reference_inputs": ["target_files"]
+      }
+    },
+    {
+      "id": "code-review-risk-led",
+      "category": "code_review",
+      "intent": "Review a Carrel diff with findings first, ordered by severity, emphasizing bugs, regressions, and missing tests.",
+      "inputs": [
+        { "key": "target_files", "description": "Files or diff under review.", "required": true },
+        { "key": "constraints", "description": "Scope and compatibility constraints.", "required": true },
+        { "key": "evidence", "description": "Test output, screenshots, or runtime notes.", "required": false }
+      ],
+      "outputs": [
+        "Findings first, with file and line references.",
+        "Open questions or assumptions.",
+        "Brief verification summary."
+      ],
+      "success_criteria": [
+        "Every issue describes a user-visible or maintenance risk.",
+        "Line references are tight and actionable.",
+        "No style-only noise unless it blocks the roadmap."
+      ],
+      "risks": [
+        "Summarizing before findings.",
+        "Flagging speculative issues without evidence.",
+        "Missing tests for new public interfaces."
+      ],
+      "model_notes": [
+        "Use a code-review stance, not a feature-brainstorm stance.",
+        "Call out residual risk when no findings remain."
+      ],
+      "template": "Review {target_files} under {constraints}, using evidence {evidence}. Return findings first, then questions, then a concise verification summary.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["findings", "questions", "verification_summary"],
+        "must_reference_inputs": ["target_files"]
+      }
+    },
+    {
+      "id": "test-plan-roadmap-slice",
+      "category": "tests",
+      "intent": "Turn a roadmap slice into focused frontend, backend, type, visual, accessibility, and runtime tests.",
+      "inputs": [
+        { "key": "surface", "description": "Feature area being implemented.", "required": true },
+        { "key": "target_files", "description": "Changed files and existing tests.", "required": true },
+        { "key": "constraints", "description": "Test runtime and flake constraints.", "required": true },
+        { "key": "evidence", "description": "Known failing tests or coverage gaps.", "required": false }
+      ],
+      "outputs": [
+        "Focused test matrix.",
+        "Exact local commands.",
+        "Regression risks left uncovered."
+      ],
+      "success_criteria": [
+        "Tests scale with risk and public API surface.",
+        "Commands are runnable without external services.",
+        "Known unrelated failures are documented instead of hidden."
+      ],
+      "risks": [
+        "Only testing happy paths.",
+        "Adding brittle visual assertions before UI is stable.",
+        "Letting generated API type drift go unnoticed."
+      ],
+      "model_notes": [
+        "Prefer narrow suites during development and broader gates before PR handoff.",
+        "Include migration tests when schema changes."
+      ],
+      "template": "For {surface}, build a test plan for {target_files}. Account for {constraints} and evidence {evidence}. Return commands, coverage, and residual risks.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["test_matrix", "commands", "residual_risks"],
+        "must_reference_inputs": ["surface", "target_files"]
+      }
+    },
+    {
+      "id": "usability-analysis-reader-loop",
+      "category": "usability_analysis",
+      "intent": "Evaluate whether a learner can quickly import, read, ask, review, and return to the right place in Carrel.",
+      "inputs": [
+        { "key": "surface", "description": "The end-to-end loop or surface being analyzed.", "required": true },
+        { "key": "persona", "description": "Learner scenario.", "required": true },
+        { "key": "route", "description": "Starting route.", "required": true },
+        { "key": "constraints", "description": "Product, privacy, and design constraints.", "required": true }
+      ],
+      "outputs": [
+        "Task script for a manual or Playwright run.",
+        "Observed usability gaps.",
+        "Prioritized fixes and validation checks."
+      ],
+      "success_criteria": [
+        "The learner can resume reading exactly where they left off.",
+        "Reader panels, focus mode, and search are discoverable without clutter.",
+        "Ask and Study surfaces preserve evidence and momentum."
+      ],
+      "risks": [
+        "Optimizing isolated screens instead of the learning loop.",
+        "Losing page or panel state across navigation.",
+        "Adding copy that explains the product instead of helping the task."
+      ],
+      "model_notes": [
+        "Use the task script to generate product fixes, not just notes.",
+        "Preserve local-first privacy expectations throughout the flow."
+      ],
+      "template": "Analyze the {persona} usability loop for {surface}, starting at {route}. Respect {constraints}. Return a task script, observed gaps, prioritized fixes, and validation checks.",
+      "sample_fixture": "fixtures/carrel-roadmap-sample.json",
+      "expected_output_shape": {
+        "sections": ["task_script", "gaps", "fixes", "validation"],
+        "must_reference_inputs": ["surface", "persona", "route"]
+      }
+    }
+  ]
+}

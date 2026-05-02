@@ -1,0 +1,36 @@
+{
+  "surface": "Reader",
+  "route": "/reader",
+  "persona": "A returning finance student who wants to resume a chapter, find a term, ask a cited question, and start review without losing their place.",
+  "target_files": [
+    "frontend/src/features/reader/ReaderView.tsx",
+    "frontend/src/features/reader/components/PdfToolbar.tsx",
+    "frontend/src/features/reader/components/PdfViewer.tsx",
+    "frontend/src/features/reader/state.ts"
+  ],
+  "constraints": [
+    "Follow DESIGN.md.",
+    "Use local-first storage and avoid external analytics.",
+    "Keep APIs additive.",
+    "Use transform and opacity for animation.",
+    "Do not log document text, filenames, questions, answers, API keys, or user-identifying content."
+  ],
+  "evidence": [
+    "Screenshot review.",
+    "Focused Vitest output.",
+    "Playwright smoke result when available."
+  ],
+  "metric_names": [
+    "app.first_launch",
+    "import.started",
+    "import.completed",
+    "import.failed",
+    "onboarding.demo_library_loaded",
+    "library.search_used",
+    "reader.find_used",
+    "reader.focus_toggled",
+    "ask.first_question",
+    "srs.review_started",
+    "srs.review_completed"
+  ]
+}

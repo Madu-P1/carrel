@@ -135,6 +135,13 @@ enum MainMenuBuilder {
         menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(
+            titled: "Find in Reader",
+            key: "f",
+            command: "reader.find",
+            target: MenuCommandDispatcher.shared
+        )
         item.submenu = menu
         return item
     }

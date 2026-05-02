@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { expect, test, vi } from "vitest";
 
+import { appShell } from "../../src/app/shell/useAppShell";
 import { readerState } from "../../src/features/reader/state";
 import { mockJson } from "../support/mockFetch";
 
@@ -111,10 +112,56 @@ test("ReaderView shows toolbar and viewer shell for PDFs", async () => {
   // chip (PDF) + filename both render inside the toolbar.
   expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
   expect(screen.getByLabelText(/File type: PDF/i)).toBeDefined();
+  expect(screen.getByRole("button", { name: /Hide app sidebar/i })).toBeDefined();
+  expect(screen.getByRole("button", { name: /Hide document outline/i })).toBeDefined();
+  expect(screen.getByRole("button", { name: /Show source panel/i })).toBeDefined();
 
   await waitFor(() => {
     expect(document.querySelector("[data-page-number='1']")).toBeTruthy();
   });
+});
+
+test("ReaderView opens PDF search from Cmd+F and exposes quick panel toggles", async () => {
+  mockJson("GET", "/api/documents/pdf-doc", {
+    chunks: [],
+    concept_options: [],
+    concepts: [],
+    counts: { cards: 0, chunks: 12, concepts: 0, questions: 0 },
+    document: {
+      concept_count: 0,
+      confidence: 0.97,
+      filename: "biology.pdf",
+      file_type: "pdf",
+      id: "pdf-doc",
+      page_count: 12,
+      parser_diagnostics: {},
+      question_count: 0,
+      status: "ready",
+      summary: "",
+      subject_name: "Biology"
+    },
+    questions: [],
+    summary: "Biology deck"
+  });
+
+  render(<ReaderView id="pdf-doc" />);
+  expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
+
+  await waitFor(() => {
+    expect(readerState.focusAvailable.value).toBe(true);
+  });
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "f", metaKey: true }));
+  });
+  expect(await screen.findByLabelText(/Find in document/i)).toBeDefined();
+
+  fireEvent.click(screen.getByRole("button", { name: /Hide document outline/i }));
+  expect(readerState.outlineOpen.value).toBe(false);
+  expect(screen.getByRole("button", { name: /Show document outline/i })).toBeDefined();
+
+  fireEvent.click(screen.getByRole("button", { name: /Show source panel/i }));
+  expect(appShell.rightOpen.value).toBe(true);
+  expect(screen.getByRole("button", { name: /Hide source panel/i })).toBeDefined();
 });
 
 test("ReaderView reopens the last selected PDF when no route id is provided", async () => {
@@ -192,5 +239,5 @@ test("ReaderView exposes PDF focus mode from the toolbar", async () => {
   expect(readerState.focusMode.value).toBe(true);
   expect(screen.getByTestId("pdf-reader").getAttribute("data-focus-mode")).toBe("true");
   expect(screen.getByRole("button", { name: /Exit focus mode/i })).toBeDefined();
-  expect(screen.queryByLabelText(/Document outline/i)).toBeNull();
+  expect(screen.queryByLabelText(/Outline \(empty\)/i)).toBeNull();
 });

@@ -76,8 +76,12 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    narration and SVG citation-to-anchor guidance.
  *    89 KB → 92 KB: shell-level Reader focus command, route motion,
  *                    persistent resizable panels, and public-beta chrome
- *                    all execute before route-level lazy boundaries. */
-const ENTRY_JS_GZIP_BUDGET = 92 * 1024;
+ *                    all execute before route-level lazy boundaries.
+ *    92 KB → 93 KB: local-only usage event helper plus Reader menu/find
+ *                    restoration wiring. Metrics are shell-adjacent and
+ *                    intentionally available across first-run, Library,
+ *                    Reader, Ask, and Study flows. */
+const ENTRY_JS_GZIP_BUDGET = 93 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

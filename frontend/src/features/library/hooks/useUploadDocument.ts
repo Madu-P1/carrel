@@ -2,6 +2,7 @@ import { useSignal } from "@preact/signals";
 
 import { ApiError } from "@/services/api/client";
 import { jobs } from "@/services/api/endpoints";
+import { events } from "@/services/metrics/events";
 
 /**
  * Outcome shape for a single file in a batch upload.
@@ -67,9 +68,11 @@ export function useUploadDocument() {
   const uploadFiles = async (files: FileList | File[], subjectName = "General"): Promise<UploadOutcome[]> => {
     loading.value = true;
     error.value = null;
+    const batch = Array.from(files);
+    void events.track("import.started", { file_count: batch.length }, "library");
     const results: UploadOutcome[] = [];
     try {
-      for (const file of Array.from(files)) {
+      for (const file of batch) {
         try {
           const response = await jobs.import(file, subjectName);
           results.push({
@@ -106,6 +109,23 @@ export function useUploadDocument() {
         }
       }
       outcomes.value = results;
+      const okCount = results.filter((result) => result.kind === "ok").length;
+      const duplicateCount = results.filter((result) => result.kind === "duplicate").length;
+      const failedCount = results.filter((result) => result.kind === "error").length;
+      if (okCount > 0) {
+        void events.track("import.completed", {
+          duplicate_count: duplicateCount,
+          failed_count: failedCount,
+          file_count: okCount
+        }, "library");
+      }
+      if (failedCount > 0) {
+        void events.track("import.failed", {
+          duplicate_count: duplicateCount,
+          failed_count: failedCount,
+          file_count: batch.length
+        }, "library");
+      }
       return results;
     } finally {
       loading.value = false;
