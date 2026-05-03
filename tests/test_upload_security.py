@@ -30,7 +30,11 @@ class UploadSecurityTests(unittest.TestCase):
         main.DB_PATH = main.DATA_DIR / "test.db"
         main.SCHEMA_PATH = self.original_schema_path
         main.initialize_database()
-        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+        self.client = TestClient(
+            main.app,
+            headers={HEADER_NAME: get_local_api_token()},
+            raise_server_exceptions=True,
+        )
 
     def tearDown(self) -> None:
         main.BASE_DIR = self.original_base_dir
@@ -49,6 +53,16 @@ class UploadSecurityTests(unittest.TestCase):
 
     def test_unsupported_extension_rejected_before_disk_write(self) -> None:
         response = self._upload("payload.exe", b"MZ fake binary")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
+
+    def test_unsafe_declared_mime_rejected_before_disk_write(self) -> None:
+        response = self.client.post(
+            "/api/documents/upload",
+            files={"file": ("payload.pdf", io.BytesIO(b"%PDF fake"), "application/x-msdownload")},
+            data={"subject_name": "Security"},
+        )
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual([], list(main.UPLOAD_DIR.iterdir()))
@@ -75,6 +89,39 @@ class UploadSecurityTests(unittest.TestCase):
 
         self.assertEqual(".pdf", detected_suffix)
         self.assertEqual("application/pdf", detected_mime)
+
+    def test_job_import_rejects_unsafe_mime_no_temp_file_residue(self) -> None:
+        with mock.patch("routes.jobs.tempfile.NamedTemporaryFile") as named_tmp:
+            response = self.client.post(
+                "/api/jobs/import",
+                files={"file": ("payload.pdf", io.BytesIO(b"%PDF fake"), "application/x-msdownload")},
+                data={"subject_name": "Security"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        named_tmp.assert_not_called()
+
+    def test_job_import_removes_temp_file_when_enqueue_fails(self) -> None:
+        original_named_temporary_file = tempfile.NamedTemporaryFile
+        with tempfile.TemporaryDirectory() as job_tmp_dir:
+            job_tmp_path = Path(job_tmp_dir)
+
+            def named_temporary_file(*args, **kwargs):
+                kwargs["dir"] = job_tmp_path
+                return original_named_temporary_file(*args, **kwargs)
+
+            with (
+                mock.patch("routes.jobs.tempfile.NamedTemporaryFile", side_effect=named_temporary_file),
+                mock.patch("services.jobs.enqueue_import", side_effect=RuntimeError("queue unavailable")),
+            ):
+                with self.assertRaises(RuntimeError):
+                    self.client.post(
+                        "/api/jobs/import",
+                        files={"file": ("notes.txt", io.BytesIO(b"hello"), "text/plain")},
+                        data={"subject_name": "Security"},
+                    )
+
+            self.assertEqual([], list(job_tmp_path.iterdir()))
 
 
 if __name__ == "__main__":

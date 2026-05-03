@@ -34,7 +34,7 @@ from services.documents import (
     set_document_subject,
 )
 from services.ingestion import ingest_document_record, normalize_subject_name
-from services.uploads import save_upload_bounded, validate_upload_suffix
+from services.uploads import save_upload_bounded, validate_upload_metadata
 
 
 LOGGER = get_logger("documents_api")
@@ -150,7 +150,7 @@ async def upload_document(
     file: UploadFile = File(...),
     subject_name: str = Form("General"),
 ) -> Dict[str, object]:
-    suffix = validate_upload_suffix(file.filename)
+    suffix = validate_upload_metadata(file.filename, file.content_type)
     log_event(
         LOGGER,
         logging.INFO,

@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Upload
 from fastapi.responses import StreamingResponse
 
 from services import jobs as jobs_service
-from services.uploads import save_upload_bounded, validate_upload_suffix
+from services.uploads import save_upload_bounded, validate_upload_metadata
 
 
 router = APIRouter()
@@ -21,7 +21,7 @@ async def import_document_job(
     file: UploadFile = File(...),
     subject_name: str = Form("General"),
 ) -> Dict[str, Any]:
-    suffix = validate_upload_suffix(file.filename)
+    suffix = validate_upload_metadata(file.filename, file.content_type)
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
     await save_upload_bounded(file, tmp_path)
