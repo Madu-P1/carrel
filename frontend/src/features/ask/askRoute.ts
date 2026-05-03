@@ -21,10 +21,19 @@ export function buildAskUrl(params: AskRouteParams): string {
   const qs = new URLSearchParams();
   const question = params.q.trim();
   if (question) qs.set("q", question);
-  if (params.auto) qs.set("auto", "1");
-  if (params.scope_kind) qs.set("scope_kind", params.scope_kind);
-  if (params.doc_id) qs.set("doc_id", params.doc_id);
-  if (params.subject_name) qs.set("subject_name", params.subject_name);
+  if (question && params.auto) qs.set("auto", "1");
+
+  const scopeKind = normalizeScopeKind(params.scope_kind ?? null);
+  if (scopeKind === "document" && params.doc_id) {
+    qs.set("scope_kind", "document");
+    qs.set("doc_id", params.doc_id);
+  } else if (scopeKind === "subject" && params.subject_name) {
+    qs.set("scope_kind", "subject");
+    qs.set("subject_name", params.subject_name);
+  } else if (params.scope_kind === "library") {
+    qs.set("scope_kind", "library");
+  }
+
   const query = qs.toString();
   return query ? `/ask?${query}` : "/ask";
 }
