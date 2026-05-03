@@ -2,7 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="$("$ROOT/.venv/bin/python" - <<'PY'
+PYTHON_BIN="${PYTHON_BIN:-$ROOT/.venv/bin/python}"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python"
+fi
+
+PORT="$("$PYTHON_BIN" - <<'PY'
 import socket
 
 sock = socket.socket()
@@ -17,7 +22,7 @@ if [ ! -d "$ROOT/frontend/node_modules" ]; then
 fi
 
 cd "$ROOT"
-"$ROOT/.venv/bin/uvicorn" main:app --host 127.0.0.1 --port "$PORT" >/tmp/einstein-openapi.log 2>&1 &
+"$PYTHON_BIN" -m uvicorn main:app --host 127.0.0.1 --port "$PORT" >/tmp/einstein-openapi.log 2>&1 &
 SERVER_PID=$!
 cleanup() {
   kill "$SERVER_PID" 2>/dev/null || true
