@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -93,6 +93,37 @@ class UsageEventResponse(BaseModel):
     surface: Optional[str] = None
     properties: Dict[str, Any] = Field(default_factory=dict)
     created_at: str
+
+
+class HealthPaths(BaseModel):
+    base_dir: str
+    db_path: str
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    mode: Literal["local"] = "local"
+    documents: int = Field(default=0, ge=0)
+    paths: HealthPaths
+
+
+class LocalTokenResponse(BaseModel):
+    token: str = Field(..., min_length=1)
+
+
+class ActiveSessionItem(BaseModel):
+    id: str
+    goal_id: Optional[str] = None
+    objective: Optional[str] = None
+    mode: str
+    duration_minutes: int = Field(default=0, ge=0)
+    difficulty_target: Optional[Union[float, str]] = None
+    started_at: str
+    status: str
+
+
+class ActiveSessionResponse(BaseModel):
+    active_session: Optional[ActiveSessionItem] = None
 
 
 class TutorQueryRequest(BaseModel):
@@ -437,6 +468,10 @@ class SyncFeedResponse(BaseModel):
     items_deleted: int
     status: str
     error: Optional[str] = None
+
+
+class StudySuggestionStatusResponse(BaseModel):
+    status: Literal["accepted", "dismissed", "pending"]
 
 
 # ----------------------------------------------------------------------

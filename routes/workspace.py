@@ -5,7 +5,14 @@ from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 
 import db
-from api_models import GoalRequest, SessionStartRequest, StudyEventRequest
+from api_models import (
+    ActiveSessionResponse,
+    GoalRequest,
+    HealthResponse,
+    LocalTokenResponse,
+    SessionStartRequest,
+    StudyEventRequest,
+)
 from app_logging import get_logger, log_event
 from services import graph as graph_service
 from services import session_engine as session_service
@@ -36,7 +43,7 @@ def root() -> FileResponse:
     return FileResponse(db.BASE_DIR / "index.html")
 
 
-@router.get("/api/health")
+@router.get("/api/health", response_model=HealthResponse)
 def health() -> Dict[str, object]:
     with db.get_db() as conn:
         return {
@@ -63,7 +70,7 @@ def bootstrap() -> Dict[str, object]:
         }
 
 
-@router.get("/api/local-token")
+@router.get("/api/local-token", response_model=LocalTokenResponse)
 def local_token() -> Dict[str, str]:
     return {"token": get_local_api_token()}
 
@@ -139,7 +146,7 @@ def create_study_event(payload: StudyEventRequest) -> Dict[str, Any]:
         return {"status": "logged", "workspace": fetch_workspace_state(conn)}
 
 
-@router.get("/api/sessions/active")
+@router.get("/api/sessions/active", response_model=ActiveSessionResponse)
 def get_active_session() -> Dict[str, Any]:
     """Return the current active session, or an empty envelope.
 

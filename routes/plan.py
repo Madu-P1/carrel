@@ -27,6 +27,7 @@ from api_models import (
     CalendarEventRow,
     PlanResponse,
     StudySuggestionRow,
+    StudySuggestionStatusResponse,
 )
 from routes.calendar import _row_to_response
 from services.calendar import repository
@@ -129,7 +130,7 @@ def get_plan() -> PlanResponse:
     )
 
 
-@router.post("/api/plan/suggestions/{suggestion_id}/accept")
+@router.post("/api/plan/suggestions/{suggestion_id}/accept", response_model=StudySuggestionStatusResponse)
 def accept_suggestion(suggestion_id: str) -> Dict[str, str]:
     with db.get_db() as conn:
         result = repository.update_suggestion_status(
@@ -140,7 +141,7 @@ def accept_suggestion(suggestion_id: str) -> Dict[str, str]:
     return {"status": "accepted"}
 
 
-@router.post("/api/plan/suggestions/{suggestion_id}/dismiss")
+@router.post("/api/plan/suggestions/{suggestion_id}/dismiss", response_model=StudySuggestionStatusResponse)
 def dismiss_suggestion(suggestion_id: str) -> Dict[str, str]:
     """Dismiss a suggestion. Frontend implements 5-second-undo via
     POST /api/plan/suggestions/{id}/restore (below) — we just record
@@ -155,7 +156,7 @@ def dismiss_suggestion(suggestion_id: str) -> Dict[str, str]:
     return {"status": "dismissed"}
 
 
-@router.post("/api/plan/suggestions/{suggestion_id}/restore")
+@router.post("/api/plan/suggestions/{suggestion_id}/restore", response_model=StudySuggestionStatusResponse)
 def restore_suggestion(suggestion_id: str) -> Dict[str, str]:
     """Reverse a dismiss (the 5-second undo affordance).
 

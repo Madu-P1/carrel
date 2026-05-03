@@ -1592,6 +1592,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveSessionItem */
+        ActiveSessionItem: {
+            /** Id */
+            id: string;
+            /** Goal Id */
+            goal_id?: string | null;
+            /** Objective */
+            objective?: string | null;
+            /** Mode */
+            mode: string;
+            /**
+             * Duration Minutes
+             * @default 0
+             */
+            duration_minutes: number;
+            /** Difficulty Target */
+            difficulty_target?: number | string | null;
+            /** Started At */
+            started_at: string;
+            /** Status */
+            status: string;
+        };
+        /** ActiveSessionResponse */
+        ActiveSessionResponse: {
+            active_session?: components["schemas"]["ActiveSessionItem"] | null;
+        };
         /** AnchorCardDraftRequest */
         AnchorCardDraftRequest: {
             /**
@@ -2123,6 +2149,39 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HealthPaths */
+        HealthPaths: {
+            /** Base Dir */
+            base_dir: string;
+            /** Db Path */
+            db_path: string;
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            /**
+             * Status
+             * @default ok
+             * @constant
+             */
+            status: "ok";
+            /**
+             * Mode
+             * @default local
+             * @constant
+             */
+            mode: "local";
+            /**
+             * Documents
+             * @default 0
+             */
+            documents: number;
+            paths: components["schemas"]["HealthPaths"];
+        };
+        /** LocalTokenResponse */
+        LocalTokenResponse: {
+            /** Token */
+            token: string;
+        };
         /** NoteExpandRequest */
         NoteExpandRequest: {
             /** Content */
@@ -2351,6 +2410,14 @@ export interface components {
             reason_text: string;
             /** Score */
             score?: number | null;
+        };
+        /** StudySuggestionStatusResponse */
+        StudySuggestionStatusResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "dismissed" | "pending";
         };
         /** SyncFeedResponse */
         SyncFeedResponse: {
@@ -2655,9 +2722,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
@@ -2699,9 +2764,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["LocalTokenResponse"];
                 };
             };
         };
@@ -2850,9 +2913,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ActiveSessionResponse"];
                 };
             };
         };
@@ -5476,9 +5537,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StudySuggestionStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5509,9 +5568,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StudySuggestionStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5542,9 +5599,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["StudySuggestionStatusResponse"];
                 };
             };
             /** @description Validation Error */
