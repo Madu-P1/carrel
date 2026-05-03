@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 
-import { Stack, Text, showToast, toast } from "@/design-system";
+import { Button, Dialog, Stack, Text, showToast, toast } from "@/design-system";
 import { browserTimeZone } from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
@@ -41,6 +41,8 @@ export function PlanView() {
   } = usePlan();
 
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteFeed, setDeleteFeed] = useState<CalendarFeed | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   const handleSync = async (feedId: string) => {
     try {
@@ -61,18 +63,20 @@ export function PlanView() {
   };
 
   const handleDelete = async (feed: CalendarFeed) => {
-    if (
-      !window.confirm(
-        `Remove "${feed.label}"? Events from this feed will be cleared from your plan.`
-      )
-    ) {
-      return;
-    }
+    setDeleteFeed(feed);
+  };
+
+  const confirmDeleteFeed = async () => {
+    if (!deleteFeed || deletePending) return;
+    setDeletePending(true);
     try {
-      await removeFeed(feed.id);
-      toast.info(`Removed "${feed.label}"`);
+      await removeFeed(deleteFeed.id);
+      toast.info(`Removed "${deleteFeed.label}"`);
+      setDeleteFeed(null);
     } catch (caught) {
       toast.error("Could not remove feed", (caught as Error).message);
+    } finally {
+      setDeletePending(false);
     }
   };
 
@@ -163,6 +167,43 @@ export function PlanView() {
         onClose={() => setAddOpen(false)}
         onSubmit={addFeed}
       />
+
+      <Dialog
+        open={deleteFeed !== null}
+        onClose={() => {
+          if (!deletePending) setDeleteFeed(null);
+        }}
+        title="Remove calendar feed"
+        description={
+          deleteFeed
+            ? `Events from "${deleteFeed.label}" will be cleared from your plan.`
+            : undefined
+        }
+        actions={
+          <Stack direction="horizontal" gap={2}>
+            <Button
+              type="button"
+              variant="danger"
+              isLoading={deletePending}
+              onClick={confirmDeleteFeed}
+            >
+              Remove feed
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={deletePending}
+              onClick={() => setDeleteFeed(null)}
+            >
+              Cancel
+            </Button>
+          </Stack>
+        }
+      >
+        <Text tone="secondary">
+          This does not delete your calendar account or source data outside Carrel.
+        </Text>
+      </Dialog>
     </div>
   );
 }
