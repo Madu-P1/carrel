@@ -130,7 +130,6 @@ enum NativeBridge {
       window.addEventListener("error", (event) => {
         window.nativeTelemetry?.emit("window-error", {
           message: event.message,
-          filename: event.filename,
           lineno: event.lineno,
           colno: event.colno
         });
@@ -147,9 +146,7 @@ enum NativeBridge {
 
       window.setTimeout(() => {
         if (!window.__einsteinMainStarted) {
-          window.nativeTelemetry?.emit("main-script-timeout", {
-            href: window.location.href
-          });
+          window.nativeTelemetry?.emit("main-script-timeout");
         }
       }, 1500);
     })();

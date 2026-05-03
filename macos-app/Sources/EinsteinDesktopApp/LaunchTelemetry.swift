@@ -23,8 +23,9 @@ enum LaunchTelemetry {
 
         let deltaMilliseconds = startedAt.map { Double(now - $0) / 1_000_000 } ?? 0
         let performanceLabel = performanceNowMilliseconds.map(format(milliseconds:)) ?? "n/a"
+        let routeLabel = sanitizedRoute(route)
         emit(
-            "app-interactive frontend=\(frontend) route=\(route) delta_ms=\(format(milliseconds: deltaMilliseconds)) perf_now_ms=\(performanceLabel)"
+            "app-interactive frontend=\(frontend) route=\(routeLabel) delta_ms=\(format(milliseconds: deltaMilliseconds)) perf_now_ms=\(performanceLabel)"
         )
     }
 
@@ -37,5 +38,18 @@ enum LaunchTelemetry {
 
     private static func format(milliseconds: Double) -> String {
         String(format: "%.2f", milliseconds)
+    }
+
+    private static func sanitizedRoute(_ route: String) -> String {
+        let path = route.split(separator: "?", maxSplits: 1).first.map(String.init) ?? route
+        if path == "/" || path.isEmpty {
+            return "/"
+        }
+        for knownRoute in ["/session", "/library", "/reader", "/ask", "/study", "/search", "/concepts", "/plan"] {
+            if path == knownRoute || path.hasPrefix("\(knownRoute)/") {
+                return knownRoute
+            }
+        }
+        return "/unknown"
     }
 }

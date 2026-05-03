@@ -11,7 +11,12 @@ _LOGGER_NAMESPACE = "einstein"
 _CONFIGURED = False
 _REDACTED = "[redacted]"
 _URL_REDACTED = "[redacted-url]"
+_PATH_REDACTED = "[redacted-path]"
 _URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_LOCAL_PATH_PATTERN = re.compile(
+    r"(?<![\w:])(?:/Users|/var|/private/var|/tmp)/(?:Application Support|Mobile Documents|[^/\s\"'<>]+)(?:/(?:Application Support|Mobile Documents|[^/\s\"'<>]+))*",
+    re.IGNORECASE,
+)
 _SECRET_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -44,7 +49,7 @@ class JsonFormatter(logging.Formatter):
         if isinstance(context, dict):
             payload.update(redact_context(context))
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = _redact_local_string(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=True, sort_keys=True)
 
 
@@ -100,7 +105,7 @@ def _redact_value(value: Any, key: str | None = None) -> Any:
     if isinstance(value, tuple):
         return tuple(_redact_value(item, key) for item in value)
     if isinstance(value, str):
-        return _redact_url_like_string(value)
+        return _redact_local_string(value)
     return value
 
 
@@ -126,3 +131,8 @@ def _redact_url_like_string(value: str) -> str:
         return f"{parsed.scheme}://{parsed.netloc}/***"
 
     return _URL_PATTERN.sub(replace, value)
+
+
+def _redact_local_string(value: str) -> str:
+    redacted = _redact_url_like_string(value)
+    return _LOCAL_PATH_PATTERN.sub(_PATH_REDACTED, redacted)

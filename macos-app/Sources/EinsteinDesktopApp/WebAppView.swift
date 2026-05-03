@@ -150,7 +150,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             return
         }
 
-        logger.info("Loading bundled web app from \(htmlURL.path(percentEncoded: false), privacy: .public)")
+        logger.info("Loading bundled web app resource \(resource.name, privacy: .public).\(resource.ext, privacy: .public)")
 
         // New bundle: loadFileURL so relative asset paths (./assets.new/index.css,
         // ./assets.new/instrument-serif-latin-400.woff2, the pdf.js chunk) resolve
@@ -170,7 +170,7 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         // docs/notes/2026-04-21-legacy-https-origin.md for the full history.
         if activeFrontend == .legacy {
             guard let html = try? String(contentsOf: htmlURL, encoding: .utf8) else {
-                logger.error("Failed to read legacy HTML at \(htmlURL.path(percentEncoded: false), privacy: .public)")
+                logger.error("Failed to read legacy HTML resource \(resource.name, privacy: .public).\(resource.ext, privacy: .public)")
                 onLoadPhaseChange(.failed("The legacy frontend resource could not be read."))
                 return
             }
@@ -287,13 +287,9 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             let perfNowMilliseconds = details["perfNowMs"] as? Double
             logInteractiveOnce(route: route, performanceNowMilliseconds: perfNowMilliseconds)
         case "main-script-start", "main-script-rendered":
-            logger.info(
-                "Frontend telemetry \(event, privacy: .public): \(String(describing: details), privacy: .public)"
-            )
+            logger.info("Frontend telemetry \(event, privacy: .public)")
         case "main-script-timeout", "window-error", "unhandled-rejection":
-            logger.error(
-                "Frontend telemetry \(event, privacy: .public): \(String(describing: details), privacy: .public)"
-            )
+            logger.error("Frontend telemetry \(event, privacy: .public)")
         default:
             logger.info("Ignoring telemetry event \(event, privacy: .public)")
         }

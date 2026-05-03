@@ -12,9 +12,10 @@ const bootWindow = window as typeof window & {
 };
 
 bootWindow.__einsteinMainStarted = true;
-bootWindow.nativeTelemetry?.emit("main-script-start", {
-  href: window.location.href
-});
+bootWindow.nativeTelemetry?.emit("main-script-start");
+
+const showDebugBanner =
+  import.meta.env.DEV || import.meta.env.VITE_CARREL_DEBUG_BANNER === "1";
 
 // TEMP DEBUG: surface any uncaught JS error or rejected promise as a
 // fixed red banner pinned to the top of the page. Lets us debug the
@@ -56,9 +57,11 @@ function isBenign(message: string): boolean {
 
 window.addEventListener("error", (event) => {
   if (isBenign(event.message)) return;
-  const stack = (event.error as { stack?: string } | undefined)?.stack ?? "";
-  const detail = `${event.message} @ ${event.filename}:${event.lineno}:${event.colno}\n${stack}`;
-  showGlobalDebugBanner("ERROR", detail);
+  if (showDebugBanner) {
+    const stack = (event.error as { stack?: string } | undefined)?.stack ?? "";
+    const detail = `${event.message} @ ${event.filename}:${event.lineno}:${event.colno}\n${stack}`;
+    showGlobalDebugBanner("ERROR", detail);
+  }
 });
 
 window.addEventListener("unhandledrejection", (event) => {
@@ -66,8 +69,10 @@ window.addEventListener("unhandledrejection", (event) => {
   const message =
     typeof reason === "string" ? reason : reason?.message ?? String(reason);
   if (isBenign(message)) return;
-  const stack = typeof reason === "object" && reason ? reason?.stack ?? "" : "";
-  showGlobalDebugBanner("REJECT", `${message}\n${stack}`);
+  if (showDebugBanner) {
+    const stack = typeof reason === "object" && reason ? reason?.stack ?? "" : "";
+    showGlobalDebugBanner("REJECT", `${message}\n${stack}`);
+  }
 });
 
 const root = document.getElementById("root");
