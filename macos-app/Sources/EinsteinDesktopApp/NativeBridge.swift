@@ -12,6 +12,7 @@ enum NativeBridge {
 
       const callbacks = new Map();
       let nextId = 1;
+      const STORAGE_TIMEOUT_MS = 5000;
 
       const postMessage = (handler, payload) => {
         const bridge = window.webkit?.messageHandlers?.[handler];
@@ -25,6 +26,7 @@ enum NativeBridge {
         const callback = callbacks.get(id);
         if (!callback) return;
         callbacks.delete(id);
+        window.clearTimeout(callback.timeout);
         callback.resolve(payload);
       };
 
@@ -32,34 +34,40 @@ enum NativeBridge {
         const callback = callbacks.get(id);
         if (!callback) return;
         callbacks.delete(id);
+        window.clearTimeout(callback.timeout);
         callback.reject(new Error(error?.message || "Native storage error"));
+      };
+
+      const createStorageRequest = (action, key, value) => {
+        return new Promise((resolve, reject) => {
+          const id = nextId++;
+          const timeout = window.setTimeout(() => {
+            const callback = callbacks.get(id);
+            if (!callback) return;
+            callbacks.delete(id);
+            callback.reject(new Error("Native storage request timed out"));
+          }, STORAGE_TIMEOUT_MS);
+          callbacks.set(id, { resolve, reject, timeout });
+          try {
+            const payload = value === undefined
+              ? { id, action, key }
+              : { id, action, key, value };
+            postMessage("nativeStorage", payload);
+          } catch (error) {
+            callbacks.delete(id);
+            window.clearTimeout(timeout);
+            reject(error);
+          }
+        });
       };
 
       if (!window.storage) {
         window.storage = {
           get(key) {
-            return new Promise((resolve, reject) => {
-              const id = nextId++;
-              callbacks.set(id, { resolve, reject });
-              try {
-                postMessage("nativeStorage", { id, action: "get", key });
-              } catch (error) {
-                callbacks.delete(id);
-                reject(error);
-              }
-            });
+            return createStorageRequest("get", key);
           },
           set(key, value) {
-            return new Promise((resolve, reject) => {
-              const id = nextId++;
-              callbacks.set(id, { resolve, reject });
-              try {
-                postMessage("nativeStorage", { id, action: "set", key, value });
-              } catch (error) {
-                callbacks.delete(id);
-                reject(error);
-              }
-            });
+            return createStorageRequest("set", key, value);
           }
         };
       }
