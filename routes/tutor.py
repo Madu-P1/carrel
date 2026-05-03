@@ -1,7 +1,6 @@
-import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 
 import db
 from api_models import (
@@ -18,11 +17,11 @@ from api_models import (
 from ai.providers import get_default_provider
 from services import adaptive_tutor as adaptive_tutor_service
 from services import dialogue as dialogue_service
-from services import mastery_engine
 from services import provenance_service
 from services import tutor as tutor_service
 from services.app_state import fetch_recent_events, fetch_workspace_state, log_study_event
 from services.notes import expand as notes_expand_service
+from services.notes.mastery import maybe_update_note_mastery
 
 
 router = APIRouter()
@@ -95,18 +94,14 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
         mastery_state = None
         concept_id = payload.concept_id or note.get("concept_id")
         if concept_id:
-            content_words = len(re.findall(r"[A-Za-z0-9]+", payload.content or ""))
-            evidence_count = len(payload.evidence_reference_ids or [])
-            if content_words >= 8:
-                mastery_state = mastery_engine.update_mastery_state(
-                    conn,
-                    concept_id,
-                    goal_id=payload.goal_id,
-                    session_id=payload.session_id,
-                    classification="shallow_but_correct",
-                    learner_confidence=min(95, max(45, content_words + evidence_count * 8)),
-                    evidence_quality=0.85 if evidence_count else 0.58,
-                )
+            mastery_state = maybe_update_note_mastery(
+                conn,
+                concept_id=concept_id,
+                content=payload.content,
+                evidence_reference_ids=payload.evidence_reference_ids,
+                goal_id=payload.goal_id,
+                session_id=payload.session_id,
+            )
         log_study_event(
             conn,
             "note_saved",
@@ -177,5 +172,5 @@ def dialogue_message(payload: DialogueMessageRequest) -> Dict[str, object]:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def register_tutor_routes(app) -> None:
+def register_tutor_routes(app: FastAPI) -> None:
     app.include_router(router)
