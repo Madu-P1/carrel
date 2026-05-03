@@ -20,6 +20,7 @@ import main  # noqa: E402
 from app_runtime import resolve_runtime_paths  # noqa: E402
 from routes.workspace import health  # noqa: E402
 from services import artifact_studio  # noqa: E402
+from services.local_api_security import HEADER_NAME, get_local_api_token  # noqa: E402
 
 MetricDirection = Literal["lower", "higher"]
 
@@ -135,6 +136,7 @@ def run_phase0_benchmark(output_path: Path | None = None) -> Path:
                     start = time.perf_counter()
                     response = client.post(
                         "/api/documents/upload",
+                        headers={HEADER_NAME: get_local_api_token()},
                         data={"subject_name": "Benchmark"},
                         files={"file": ("phase0-benchmark.txt", handle, "text/plain")},
                     )
