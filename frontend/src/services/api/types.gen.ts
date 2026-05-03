@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/local-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Local Token */
+        get: operations["local_token_api_local_token_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspace": {
         parameters: {
             query?: never;
@@ -1592,13 +1609,15 @@ export interface components {
             /**
              * Origin
              * @default manual
+             * @enum {string}
              */
-            origin: string;
+            origin: "highlight" | "ai_answer_citation" | "manual" | "imported";
             /**
              * Promotion State
              * @default weak
+             * @enum {string}
              */
-            promotion_state: string;
+            promotion_state: "weak" | "saved" | "carded" | "mastered" | "archived";
             /** Chunk Id */
             chunk_id?: string | null;
             /** Page Num */
@@ -1634,8 +1653,11 @@ export interface components {
         };
         /** AnchorTransitionRequest */
         AnchorTransitionRequest: {
-            /** Promotion State */
-            promotion_state: string;
+            /**
+             * Promotion State
+             * @enum {string}
+             */
+            promotion_state: "weak" | "saved" | "carded" | "mastered" | "archived";
             /** Srs Card Id */
             srs_card_id?: string | null;
         };
@@ -1687,8 +1709,12 @@ export interface components {
             all_day: boolean;
             /** Location */
             location?: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @default confirmed
+             * @enum {string}
+             */
+            status: "confirmed" | "cancelled" | "tentative";
         };
         /**
          * CalendarFeedCreateRequest
@@ -1708,9 +1734,8 @@ export interface components {
         };
         /**
          * CalendarFeedCreatedResponse
-         * @description Initial POST response — echoes raw URL once for verification.
-         *
-         *     Subsequent GETs return the masked form via CalendarFeedRow.
+         * @description Initial POST response. raw_url_echo is retained for compatibility
+         *     but carries the masked display URL, never the secret raw feed URL.
          */
         CalendarFeedCreatedResponse: {
             feed: components["schemas"]["CalendarFeedRow"];
@@ -1738,7 +1763,10 @@ export interface components {
             last_synced_at?: string | null;
             /** Last Successful Sync At */
             last_successful_sync_at?: string | null;
-            /** Consecutive Failures */
+            /**
+             * Consecutive Failures
+             * @default 0
+             */
             consecutive_failures: number;
             /** Last Error */
             last_error?: string | null;
@@ -1933,11 +1961,8 @@ export interface components {
             source_hash?: string | null;
             /** Parser Status */
             parser_status?: string | null;
-            /**
-             * Parser Diagnostics
-             * @default {}
-             */
-            parser_diagnostics: {
+            /** Parser Diagnostics */
+            parser_diagnostics?: {
                 [key: string]: unknown;
             };
             /** Confidence */
@@ -2029,8 +2054,9 @@ export interface components {
             /**
              * Location Kind
              * @default page
+             * @enum {string}
              */
-            location_kind: string;
+            location_kind: "page" | "chunk" | "bbox" | "text_offset";
             /** Bbox */
             bbox?: number[] | null;
             /** Text Offset Start */
@@ -2167,7 +2193,7 @@ export interface components {
              */
             count: number;
             /** Difficulty */
-            difficulty?: string | null;
+            difficulty?: ("easy" | "medium" | "hard") | null;
         };
         /** ReviewEventRequestV2 */
         ReviewEventRequestV2: {
@@ -2192,8 +2218,11 @@ export interface components {
         ReviewRequest: {
             /** Card Id */
             card_id: string;
-            /** Rating */
-            rating: string;
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "again" | "hard" | "good" | "easy";
         };
         /** SessionStartRequest */
         SessionStartRequest: {
@@ -2297,18 +2326,27 @@ export interface components {
         StudySuggestionRow: {
             /** Id */
             id: string;
-            /** Kind */
-            kind: string;
-            /** Status */
-            status: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "study_block" | "review_block" | "catchup";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "dismissed" | "expired";
             /** Start At */
             start_at: string;
             /** End At */
             end_at: string;
             /** Due At */
             due_at?: string | null;
-            /** Reason Code */
-            reason_code: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "free_block_overdue_srs" | "deadline_imminent" | "low_recent_review" | "gap_between_classes";
             /** Reason Text */
             reason_text: string;
             /** Score */
@@ -2459,8 +2497,9 @@ export interface components {
             /**
              * Response Mode
              * @default standard
+             * @enum {string}
              */
-            response_mode: string;
+            response_mode: "standard" | "concise" | "exam" | "socratic" | "easier" | "deeper";
         };
         /** TutorQueryResponse */
         TutorQueryResponse: {
@@ -2640,6 +2679,28 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    local_token_api_local_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
                     };
                 };
             };

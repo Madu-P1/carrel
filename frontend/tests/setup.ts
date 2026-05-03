@@ -105,6 +105,7 @@ if (!Element.prototype.animate) {
 }
 
 beforeEach(() => {
+  (window as Window & { __CARREL_LOCAL_API_TOKEN?: string }).__CARREL_LOCAL_API_TOKEN = "test-local-token";
   document.documentElement.className = "";
   delete document.body.dataset.appBooted;
   window.localStorage.setItem("carrel.first-run-tour.completed", "1");

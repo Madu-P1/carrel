@@ -13,7 +13,8 @@ class FileTypeDetector:
         suffix = path.suffix.lower()
         mime_type = detect_mime(path, suffix)
         try:
-            header = path.read_bytes()[:16]
+            with path.open("rb") as handle:
+                header = handle.read(16)
         except Exception:
             header = b""
 

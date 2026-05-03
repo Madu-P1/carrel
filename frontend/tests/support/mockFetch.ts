@@ -64,6 +64,9 @@ function installDefaultHandlers() {
         paths: { base_dir: "/tmp/carrel", db_path: "/tmp/carrel/test.db" }
       });
     }
+    if (url.pathname === "/api/local-token" && method === "GET") {
+      return jsonResponse({ token: "test-local-token" });
+    }
     if (url.pathname === "/api/usage-events" && method === "POST") {
       return jsonResponse({
         id: 1,

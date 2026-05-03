@@ -2,14 +2,19 @@ from contextlib import asynccontextmanager
 import logging
 import sqlite3
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import db as db_module
 from app_logging import configure_backend_logging, get_logger, log_event
 from app_runtime import resolve_runtime_paths
 from routes import register_routes
+from services.local_api_security import (
+    has_valid_local_api_token,
+    is_mutating_api_request,
+)
 
 
 RUNTIME_PATHS = resolve_runtime_paths()
@@ -130,6 +135,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+
+@app.middleware("http")
+async def require_local_api_token(request: Request, call_next):
+    if is_mutating_api_request(request) and not has_valid_local_api_token(request):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": {
+                    "code": "missing_or_invalid_local_api_token",
+                    "message": "Mutating local API requests require a valid Carrel token.",
+                }
+            },
+        )
+    return await call_next(request)
 
 
 register_routes(app)

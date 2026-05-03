@@ -171,11 +171,23 @@ export function usePlan() {
       // collapses smoothly, then write through. The 5-second-undo
       // toast is mounted by the component; restore() reverses if the
       // user clicks Undo.
+      let previousSuggestions: PlanSuggestion[] = [];
       setState((prev) => ({
         ...prev,
-        suggestions: prev.suggestions.filter((s) => s.id !== id),
+        suggestions: (() => {
+          previousSuggestions = prev.suggestions;
+          return prev.suggestions.filter((s) => s.id !== id);
+        })(),
       }));
-      await planApi.dismiss(id);
+      try {
+        await planApi.dismiss(id);
+      } catch (caught) {
+        setState((prev) => ({
+          ...prev,
+          suggestions: previousSuggestions,
+        }));
+        throw caught;
+      }
     },
     []
   );

@@ -14,6 +14,7 @@ from routes.studio import studio_generate, studio_get_artifact
 from services import documents as document_service
 from services.graph import fetch_graph
 from services.ingestion import ingest_document_record
+from services.local_api_security import HEADER_NAME, get_local_api_token
 from services.study import fetch_due_cards
 
 
@@ -360,7 +361,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
             )
             conn.commit()
 
-        client = TestClient(main.app)
+        client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
         response = client.get("/api/documents/detail-doc")
         self.assertEqual(200, response.status_code, response.text)
@@ -383,7 +384,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
             "General",
         )
 
-        client = TestClient(main.app)
+        client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
         response = client.put(
             f"/api/documents/{doc_id}/subject",
             json={"subject_name": "Eval Biology"},
@@ -429,7 +430,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
             )
             conn.commit()
 
-        client = TestClient(main.app)
+        client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
         ok_response = client.get("/api/documents/pdf-doc/file")
         self.assertEqual(200, ok_response.status_code, ok_response.text)
@@ -508,7 +509,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
             "Biology",
         )
 
-        client = TestClient(main.app)
+        client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
         response = client.post(
             "/api/flashcards/draft",
             json={

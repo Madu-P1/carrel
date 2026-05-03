@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 import main
 from api_models import SessionStartRequest
 from routes.workspace import create_session as create_session_route
+from services.local_api_security import HEADER_NAME, get_local_api_token
 
 
 class DashboardSessionTests(unittest.TestCase):
@@ -42,7 +43,7 @@ class DashboardSessionTests(unittest.TestCase):
         main.DB_PATH = main.DATA_DIR / "test.db"
         main.SCHEMA_PATH = self.original_schema_path
         main.initialize_database()
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
     def tearDown(self) -> None:
         main.BASE_DIR = self.original_base_dir

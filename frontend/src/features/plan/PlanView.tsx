@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 
-import { Stack, Text, toast } from "@/design-system";
+import { Stack, Text, showToast, toast } from "@/design-system";
 import { browserTimeZone } from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
@@ -37,9 +37,7 @@ export function PlanView() {
     syncFeed,
     acceptSuggestion,
     dismissSuggestion,
-    // restoreSuggestion is wired in the hook + backend; the UI hook for
-    // it is the toast-action-button which the Toast primitive doesn't
-    // expose yet. Reach for it when that lands.
+    restoreSuggestion,
   } = usePlan();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -79,12 +77,24 @@ export function PlanView() {
   };
 
   const handleDismissSuggestion = async (id: string) => {
-    await dismissSuggestion(id);
-    // Toast primitive doesn't accept action buttons today; the undo
-    // affordance is wired through /api/plan/suggestions/{id}/restore
-    // and ready for a follow-up that adds an action prop to Toast.
-    // Until then: a clean info confirmation.
-    toast.info("Suggestion dismissed");
+    try {
+      await dismissSuggestion(id);
+      showToast({
+        title: "Suggestion dismissed",
+        kind: "info",
+        durationMs: 5000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            void restoreSuggestion(id)
+              .then(() => toast.success("Suggestion restored"))
+              .catch((caught) => toast.error("Could not restore", (caught as Error).message));
+          },
+        },
+      });
+    } catch (caught) {
+      toast.error("Could not dismiss", (caught as Error).message);
+    }
   };
 
   const handleAcceptSuggestion = async (id: string) => {

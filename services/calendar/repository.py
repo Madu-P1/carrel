@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, List, Optional
 
+from services.calendar.secrets import CalendarSecretStore, default_secret_store
+from services.calendar.validators import mask_url
+
 
 # ---------------------------------------------------------------------
 # Domain dataclasses
@@ -29,6 +32,7 @@ class FeedRow:
     user_id: str
     label: str
     url: str
+    keychain_ref: Optional[str]
     color: Optional[str]
     is_enabled: bool
     etag: Optional[str]
@@ -123,18 +127,21 @@ def insert_feed(
     url: str,
     color: Optional[str],
     user_id: str = DEFAULT_USER,
+    secret_store: CalendarSecretStore | None = None,
 ) -> FeedRow:
     """Create a new feed row. Raises sqlite3.IntegrityError on duplicate URL."""
     feed_id = _new_id()
     now = _now_iso()
+    store = secret_store or default_secret_store()
+    keychain_ref = store.store_url(feed_id, url)
     conn.execute(
         """
         INSERT INTO calendar_feeds (
-            id, user_id, label, url, url_hash, color,
+            id, user_id, label, url, url_hash, color, keychain_ref,
             is_enabled, consecutive_failures, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
         """,
-        (feed_id, user_id, label, url, url_hash(url), color, now, now),
+        (feed_id, user_id, label, mask_url(url), url_hash(url), color, keychain_ref, now, now),
     )
     conn.commit()
     return _feed_from_row(
@@ -147,6 +154,7 @@ def insert_feed(
 def list_feeds(
     conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER
 ) -> List[FeedRow]:
+    migrate_plaintext_feed_urls(conn)
     rows = conn.execute(
         """
         SELECT * FROM calendar_feeds
@@ -159,6 +167,7 @@ def list_feeds(
 
 
 def get_feed(conn: sqlite3.Connection, feed_id: str) -> Optional[FeedRow]:
+    migrate_plaintext_feed_urls(conn)
     row = conn.execute(
         "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
     ).fetchone()
@@ -177,6 +186,7 @@ def list_stale_feeds(
       - app startup tick (kick off async refresh of any stale feed)
       - GET /api/plan SWR path (only mark stale feeds for background sync)
     """
+    migrate_plaintext_feed_urls(conn)
     cutoff = (
         datetime.now(timezone.utc).timestamp() - threshold_minutes * 60
     )
@@ -246,8 +256,13 @@ def update_feed_after_sync(
 
 def delete_feed(conn: sqlite3.Connection, feed_id: str) -> bool:
     """Delete a feed and (via FK cascade) its events + sync_runs."""
+    row = conn.execute(
+        "SELECT keychain_ref FROM calendar_feeds WHERE id = ?", (feed_id,)
+    ).fetchone()
     cur = conn.execute("DELETE FROM calendar_feeds WHERE id = ?", (feed_id,))
     conn.commit()
+    if row and row["keychain_ref"]:
+        default_secret_store().delete_url(row["keychain_ref"])
     return cur.rowcount > 0
 
 
@@ -263,11 +278,13 @@ def update_feed_label(
 
 
 def _feed_from_row(row) -> FeedRow:
+    columns = set(row.keys())
     return FeedRow(
         id=row["id"],
         user_id=row["user_id"],
         label=row["label"],
         url=row["url"],
+        keychain_ref=row["keychain_ref"] if "keychain_ref" in columns else None,
         color=row["color"],
         is_enabled=bool(row["is_enabled"]),
         etag=row["etag"],
@@ -277,6 +294,50 @@ def _feed_from_row(row) -> FeedRow:
         consecutive_failures=row["consecutive_failures"],
         last_error=row["last_error"],
     )
+
+
+def resolve_feed_url(feed: FeedRow, secret_store: CalendarSecretStore | None = None) -> Optional[str]:
+    if feed.keychain_ref:
+        return (secret_store or default_secret_store()).get_url(feed.keychain_ref)
+    return feed.url if feed.url.startswith(("http://", "https://")) else None
+
+
+def migrate_plaintext_feed_urls(
+    conn: sqlite3.Connection,
+    *,
+    secret_store: CalendarSecretStore | None = None,
+) -> int:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()
+    }
+    if "keychain_ref" not in columns:
+        return 0
+
+    rows = conn.execute(
+        """
+        SELECT id, url, keychain_ref FROM calendar_feeds
+        WHERE (keychain_ref IS NULL OR keychain_ref = '')
+          AND (url LIKE 'http://%' OR url LIKE 'https://%')
+        """
+    ).fetchall()
+    store = secret_store or default_secret_store()
+    migrated = 0
+    for row in rows:
+        raw_url = row["url"]
+        reference = store.store_url(row["id"], raw_url)
+        conn.execute(
+            """
+            UPDATE calendar_feeds
+            SET url = ?, keychain_ref = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (mask_url(raw_url), reference, _now_iso(), row["id"]),
+        )
+        migrated += 1
+    if migrated:
+        conn.commit()
+    return migrated
 
 
 # ---------------------------------------------------------------------

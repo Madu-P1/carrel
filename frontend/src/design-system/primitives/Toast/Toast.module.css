@@ -20,7 +20,7 @@
   position: relative;
   overflow: hidden;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: start;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -118,6 +118,34 @@
   font: var(--text-caption);
   color: var(--color-text-secondary);
   word-break: break-word;
+}
+
+.action {
+  position: relative;
+  z-index: 1;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-2);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.action:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-hover));
+}
+
+.action:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .dismiss {

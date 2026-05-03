@@ -71,6 +71,22 @@ test("Clicking the dismiss button removes the toast", () => {
   expect(screen.queryByText("Bye")).toBeNull();
 });
 
+test("Clicking a toast action runs the callback and dismisses the toast", () => {
+  const onClick = vi.fn();
+  render(<ToastHost />);
+  act(() => {
+    showToast({
+      title: "Suggestion dismissed",
+      action: { label: "Undo", onClick },
+      durationMs: 0,
+    });
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /Undo/i }));
+  expect(onClick).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText("Suggestion dismissed")).toBeNull();
+});
+
 test("Multiple toasts stack in insertion order", () => {
   render(<ToastHost />);
   act(() => {

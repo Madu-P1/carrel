@@ -4,9 +4,9 @@ import { api } from "@/services/api/client";
  * Calendar feed endpoints.
  *
  * The `url` field on responses is ALWAYS the masked form
- * (`https://host/***`). The raw URL only appears once on the
- * createFeed response's `raw_url_echo` so the user can copy/verify
- * what they pasted; subsequent listFeeds calls return the masked form.
+ * (`https://host/***`). The createFeed response keeps `raw_url_echo`
+ * for compatibility, but it is also masked; raw feed URLs stay in the
+ * local secret store only.
  */
 
 export interface CalendarFeed {

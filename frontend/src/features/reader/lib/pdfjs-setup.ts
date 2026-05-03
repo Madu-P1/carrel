@@ -1,5 +1,3 @@
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
 declare global {
   interface Window {
     /** Set by `frontend/scripts/build-macos.mjs` before the inlined entry JS.
@@ -15,7 +13,7 @@ type PdfJsModule = typeof import("pdfjs-dist");
 
 let pdfJsPromise: Promise<PdfJsModule> | null = null;
 
-function resolvePdfWorkerUrl(): string {
+async function resolvePdfWorkerUrl(): Promise<string> {
   if (window.__carrelPdfWorkerUrl) {
     return window.__carrelPdfWorkerUrl;
   }
@@ -24,13 +22,14 @@ function resolvePdfWorkerUrl(): string {
     return new URL("pdf.worker.min.mjs", window.__carrelAssetBase).href;
   }
 
-  return workerUrl;
+  const workerModule = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+  return workerModule.default;
 }
 
 export async function loadPdfJs(): Promise<PdfJsModule> {
   if (!pdfJsPromise) {
-    pdfJsPromise = import("pdfjs-dist").then((module) => {
-      module.GlobalWorkerOptions.workerSrc = resolvePdfWorkerUrl();
+    pdfJsPromise = Promise.all([import("pdfjs-dist"), resolvePdfWorkerUrl()]).then(([module, workerUrl]) => {
+      module.GlobalWorkerOptions.workerSrc = workerUrl;
       return module;
     });
   }

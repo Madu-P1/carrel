@@ -62,6 +62,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 edge_columns = {
                     row["name"] for row in conn.execute("PRAGMA table_info(concept_edges)").fetchall()
                 }
+                calendar_feed_columns = {
+                    row["name"] for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()
+                }
                 tables = {
                     row["name"]
                     for row in conn.execute(
@@ -95,6 +98,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (9, "0009_calendar_and_planning.sql"),
                 (10, "0010_jobs_onboarding.sql"),
                 (11, "0011_usage_events.sql"),
+                (12, "0012_calendar_feed_secret_refs.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -105,6 +109,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertIn("mastery_states", tables)
         self.assertIn("chunks_fts", tables)
         self.assertIn("usage_events", tables)
+        self.assertIn("keychain_ref", calendar_feed_columns)
         self.assertTrue({"chunks_ai", "chunks_ad", "chunks_au"} <= triggers)
         if db.sqlite_vec_runtime_supported():
             self.assertIn("chunks_vec", tables)
@@ -119,10 +124,11 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
 
-        # +4 for 0008_anchors, 0009_calendar_and_planning,
-        # 0010_jobs_onboarding, and 0011_usage_events, which
+        # +5 for 0008_anchors, 0009_calendar_and_planning,
+        # 0010_jobs_onboarding, 0011_usage_events, and
+        # 0012_calendar_feed_secret_refs, which
         # always apply (no runtime gate like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 4
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 5
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -155,6 +161,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0009_calendar_and_planning.sql",
                 "0010_jobs_onboarding.sql",
                 "0011_usage_events.sql",
+                "0012_calendar_feed_secret_refs.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

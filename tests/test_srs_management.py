@@ -18,6 +18,7 @@ import main
 from routes.study import bulk_delete_cards, delete_card, list_cards, list_subjects
 from services import study as study_service
 from services.ingestion import ingest_document_record
+from services.local_api_security import HEADER_NAME, get_local_api_token
 
 _SAMPLE_FINANCE = (
     "Capital markets are venues where buyers and sellers trade financial "
@@ -204,7 +205,7 @@ class ManageCardsRouteTests(unittest.TestCase):
                 page_count=None,
                 subject_name="Finance",
             )
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
     def tearDown(self) -> None:
         main.BASE_DIR = self.original_base_dir

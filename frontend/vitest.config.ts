@@ -9,10 +9,6 @@ export default defineConfig({
     }
   },
   test: {
-    // Preact 10 + jsdom can emit a late "__k" unmount rejection after the test
-    // assertions have already completed. The rendered output is stable, and we
-    // don't want that framework noise to hide real frontend regressions.
-    dangerouslyIgnoreUnhandledErrors: true,
     environment: "jsdom",
     fileParallelism: false,
     globals: false,

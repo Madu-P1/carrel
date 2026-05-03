@@ -8,8 +8,8 @@ Three endpoints:
   POST   /api/calendar/feeds/{id}/sync   manual "Sync now"
 
 URL redaction discipline: the GET responses ALWAYS contain the masked
-URL form. The raw URL is echoed back ONCE on the initial POST so the
-user can copy/verify it; never thereafter.
+URL form. Raw feed URLs are stored only in the local secret store and are
+never returned by GET responses.
 """
 
 from __future__ import annotations
@@ -131,10 +131,7 @@ def create_feed(payload: CalendarFeedCreateRequest) -> CalendarFeedCreatedRespon
 
     return CalendarFeedCreatedResponse(
         feed=_row_to_response(feed),
-        # The ONE legitimate raw-URL emission. Frontend can use this to
-        # let the user copy-verify what they pasted; no GET response
-        # ever leaks it.
-        raw_url_echo=url,
+        raw_url_echo=mask_url(url),
     )
 
 

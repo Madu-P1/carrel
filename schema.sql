@@ -126,19 +126,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
 --
 -- URL storage threat model: calendar feed URLs ARE secrets (a leaked
 -- Google Calendar "secret address" is read access to the calendar) but
--- are revocable from the source UI in one click. v1 stores plaintext
--- with a discipline that they NEVER leak into logs, error responses,
--- or exports — see services/calendar/validators.py::mask_url. Storing
--- with macOS Keychain is v2 work, planned alongside Gmail OAuth tokens
--- which are NOT trivially revocable.
+-- are revocable from the source UI in one click. SQLite stores only the
+-- masked display URL, url_hash duplicate key, and keychain_ref. Raw URLs
+-- live in the local secret store; see services/calendar/secrets.py.
 -- ----------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS calendar_feeds (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL DEFAULT 'local',
     label TEXT NOT NULL,
-    url TEXT NOT NULL,                                -- plaintext; NEVER log this
+    url TEXT NOT NULL,                                -- masked display URL only
     url_hash TEXT NOT NULL,                           -- sha256(url) for dedup
+    keychain_ref TEXT,                                -- secret-store reference
     color TEXT,                                       -- hex, set on add (not from CATEGORIES v1)
     is_enabled INTEGER NOT NULL DEFAULT 1,
     etag TEXT,                                        -- HTTP cache: If-None-Match

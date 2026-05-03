@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { expect, test } from "vitest";
 
+import { ToastHost } from "../../src/design-system";
 import { PlanView } from "../../src/features/plan/PlanView";
 import { jsonResponse, registerFetchHandler } from "../support/mockFetch";
 
@@ -89,6 +90,72 @@ test("Coach suggestion renders inline with its reason text", async () => {
   // Schedule + Dismiss buttons rendered.
   expect(screen.getByRole("button", { name: /Schedule it/i })).toBeDefined();
   expect(screen.getByRole("button", { name: /^Dismiss$/i })).toBeDefined();
+});
+
+test("Dismissing a coach suggestion offers Undo and restores it", async () => {
+  let dismissed = false;
+  let restoreCalls = 0;
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/plan" && init.method === "GET") {
+      return jsonResponse({
+        events: [],
+        suggestions: dismissed
+          ? []
+          : [
+              {
+                id: "sugg-1",
+                kind: "review_block",
+                status: "pending",
+                start_at: NOON_TODAY,
+                end_at: ONE_PM_TODAY,
+                due_at: null,
+                reason_code: "free_block_overdue_srs",
+                reason_text: "60-min gap and 4 cards overdue.",
+                score: 1.0,
+              },
+            ],
+        feeds: [
+          {
+            id: "feed-1",
+            label: "Personal",
+            url: "https://example.com/***",
+            color: null,
+            is_enabled: true,
+            last_synced_at: new Date().toISOString(),
+            last_successful_sync_at: new Date().toISOString(),
+            consecutive_failures: 0,
+            last_error: null,
+          },
+        ],
+        is_freshening: false,
+      });
+    }
+    if (url.pathname === "/api/plan/suggestions/sugg-1/dismiss" && init.method === "POST") {
+      dismissed = true;
+      return jsonResponse({ status: "dismissed" });
+    }
+    if (url.pathname === "/api/plan/suggestions/sugg-1/restore" && init.method === "POST") {
+      dismissed = false;
+      restoreCalls += 1;
+      return jsonResponse({ status: "pending" });
+    }
+    return undefined;
+  });
+
+  render(
+    <>
+      <PlanView />
+      <ToastHost />
+    </>
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: /^Dismiss$/i }));
+  expect(await screen.findByRole("button", { name: /Undo/i })).toBeDefined();
+  await waitFor(() => expect(screen.queryByText(/60-min gap and 4 cards overdue/i)).toBeNull());
+
+  fireEvent.click(screen.getByRole("button", { name: /Undo/i }));
+  await waitFor(() => expect(restoreCalls).toBe(1));
+  expect(await screen.findByText(/60-min gap and 4 cards overdue/i)).toBeDefined();
 });
 
 test("is_freshening surfaces the background-refresh hint", async () => {

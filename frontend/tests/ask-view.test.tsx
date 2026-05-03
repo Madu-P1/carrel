@@ -49,9 +49,8 @@ test("useAskTutor toggles pending and stores the tutor answer", async () => {
     expect(screen.getByTestId("hook-pending").textContent).toBe("true");
   });
 
-  if (requestState.resolve) {
-    requestState.resolve();
-  }
+  await waitFor(() => expect(requestState.resolve).not.toBeNull());
+  requestState.resolve?.();
 
   await waitFor(() => {
     expect(screen.getByTestId("hook-pending").textContent).toBe("false");
@@ -82,9 +81,8 @@ test("AskView renders the loading skeleton and grounded answer after submit", as
 
   expect(screen.getByTestId("ask-answer-skeleton")).toBeDefined();
 
-  if (requestState.resolve) {
-    requestState.resolve();
-  }
+  await waitFor(() => expect(requestState.resolve).not.toBeNull());
+  requestState.resolve?.();
 
   expect(await screen.findByText(/Mitosis produces two genetically identical daughter cells/i)).toBeDefined();
   expect(screen.getByText(/Mitosis creates two genetically identical daughter cells\./i)).toBeDefined();

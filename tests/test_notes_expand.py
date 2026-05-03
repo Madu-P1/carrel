@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 import main
 from ai.router import ClaudeCallResult
+from services.local_api_security import HEADER_NAME, get_local_api_token
 
 
 def _ok_tool_result(payload: dict) -> ClaudeCallResult:
@@ -111,7 +112,7 @@ class FakeProvider:
 
 class NotesExpandTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
     def test_empty_content_rejected(self) -> None:
         response = self.client.post("/api/notes/expand", json={"content": "   "})

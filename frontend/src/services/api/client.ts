@@ -68,11 +68,16 @@ export type RequestInitEx = Omit<RequestInit, "body"> & {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+let cachedLocalApiToken: string | null = null;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
   const { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const isObjectBody =
     body !== undefined && body !== null && !(body instanceof FormData) && typeof body === "object";
+  const method = (rest.method ?? "GET").toUpperCase();
+  const token = SAFE_METHODS.has(method) ? null : await resolveLocalApiToken();
   const timeout = createTimeoutSignal(timeoutMs);
   const requestSignal = mergeSignals(signal, timeout.signal);
 
@@ -82,6 +87,7 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
       ...rest,
       headers: {
         ...(isObjectBody ? { "content-type": "application/json" } : {}),
+        ...(token ? { [LOCAL_TOKEN_HEADER]: token } : {}),
         ...headers
       },
       body: isObjectBody ? JSON.stringify(body) : (body as BodyInit | null | undefined),
@@ -117,6 +123,45 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
   }
 
   return response.json() as Promise<T>;
+}
+
+async function resolveLocalApiToken(): Promise<string | null> {
+  if (cachedLocalApiToken) return cachedLocalApiToken;
+
+  const envToken = import.meta.env.VITE_CARREL_LOCAL_API_TOKEN;
+  if (typeof envToken === "string" && envToken.length > 0) {
+    cachedLocalApiToken = envToken;
+    return cachedLocalApiToken;
+  }
+
+  const windowToken = readWindowLocalApiToken();
+  if (windowToken) {
+    cachedLocalApiToken = windowToken;
+    return cachedLocalApiToken;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/local-token`, {
+      method: "GET",
+      cache: "no-store"
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { token?: unknown };
+    if (typeof payload.token === "string" && payload.token.length > 0) {
+      cachedLocalApiToken = payload.token;
+      return cachedLocalApiToken;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function readWindowLocalApiToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const token = (window as Window & { __CARREL_LOCAL_API_TOKEN?: unknown }).__CARREL_LOCAL_API_TOKEN;
+  return typeof token === "string" && token.length > 0 ? token : null;
 }
 
 interface TimeoutHandle {

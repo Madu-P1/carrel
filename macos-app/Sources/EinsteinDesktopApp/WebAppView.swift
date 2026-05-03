@@ -58,9 +58,11 @@ struct WebAppView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
 
+        #if DEBUG
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
+        #endif
 
         context.coordinator.attach(to: webView)
         context.coordinator.loadBundledApp(into: webView)
@@ -378,7 +380,9 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     }
 
     private func openExternal(_ url: URL) {
-        logger.info("Opening external URL \(url.absoluteString, privacy: .public)")
+        let scheme = url.scheme ?? "unknown"
+        let host = url.host ?? "unknown"
+        logger.info("Opening external URL scheme=\(scheme, privacy: .public) host=\(host, privacy: .public)")
         NSWorkspace.shared.open(url)
     }
 

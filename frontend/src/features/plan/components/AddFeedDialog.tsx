@@ -21,9 +21,8 @@ interface AddFeedDialogProps {
  *        - On parse / fetch error: surface the masked error so the
  *          user can fix the URL or try a different export format.
  *
- * The submit response includes raw_url_echo (the only legitimate raw
- * URL emission). We re-display it as a confirmation line so the user
- * can spot a typo before closing the dialog.
+ * The submit response includes a masked URL echo. The raw feed URL
+ * stays in the local secret store and is never displayed after submit.
  */
 export function AddFeedDialog({ open, onClose, onSubmit }: AddFeedDialogProps) {
   const [label, setLabel] = useState("");
@@ -124,7 +123,7 @@ export function AddFeedDialog({ open, onClose, onSubmit }: AddFeedDialogProps) {
                 : "with errors — see below."}
             </Text>
             <Text tone="tertiary" variant="caption">
-              Verified URL: {result.response.raw_url_echo}
+              Stored as: {result.response.raw_url_echo}
             </Text>
             {result.response.feed.last_error ? (
               <Text tone="danger">{result.response.feed.last_error}</Text>

@@ -32,14 +32,19 @@ export interface ToastInput {
   title: string;
   description?: string;
   kind?: ToastKind;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
   /** How long before auto-dismiss. Pass 0 to disable (caller dismisses
    *  explicitly via `dismissToast(id)`). */
   durationMs?: number;
 }
 
-interface Toast extends Required<Omit<ToastInput, "description">> {
+interface Toast extends Required<Omit<ToastInput, "description" | "action">> {
   id: string;
   description?: string;
+  action?: ToastInput["action"];
 }
 
 const toasts = signal<Toast[]>([]);
@@ -52,6 +57,7 @@ export function showToast(input: ToastInput): string {
     title: input.title,
     description: input.description,
     kind: input.kind ?? "info",
+    action: input.action,
     durationMs: input.durationMs ?? 4000,
   };
   toasts.value = [...toasts.value, next];
@@ -110,6 +116,18 @@ function ToastRow({ toast: t }: { toast: Toast }) {
         <span className={styles.title}>{t.title}</span>
         {t.description ? <span className={styles.description}>{t.description}</span> : null}
       </div>
+      {t.action ? (
+        <button
+          className={styles.action}
+          onClick={() => {
+            t.action?.onClick();
+            dismissToast(t.id);
+          }}
+          type="button"
+        >
+          {t.action.label}
+        </button>
+      ) : null}
       <button
         aria-label="Dismiss notification"
         className={styles.dismiss}

@@ -21,6 +21,7 @@ from services.app_state import (
     set_setting,
 )
 from services.documents import fetch_documents, fetch_subject_groups
+from services.local_api_security import get_local_api_token
 from services.provenance_service import fetch_exchange_evidence
 from services.session_engine import list_sessions
 from services.tutor import fetch_notes
@@ -60,6 +61,11 @@ def bootstrap() -> Dict[str, object]:
             "stats": build_stats(conn),
             "workspace": fetch_workspace_state(conn),
         }
+
+
+@router.get("/api/local-token")
+def local_token() -> Dict[str, str]:
+    return {"token": get_local_api_token()}
 
 
 @router.get("/api/workspace")

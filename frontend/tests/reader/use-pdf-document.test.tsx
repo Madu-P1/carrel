@@ -1,8 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/preact";
 import { expect, test, vi } from "vitest";
 
-vi.mock("pdfjs-dist", () => {
-  const GlobalWorkerOptions = { workerSrc: "" };
+vi.mock("../../src/features/reader/lib/pdfjs-setup", () => {
   const pdf = {
     destroy: vi.fn(),
     getDestination: vi.fn(async () => [{ gen: 0, num: 1 }]),
@@ -12,15 +11,17 @@ vi.mock("pdfjs-dist", () => {
   };
 
   return {
-    GlobalWorkerOptions,
-    TextLayer: class {
-      async render() {
-        return undefined;
-      }
-    },
-    getDocument: vi.fn(() => ({
-      destroy: vi.fn(async () => undefined),
-      promise: Promise.resolve(pdf)
+    loadPdfJs: vi.fn(async () => ({
+      GlobalWorkerOptions: { workerSrc: "" },
+      TextLayer: class {
+        async render() {
+          return undefined;
+        }
+      },
+      getDocument: vi.fn(() => ({
+        destroy: vi.fn(async () => undefined),
+        promise: Promise.resolve(pdf)
+      }))
     }))
   };
 });

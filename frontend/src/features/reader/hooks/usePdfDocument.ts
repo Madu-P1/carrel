@@ -32,6 +32,7 @@ export interface PdfState {
 }
 
 type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];
+const EMPTY_READER_CHUNKS: ReaderChunk[] = [];
 
 async function resolveDestinationPage(
   pdf: PDFDocumentProxy,
@@ -92,7 +93,7 @@ function deriveOutlineFromChunks(chunks: ReaderChunk[]): PdfOutlineNode[] {
   return nodes;
 }
 
-export function usePdfDocument(url: string | null, chunks: ReaderChunk[] = []): PdfState {
+export function usePdfDocument(url: string | null, chunks: ReaderChunk[] = EMPTY_READER_CHUNKS): PdfState {
   const stateRef = useRef<PdfState | null>(null);
   if (!stateRef.current) {
     stateRef.current = {

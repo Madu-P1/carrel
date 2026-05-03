@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class ReviewRequest(BaseModel):
-    card_id: str
-    rating: str
+    card_id: str = Field(..., min_length=1, max_length=128)
+    rating: Literal["again", "hard", "good", "easy"]
 
 
 class BulkDeleteCardsRequest(BaseModel):
@@ -54,30 +54,30 @@ class CardAiDraftResponse(BaseModel):
 
 class QuizGenerateRequest(BaseModel):
     concepts: Optional[List[str]] = None
-    count: int = 7
-    difficulty: Optional[str] = None
+    count: int = Field(default=7, ge=1, le=25)
+    difficulty: Optional[Literal["easy", "medium", "hard"]] = None
 
 
 class DialogueStartRequest(BaseModel):
-    concept_id: Optional[str] = None
+    concept_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class DialogueMessageRequest(BaseModel):
-    session_id: Optional[str] = None
-    message: str
-    concept_id: Optional[str] = None
+    session_id: Optional[str] = Field(default=None, max_length=128)
+    message: str = Field(..., min_length=1, max_length=4000)
+    concept_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class GoalRequest(BaseModel):
-    goal: str
+    goal: str = Field(..., min_length=1, max_length=1000)
 
 
 class StudyEventRequest(BaseModel):
-    event_type: str
-    doc_id: Optional[str] = None
-    concept_id: Optional[str] = None
-    confidence: Optional[float] = None
-    duration_seconds: Optional[int] = None
+    event_type: str = Field(..., min_length=1, max_length=80)
+    doc_id: Optional[str] = Field(default=None, max_length=128)
+    concept_id: Optional[str] = Field(default=None, max_length=128)
+    confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    duration_seconds: Optional[int] = Field(default=None, ge=0, le=86_400)
     payload: Optional[Dict[str, Any]] = None
 
 
@@ -96,13 +96,13 @@ class UsageEventResponse(BaseModel):
 
 
 class TutorQueryRequest(BaseModel):
-    question: str
-    doc_id: Optional[str] = None
-    concept_id: Optional[str] = None
-    subject_name: Optional[str] = None
-    selected_text: Optional[str] = None
-    confidence: Optional[float] = None
-    response_mode: str = "standard"
+    question: str = Field(..., min_length=1, max_length=4000)
+    doc_id: Optional[str] = Field(default=None, max_length=128)
+    concept_id: Optional[str] = Field(default=None, max_length=128)
+    subject_name: Optional[str] = Field(default=None, max_length=160)
+    selected_text: Optional[str] = Field(default=None, max_length=8000)
+    confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    response_mode: Literal["standard", "concise", "exam", "socratic", "easier", "deeper"] = "standard"
 
 
 class TutorCitationItem(BaseModel):
@@ -152,27 +152,27 @@ class TutorQueryResponse(BaseModel):
 
 
 class NoteUpsertRequest(BaseModel):
-    note_id: Optional[str] = None
-    doc_id: Optional[str] = None
-    concept_id: Optional[str] = None
-    title: Optional[str] = None
-    content: str
-    source_snippet: Optional[str] = None
-    note_type: str = "saved_insight"
-    goal_id: Optional[str] = None
-    session_id: Optional[str] = None
+    note_id: Optional[str] = Field(default=None, max_length=128)
+    doc_id: Optional[str] = Field(default=None, max_length=128)
+    concept_id: Optional[str] = Field(default=None, max_length=128)
+    title: Optional[str] = Field(default=None, max_length=240)
+    content: str = Field(..., min_length=1, max_length=40_000)
+    source_snippet: Optional[str] = Field(default=None, max_length=8000)
+    note_type: str = Field(default="saved_insight", max_length=64)
+    goal_id: Optional[str] = Field(default=None, max_length=128)
+    session_id: Optional[str] = Field(default=None, max_length=128)
     evidence_reference_ids: Optional[List[str]] = None
 
 
 class NoteTransformRequest(BaseModel):
-    content: str
-    doc_id: Optional[str] = None
-    concept_id: Optional[str] = None
+    content: str = Field(..., min_length=1, max_length=40_000)
+    doc_id: Optional[str] = Field(default=None, max_length=128)
+    concept_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class NoteExpandRequest(BaseModel):
-    content: str
-    title: Optional[str] = None
+    content: str = Field(..., min_length=1, max_length=40_000)
+    title: Optional[str] = Field(default=None, max_length=240)
 
 
 class CompareRequest(BaseModel):
@@ -196,8 +196,8 @@ class DocumentListItem(BaseModel):
     source_kind: Optional[str] = None
     source_hash: Optional[str] = None
     parser_status: Optional[str] = None
-    parser_diagnostics: Dict[str, Any] = {}
-    confidence: Optional[float] = None
+    parser_diagnostics: Dict[str, Any] = Field(default_factory=dict)
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)
     duplicate_of: Optional[str] = None
     updated_at: Optional[str] = None
     extracted_at: Optional[str] = None
@@ -359,9 +359,9 @@ class CalendarFeedCreateRequest(BaseModel):
     by the WeekTimeGrid to color-code events from this feed; if absent,
     the frontend falls back to a deterministic per-feed default.
     """
-    label: str
-    url: str
-    color: Optional[str] = None
+    label: str = Field(..., min_length=1, max_length=120)
+    url: str = Field(..., min_length=1, max_length=4096)
+    color: Optional[str] = Field(default=None, max_length=32)
 
 
 class CalendarFeedRow(BaseModel):
@@ -376,14 +376,13 @@ class CalendarFeedRow(BaseModel):
     is_enabled: bool
     last_synced_at: Optional[str] = None
     last_successful_sync_at: Optional[str] = None
-    consecutive_failures: int
+    consecutive_failures: int = Field(default=0, ge=0)
     last_error: Optional[str] = None
 
 
 class CalendarFeedCreatedResponse(BaseModel):
-    """Initial POST response — echoes raw URL once for verification.
-
-    Subsequent GETs return the masked form via CalendarFeedRow.
+    """Initial POST response. raw_url_echo is retained for compatibility
+    but carries the masked display URL, never the secret raw feed URL.
     """
     feed: CalendarFeedRow
     raw_url_echo: str
@@ -398,19 +397,24 @@ class CalendarEventRow(BaseModel):
     timezone: Optional[str] = None
     all_day: bool
     location: Optional[str] = None
-    status: str
+    status: Literal["confirmed", "cancelled", "tentative"] = "confirmed"
 
 
 class StudySuggestionRow(BaseModel):
     id: str
-    kind: str
-    status: str
+    kind: Literal["study_block", "review_block", "catchup"]
+    status: Literal["pending", "accepted", "dismissed", "expired"]
     start_at: str
     end_at: str
     due_at: Optional[str] = None
-    reason_code: str
+    reason_code: Literal[
+        "free_block_overdue_srs",
+        "deadline_imminent",
+        "low_recent_review",
+        "gap_between_classes",
+    ]
     reason_text: str
-    score: Optional[float] = None
+    score: Optional[float] = Field(default=None, ge=0, le=1)
 
 
 class PlanResponse(BaseModel):
@@ -449,7 +453,7 @@ class IngestionJob(BaseModel):
     subject_name: Optional[str] = None
     document_id: Optional[str] = None
     error: Optional[str] = None
-    progress: float = 0
+    progress: float = Field(default=0, ge=0, le=1)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     started_at: Optional[str] = None
@@ -474,32 +478,32 @@ class EvidenceResolution(BaseModel):
     section: Optional[str] = None
     page_num: Optional[int] = None
     quote_text: str = ""
-    confidence: float = 0.5
-    location_kind: str = "page"
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    location_kind: Literal["page", "chunk", "bbox", "text_offset"] = "page"
     bbox: Optional[List[float]] = None
     text_offset_start: Optional[int] = None
     text_offset_end: Optional[int] = None
 
 
 class AnchorCreateRequest(BaseModel):
-    document_id: str
-    quote_text: str
-    origin: str = "manual"
-    promotion_state: str = "weak"
-    chunk_id: Optional[str] = None
-    page_num: Optional[int] = None
+    document_id: str = Field(..., min_length=1, max_length=128)
+    quote_text: str = Field(..., min_length=1, max_length=8000)
+    origin: Literal["highlight", "ai_answer_citation", "manual", "imported"] = "manual"
+    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"] = "weak"
+    chunk_id: Optional[str] = Field(default=None, max_length=128)
+    page_num: Optional[int] = Field(default=None, ge=1)
     bbox: Optional[List[float]] = None
     text_offset_start: Optional[int] = None
     text_offset_end: Optional[int] = None
     user_question: Optional[str] = None
     claim_text: Optional[str] = None
     thread_id: Optional[str] = None
-    confidence: Optional[float] = None
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)
 
 
 class AnchorTransitionRequest(BaseModel):
-    promotion_state: str
-    srs_card_id: Optional[str] = None
+    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"]
+    srs_card_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class AnchorCardDraftRequest(BaseModel):

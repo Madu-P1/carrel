@@ -76,13 +76,38 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
             final_url="",
         )
 
+    raw_url = repository.resolve_feed_url(feed)
+    masked = feed.url
+    if raw_url is None:
+        run_id = repository.begin_sync_run(conn, feed_id)
+        msg = "missing_secret: calendar feed secret is unavailable"
+        repository.complete_sync_run(conn, run_id, status="error", error=msg)
+        repository.update_feed_after_sync(
+            conn,
+            feed_id,
+            succeeded=False,
+            etag=feed.etag,
+            last_modified=feed.last_modified,
+            error_message=msg,
+        )
+        LOGGER.warning("calendar sync missing secret: %s", masked)
+        return SyncOutcome(
+            feed_id=feed_id,
+            status="error",
+            http_status=None,
+            items_seen=0,
+            items_upserted=0,
+            items_deleted=0,
+            error=msg,
+            final_url=masked,
+        )
+
     run_id = repository.begin_sync_run(conn, feed_id)
-    masked = mask_url(feed.url)
     LOGGER.info("calendar sync start: %s (%s)", masked, feed.label)
 
     try:
         result: FetchResult = fetch_feed(
-            feed.url,
+            raw_url,
             etag=feed.etag,
             last_modified=feed.last_modified,
         )
@@ -141,7 +166,7 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
             items_upserted=0,
             items_deleted=0,
             error=None,
-            final_url=result.final_url,
+            final_url=mask_url(result.final_url),
         )
 
     # Non-2xx (4xx/5xx) — record HTTP status and back off.
@@ -171,7 +196,7 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
             items_upserted=0,
             items_deleted=0,
             error=msg,
-            final_url=result.final_url,
+            final_url=mask_url(result.final_url),
         )
 
     # 2xx with body — parse and upsert
@@ -202,7 +227,7 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
             items_upserted=0,
             items_deleted=0,
             error=f"{exc.reason}: {exc.detail}",
-            final_url=result.final_url,
+            final_url=mask_url(result.final_url),
         )
 
     items_seen = len(parsed)
@@ -243,5 +268,5 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
         items_upserted=items_upserted,
         items_deleted=items_deleted,
         error=None,
-        final_url=result.final_url,
+        final_url=mask_url(result.final_url),
     )

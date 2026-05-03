@@ -22,6 +22,7 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 import main
+from services.local_api_security import HEADER_NAME, get_local_api_token
 
 _TEXT_BYTES = (
     b"Capital markets are venues where buyers and sellers trade financial "
@@ -50,7 +51,7 @@ class UploadDedupeBase(unittest.TestCase):
         main.DB_PATH = main.DATA_DIR / "test.db"
         main.SCHEMA_PATH = self.original_schema_path
         main.initialize_database()
-        self.client = TestClient(main.app)
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
     def tearDown(self) -> None:
         main.BASE_DIR = self.original_base_dir

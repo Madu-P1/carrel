@@ -41,11 +41,18 @@ jobs:
         run: |
           python -m unittest \
             tests.test_ai_router \
+            tests.test_calendar_secrets \
             tests.test_einstein_tutor \
             tests.test_evals_runner \
+            tests.test_local_api_token \
+            tests.test_logging_redaction \
             tests.test_phase0_foundation \
             tests.test_phase0_batch_b \
+            tests.test_repository_hygiene \
             tests.test_tutor_grounded \
+            tests.test_upload_dedupe \
+            tests.test_upload_security \
+            tests.test_usage_events \
             -v
 
   frontend-build:

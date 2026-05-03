@@ -289,6 +289,7 @@ def _mark_legacy_baseline_if_needed(conn: sqlite3.Connection, migrations: list[M
         3: _has_columns(conn, "documents", ["updated_at"]),
         4: _has_columns(conn, "concepts", ["doc_id"]),
         5: _has_columns(conn, "concept_edges", ["doc_id"]),
+        12: _has_columns(conn, "calendar_feeds", ["keychain_ref"]),
     }
 
     for version, satisfied in checks.items():
