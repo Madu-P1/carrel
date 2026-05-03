@@ -4,6 +4,8 @@
 .pycache/
 __pycache__/
 dist/
+node_modules/
+.expo/
 
 .env
 .env.local
@@ -38,6 +40,10 @@ frontend/dist/
 frontend/.vite/
 
 chatgpt-app/node_modules/
+
+my-app/node_modules/
+my-app/.expo/
+my-app/dist/
 
 factory-reset-audit-*/
 

@@ -10,6 +10,9 @@ FORBIDDEN_TRACKED_PREFIXES = (
     "data/job-uploads/",
     "data/logs/",
     "data/backups/",
+    "my-app/.expo/",
+    "my-app/dist/",
+    "my-app/node_modules/",
 )
 FORBIDDEN_TRACKED_SUFFIXES = (
     ".db",
@@ -17,9 +20,24 @@ FORBIDDEN_TRACKED_SUFFIXES = (
     ".db-wal",
     ".log",
 )
+FORBIDDEN_TRACKED_PARTS = (
+    "/.expo/",
+    "/dist/",
+    "/node_modules/",
+    "/TemporaryItems/",
+)
+FORBIDDEN_TRACKED_FILENAMES = (
+    ".env",
+    ".env.local",
+    ".env.production",
+)
 ALLOWED_TRACKED_DATA_FILES = {
     "data/benchmarks/baseline.json",
 }
+ALLOWED_TRACKED_GENERATED_PREFIXES = (
+    "frontend/dist/",
+    "macos-app/Resources/",
+)
 
 
 class RepositoryHygieneTests(unittest.TestCase):
@@ -46,6 +64,31 @@ class RepositoryHygieneTests(unittest.TestCase):
             [],
             forbidden,
             "Private data artifacts must not be tracked in git.",
+        )
+
+    def test_no_generated_or_secret_artifacts_are_tracked(self) -> None:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        tracked = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        forbidden = [
+            path
+            for path in tracked
+            if not path.startswith(ALLOWED_TRACKED_GENERATED_PREFIXES)
+            and (
+                path in FORBIDDEN_TRACKED_FILENAMES
+                or any(part in f"/{path}/" for part in FORBIDDEN_TRACKED_PARTS)
+            )
+        ]
+
+        self.assertEqual(
+            [],
+            forbidden,
+            "Generated dependencies, build output, and local secret files must not be tracked.",
         )
 
     def test_bundled_macos_resources_do_not_reference_source_maps(self) -> None:
