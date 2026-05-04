@@ -19,7 +19,7 @@ def maybe_update_note_mastery(
     if not concept_id:
         return None
 
-    content_words = len(re.findall(r"[A-Za-z0-9]+", content or ""))
+    content_words = len(re.findall(r"\w+", content or "", re.UNICODE))
     if content_words < 8:
         return None
 
