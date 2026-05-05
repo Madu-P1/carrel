@@ -28,6 +28,17 @@ jobs:
             exit 1
           fi
 
+  backup-restore-drill:
+    # Real disaster-recovery test — proves the backup scripts can
+    # round-trip a DB. A backup that has never been restored is just
+    # bytes on disk. Runs on every push so a regression fails CI
+    # before it ever ships to a user.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run backup + restore drill
+        run: bash script/test_backup_restore_drill.sh
+
   python-quality:
     runs-on: ubuntu-latest
     steps:
