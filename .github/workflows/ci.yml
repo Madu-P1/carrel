@@ -8,6 +8,26 @@ on:
     - cron: "0 7 * * 1"
 
 jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject macOS Finder duplicate files
+        run: |
+          dupes=$(find . -name "* 2.*" \
+            ! -path "*/.venv/*" \
+            ! -path "*/node_modules/*" \
+            ! -path "*/__pycache__/*" \
+            ! -path "*/.git/*" \
+            ! -path "*/.build/*" \
+            ! -path "*/dist/*" \
+            ! -path "*/data/*")
+          if [ -n "$dupes" ]; then
+            echo "::error::Finder duplicate files found in source tree:"
+            echo "$dupes"
+            exit 1
+          fi
+
   python-quality:
     runs-on: ubuntu-latest
     steps:

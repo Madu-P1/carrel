@@ -1,4 +1,4 @@
--- 0013_calendar_local_feed_kind.sql
+-- 0014_calendar_local_feed_kind.sql
 --
 -- Phase 1 of native Apple Calendar (EventKit) integration. The macOS
 -- shell now reads the user's local calendars via EventKit and POSTs
