@@ -25,6 +25,11 @@ let package = Package(
         .executableTarget(
             name: "EinsteinIngestionBridge",
             path: "Sources/EinsteinIngestionBridge"
+        ),
+        .testTarget(
+            name: "EinsteinDesktopTests",
+            dependencies: ["EinsteinDesktop"],
+            path: "Tests/EinsteinDesktopTests"
         )
     ]
 )

@@ -39,6 +39,20 @@ jobs:
       - name: Run backup + restore drill
         run: bash script/test_backup_restore_drill.sh
 
+  swift-tests:
+    # Swift unit tests for the macOS shell. Runs on macos-latest so
+    # XCTest + AppKit are available. Targets pure helpers (mime
+    # mapping, FrontendSelector) — UI/AppKit-dependent classes stay
+    # untested for now, but the test target makes adding more easy.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: macos-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test
+        run: swift test --parallel
+
   python-quality:
     runs-on: ubuntu-latest
     steps:

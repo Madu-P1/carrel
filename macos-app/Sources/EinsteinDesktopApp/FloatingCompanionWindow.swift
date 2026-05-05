@@ -363,16 +363,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
     }
 
     private func mimeType(for url: URL) -> String {
-        let ext = url.pathExtension.lowercased()
-        switch ext {
-        case "pdf": return "application/pdf"
-        case "epub": return "application/epub+zip"
-        case "txt": return "text/plain"
-        case "md", "markdown": return "text/markdown"
-        case "html", "htm": return "text/html"
-        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        default: return "application/octet-stream"
-        }
+        UploadMimeTypes.mimeType(for: url)
     }
 
     /// Same shape as LocalCalendarBridge.fetchLocalToken — Carrel's
