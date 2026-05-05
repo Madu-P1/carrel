@@ -2,11 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!--
+    Hardened runtime entitlements — Carrel ships via Developer ID
+    (notarized) rather than the Mac App Store, so we don't enable
+    com.apple.security.app-sandbox. The sandbox would block the
+    NSPanel companion's drag-drop file access and the uvicorn
+    subprocess that the BackendSupervisor spawns.
+
+    What each key buys us:
+
+      allow-jit                   Required for some Python C
+                                  extensions (numpy/onnxruntime)
+                                  that JIT-compile inner loops.
+      allow-unsigned-executable-memory
+                                  Same; some bundled wheels load
+                                  dylibs Apple can't verify.
+      disable-library-validation  Loads sqlite-vec and fastembed
+                                  native dylibs shipped inside
+                                  the venv, not signed by us or
+                                  Apple. Required.
+      allow-dyld-environment-variables
+                                  uvicorn inherits PYTHONPATH /
+                                  PYTHONHOME from the bundled
+                                  venv layout.
+      network.client              Outbound HTTP to the local
+                                  uvicorn port (and Anthropic in
+                                  prod). No server entitlement —
+                                  the macOS shell does not listen
+                                  on the network itself.
+      personal-information.calendars
+                                  EventKit access. Paired with
+                                  NSCalendarsFullAccessUsageDescription
+                                  in Info.plist; the OS prompt
+                                  fails silently without both.
+  -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
   <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.personal-information.calendars</key>
   <true/>
 </dict>
 </plist>

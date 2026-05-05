@@ -9,6 +9,7 @@ MIN_SYSTEM_VERSION="14.0"
 BACKEND_URL="http://127.0.0.1:8000/api/health"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION" 2>/dev/null || echo "0.0.0")"
 PROJECT_DIR="$ROOT_DIR/macos-app"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -239,8 +240,20 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
   <string>Carrel</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.education</string>
+  <key>LSUIElement</key>
+  <false/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © Madu. All rights reserved.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsArbitraryLoadsInWebContent</key>
@@ -250,6 +263,12 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
   </dict>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Carrel reads your Apple Calendar so the dashboard can suggest study sessions in your free blocks and re-plan when meetings move. No event content is sent off your machine.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Carrel needs to read files you drag onto the floating cube or the Library window to add them to your library.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Carrel needs to read files you drag onto the floating cube or the Library window to add them to your library.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Carrel needs to read files you drag onto the floating cube or the Library window to add them to your library.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
 </dict>
