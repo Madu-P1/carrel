@@ -35,10 +35,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Ruff
         run: ruff check .
       - name: Mypy
@@ -53,10 +54,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Maintained blocking test suites
         run: |
           python -m unittest \
@@ -109,10 +111,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Advisory legacy LearningOS tests
         run: python -m unittest tests.test_learning_os -v
 
@@ -124,10 +127,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Run blocking smoke evals
         run: python -m evals.run_evals --suite smoke --mode smoke
       - name: Upload eval smoke reports
@@ -148,10 +152,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Run advisory full evals
         run: python -m evals.run_evals --suite smoke --mode full
       - name: Upload eval full reports
@@ -169,10 +174,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.lock -r requirements-dev.lock
       - name: Run advisory benchmark smoke
         run: |
           python -m benchmarks.phase0 \

@@ -1,19 +1,41 @@
-fastapi
-uvicorn
-pydantic
-icalendar
-recurring-ical-events
-PyPDF2
-python-multipart
-anthropic
-python-dotenv
-python-docx
-python-pptx
-openpyxl
-xlrd
-ebooklib
-beautifulsoup4
-chardet
-striprtf
+# Top-level Python dependencies — high-level pin for safety, exact
+# transitive resolution is in requirements.lock (regenerate with
+# `pip-compile --output-file=requirements.lock requirements.txt`).
+#
+# Production installs should use `pip install -r requirements.lock`
+# for reproducible builds. `requirements.txt` is the input that
+# humans edit when adding/removing/upgrading packages.
+
+# Web framework
+fastapi>=0.136,<1.0
+uvicorn>=0.44,<1.0
+pydantic>=2.13,<3.0
+
+# HTTP client
+httpx>=0.28,<1.0
+
+# Calendar / scheduling
+icalendar>=7.0,<8.0
+recurring-ical-events>=3.8,<4.0
+
+# Document parsing
+PyPDF2>=3.0,<4.0
+python-docx>=1.2,<2.0
+python-pptx>=1.0,<2.0
+openpyxl>=3.1,<4.0
+xlrd>=2.0,<3.0
+ebooklib>=0.20,<1.0
+beautifulsoup4>=4.14,<5.0
+chardet>=7.4,<8.0
+striprtf>=0.0.29,<1.0
+python-multipart>=0.0.26,<1.0
+
+# LLM provider
+anthropic>=0.96,<1.0
+
+# Config
+python-dotenv>=1.2,<2.0
+
+# Vector + embedding
 sqlite-vec~=0.1
 fastembed~=0.4
