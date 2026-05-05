@@ -13,7 +13,7 @@ from app_runtime import resolve_runtime_paths
 from routes import register_routes
 from services.local_api_security import (
     has_valid_local_api_token,
-    is_mutating_api_request,
+    is_local_api_request,
 )
 
 
@@ -139,13 +139,18 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 @app.middleware("http")
 async def require_local_api_token(request: Request, call_next):
-    if is_mutating_api_request(request) and not has_valid_local_api_token(request):
+    # All /api/* requests are gated except a small allowlist (root,
+    # /api/health, /api/local-token, static assets). The previous
+    # behavior only gated mutating verbs, leaving every GET endpoint
+    # readable by any local process. SSE streams ride the same gate
+    # via the ?token= query path because EventSource can't set headers.
+    if is_local_api_request(request) and not has_valid_local_api_token(request):
         return JSONResponse(
             status_code=403,
             content={
                 "detail": {
                     "code": "missing_or_invalid_local_api_token",
-                    "message": "Mutating local API requests require a valid Carrel token.",
+                    "message": "Local API requests require a valid Carrel token.",
                 }
             },
         )

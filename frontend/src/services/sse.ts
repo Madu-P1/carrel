@@ -18,7 +18,14 @@
  * reconnect already includes the `Last-Event-ID` header. Listeners
  * that need durability can fall back to polling — every existing
  * caller already does this naturally via window-focus refetches.
+ *
+ * Auth: the local API gate also covers SSE, so each EventSource is
+ * opened against the URL augmented with `?token=…`. The channel key
+ * stays the un-tokenized URL so subscribers don't have to thread the
+ * token through.
  */
+
+import { withLocalApiToken } from "./api/client";
 
 interface Channel {
   source: EventSource | null;
@@ -40,27 +47,34 @@ function open(url: string): void {
   const channel = channels.get(url);
   if (!channel || channel.source) return;
   if (typeof EventSource === "undefined") return;
-  let source: EventSource;
-  try {
-    source = new EventSource(url);
-  } catch {
-    scheduleReconnect(url);
-    return;
-  }
-  channel.source = source;
-  // Re-attach all known listeners to the new socket.
-  for (const [event, set] of channel.listeners) {
-    for (const cb of set) source.addEventListener(event, cb as EventListener);
-  }
-  source.onopen = () => {
-    channel.reconnectMs = INITIAL_RECONNECT_MS;
-  };
-  source.onerror = () => {
-    source.close();
-    channel.source = null;
-    if (channel.listeners.size === 0) return;
-    scheduleReconnect(url);
-  };
+  // Resolve the local API token asynchronously and append it as
+  // `?token=` — EventSource can't set custom headers. The channel may
+  // already have a source by the time we resolve (a second subscribe
+  // triggered open() concurrently); guard against that.
+  void withLocalApiToken(url).then((authedUrl) => {
+    const ch = channels.get(url);
+    if (!ch || ch.source) return;
+    let source: EventSource;
+    try {
+      source = new EventSource(authedUrl);
+    } catch {
+      scheduleReconnect(url);
+      return;
+    }
+    ch.source = source;
+    for (const [event, set] of ch.listeners) {
+      for (const cb of set) source.addEventListener(event, cb as EventListener);
+    }
+    source.onopen = () => {
+      ch.reconnectMs = INITIAL_RECONNECT_MS;
+    };
+    source.onerror = () => {
+      source.close();
+      ch.source = null;
+      if (ch.listeners.size === 0) return;
+      scheduleReconnect(url);
+    };
+  });
 }
 
 function scheduleReconnect(url: string): void {

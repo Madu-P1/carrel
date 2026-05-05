@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import main
-from services.local_api_security import HEADER_NAME, get_local_api_token
+from services.local_api_security import HEADER_NAME, QUERY_NAME, get_local_api_token
 
 
 class LocalAPITokenTests(unittest.TestCase):
@@ -84,6 +84,44 @@ class LocalAPITokenTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code, response.text)
         self.assertEqual("Study finance", response.json()["goal"])
+
+    def test_get_request_rejects_missing_token(self) -> None:
+        # The audit's main complaint: GET endpoints used to be world-
+        # readable on the local machine. The gate now covers them too.
+        response = self.client.get("/api/documents")
+
+        self.assertEqual(403, response.status_code)
+        self.assertEqual(
+            "missing_or_invalid_local_api_token",
+            response.json()["detail"]["code"],
+        )
+
+    def test_get_request_accepts_correct_token(self) -> None:
+        response = self.client.get(
+            "/api/documents",
+            headers={HEADER_NAME: get_local_api_token()},
+        )
+
+        self.assertEqual(200, response.status_code, response.text)
+
+    def test_get_request_accepts_query_token(self) -> None:
+        # SSE / EventSource fallback path — header-less auth via
+        # ?token= query param.
+        response = self.client.get(
+            f"/api/documents?{QUERY_NAME}={get_local_api_token()}"
+        )
+
+        self.assertEqual(200, response.status_code, response.text)
+
+    def test_query_token_does_not_authenticate_mutating_verb(self) -> None:
+        # Defence-in-depth: a malicious page that only controls the
+        # URL (e.g., an <img src> ping) shouldn't be able to mutate.
+        response = self.client.post(
+            f"/api/goal?{QUERY_NAME}={get_local_api_token()}",
+            json={"goal": "Study finance"},
+        )
+
+        self.assertEqual(403, response.status_code)
 
 
 if __name__ == "__main__":

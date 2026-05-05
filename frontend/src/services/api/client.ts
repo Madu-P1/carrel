@@ -69,15 +69,15 @@ export type RequestInitEx = Omit<RequestInit, "body"> & {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
-const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 let cachedLocalApiToken: string | null = null;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
   const { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const isObjectBody =
     body !== undefined && body !== null && !(body instanceof FormData) && typeof body === "object";
-  const method = (rest.method ?? "GET").toUpperCase();
-  const token = SAFE_METHODS.has(method) ? null : await resolveLocalApiToken();
+  // Send the token on every /api/* request — the backend gate now
+  // covers GET as well as mutating verbs.
+  const token = await resolveLocalApiToken();
   const timeout = createTimeoutSignal(timeoutMs);
   const requestSignal = mergeSignals(signal, timeout.signal);
 
@@ -162,6 +162,20 @@ function readWindowLocalApiToken(): string | null {
   if (typeof window === "undefined") return null;
   const token = (window as Window & { __CARREL_LOCAL_API_TOKEN?: unknown }).__CARREL_LOCAL_API_TOKEN;
   return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+/**
+ * SSE / EventSource flavor of `api()` — EventSource cannot set custom
+ * headers, so the backend accepts the token via `?token=` for safe
+ * methods. Returns the URL with the token appended (or unchanged if
+ * no token is available, which yields a 403 the SSE client surfaces
+ * as a closed connection).
+ */
+export async function withLocalApiToken(url: string): Promise<string> {
+  const token = await resolveLocalApiToken();
+  if (!token) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
 }
 
 interface TimeoutHandle {
