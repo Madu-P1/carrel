@@ -64,9 +64,10 @@ export function WeekTimeGrid({
   weekStart,
 }: WeekTimeGridProps) {
   const anchor = weekStart ?? todayMidnightLocal();
-  // Re-derive when the anchor's epoch changes — Date objects are
-  // reference-typed so we key on getTime().
-  const days = useMemo(() => sevenDaysFrom(anchor), [anchor.getTime()]);
+  // Stable primitive key: Date objects are reference-typed so we key
+  // on the epoch ms to avoid triggering memos on every render.
+  const anchorMs = anchor.getTime();
+  const days = useMemo(() => sevenDaysFrom(anchor), [anchorMs]); // eslint-disable-line react-hooks/exhaustive-deps
   const feedColor = useMemo(() => {
     const map: Record<string, string> = {};
     feeds.forEach((feed, index) => {
@@ -86,7 +87,7 @@ export function WeekTimeGrid({
     if (!node) return;
     const targetHour = Math.max(0, new Date().getHours() - 1);
     node.scrollTop = targetHour * HOUR_ROW_HEIGHT_PX;
-  }, [anchor.getTime()]);
+  }, [anchorMs]);
 
   return (
     <div className={styles.grid} ref={gridRef}>
