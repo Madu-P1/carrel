@@ -74,9 +74,11 @@ export function SubjectSection({
           <Badge tone="info">{documents.length} docs</Badge>
         </div>
         <div className={styles.headerActions}>
-          <Button onClick={() => setEditing((value) => !value)} variant="secondary">
-            {editing ? "Cancel" : "Rename subject"}
-          </Button>
+          {documents.length > 0 ? (
+            <Button onClick={() => setEditing((value) => !value)} variant="secondary">
+              {editing ? "Cancel" : "Rename subject"}
+            </Button>
+          ) : null}
         </div>
       </header>
 
@@ -98,14 +100,20 @@ export function SubjectSection({
             ) : null}
 
             <div className={styles.list}>
-              {documents.map((document) => (
-                <DocumentRow
-                  document={document}
-                  key={document.id}
-                  onDelete={() => setDeleteTarget(document)}
-                  onOpen={() => navigateTo(`/reader/${document.id}`)}
-                />
-              ))}
+              {documents.length === 0 ? (
+                <div className={styles.emptyFolder}>
+                  <Text tone="secondary">No sources in this subject yet.</Text>
+                </div>
+              ) : (
+                documents.map((document) => (
+                  <DocumentRow
+                    document={document}
+                    key={document.id}
+                    onDelete={() => setDeleteTarget(document)}
+                    onOpen={() => navigateTo(`/reader/${document.id}`)}
+                  />
+                ))
+              )}
             </div>
           </Stack>
         </div>

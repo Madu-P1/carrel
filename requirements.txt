@@ -10,6 +10,7 @@ python-dotenv
 python-docx
 python-pptx
 openpyxl
+xlrd
 ebooklib
 beautifulsoup4
 chardet

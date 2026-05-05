@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
+import { API_BASE } from "@/services/api/client";
+import { subscribeSse } from "@/services/sse";
 import {
   calendarApi,
   type CalendarFeed,
   type CalendarFeedCreatedResponse,
+  type CalendarIcsUploadResponse,
   type SyncFeedResponse,
 } from "../api/calendarApi";
 import {
@@ -117,6 +120,15 @@ export function usePlan() {
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
+  // Live updates — backend emits `calendar-changed` on EventKit
+  // pushes / feed sync completion. Shared SSE multiplexer dedupes
+  // across the dashboard, plan view, and companion alarm.
+  useEffect(() => subscribeSse(
+    `${API_BASE}/api/plan/events/stream`,
+    "calendar-changed",
+    () => { void refresh(); },
+  ), [refresh]);
+
   // ---- Mutation actions ----
 
   const addFeed = useCallback(
@@ -126,6 +138,19 @@ export function usePlan() {
       color?: string | null;
     }): Promise<CalendarFeedCreatedResponse> => {
       const result = await calendarApi.createFeed(input);
+      await refresh();
+      return result;
+    },
+    [refresh]
+  );
+
+  const uploadIcsFile = useCallback(
+    async (input: {
+      label: string;
+      file: File;
+      color?: string | null;
+    }): Promise<CalendarIcsUploadResponse> => {
+      const result = await calendarApi.uploadIcsFile(input);
       await refresh();
       return result;
     },
@@ -204,6 +229,7 @@ export function usePlan() {
     ...state,
     refresh,
     addFeed,
+    uploadIcsFile,
     removeFeed,
     renameFeed,
     syncFeed,

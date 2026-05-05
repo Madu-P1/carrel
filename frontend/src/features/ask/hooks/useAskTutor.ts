@@ -3,6 +3,7 @@ import { useMemo, useRef } from "preact/hooks";
 
 import type { TutorQueryRequest } from "@/services/api/endpoints";
 import { tutor } from "@/services/api/endpoints";
+import { companion } from "@/services/companion/bus";
 import { normalizeGroundedAnswer } from "../types";
 import type { GroundedAnswerEnvelope } from "../types";
 
@@ -30,6 +31,7 @@ export function useAskTutor(): AskTutorState {
     lastPayload.current = payload;
     pending.value = true;
     error.value = null;
+    companion.thinkingStart();
 
     try {
       answer.value = normalizeGroundedAnswer(await tutor.ask(payload));
@@ -39,6 +41,7 @@ export function useAskTutor(): AskTutorState {
       error.value = caught as Error;
     } finally {
       pending.value = false;
+      companion.thinkingEnd();
     }
   };
 

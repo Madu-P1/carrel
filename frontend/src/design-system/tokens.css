@@ -228,3 +228,18 @@
     --ease-spring: var(--ease-out);
   }
 }
+
+/* ---------------------------------------------------------------------
+ * Companion-only tints. Do not use outside frontend/src/features/companion/.
+ * Justified in the Companion v1 PR description (the cube needed a
+ * workspace-aliveness tint distinct from the citation/CTA accent).
+ * If this feature is removed, delete this entire block.
+ * --------------------------------------------------------------------- */
+:root {
+  --color-teal:        #5eead4;
+  --color-teal-bright: #99f6e4;
+  --color-teal-15: rgba(94, 234, 212, 0.15);
+  --color-teal-30: rgba(94, 234, 212, 0.30);
+  --color-teal-50: rgba(94, 234, 212, 0.50);
+  --color-teal-70: rgba(94, 234, 212, 0.70);
+}

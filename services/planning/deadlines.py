@@ -34,12 +34,25 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 # Match exam-style keywords as whole words. The list is deliberately
-# small — broader matches like "review" or "study" would treat every
-# study session the user already scheduled as a deadline event and
-# create suggestion loops. These six are what real students put on
-# their calendar with date-fixed urgency.
+# small — broader matches like "review" would treat every study
+# session the user already scheduled as a deadline event and create
+# suggestion loops. These six are what real students put on their
+# calendar with date-fixed urgency.
 DEADLINE_KEYWORDS = re.compile(
     r"\b(midterm|exam|final|test|quiz|deadline)\b",
+    re.IGNORECASE,
+)
+
+# Match user-self-scheduled study blocks. These are explicitly NOT
+# deadlines — they're allocated prep time. The insertion engine uses
+# them to discount urgency for deadlines the user has already prepared
+# for, so we don't pile suggestions on top of a packed prep schedule.
+#
+# `study` matches "study", "studying", "study block", "study Bio", etc.
+# `revision`/`revise` covers the British-English equivalent students
+# often use ("Revise calculus").
+STUDY_ALLOCATION_KEYWORDS = re.compile(
+    r"\b(study|studying|revision|revise)\b",
     re.IGNORECASE,
 )
 

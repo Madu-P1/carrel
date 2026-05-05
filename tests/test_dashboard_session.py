@@ -238,6 +238,33 @@ class DashboardSessionTests(unittest.TestCase):
         dash = self.client.get("/api/dashboard").json()
         self.assertEqual(dash["active_session"]["id"], "fresh")
 
+    def test_completed_session_duration_counts_toward_week_activity(self) -> None:
+        payload = SessionStartRequest(
+            goal_id=None,
+            source_scope=None,
+            concept_scope=None,
+            difficulty_target=0.5,
+            duration_minutes=25,
+            mode="focus_sprint",
+            objective="Timed study",
+        )
+        result = create_session_route(payload)
+        started_at = (datetime.now(timezone.utc) - timedelta(minutes=25)).isoformat()
+        with main.get_db() as conn:
+            conn.execute(
+                "UPDATE sessions SET started_at = ? WHERE id = ?",
+                (started_at, result["id"]),
+            )
+            conn.commit()
+
+        complete_response = self.client.post(f"/api/sessions/{result['id']}/complete")
+        self.assertEqual(complete_response.status_code, 200)
+        self.assertGreaterEqual(complete_response.json()["duration_seconds"], 25 * 60 - 2)
+
+        dashboard = self.client.get("/api/dashboard").json()
+        self.assertGreaterEqual(dashboard["stats"]["week_minutes"], 24.9)
+        self.assertGreaterEqual(dashboard["stats"]["week_minutes_by_day"][-1], 24.9)
+
 
 if __name__ == "__main__":
     unittest.main()

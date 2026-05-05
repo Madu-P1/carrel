@@ -43,7 +43,12 @@ export function Dialog({
     const node = dialogRef.current;
     if (node) {
       const [firstFocusable] = getFocusable(node);
-      (firstFocusable ?? node).focus();
+      // preventScroll: focusing inside the dialog must not scroll the
+      // page behind it. Without this, opening the dialog while
+      // scrolled (e.g., picking a calendar event from the time grid)
+      // jumps the page to wherever the dialog or its first focusable
+      // sits in the document.
+      (firstFocusable ?? node).focus({ preventScroll: true });
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -94,7 +99,7 @@ export function Dialog({
       window.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onOutsidePress, true);
       document.removeEventListener("mousedown", onOutsidePress, true);
-      restoreFocusRef.current?.focus();
+      restoreFocusRef.current?.focus({ preventScroll: true });
     };
   }, [open, onClose]);
 

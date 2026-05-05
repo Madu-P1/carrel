@@ -22,7 +22,7 @@ export function LibraryEmptyState({ onDemoLoaded }: LibraryEmptyStateProps) {
           </Text>
           <Stack direction="horizontal" gap={2}>
             <Icon name="doc" />
-            <Text tone="tertiary">PDF, DOCX, slides, text, and more are supported.</Text>
+            <Text tone="tertiary">PDF, DOCX, slides, text, CSV, and Excel files are supported.</Text>
           </Stack>
         </Stack>
         <Stack direction="horizontal" gap={2}>

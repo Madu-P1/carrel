@@ -46,8 +46,14 @@ STALE_THRESHOLD_MINUTES = 5
 
 # Plan window: how much past + future to render. Keep this in sync with
 # the WeekTimeGrid's default (7 days starting today).
-PLAN_WINDOW_PAST_DAYS = 1
-PLAN_WINDOW_FUTURE_DAYS = 7
+
+# Plan window: how much past + future to ship to the client. Wider than
+# the rendered week (7 days) so the user can navigate ±N weeks without
+# refetching. The grid filters client-side; SQLite handles the larger
+# scan trivially and the JSON payload stays under a few KB even for a
+# heavily-booked calendar.
+PLAN_WINDOW_PAST_DAYS = 14
+PLAN_WINDOW_FUTURE_DAYS = 56
 
 
 def _kick_background_sync(feed_id: str) -> None:

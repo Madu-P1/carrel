@@ -43,7 +43,7 @@ class FeedRow:
     last_error: Optional[str]
     # 'url' = remote ICS feed fetched via HTTP. 'local' = Apple Calendar
     # (EventKit) sourced from the macOS shell, which POSTs events to the
-    # backend; HTTP sync is skipped for these. See migration 0013.
+    # backend; HTTP sync is skipped for these. See migration 0014.
     kind: str = "url"
 
 
@@ -216,6 +216,50 @@ def upsert_local_feed(
     )
 
 
+def insert_uploaded_ics_feed(
+    conn: sqlite3.Connection,
+    *,
+    label: str,
+    content_hash: str,
+    color: Optional[str],
+    user_id: str = DEFAULT_USER,
+) -> FeedRow:
+    """Create a local feed row for an uploaded .ics file.
+
+    The raw uploaded file is parsed immediately and not retained. This
+    feed row stores only a non-secret display label plus a stable hash
+    so importing the exact same Apple Calendar export twice can be
+    detected by the existing UNIQUE(user_id, url_hash) boundary.
+    """
+    feed_id = _new_id()
+    now = _now_iso()
+    display_url = "Uploaded .ics file"
+    conn.execute(
+        """
+        INSERT INTO calendar_feeds (
+            id, user_id, label, url, url_hash, color, keychain_ref,
+            is_enabled, consecutive_failures, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, 0, ?, ?)
+        """,
+        (
+            feed_id,
+            user_id,
+            label,
+            display_url,
+            f"uploaded-ics:{content_hash}",
+            color,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return _feed_from_row(
+        conn.execute(
+            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
+        ).fetchone()
+    )
+
+
 def list_feeds(
     conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER
 ) -> List[FeedRow]:
@@ -358,7 +402,7 @@ def _feed_from_row(row) -> FeedRow:
         last_successful_sync_at=row["last_successful_sync_at"],
         consecutive_failures=row["consecutive_failures"],
         last_error=row["last_error"],
-        # Older DB snapshots predate the kind column (migration 0013);
+        # Older DB snapshots predate the kind column (migration 0014);
         # default to 'url' so reads never fail mid-migration.
         kind=row["kind"] if "kind" in columns else "url",
     )

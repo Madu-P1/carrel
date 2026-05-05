@@ -1,4 +1,5 @@
 import AppKit
+import EventKit
 import OSLog
 import SwiftUI
 import WebKit
@@ -17,6 +18,8 @@ struct WebAppView: NSViewRepresentable {
         contentController.add(context.coordinator, name: NativeBridge.menuHandlerName)
         contentController.add(context.coordinator, name: NativeBridge.telemetryHandlerName)
         contentController.add(context.coordinator, name: NativeBridge.frontendHandlerName)
+        contentController.add(context.coordinator, name: NativeBridge.calendarHandlerName)
+        contentController.add(context.coordinator, name: NativeBridge.companionHandlerName)
         contentController.addUserScript(
             WKUserScript(
                 source: NativeBridge.bootstrapScript,
@@ -89,6 +92,12 @@ struct WebAppView: NSViewRepresentable {
         )
         nsView.configuration.userContentController.removeScriptMessageHandler(
             forName: NativeBridge.frontendHandlerName
+        )
+        nsView.configuration.userContentController.removeScriptMessageHandler(
+            forName: NativeBridge.calendarHandlerName
+        )
+        nsView.configuration.userContentController.removeScriptMessageHandler(
+            forName: NativeBridge.companionHandlerName
         )
         WebViewRegistry.unregister(nsView)
     }
@@ -194,8 +203,45 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             handleTelemetryMessage(message.body)
         case NativeBridge.frontendHandlerName:
             handleFrontendMessage(message.body)
+        case NativeBridge.calendarHandlerName:
+            handleCalendarMessage(message.body)
+        case NativeBridge.companionHandlerName:
+            handleCompanionMessage(message.body)
         default:
             logger.warning("Unhandled script message: \(message.name, privacy: .public)")
+        }
+    }
+
+    /// Forward companion state pushes from the Carrel WebView to the
+    /// floating NSPanel companion. The bridge is fire-and-forget by
+    /// design: the Carrel frontend doesn't await the result, so we
+    /// don't reply to JS. Unknown actions are logged + dropped.
+    private func handleCompanionMessage(_ body: Any) {
+        guard
+            let payload = body as? [String: Any],
+            let action = payload["action"] as? String
+        else {
+            logger.error("Received malformed nativeCompanion payload")
+            return
+        }
+        switch action {
+        case "setState":
+            guard let state = payload["state"] as? String else {
+                logger.error("nativeCompanion setState missing state")
+                return
+            }
+            FloatingCompanionWindow.shared.setState(state)
+        case "setStreakDays":
+            guard let days = payload["days"] as? Int else {
+                logger.error("nativeCompanion setStreakDays missing days")
+                return
+            }
+            FloatingCompanionWindow.shared.setStreakDays(days)
+        case "setAlarm":
+            let active = (payload["active"] as? Bool) ?? false
+            FloatingCompanionWindow.shared.setAlarm(active)
+        default:
+            logger.warning("nativeCompanion: unsupported action \(action, privacy: .public)")
         }
     }
 
@@ -222,6 +268,151 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
         logger.info("Switching frontend to \(frontend.rawValue, privacy: .public)")
         guard let webView = self.webView else { return }
         loadBundledApp(into: webView, explicitFrontend: frontend)
+    }
+
+    /// Bounds for accepted EKEvent insertions from the JS bridge.
+    /// A 4 KB summary covers any sane study-block label; longer
+    /// strings are pathological. Date window blocks past dates and
+    /// year-out scheduling — both are usually JS bugs, not real
+    /// user intent. Keep these values tied to the Coordinator (not
+    /// constants in NativeBridge) so they're trivially overridable
+    /// in tests.
+    static let maxCalendarSummaryLength = 4096
+    static let maxCalendarLocationLength = 1024
+    static let calendarPastWindowSeconds: TimeInterval = -7 * 24 * 60 * 60
+    static let calendarFutureWindowSeconds: TimeInterval = 365 * 24 * 60 * 60
+
+    private func handleCalendarMessage(_ body: Any) {
+        guard
+            let payload = body as? [String: Any],
+            let requestID = payload["id"] as? Int,
+            let action = payload["action"] as? String
+        else {
+            logger.error("Received malformed nativeCalendar payload")
+            return
+        }
+        guard action == "insert" else {
+            logger.warning("nativeCalendar: unsupported action \(action, privacy: .public)")
+            rejectCalendarRequest(id: requestID, message: "Unsupported action")
+            return
+        }
+        guard
+            let summary = (payload["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !summary.isEmpty,
+            summary.count <= Self.maxCalendarSummaryLength
+        else {
+            logger.error("nativeCalendar: invalid summary")
+            rejectCalendarRequest(id: requestID, message: "Invalid summary")
+            return
+        }
+        let location = payload["location"] as? String
+        if let location, location.count > Self.maxCalendarLocationLength {
+            rejectCalendarRequest(id: requestID, message: "Location too long")
+            return
+        }
+        guard
+            let startISO = payload["start_at"] as? String,
+            let endISO = payload["end_at"] as? String,
+            let startDate = parseISODate(startISO),
+            let endDate = parseISODate(endISO),
+            endDate > startDate
+        else {
+            logger.error("nativeCalendar: invalid start/end")
+            rejectCalendarRequest(id: requestID, message: "Invalid start/end times")
+            return
+        }
+        let now = Date()
+        if startDate.timeIntervalSince(now) < Self.calendarPastWindowSeconds {
+            rejectCalendarRequest(id: requestID, message: "Start is too far in the past")
+            return
+        }
+        if startDate.timeIntervalSince(now) > Self.calendarFutureWindowSeconds {
+            rejectCalendarRequest(id: requestID, message: "Start is more than a year out")
+            return
+        }
+        // EventKit access + write happens on a Task — the request is
+        // a network-roundtrip-style operation from the JS side, so
+        // we hop off the main thread immediately, then resolve the
+        // promise after the save completes.
+        let trimmedLocation: String?
+        if let raw = location {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            trimmedLocation = trimmed.isEmpty ? nil : trimmed
+        } else {
+            trimmedLocation = nil
+        }
+        Task { [weak self] in
+            await self?.performCalendarInsert(
+                requestID: requestID,
+                summary: summary,
+                startDate: startDate,
+                endDate: endDate,
+                location: trimmedLocation
+            )
+        }
+    }
+
+    private func performCalendarInsert(
+        requestID: Int,
+        summary: String,
+        startDate: Date,
+        endDate: Date,
+        location: String?
+    ) async {
+        let store = EKEventStore()
+        do {
+            let granted = try await store.requestFullAccessToEvents()
+            guard granted else {
+                rejectCalendarRequest(id: requestID, message: "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars.")
+                return
+            }
+        } catch {
+            rejectCalendarRequest(id: requestID, message: error.localizedDescription)
+            return
+        }
+        guard let target = store.defaultCalendarForNewEvents, target.allowsContentModifications else {
+            rejectCalendarRequest(id: requestID, message: "No writable calendar available")
+            return
+        }
+        let event = EKEvent(eventStore: store)
+        event.calendar = target
+        event.title = summary
+        event.startDate = startDate
+        event.endDate = endDate
+        if let location {
+            event.location = location
+        }
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+            let uid = event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? ""
+            logger.info("Inserted EKEvent uid=\(uid, privacy: .public)")
+            resolveCalendarRequest(id: requestID, payload: ["uid": uid])
+        } catch {
+            logger.error("EKEvent save failed: \(error.localizedDescription, privacy: .public)")
+            rejectCalendarRequest(id: requestID, message: error.localizedDescription)
+        }
+    }
+
+    private func parseISODate(_ value: String) -> Date? {
+        // Accept the common ISO 8601 forms — with or without
+        // fractional seconds — by trying both formatters.
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: value) {
+            return date
+        }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: value)
+    }
+
+    private func resolveCalendarRequest(id: Int, payload: [String: Any]) {
+        evaluateJavaScript("window.__nativeCalendarResolve(\(id), \(jsonString(for: payload)));")
+    }
+
+    private func rejectCalendarRequest(id: Int, message: String) {
+        let payload = jsonString(for: ["message": message])
+        evaluateJavaScript("window.__nativeCalendarReject(\(id), \(payload));")
     }
 
     private func handleStorageMessage(_ body: Any) {

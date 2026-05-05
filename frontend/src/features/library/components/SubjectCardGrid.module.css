@@ -131,6 +131,19 @@
   white-space: nowrap;
 }
 
+.emptyPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  white-space: nowrap;
+}
+
 .cardTitle {
   margin: 0;
   font-family: var(--font-serif);

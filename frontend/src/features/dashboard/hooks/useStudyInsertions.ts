@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { useQuery } from "@/lib/query";
 import { API_BASE } from "@/services/api/client";
+import { subscribeSse } from "@/services/sse";
 import { planApi } from "@/features/plan/api/planApi";
 import type { StudySessionInsertionsResponse } from "@/features/plan/api/planApi";
 
@@ -58,28 +59,13 @@ export function useStudyInsertions() {
       return;
     }
     const url = `${API_BASE}/api/plan/events/stream`;
-    const source = new EventSource(url);
-
-    source.addEventListener("hello", () => {
-      setStreamState("open");
-    });
-
-    source.addEventListener("calendar-changed", () => {
+    const off1 = subscribeSse(url, "hello", () => setStreamState("open"));
+    const off2 = subscribeSse(url, "calendar-changed", () => {
       // The event payload itself is small + uninteresting (just a
       // timestamp); the data we actually want is fresh insertions.
       void query.refetch();
     });
-
-    source.onerror = () => {
-      // EventSource auto-reconnects with backoff; just surface the
-      // state for the UI. Don't dispose — that prevents reconnect.
-      setStreamState("closed");
-    };
-
-    return () => {
-      source.close();
-      setStreamState("closed");
-    };
+    return () => { off1(); off2(); setStreamState("closed"); };
   }, [query]);
 
   return {

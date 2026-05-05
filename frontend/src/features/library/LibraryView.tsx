@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
 import { Button, Card, Icon, Input, Stack, Text } from "@/design-system";
-import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
+import { library, type DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 
 import { groupBySubject } from "./utils/group-by-subject";
@@ -92,6 +92,7 @@ export function LibraryView() {
   };
 
   const openSubjectRows = openSubject ? groups[openSubject] ?? [] : [];
+  const subjectOptions = Object.keys(groups).sort((a, b) => a.localeCompare(b));
 
   const trimmed = query.trim();
   const isSearching = trimmed.length > 0;
@@ -146,7 +147,14 @@ export function LibraryView() {
             material; click any subject to drill into its files.
           </Text>
         </div>
-        <ImportDropzone onUploaded={refreshAll} />
+        <ImportDropzone
+          onSubjectCreated={async (subjectName) => {
+            await library.createSubject(subjectName);
+            refreshAll();
+          }}
+          onUploaded={refreshAll}
+          subjectOptions={subjectOptions}
+        />
       </header>
 
       {data.value && data.value.length > 0 ? (
@@ -223,7 +231,7 @@ export function LibraryView() {
         back. The grid itself stays visible so comparing subjects is one
         click away. Suppressed during an active search to reduce noise.
       */}
-      {data.value && data.value.length > 0 && !isSearching ? (
+      {data.value && !isSearching ? (
         <SubjectCardGrid
           onSubjectOpen={(subject) => setOpenSubject(subject)}
           refreshKey={mutationKey}

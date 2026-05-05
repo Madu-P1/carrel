@@ -90,6 +90,49 @@ test("LibraryView shows the empty state when no documents are returned", async (
   expect(await screen.findByText(/No sources yet/i)).toBeDefined();
 });
 
+test("LibraryView creates an empty subject folder and drills into it", async () => {
+  let created = false;
+  mockJson("GET", "/api/documents", []);
+  mockJson("GET", "/api/library/duplicates", EMPTY_DUPLICATES);
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/library/subjects" && init.method === "GET") {
+      return jsonResponse(
+        created
+          ? makeSubjectSummaries({ subject_name: "Finance", source_count: 0 })
+          : makeSubjectSummaries()
+      );
+    }
+    if (url.pathname === "/api/library/subjects" && init.method === "POST") {
+      created = true;
+      return jsonResponse({
+        subject: {
+          subject_name: "Finance",
+          created_at: "2026-05-04T00:00:00Z",
+          updated_at: "2026-05-04T00:00:00Z"
+        }
+      });
+    }
+    return undefined;
+  });
+
+  render(<LibraryView />);
+
+  fireEvent.input(await screen.findByLabelText(/Subject folder/i), {
+    currentTarget: { value: "Finance" },
+    target: { value: "Finance" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Create folder/i }));
+
+  expect(await screen.findByText("Finance")).toBeDefined();
+  expect(screen.getByText(/Empty folder/i)).toBeDefined();
+  fireEvent.click(screen.getByText("Finance"));
+  expect(await screen.findByText(/No sources in this subject yet/i)).toBeDefined();
+  const createCall = getFetchCalls().find(
+    (call) => call.method === "POST" && call.url.endsWith("/api/library/subjects")
+  );
+  expect(createCall).toBeDefined();
+});
+
 test("LibraryView renders an in-place error state and retry refetches", async () => {
   let attempts = 0;
   registerFetchHandler((url, init) => {

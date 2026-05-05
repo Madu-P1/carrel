@@ -19,11 +19,12 @@ def parse_xlsx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         raise HTTPException(status_code=400, detail="XLSX support requires openpyxl")
     wb_values = openpyxl.load_workbook(str(path), data_only=True)
     wb_formulas = openpyxl.load_workbook(str(path), data_only=False)
+    sheet_names = list(wb_values.sheetnames)
     file_id = file_sha(path)[:16]
     elements: list[ExtractedElement] = []
     warnings: list[str] = []
     try:
-        for sheet_name in wb_values.sheetnames:
+        for sheet_name in sheet_names:
             ws_values = wb_values[sheet_name]
             ws_formulas = wb_formulas[sheet_name]
             span = make_span(path, file_id, sheet=sheet_name, section=sheet_name, element_id=f"sheet-{sheet_name}")
@@ -106,6 +107,6 @@ def parse_xlsx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         context=context,
         warnings=warnings,
         extraction_modes=["table_aware"],
-        metadata={"page_count": len(wb_values.sheetnames)},
+        metadata={"page_count": len(sheet_names)},
         confidence=0.82,
     )

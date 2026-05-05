@@ -1,4 +1,4 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { CalendarFeed } from "../api/calendarApi";
 import type { PlanEvent, PlanSuggestion } from "../api/planApi";
@@ -7,7 +7,8 @@ import {
   hourOfDay,
   isSameLocalDay,
   isToday,
-  nextSevenDays,
+  sevenDaysFrom,
+  todayMidnightLocal,
 } from "../utils/timezone";
 import { EventBlock } from "./EventBlock";
 import { SuggestionCard } from "./SuggestionCard";
@@ -29,9 +30,15 @@ import styles from "./WeekTimeGrid.module.css";
  * Phase 2 if it earns its keep.
  */
 
-const HOUR_START = 7;   // 7 AM
-const HOUR_END = 22;    // 10 PM
+// Full 24-hour window so events at any hour (early-morning labs,
+// late-night sessions, off-shift study blocks) render at their real
+// time of day. The grid is vertically scrollable; on mount we scroll
+// to roughly the current hour so most users land on a useful default.
+const HOUR_START = 0;
+const HOUR_END = 24;
 const HOUR_SPAN = HOUR_END - HOUR_START;
+/** Pixels per hour. Must match WeekTimeGrid.module.css `--hour-row-h`. */
+const HOUR_ROW_HEIGHT_PX = 56;
 
 interface WeekTimeGridProps {
   events: PlanEvent[];
@@ -39,6 +46,12 @@ interface WeekTimeGridProps {
   feeds: CalendarFeed[];
   onAcceptSuggestion: (id: string) => void;
   onDismissSuggestion: (id: string) => void;
+  /** Click handler for event blocks; usually opens the detail dialog.
+   *  Optional: when omitted, blocks render as static (Phase 1 behavior). */
+  onSelectEvent?: (event: PlanEvent) => void;
+  /** First day of the rendered week, midnight-local. Default: today.
+   *  Drives the 7-day window plus the today-highlight comparison. */
+  weekStart?: Date;
 }
 
 export function WeekTimeGrid({
@@ -47,8 +60,13 @@ export function WeekTimeGrid({
   feeds,
   onAcceptSuggestion,
   onDismissSuggestion,
+  onSelectEvent,
+  weekStart,
 }: WeekTimeGridProps) {
-  const days = useMemo(() => nextSevenDays(), []);
+  const anchor = weekStart ?? todayMidnightLocal();
+  // Re-derive when the anchor's epoch changes — Date objects are
+  // reference-typed so we key on getTime().
+  const days = useMemo(() => sevenDaysFrom(anchor), [anchor.getTime()]);
   const feedColor = useMemo(() => {
     const map: Record<string, string> = {};
     feeds.forEach((feed, index) => {
@@ -57,8 +75,21 @@ export function WeekTimeGrid({
     return map;
   }, [feeds]);
 
+  // Auto-scroll the grid so the current hour lands near the top of
+  // the visible area on first paint. Without this, the user sees
+  // 12 AM by default and has to manually scroll past dead hours to
+  // find their day. Re-runs when the week changes so navigating to
+  // another week resets to a sensible viewport.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return;
+    const targetHour = Math.max(0, new Date().getHours() - 1);
+    node.scrollTop = targetHour * HOUR_ROW_HEIGHT_PX;
+  }, [anchor.getTime()]);
+
   return (
-    <div className={styles.grid}>
+    <div className={styles.grid} ref={gridRef}>
       <div className={styles.hourGutter} aria-hidden>
         {Array.from({ length: HOUR_SPAN + 1 }, (_, i) => (
           <div key={i} className={styles.hourLabel}>
@@ -87,6 +118,7 @@ export function WeekTimeGrid({
               {Array.from({ length: HOUR_SPAN }, (_, i) => (
                 <div className={styles.hourRow} key={i} />
               ))}
+              {isToday(day) ? <NowIndicator /> : null}
               {dayEvents.map((event) => {
                 const placement = computePlacement(event.start_at, event.end_at);
                 if (placement === null) return null;
@@ -97,6 +129,7 @@ export function WeekTimeGrid({
                     color={feedColor[event.feed_id]}
                     topPercent={placement.topPercent}
                     heightPercent={placement.heightPercent}
+                    onSelect={onSelectEvent}
                   />
                 );
               })}
@@ -146,6 +179,38 @@ function computePlacement(
   const topPercent = ((top - HOUR_START) / HOUR_SPAN) * 100;
   const heightPercent = ((bottom - top) / HOUR_SPAN) * 100;
   return { topPercent, heightPercent };
+}
+
+/**
+ * "Now" line — a thin horizontal indicator placed at the current
+ * minute within today's column. Updates every 30s so the line never
+ * sits more than that off the actual time. Does not render outside
+ * today's column (parent gates on `isToday(day)`).
+ */
+function NowIndicator() {
+  const [topPct, setTopPct] = useState(() => currentDayPercent());
+  useEffect(() => {
+    const tick = () => setTopPct(currentDayPercent());
+    // Tick on focus + every 30s so a sleeping laptop catches up
+    // immediately on wake.
+    const id = window.setInterval(tick, 30_000);
+    const onFocus = () => tick();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+  // Day window is full 24h, so `topPct` is just minutes-since-midnight
+  // / 1440. Clamp into [0, 100] just in case of a clock skew.
+  const top = Math.max(0, Math.min(100, topPct));
+  return <div className={styles.nowLine} style={{ top: `${top}%` }} aria-hidden />;
+}
+
+function currentDayPercent(): number {
+  const now = new Date();
+  const minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  return (minutes / (24 * 60)) * 100;
 }
 
 function formatHourLabel(hour: number): string {

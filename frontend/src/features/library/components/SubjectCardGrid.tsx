@@ -13,8 +13,8 @@ import styles from "./SubjectCardGrid.module.css";
  *
  * Designed as the Library home view: the user lands here and sees their
  * active study territories at a glance. Clicking a card drills into that
- * subject's file list via `onSubjectOpen`. Subjects with zero sources are
- * filtered out — showing empty cards is noise.
+ * subject's file list via `onSubjectOpen`. Explicit subject folders are
+ * shown even when empty so users can create a subject before importing.
  *
  * Data contract comes from `GET /api/library/subjects`. This component
  * re-fetches on mount and exposes a `refresh()` callback the parent can
@@ -70,8 +70,7 @@ export function SubjectCardGrid({
     );
   }
 
-  const visible = subjects.filter((s) => s.source_count > 0);
-  if (visible.length === 0) {
+  if (subjects.length === 0) {
     return null;
   }
 
@@ -79,7 +78,7 @@ export function SubjectCardGrid({
     <section className={styles.section} aria-label="Active subjects">
       {!headless && <h3 className={styles.sectionHeader}>Active Subjects</h3>}
       <div className={styles.grid}>
-        {visible.map((subject) => (
+        {subjects.map((subject) => (
           <SubjectCard
             key={subject.subject_name}
             subject={subject}
@@ -99,6 +98,7 @@ interface SubjectCardProps {
 function SubjectCard({ subject, onOpen }: SubjectCardProps) {
   const lastStudied = formatLastStudied(subject.last_studied_at);
   const hasFailure = Boolean(subject.first_failed_doc);
+  const empty = subject.source_count === 0;
 
   return (
     <button type="button" className={styles.card} onClick={onOpen}>
@@ -109,6 +109,9 @@ function SubjectCard({ subject, onOpen }: SubjectCardProps) {
         {hasFailure && (
           <span className={styles.statusPill}>Indexing Failed</span>
         )}
+        {empty && !hasFailure ? (
+          <span className={styles.emptyPill}>Empty folder</span>
+        ) : null}
       </div>
 
       <h4 className={styles.cardTitle}>{subject.subject_name}</h4>
@@ -157,6 +160,9 @@ function SubjectCard({ subject, onOpen }: SubjectCardProps) {
  * callers keep the old name without churn.
  */
 function formatLastStudied(iso: string | null): string {
+  if (!iso) {
+    return "Never";
+  }
   return formatRelativeTime(iso);
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { JSX } from "preact";
 
-import { Button, Icon, Stack, Text } from "@/design-system";
+import { Button, Icon, Stack, Text, toast } from "@/design-system";
 import { ApiError } from "@/services/api/client";
 import {
   documents as documentsApi,
@@ -262,7 +262,7 @@ export function SessionView() {
     }
   };
 
-  const endSession = async () => {
+  const endSession = async (options: { notify?: boolean } = {}) => {
     if (!active || ending) return;
     setEnding(true);
     setCompletionError(null);
@@ -271,6 +271,9 @@ export function SessionView() {
       setCompletion(result);
       setActive(null);
       setActiveSession(null);
+      if (options.notify) {
+        notifyTimerComplete(activeDecoded.text || active.objective || "Your focus session");
+      }
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 404) {
         // Already ended (another tab). Treat as silent completion.
@@ -286,6 +289,11 @@ export function SessionView() {
     } finally {
       setEnding(false);
     }
+  };
+
+  const endSessionFromTimer = async () => {
+    if (!active || ending) return;
+    await endSession({ notify: true });
   };
 
   return (
@@ -306,6 +314,7 @@ export function SessionView() {
           ending={ending}
           error={completionError}
           onEnd={() => void endSession()}
+          onTimerComplete={() => void endSessionFromTimer()}
         />
       ) : (
         <SetupForm
@@ -511,6 +520,7 @@ interface ActiveBodyProps {
   ending: boolean;
   error: string | null;
   onEnd: () => void;
+  onTimerComplete: () => void;
 }
 
 function ActiveBody({
@@ -520,6 +530,7 @@ function ActiveBody({
   ending,
   error,
   onEnd,
+  onTimerComplete,
 }: ActiveBodyProps) {
   const timerMode = uiMode === "pomodoro" ? "countdown" : "countup";
   const targetMinutes = active.duration_minutes > 0 ? active.duration_minutes : 25;
@@ -540,6 +551,7 @@ function ActiveBody({
           targetMinutes={targetMinutes}
           mode={timerMode}
           modeLabel={modeLabel}
+          onComplete={uiMode === "pomodoro" ? onTimerComplete : undefined}
         />
         <div className={styles.activeInfo}>
           <span className={styles.activeEyebrow}>Active session</span>
@@ -572,6 +584,27 @@ function ActiveBody({
       {uiMode === "flashcards" ? <FlashcardsPanel /> : null}
     </div>
   );
+}
+
+function notifyTimerComplete(objective: string) {
+  const body = `${objective} is complete. Take a breath, then review what stuck.`;
+  toast.success("Pomodoro complete", body);
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  const NotificationCtor = window.Notification;
+  const show = () => {
+    try {
+      new NotificationCtor("Carrel Pomodoro complete", { body });
+    } catch {
+      // In-app toast already covered the user-visible notification.
+    }
+  };
+  if (NotificationCtor.permission === "granted") {
+    show();
+  } else if (NotificationCtor.permission === "default") {
+    void NotificationCtor.requestPermission().then((permission) => {
+      if (permission === "granted") show();
+    });
+  }
 }
 
 function FlashcardsPanel() {

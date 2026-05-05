@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 from services import provenance_service, stale_tracker
 from services.extraction_pipeline import IngestedAsset
+from services.subjects import ensure_subject
 
 from .cards import build_card_records
 from .concept_candidates import clean_candidate_label, select_concept_phrases
@@ -32,6 +33,7 @@ def ingest_document_record(
 ) -> Dict[str, object]:
     doc_id = str(uuid.uuid4())
     normalized_subject = normalize_subject_name(subject_name)
+    ensure_subject(conn, normalized_subject)
     raw_text = asset.cleaned_text if asset else extracted_text
     learning_text = clean_learning_text(raw_text)
     source_hash = (asset.content_hash if asset else stale_tracker.compute_source_hash(learning_text))[:32]

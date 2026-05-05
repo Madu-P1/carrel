@@ -240,10 +240,12 @@ def complete_session(session_id: str) -> Dict[str, Any]:
         log_study_event(
             conn,
             "session_completed",
+            duration_seconds=result.get("duration_seconds"),
             payload={
                 "session_id": session_id,
                 "mastery_delta": result["mastery_delta"],
                 "due_queue_count": result["due_queue_count"],
+                "duration_seconds": result.get("duration_seconds"),
             },
         )
         conn.commit()

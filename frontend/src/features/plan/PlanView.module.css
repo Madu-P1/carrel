@@ -86,3 +86,8 @@
   border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--color-danger) 8%, var(--color-bg-elevated));
 }
+
+.weekToolbar {
+  margin: var(--space-3, 12px) 0 var(--space-2, 8px) 0;
+  padding: 0 var(--space-1, 4px);
+}

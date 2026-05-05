@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { parseIsoAsUtc } from "@/lib/time";
 
@@ -20,6 +20,9 @@ interface TimerRingProps {
   /** Optional label rendered inside the ring under the numeric time.
    *  Mode-specific copy ("focus", "flow", "overtime"). */
   modeLabel: string;
+  /** Fires once when a countdown reaches its target. Count-up sessions
+   *  never complete automatically. */
+  onComplete?: () => void;
 }
 
 /**
@@ -34,18 +37,41 @@ interface TimerRingProps {
  * Design: ring stroke is the accent; reached/overtime state swaps the
  * stroke to state-warn so the user visually knows they're past plan.
  */
-export function TimerRing({ startedAt, targetMinutes, mode, modeLabel }: TimerRingProps) {
+export function TimerRing({ startedAt, targetMinutes, mode, modeLabel, onComplete }: TimerRingProps) {
   const [now, setNow] = useState(() => Date.now());
-  const startedMs = useRef(parseIsoAsUtc(startedAt)).current;
+  const startedMs = useMemo(() => parseIsoAsUtc(startedAt), [startedAt]);
+  const completedRef = useRef(false);
   const prefersReducedMotion =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  const targetSec = Math.max(60, targetMinutes * 60);
 
   useEffect(() => {
     const interval = prefersReducedMotion ? 60_000 : 1_000;
     const timer = window.setInterval(() => setNow(Date.now()), interval);
     return () => window.clearInterval(timer);
   }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    completedRef.current = false;
+  }, [mode, startedAt, targetSec]);
+
+  useEffect(() => {
+    if (mode !== "countdown" || !Number.isFinite(startedMs)) return;
+    const remainingMs = targetSec * 1000 - Math.max(0, Date.now() - startedMs);
+    const complete = () => {
+      if (completedRef.current) return;
+      completedRef.current = true;
+      setNow(Date.now());
+      onComplete?.();
+    };
+    if (remainingMs <= 0) {
+      complete();
+      return;
+    }
+    const timeout = window.setTimeout(complete, remainingMs);
+    return () => window.clearTimeout(timeout);
+  }, [mode, onComplete, startedMs, targetSec]);
 
   const size = 240;
   const strokeWidth = 10;
@@ -56,8 +82,6 @@ export function TimerRing({ startedAt, targetMinutes, mode, modeLabel }: TimerRi
   const elapsedSec = Number.isFinite(startedMs)
     ? Math.max(0, Math.floor((now - startedMs) / 1000))
     : 0;
-  const targetSec = Math.max(60, targetMinutes * 60);
-
   let displaySec: number;
   let progress: number; // 0..1 — fraction of ring filled
   let overtime = false;

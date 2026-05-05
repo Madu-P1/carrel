@@ -26,6 +26,14 @@ export interface CalendarFeedCreatedResponse {
   raw_url_echo: string;
 }
 
+export interface CalendarIcsUploadResponse {
+  feed: CalendarFeed;
+  raw_url_echo: string;
+  items_seen: number;
+  items_upserted: number;
+  items_deleted: number;
+}
+
 export interface SyncFeedResponse {
   feed: CalendarFeed;
   items_seen: number;
@@ -43,6 +51,18 @@ export const calendarApi = {
       method: "POST",
       body: input,
     }),
+
+  uploadIcsFile: (input: { label: string; file: File; color?: string | null }) => {
+    const form = new FormData();
+    form.append("label", input.label);
+    if (input.color) form.append("color", input.color);
+    form.append("file", input.file);
+    return api<CalendarIcsUploadResponse>("/api/calendar/ics-upload", {
+      method: "POST",
+      body: form,
+      timeoutMs: 60_000,
+    });
+  },
 
   deleteFeed: (id: string) =>
     api<{ deleted: boolean }>(`/api/calendar/feeds/${encodeURIComponent(id)}`, {

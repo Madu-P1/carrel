@@ -25,6 +25,18 @@ def _load_scope(raw: Optional[str]) -> List[str]:
         return []
 
 
+def _parse_session_time(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def list_sessions(conn: sqlite3.Connection, limit: int = 8) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
@@ -158,6 +170,12 @@ def complete_session(
         else "Run a short review sprint on the next due items."
     )
 
+    completed_at = datetime.now(timezone.utc)
+    started_at = _parse_session_time(session.get("started_at"))
+    duration_seconds = 0
+    if started_at is not None:
+        duration_seconds = max(0, int((completed_at - started_at).total_seconds()))
+
     conn.execute(
         """
         UPDATE sessions
@@ -169,7 +187,7 @@ def complete_session(
             mastery_delta,
             json.dumps(unresolved_items),
             suggested_next_action["headline"],
-            datetime.now(timezone.utc).isoformat(),
+            completed_at.isoformat(),
             session_id,
         ),
     )
@@ -184,4 +202,5 @@ def complete_session(
         "suggested_next_session": suggested_next_action["headline"],
         "recommended_next_action": suggested_next_action,
         "due_queue_count": len(review_queue),
+        "duration_seconds": duration_seconds,
     }

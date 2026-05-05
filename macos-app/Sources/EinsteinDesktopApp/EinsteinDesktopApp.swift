@@ -50,16 +50,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start the calendar bridge AFTER the backend supervisor so the
         // first sync attempt has a live target.
         localCalendarBridge.start()
+        // Floating companion is independent — it lives in its own
+        // NSPanel above the Carrel window. Spawning it here keeps it
+        // present from the moment the user sees Carrel come up. Setting
+        // app activation policy to .regular before this so the panel
+        // joins the user's space correctly.
+        FloatingCompanionWindow.shared.start()
         appLogger.info(
             "Application finished launching (frontend=\(FrontendSelector.resolved().rawValue, privacy: .public))"
         )
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        // Closing the main Carrel window should NOT terminate the app —
+        // the floating companion is intentionally outside the main
+        // window's lifecycle. The user dismisses the companion via
+        // its own mechanism (right-click menu, or Quit Carrel).
+        false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        FloatingCompanionWindow.shared.stop()
         localCalendarBridge.stop()
         // BackendSupervisor also installs its own willTerminate
         // observer for SIGTERM delivery; calling stop() here is

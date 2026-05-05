@@ -48,7 +48,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from services.planning.deadlines import Deadline, detect_upcoming_deadlines
+from services.planning.deadlines import (
+    STUDY_ALLOCATION_KEYWORDS,
+    Deadline,
+    detect_upcoming_deadlines,
+)
 
 # Insertion engine looks 14 days ahead by default. Tighter than
 # the deadline horizon (30d) because suggestions further than two
@@ -119,6 +123,20 @@ def best_study_session_insertions(
     deadlines = detect_upcoming_deadlines(conn, user_id=user_id, now=now)
     tz = _resolve_timezone(user_timezone)
 
+    # Pre-compute the user's already-allocated study minutes to each
+    # detected deadline. The user typing "Study Bio" or "Revise calc"
+    # into Calendar.app is them telling us "I've planned for this."
+    # The insertion engine respects that signal by discounting urgency
+    # for well-prepared deadlines so we don't pile suggestions on top
+    # of a packed prep schedule.
+    allocated_by_deadline: dict[str, int] = {}
+    for deadline in deadlines:
+        if deadline.source != "calendar_event":
+            continue
+        allocated_by_deadline[deadline.deadline_at] = _allocated_study_minutes_in_window(
+            conn, user_id=user_id, now=now, until_iso=deadline.deadline_at,
+        )
+
     candidates: list[StudySessionInsertion] = []
     for block in free_blocks:
         # Trim each free block to a session-sized window starting at
@@ -131,7 +149,10 @@ def best_study_session_insertions(
         end_at = _iso_add_minutes(block.start_at, session_minutes)
 
         anchored = _best_deadline_for_block(block.start_at, deadlines, now=now)
-        urgency = _urgency_factor(anchored, now=now)
+        allocated_minutes = allocated_by_deadline.get(anchored.deadline_at, 0) if anchored else 0
+        urgency = _urgency_factor(
+            anchored, now=now, allocated_minutes=allocated_minutes,
+        )
         fit = _time_of_day_fit(block.start_at, tz=tz)
         size = _size_factor(session_minutes)
         raw_score = urgency * fit * size
@@ -166,15 +187,44 @@ def best_study_session_insertions(
 # Scoring components
 # ---------------------------------------------------------------------
 
-def _urgency_factor(deadline: Deadline | None, *, now: datetime) -> float:
+# Suggested prep minutes per remaining day before a deadline. 60 min/day
+# is the calibration target — students who hit this are well-prepared
+# without burning out. The allocation discount uses this as the
+# denominator: if a midterm is 5 days out and the user has 5×60=300
+# minutes of "Study X" already on their calendar, urgency drops to its
+# saturation floor (40% of base). Below that, urgency degrades linearly.
+SUGGESTED_PREP_MINUTES_PER_DAY = 60
+
+# How aggressively the allocation discount kicks in. 0.6 means a fully-
+# saturated deadline still scores at 40% of its base urgency — we keep
+# proposing supplemental sessions, just at lower priority. 1.0 would
+# zero them out; 0.0 would ignore allocation entirely.
+ALLOCATION_DISCOUNT_STRENGTH = 0.6
+
+
+def _urgency_factor(
+    deadline: Deadline | None,
+    *,
+    now: datetime,
+    allocated_minutes: int = 0,
+) -> float:
     """Higher when a deadline is closer; floor 0.2 so non-deadline
     suggestions still surface (the user has free time + maybe overdue
     cards is a perfectly good reason on its own).
+
+    `allocated_minutes` is the cumulative duration of "Study X" /
+    "Revise X" events the user already has scheduled between now and
+    the deadline. The factor scales down proportionally to a
+    SUGGESTED_PREP_MINUTES_PER_DAY * days_until target — so a deadline
+    with no prep scheduled stays at full urgency, and a deadline with
+    enough prep already in the calendar drops to (1 - discount_strength).
     """
     if deadline is None:
         return 0.2
     if deadline.source == "srs_overdue":
-        # Overdue is "today"; treat as moderately urgent always.
+        # Overdue is "today"; treat as moderately urgent always. SRS
+        # cards don't have per-deadline prep blocks so the allocation
+        # signal doesn't apply here.
         return 0.7 if deadline.severity == "high" else 0.5
     days = max(0.0, deadline.days_until)
     factor = 1.0 / (days + 1.0)
@@ -183,7 +233,65 @@ def _urgency_factor(deadline: Deadline | None, *, now: datetime) -> float:
         factor = min(1.0, factor * 1.4)
     elif deadline.severity == "low":
         factor *= 0.7
+
+    # Allocation discount: how saturated is the user's prep schedule
+    # for this specific deadline? Saturation = allocated / required.
+    if allocated_minutes > 0:
+        # Floor at 1 day's worth so a deadline 0 days out still has a
+        # sane denominator (avoids dividing by 0 + treating "8 hours
+        # already scheduled today" as infinitely saturated).
+        days_remaining = max(1.0, days)
+        required = SUGGESTED_PREP_MINUTES_PER_DAY * days_remaining
+        saturation = min(1.0, allocated_minutes / required)
+        factor *= max(
+            1.0 - ALLOCATION_DISCOUNT_STRENGTH,
+            1.0 - saturation * ALLOCATION_DISCOUNT_STRENGTH,
+        )
+
     return max(0.2, min(1.0, factor))
+
+
+def _allocated_study_minutes_in_window(
+    conn,
+    *,
+    user_id: str,
+    now: datetime,
+    until_iso: str,
+) -> int:
+    """Sum minutes of all events in [now, until_iso) whose summary
+    matches `STUDY_ALLOCATION_KEYWORDS`. Used by `_urgency_factor` to
+    discount urgency for deadlines the user has already prepared for.
+
+    Cancelled and all-day events are excluded — same predicate as the
+    free-block discovery so the two sides agree on what's "real
+    schedulable time."
+    """
+    now_iso = now.isoformat().replace("+00:00", "Z")
+    rows = conn.execute(
+        """
+        SELECT summary, start_at, end_at FROM calendar_events
+        WHERE user_id = ?
+          AND status != 'cancelled'
+          AND all_day = 0
+          AND start_at >= ?
+          AND start_at < ?
+        """,
+        (user_id, now_iso, until_iso),
+    ).fetchall()
+    total_minutes = 0
+    for row in rows:
+        summary = row["summary"] or ""
+        if not STUDY_ALLOCATION_KEYWORDS.search(summary):
+            continue
+        try:
+            start = _parse_iso(row["start_at"])
+            end = _parse_iso(row["end_at"])
+        except ValueError:
+            continue
+        delta_minutes = int((end - start).total_seconds() // 60)
+        if delta_minutes > 0:
+            total_minutes += delta_minutes
+    return total_minutes
 
 
 def _time_of_day_fit(iso_at: str, *, tz: ZoneInfo) -> float:

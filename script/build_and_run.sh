@@ -199,6 +199,10 @@ fi
 if [[ -d "$PROJECT_DIR/Resources/assets.new" ]]; then
   cp -R "$PROJECT_DIR/Resources/assets.new" "$APP_RESOURCES/assets.new"
 fi
+# Floating companion (NSPanel WKWebView). Self-contained, no asset deps.
+if [[ -f "$PROJECT_DIR/Resources/companion-floating.html" ]]; then
+  cp "$PROJECT_DIR/Resources/companion-floating.html" "$APP_RESOURCES/companion-floating.html"
+fi
 if [[ -d "$ROOT_DIR/assets/demo-library" ]]; then
   mkdir -p "$APP_RESOURCES/demo-library"
   cp -R "$ROOT_DIR/assets/demo-library/." "$APP_RESOURCES/demo-library/"

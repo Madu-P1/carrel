@@ -58,6 +58,18 @@ function extractDuplicate(body: unknown): DuplicateDetail | null {
   return (body as { detail: DuplicateDetail }).detail;
 }
 
+function uploadErrorMessage(caught: unknown): string {
+  if (caught instanceof ApiError) {
+    const detail = (caught.body as { detail?: unknown } | undefined)?.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (detail && typeof detail === "object") {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+  }
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
 export function useUploadDocument() {
   const loading = useSignal(false);
   /** Legacy fatal-error signal, kept for callers that only care about the
@@ -102,8 +114,7 @@ export function useUploadDocument() {
               continue;
             }
           }
-          const message =
-            caught instanceof Error ? caught.message : String(caught);
+          const message = uploadErrorMessage(caught);
           results.push({ kind: "error", filename: file.name, message, file });
           // Keep the legacy .error signal populated with the first hard
           // failure so old UI branches still light up.

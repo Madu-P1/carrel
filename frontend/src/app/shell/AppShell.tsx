@@ -159,7 +159,6 @@ function resizeLimits(panel: ResizablePanel) {
 
 function DefaultRightPanelEmpty({ path }: { path: string }) {
   const isReader = path.startsWith("/reader");
-
   return (
     <Box border padding={4} radius={4} surface="elevated">
       <Stack gap={3}>
@@ -183,6 +182,7 @@ function DefaultRightPanelEmpty({ path }: { path: string }) {
     </Box>
   );
 }
+
 
 function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   const isLeftOpen = appShell.leftOpen.value;

@@ -55,3 +55,58 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.blockInteractive {
+  cursor: pointer;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out, filter 120ms ease-out;
+}
+
+.blockInteractive:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.blockInteractive:focus-visible {
+  outline: 2px solid var(--event-color);
+  outline-offset: 2px;
+}
+
+/* Study-block accent.
+ *
+ * The block already shows the feed color on the left rail; we don't
+ * want to compete with that. Instead, layer a subtle diagonal-stripe
+ * pattern over the background so a glance at the grid distinguishes
+ * "self-scheduled study" from "class / meeting / personal" without a
+ * legend. The stripes use --event-color so the feed-color discipline
+ * still wins on the rail; the stripe is just a faint overlay tint.
+ */
+.blockStudy {
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 6px,
+      color-mix(in oklab, var(--event-color) 12%, transparent) 6px,
+      color-mix(in oklab, var(--event-color) 12%, transparent) 8px
+    );
+}
+
+/* Floating book-icon badge in the top-right. Sits above the title so
+ * it's visible at the smallest block sizes (a 30-min block is ~40px
+ * tall and still needs to read). Backdrop is a half-opaque rounded
+ * square so the icon doesn't blend into the title text. */
+.studyBadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--event-color) 28%, rgba(0, 0, 0, 0.55));
+  color: var(--text-primary, #f5f5f5);
+  pointer-events: none;
+}

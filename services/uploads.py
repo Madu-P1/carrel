@@ -7,7 +7,18 @@ from fastapi import HTTPException, UploadFile
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-ALLOWED_SUFFIXES = {".pdf", ".txt", ".md", ".docx", ".pptx"}
+ALLOWED_SUFFIXES = {
+    ".csv",
+    ".docx",
+    ".md",
+    ".markdown",
+    ".pdf",
+    ".pptx",
+    ".tsv",
+    ".txt",
+    ".xls",
+    ".xlsx",
+}
 
 
 def validate_upload_suffix(filename: str | None) -> str:

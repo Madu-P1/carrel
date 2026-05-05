@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
 import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
+import { companion } from "@/services/companion/bus";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
@@ -68,6 +69,11 @@ export function StudyView() {
     setLastError(null);
     try {
       await study.review(currentCard.id, rating);
+      // Push the recall outcome into the companion. 'again' is the
+      // sympathetic stumped tilt; the other three ratings all read as
+      // a successful recall and trigger encouraging.
+      if (rating === "again") companion.cardAgain();
+      else companion.cardGood();
       const nextIndex = currentIndex + 1;
       const reviewedCount = completedCount + 1;
       setCompletedCount((c) => c + 1);

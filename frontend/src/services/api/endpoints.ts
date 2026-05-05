@@ -270,7 +270,15 @@ export const library = {
       { method: "POST" }
     ),
   /** Subject dashboard payload for the Library home grid. */
-  subjects: () => api<{ subjects: SubjectSummary[] }>("/api/library/subjects")
+  subjects: () => api<{ subjects: SubjectSummary[] }>("/api/library/subjects"),
+  createSubject: (subjectName: string) =>
+    api<{ subject: { subject_name: string; created_at?: string | null; updated_at?: string | null } }>(
+      "/api/library/subjects",
+      {
+        method: "POST",
+        body: { subject_name: subjectName }
+      }
+    )
 };
 
 /**
@@ -541,6 +549,7 @@ export interface SessionCompletionResult {
   revision_recommendation: string;
   suggested_next_session: string;
   due_queue_count: number;
+  duration_seconds?: number;
 }
 
 export const dashboard = {

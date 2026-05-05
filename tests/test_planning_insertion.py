@@ -195,6 +195,70 @@ class InsertionEngineTests(unittest.TestCase):
         morning_score = _time_of_day_fit(early_morning_iso, tz=utc)
         self.assertGreater(afternoon_score, morning_score)
 
+    def test_urgency_discount_when_user_has_allocated_study_blocks(self) -> None:
+        """A deadline the user has already scheduled prep for should
+        produce a lower urgency factor than the same deadline with no
+        prep scheduled. Pin the contract directly on the helper.
+        """
+        from services.planning.deadlines import Deadline
+        from services.planning.insertion import _urgency_factor
+
+        # Deadline 2 days out → base factor 1/(2+1) = 0.33, comfortably
+        # above the 0.2 floor so the discount is observable.
+        deadline = Deadline(
+            label="Bio midterm",
+            deadline_at="2026-05-07T15:00:00Z",
+            days_until=2.0,
+            source="calendar_event",
+            event_id="evt-bio",
+            severity="normal",
+        )
+        now = datetime(2026, 5, 5, tzinfo=UTC)
+        baseline = _urgency_factor(deadline, now=now, allocated_minutes=0)
+        well_prepared = _urgency_factor(
+            deadline, now=now, allocated_minutes=120,  # 2 days × 60 min target
+        )
+        self.assertLess(well_prepared, baseline)
+        # Floor lands at the no-deadline baseline (0.2). The user still
+        # sees supplemental suggestions even when fully prepared — they
+        # just rank below open free blocks rather than above them.
+        self.assertGreaterEqual(well_prepared, 0.2)
+
+    def test_study_keyword_event_counts_as_allocated_prep(self) -> None:
+        """Events whose summary matches `study|revision|revise` should
+        be counted by `_allocated_study_minutes_in_window`. This is the
+        signal-detection layer the user explicitly asked for: typing
+        'Study Bio' on the calendar tells Carrel they've blocked time.
+        """
+        from services.planning.insertion import _allocated_study_minutes_in_window
+
+        with db.get_db() as conn:
+            _seed_feed(conn)
+            now = datetime.now(UTC)
+            # Two prep blocks (60 + 90 = 150 min) in the next 7 days.
+            _seed_event(
+                conn, feed_id="f1", uid="prep-1", summary="Study Bio chapter 4",
+                start_at=_iso(now + timedelta(days=1, hours=14)),
+                end_at=_iso(now + timedelta(days=1, hours=15)),
+            )
+            _seed_event(
+                conn, feed_id="f1", uid="prep-2", summary="Revise calculus problem set",
+                start_at=_iso(now + timedelta(days=2, hours=10)),
+                end_at=_iso(now + timedelta(days=2, hours=11, minutes=30)),
+            )
+            # Decoy: a normal class block; should NOT count.
+            _seed_event(
+                conn, feed_id="f1", uid="lecture", summary="Bio lecture",
+                start_at=_iso(now + timedelta(days=1, hours=9)),
+                end_at=_iso(now + timedelta(days=1, hours=10)),
+            )
+            conn.commit()
+            allocated = _allocated_study_minutes_in_window(
+                conn, user_id="local", now=now,
+                until_iso=_iso(now + timedelta(days=7)),
+            )
+        self.assertEqual(allocated, 150)
+
 
 class StudySessionInsertionsRouteTests(unittest.TestCase):
     def setUp(self) -> None:

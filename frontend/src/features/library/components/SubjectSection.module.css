@@ -37,6 +37,13 @@
   gap: var(--space-3);
 }
 
+.emptyFolder {
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: var(--radius-3);
+  background: color-mix(in srgb, var(--color-bg-elevated) 78%, transparent);
+}
+
 .renameRow {
   display: flex;
   align-items: flex-end;

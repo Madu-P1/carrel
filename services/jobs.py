@@ -16,6 +16,7 @@ from services import extraction_pipeline
 from services.app_state import log_study_event
 from services.documents import compute_document_source_hash, find_canonical_duplicate
 from services.ingestion import ingest_document_record, normalize_subject_name
+from services.subjects import ensure_subject
 
 
 LOGGER = get_logger("jobs")
@@ -133,6 +134,7 @@ def enqueue_import(
     shutil.copyfile(source_path, temp_path)
     normalized_subject = normalize_subject_name(subject_name)
     with db.get_db() as conn:
+        ensure_subject(conn, normalized_subject)
         conn.execute(
             """
             INSERT INTO ingestion_jobs (

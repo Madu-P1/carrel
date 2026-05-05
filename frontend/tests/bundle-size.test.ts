@@ -86,7 +86,13 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    controller, and compact shell status wiring. These
  *                    are app-shell reliability paths, not lazy feature
  *                    detail. */
-const ENTRY_JS_GZIP_BUDGET = 97 * 1024;
+// 97 KB → 106 KB: Companion v1 (cube). Adds the right-panel companion
+//                  module — nine-state machine, six-face cube renderer
+//                  with ambient/blink/scan/cascade behaviors, status
+//                  pill, recommendation card. Roughly 6 KB gzipped on
+//                  the entry bundle. Lives in
+//                  frontend/src/features/companion/.
+const ENTRY_JS_GZIP_BUDGET = 106 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
@@ -105,7 +111,12 @@ const ENTRY_JS_GZIP_BUDGET = 97 * 1024;
  *    32 KB → 34 KB: current app-shell CSS settled above the old ceiling
  *                    after the Reader panel/focus and first-run surfaces;
  *                    no new route-only styling is hidden in this budget. */
-const ENTRY_CSS_GZIP_BUDGET = 34 * 1024;
+// 34 KB → 36 KB: Companion v1 cube CSS module — six-face transforms,
+//                  active-face glow, white + teal cell variants, and
+//                  the five cube keyframes (idleDrift, cellClickFlash,
+//                  ambientPulse, stumpedShake, glyphRise). ~1.5 KB
+//                  gzipped on the entry stylesheet.
+const ENTRY_CSS_GZIP_BUDGET = 36 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

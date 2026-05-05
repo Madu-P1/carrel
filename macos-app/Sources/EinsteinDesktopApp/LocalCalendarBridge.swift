@@ -53,6 +53,14 @@ final class LocalCalendarBridge {
     /// Backend URL — same loopback the BackendSupervisor probes.
     private let syncURL = URL(string: "http://127.0.0.1:8000/api/calendar/local/sync")!
 
+    /// Backend's local-API auth boundary. The middleware blocks every
+    /// mutating /api/* request without `X-Carrel-Local-Token`. The
+    /// frontend fetches the token via this endpoint at boot; we do
+    /// the same and cache it for the lifetime of the bridge.
+    private let tokenURL = URL(string: "http://127.0.0.1:8000/api/local-token")!
+    private let localTokenHeader = "X-Carrel-Local-Token"
+    private var cachedLocalToken: String?
+
     /// EKEventStoreChanged observer token — kept so we can remove on stop.
     private var changeObserver: NSObjectProtocol?
 
@@ -214,17 +222,51 @@ final class LocalCalendarBridge {
         return String(format: "#%02X%02X%02X", r, g, b)
     }
 
+    /// Fetch + cache the local API token. The endpoint is unauthenticated
+    /// (it has to be — the frontend bootstraps from it too). Returns nil
+    /// when the backend isn't up yet; caller falls back to no-token,
+    /// which will 403 but not crash. Next sync attempt retries.
+    private func fetchLocalToken() async -> String? {
+        if let cachedLocalToken { return cachedLocalToken }
+        var request = URLRequest(url: tokenURL)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let token = payload?["token"] as? String, !token.isEmpty {
+                cachedLocalToken = token
+                return token
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
     private func postSync(_ data: Data?, calendarId: String) async {
         guard let data else { return }
         var request = URLRequest(url: syncURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = await fetchLocalToken() {
+            request.setValue(token, forHTTPHeaderField: localTokenHeader)
+        }
         request.httpBody = data
 
         do {
             let (_, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                // 403 means our cached token went stale (e.g. backend
+                // restarted). Bust the cache so the next attempt
+                // re-fetches.
+                if code == 403 {
+                    cachedLocalToken = nil
+                }
                 calendarLog.error(
                     "Local calendar sync failed (\(calendarId, privacy: .public)) status=\(code)"
                 )

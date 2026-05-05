@@ -9,6 +9,15 @@ CREATE TABLE IF NOT EXISTS documents (
     status TEXT DEFAULT 'processing'
 );
 
+CREATE TABLE IF NOT EXISTS library_subjects (
+    name TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_subjects_updated
+    ON library_subjects (updated_at);
+
 CREATE TABLE IF NOT EXISTS chunks (
     id TEXT PRIMARY KEY,
     doc_id TEXT REFERENCES documents(id),

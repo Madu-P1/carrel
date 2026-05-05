@@ -1,6 +1,8 @@
 import { signal } from "@preact/signals";
 
+import { documentsQuery } from "@/features/library/hooks/useDocumentsQuery";
 import { jobs, type IngestionJob, type JobEvent } from "@/services/api/endpoints";
+import { subscribeSse } from "@/services/sse";
 
 export const jobsState = {
   items: signal<IngestionJob[]>([]),
@@ -11,8 +13,6 @@ export const jobsState = {
 };
 
 let started = false;
-let pollTimer: number | null = null;
-let eventSource: EventSource | null = null;
 
 function upsertJob(job: IngestionJob): void {
   const existing = jobsState.items.value;
@@ -39,46 +39,25 @@ export async function refreshJobs(): Promise<void> {
   }
 }
 
-async function refreshEvents(): Promise<void> {
-  try {
-    const response = await jobs.events(jobsState.lastEventId.value);
-    if (response.events.length > 0) {
-      jobsState.events.value = [...jobsState.events.value, ...response.events].slice(-200);
-      jobsState.lastEventId.value = response.last_event_id;
-      await refreshJobs();
-    }
-  } catch {
-    // Polling is a fallback signal. The visible error belongs to refreshJobs().
-  }
-}
-
 export function startJobsFeed(): void {
   if (started) return;
   started = true;
   void refreshJobs();
-
-  try {
-    eventSource = new EventSource(jobs.streamUrl(jobsState.lastEventId.value));
-    eventSource.addEventListener("job", (event) => {
-      try {
-        const parsed = JSON.parse((event as MessageEvent).data) as JobEvent;
-        jobsState.events.value = [...jobsState.events.value, parsed].slice(-200);
-        jobsState.lastEventId.value = Math.max(jobsState.lastEventId.value, parsed.id);
-        void refreshJobs();
-      } catch {
-        void refreshEvents();
-      }
-    });
-    eventSource.onerror = () => {
-      eventSource?.close();
-      eventSource = null;
-      if (pollTimer === null) {
-        pollTimer = window.setInterval(() => void refreshEvents(), 2500);
-      }
-    };
-  } catch {
-    pollTimer = window.setInterval(() => void refreshEvents(), 2500);
-  }
+  // Shared SSE multiplexer handles reconnect with backoff; on each
+  // job event we refresh both jobs (for the tray) and documents
+  // (for the Library, which mirrors job state for external uploads
+  // like the floating cube).
+  subscribeSse(jobs.streamUrl(jobsState.lastEventId.value), "job", (event) => {
+    try {
+      const parsed = JSON.parse(event.data) as JobEvent;
+      jobsState.events.value = [...jobsState.events.value, parsed].slice(-200);
+      jobsState.lastEventId.value = Math.max(jobsState.lastEventId.value, parsed.id);
+    } catch {
+      /* malformed payload — fall through to refreshes anyway */
+    }
+    void refreshJobs();
+    void documentsQuery.refetch();
+  });
 }
 
 export async function retryJob(jobId: string): Promise<void> {

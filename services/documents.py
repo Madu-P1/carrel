@@ -13,6 +13,7 @@ from services.extraction_pipeline import IngestedAsset
 from services.ingestion.persistence import delete_chunk_vectors
 from services.ingestion import normalize_subject_name, summarize_document
 from services.ingestion.text_utils import clean_learning_text
+from services.subjects import ensure_subject, list_subject_names
 
 
 def load_messages(raw):
@@ -673,10 +674,20 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
 def fetch_subject_groups(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT subject_name, COUNT(*) AS document_count
-        FROM documents
-        GROUP BY subject_name
-        ORDER BY subject_name ASC
+        WITH subjects AS (
+            SELECT name AS subject_name FROM library_subjects
+            UNION
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(subject_name), ''), 'General') AS subject_name
+            FROM documents
+        )
+        SELECT
+            subjects.subject_name,
+            COUNT(documents.id) AS document_count
+        FROM subjects
+        LEFT JOIN documents
+          ON COALESCE(NULLIF(TRIM(documents.subject_name), ''), 'General') = subjects.subject_name
+        GROUP BY subjects.subject_name
+        ORDER BY subjects.subject_name ASC
         """
     ).fetchall()
     return [dict(row) for row in rows]
@@ -701,21 +712,20 @@ def list_subject_summaries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     workspace has <100 subjects in any realistic deployment, so the extra
     round-trip beats a four-way JOIN that SQLite would plan badly.
     """
-    subject_rows = conn.execute(
-        """
-        SELECT
-            COALESCE(NULLIF(TRIM(subject_name), ''), 'General') AS subject_name,
-            COUNT(*) AS source_count,
-            SUM(CASE WHEN COALESCE(parser_status, 'ready') != 'ready' THEN 1 ELSE 0 END) AS failed_count
-        FROM documents
-        GROUP BY COALESCE(NULLIF(TRIM(subject_name), ''), 'General')
-        ORDER BY source_count DESC, subject_name ASC
-        """
-    ).fetchall()
+    subject_names = list_subject_names(conn)
 
     summaries: List[Dict[str, Any]] = []
-    for row in subject_rows:
-        subject = row["subject_name"]
+    for subject in subject_names:
+        source_row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS source_count,
+                SUM(CASE WHEN COALESCE(parser_status, 'ready') != 'ready' THEN 1 ELSE 0 END) AS failed_count
+            FROM documents
+            WHERE COALESCE(NULLIF(TRIM(subject_name), ''), 'General') = ?
+            """,
+            (subject,),
+        ).fetchone()
         cards_row = conn.execute(
             """
             SELECT COUNT(*) AS n
@@ -767,18 +777,20 @@ def list_subject_summaries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
         summaries.append(
             {
                 "subject_name": subject,
-                "source_count": int(row["source_count"] or 0),
-                "failed_count": int(row["failed_count"] or 0),
+                "source_count": int(source_row["source_count"] if source_row else 0),
+                "failed_count": int(source_row["failed_count"] if source_row and source_row["failed_count"] else 0),
                 "flashcard_count": int(cards_row["n"] if cards_row else 0),
                 "last_studied_at": last_studied_row["ts"] if last_studied_row else None,
                 "first_failed_doc": first_failed,
             }
         )
+    summaries.sort(key=lambda item: (-int(item["source_count"]), str(item["subject_name"])))
     return summaries
 
 
 def set_document_subject(conn: sqlite3.Connection, doc_id: str, subject_name: str) -> Dict[str, Any]:
     normalized_subject = normalize_subject_name(subject_name)
+    ensure_subject(conn, normalized_subject)
     updated = conn.execute(
         "UPDATE documents SET subject_name = ? WHERE id = ?",
         (normalized_subject, doc_id),

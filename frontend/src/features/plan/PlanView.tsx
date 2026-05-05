@@ -1,13 +1,20 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 
-import { Stack, Text, showToast, toast } from "@/design-system";
-import { browserTimeZone } from "./utils/timezone";
+import { Button, Stack, Text, showToast, toast } from "@/design-system";
+import {
+  browserTimeZone,
+  formatWeekRange,
+  shiftDaysLocal,
+  todayMidnightLocal,
+} from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
+import { EventDetailDialog } from "./components/EventDetailDialog";
 import { FeedList } from "./components/FeedList";
 import { WeekTimeGrid } from "./components/WeekTimeGrid";
 import { usePlan } from "./hooks/usePlan";
 import type { CalendarFeed } from "./api/calendarApi";
+import type { PlanEvent } from "./api/planApi";
 import styles from "./PlanView.module.css";
 
 /**
@@ -33,6 +40,7 @@ export function PlanView() {
     loading,
     error,
     addFeed,
+    uploadIcsFile,
     removeFeed,
     syncFeed,
     acceptSuggestion,
@@ -41,6 +49,22 @@ export function PlanView() {
   } = usePlan();
 
   const [addOpen, setAddOpen] = useState(false);
+
+  // Week navigation. weekStart is always midnight-local on a Monday-or-
+  // today-equivalent anchor; the WeekTimeGrid renders 7 days from there.
+  // Today by default; arrows shift by 7 days.
+  const [weekStart, setWeekStart] = useState<Date>(() => todayMidnightLocal());
+  const weekLabel = useMemo(
+    () => formatWeekRange(weekStart.toISOString()),
+    [weekStart],
+  );
+  const isThisWeek = useMemo(() => {
+    const today = todayMidnightLocal();
+    return weekStart.getTime() === today.getTime();
+  }, [weekStart]);
+
+  // Click-to-view event detail.
+  const [selectedEvent, setSelectedEvent] = useState<PlanEvent | null>(null);
 
   const handleSync = async (feedId: string) => {
     try {
@@ -149,19 +173,65 @@ export function PlanView() {
       {feeds.length === 0 && !loading ? (
         <EmptyPlanState onAddFeed={() => setAddOpen(true)} />
       ) : (
-        <WeekTimeGrid
-          events={events}
-          suggestions={suggestions}
-          feeds={feeds}
-          onAcceptSuggestion={handleAcceptSuggestion}
-          onDismissSuggestion={handleDismissSuggestion}
-        />
+        <>
+          <Stack
+            direction="horizontal"
+            gap={2}
+            align="center"
+            justify="between"
+            className={styles.weekToolbar}
+          >
+            <Stack direction="horizontal" gap={2} align="center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setWeekStart((w) => shiftDaysLocal(w, -7))}
+                aria-label="Previous week"
+              >
+                ‹
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setWeekStart((w) => shiftDaysLocal(w, 7))}
+                aria-label="Next week"
+              >
+                ›
+              </Button>
+              <Button
+                variant={isThisWeek ? "ghost" : "secondary"}
+                size="sm"
+                onClick={() => setWeekStart(todayMidnightLocal())}
+                disabled={isThisWeek}
+              >
+                Today
+              </Button>
+            </Stack>
+            <Text variant="caption" tone="secondary">{weekLabel}</Text>
+          </Stack>
+          <WeekTimeGrid
+            events={events}
+            suggestions={suggestions}
+            feeds={feeds}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onDismissSuggestion={handleDismissSuggestion}
+            onSelectEvent={setSelectedEvent}
+            weekStart={weekStart}
+          />
+        </>
       )}
 
       <AddFeedDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSubmit={addFeed}
+        onUploadIcs={uploadIcsFile}
+      />
+
+      <EventDetailDialog
+        event={selectedEvent}
+        feeds={feeds}
+        onClose={() => setSelectedEvent(null)}
       />
     </div>
   );

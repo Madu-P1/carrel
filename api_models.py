@@ -184,6 +184,20 @@ class DocumentSubjectRequest(BaseModel):
     subject_name: str
 
 
+class LibrarySubjectCreateRequest(BaseModel):
+    subject_name: str = Field(..., min_length=1, max_length=120)
+
+
+class LibrarySubjectItem(BaseModel):
+    subject_name: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class LibrarySubjectCreateResponse(BaseModel):
+    subject: LibrarySubjectItem
+
+
 class DocumentListItem(BaseModel):
     id: str
     filename: str
@@ -388,6 +402,20 @@ class CalendarFeedCreatedResponse(BaseModel):
     raw_url_echo: str
 
 
+class CalendarIcsUploadResponse(BaseModel):
+    """Response for local .ics uploads.
+
+    The uploaded file is parsed immediately and not retained on disk.
+    `raw_url_echo` is a display label for compatibility with the feed
+    dialog, never a local path or filename.
+    """
+    feed: CalendarFeedRow
+    raw_url_echo: str
+    items_seen: int
+    items_upserted: int
+    items_deleted: int
+
+
 class CalendarEventRow(BaseModel):
     id: str
     feed_id: str
@@ -524,7 +552,7 @@ class DemoLibrarySeedResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------
-# Apple Calendar (EventKit) live sync — see migration 0013.
+# Apple Calendar (EventKit) live sync — see migration 0014.
 # The macOS shell reads EKEvents and POSTs them to the backend.
 # ---------------------------------------------------------------------
 

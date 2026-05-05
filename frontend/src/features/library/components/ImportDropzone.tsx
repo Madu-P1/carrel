@@ -1,12 +1,14 @@
 import { useState } from "preact/hooks";
 
-import { Button, Spinner, Stack, Text, toast } from "@/design-system";
+import { Button, Input, Spinner, Stack, Text, toast } from "@/design-system";
 
 import { useUploadDocument, type UploadOutcome } from "../hooks/useUploadDocument";
 import styles from "./ImportDropzone.module.css";
 
 interface ImportDropzoneProps {
   onUploaded: () => void;
+  onSubjectCreated?: (subjectName: string) => Promise<void> | void;
+  subjectOptions?: string[];
 }
 
 /**
@@ -125,12 +127,19 @@ function OutcomeSummary({
   );
 }
 
-export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
+export function ImportDropzone({
+  onSubjectCreated,
+  onUploaded,
+  subjectOptions = []
+}: ImportDropzoneProps) {
   const [dragging, setDragging] = useState(false);
+  const [subjectName, setSubjectName] = useState("General");
+  const [creatingSubject, setCreatingSubject] = useState(false);
   const { uploadFiles, loading, outcomes, clearOutcomes, retryFailed } = useUploadDocument();
+  const normalizedSubject = subjectName.trim() || "General";
 
   const handleUpload = async (files: FileList | File[]) => {
-    const results = await uploadFiles(files);
+    const results = await uploadFiles(files, normalizedSubject);
     const okCount = results.filter((r) => r.kind === "ok").length;
     const errCount = results.filter((r) => r.kind === "error").length;
     const dupCount = results.filter((r) => r.kind === "duplicate").length;
@@ -155,9 +164,23 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
   };
 
   const handleRetryFailed = async () => {
-    const results = await retryFailed();
+    const results = await retryFailed(normalizedSubject);
     if (results && results.some((r) => r.kind === "ok")) {
       onUploaded();
+    }
+  };
+
+  const handleCreateSubject = async () => {
+    if (!onSubjectCreated) return;
+    const target = normalizedSubject;
+    setCreatingSubject(true);
+    try {
+      await onSubjectCreated(target);
+      toast.success("Subject folder created", target);
+    } catch (caught) {
+      toast.error("Could not create subject", caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setCreatingSubject(false);
     }
   };
 
@@ -189,6 +212,29 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
       </Stack>
 
       <div className={styles.actions}>
+        <div className={styles.subjectControl}>
+          <Input
+            label="Subject folder"
+            list="library-subject-options"
+            onInput={(event) => setSubjectName((event.currentTarget as HTMLInputElement).value)}
+            value={subjectName}
+          />
+          <datalist id="library-subject-options">
+            {subjectOptions.map((subject) => (
+              <option key={subject} value={subject} />
+            ))}
+          </datalist>
+        </div>
+        {onSubjectCreated ? (
+          <Button
+            disabled={creatingSubject || loading.value}
+            isLoading={creatingSubject}
+            onClick={() => void handleCreateSubject()}
+            variant="secondary"
+          >
+            Create folder
+          </Button>
+        ) : null}
         <Button
           disabled={loading.value}
           onClick={() => document.getElementById("library-import-input")?.click()}
@@ -201,6 +247,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
 
       <input
         id="library-import-input"
+        accept=".pdf,.txt,.md,.markdown,.docx,.pptx,.csv,.tsv,.xlsx,.xls"
         multiple
         onChange={async (event) => {
           const input = event.currentTarget as HTMLInputElement | null;

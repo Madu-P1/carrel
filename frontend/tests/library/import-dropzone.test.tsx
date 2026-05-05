@@ -45,6 +45,46 @@ test("ImportDropzone uploads dropped files and calls onUploaded", async () => {
   expect(getFetchCalls().filter((call) => call.url.endsWith("/api/jobs/import"))).toHaveLength(2);
 });
 
+test("ImportDropzone sends the selected subject folder with uploads", async () => {
+  const onUploaded = vi.fn();
+  mockJson("POST", "/api/jobs/import", jobResponse("job-1", "uploaded.csv", "doc-1"));
+
+  render(<ImportDropzone onUploaded={onUploaded} />);
+
+  fireEvent.input(screen.getByLabelText(/Subject folder/i), {
+    currentTarget: { value: "Finance" },
+    target: { value: "Finance" }
+  });
+  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+    dataTransfer: { files: [new File(["review,score\nMilan,5"], "milan_reviews.csv", { type: "text/csv" })] }
+  });
+
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1));
+  const importCall = getFetchCalls().find((call) => call.url.endsWith("/api/jobs/import"));
+  expect(importCall?.body).toBeInstanceOf(FormData);
+  expect((importCall?.body as FormData).get("subject_name")).toBe("Finance");
+});
+
+test("ImportDropzone can create a subject folder before import", async () => {
+  const onSubjectCreated = vi.fn().mockResolvedValue(undefined);
+
+  render(
+    <ImportDropzone
+      onSubjectCreated={onSubjectCreated}
+      onUploaded={vi.fn()}
+      subjectOptions={["General", "Finance"]}
+    />
+  );
+
+  fireEvent.input(screen.getByLabelText(/Subject folder/i), {
+    currentTarget: { value: "Marketing" },
+    target: { value: "Marketing" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Create folder/i }));
+
+  await waitFor(() => expect(onSubjectCreated).toHaveBeenCalledWith("Marketing"));
+});
+
 test("ImportDropzone choose-files flow triggers the hidden input and uploads on change", async () => {
   const onUploaded = vi.fn();
   mockJson("POST", "/api/jobs/import", jobResponse("job-1", "uploaded.pdf", "doc-1"));
@@ -64,6 +104,28 @@ test("ImportDropzone choose-files flow triggers the hidden input and uploads on 
   fireEvent.change(input);
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1));
+});
+
+test("ImportDropzone shows backend upload detail instead of a generic bad-request label", async () => {
+  const onUploaded = vi.fn();
+  registerFetchHandler((url, init) => {
+    if (!url.pathname.endsWith("/api/jobs/import") || init.method !== "POST") {
+      return undefined;
+    }
+    return jsonResponse(
+      { detail: "Unsupported file type. Supported types: .csv, .pdf, .xlsx." },
+      400
+    );
+  });
+
+  render(<ImportDropzone onUploaded={onUploaded} />);
+
+  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+    dataTransfer: { files: [new File(["x"], "milan_reviews.csv", { type: "text/csv" })] }
+  });
+
+  expect(await screen.findByText(/Unsupported file type/i)).toBeDefined();
+  expect(screen.queryByText(/API 400 Bad Request/i)).toBeNull();
 });
 
 test("ImportDropzone surfaces a Retry button after a failed upload; clicking it re-uploads just the failed files", async () => {

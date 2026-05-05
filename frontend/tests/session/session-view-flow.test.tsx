@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { expect, test } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { expect, test, vi } from "vitest";
 
 import { SessionView } from "../../src/features/session/SessionView";
 import { jsonResponse, mockJson, registerFetchHandler } from "../support/mockFetch";
@@ -162,6 +162,76 @@ test("active session renders End button and objective with prefix stripped", asy
   expect(screen.queryByText(/\[ui:pomodoro\]/)).toBeNull();
   // End button present.
   expect(screen.getByRole("button", { name: /end session/i })).toBeDefined();
+});
+
+test("pomodoro auto-completes at the chosen timer and sends a notification", async () => {
+  const notificationSpy = vi.fn();
+  class TestNotification {
+    static permission: NotificationPermission = "granted";
+    static requestPermission = vi.fn();
+
+    constructor(title: string, options?: NotificationOptions) {
+      notificationSpy(title, options);
+    }
+  }
+  Object.defineProperty(window, "Notification", {
+    configurable: true,
+    value: TestNotification
+  });
+
+  let completeCalls = 0;
+  const startedAt = new Date(Date.now() - 61_000).toISOString();
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/sessions/active" && init.method === "GET") {
+      return jsonResponse({
+        active_session: {
+          id: "sess-timer",
+          goal_id: null,
+          objective: "[ui:pomodoro] Read chapter 8",
+          mode: "focus_sprint",
+          duration_minutes: 1,
+          difficulty_target: null,
+          started_at: startedAt,
+          status: "active",
+        },
+      });
+    }
+    if (url.pathname === "/api/library/subjects" && init.method === "GET") {
+      return jsonResponse({ subjects: [] });
+    }
+    if (url.pathname === "/api/documents" && init.method === "GET") {
+      return jsonResponse([]);
+    }
+    if (url.pathname === "/api/sessions/sess-timer/complete" && init.method === "POST") {
+      completeCalls += 1;
+      return jsonResponse({
+        session_id: "sess-timer",
+        mastery_delta: 0,
+        weak_concepts: [],
+        unresolved_items: [],
+        stretch_question: "Pick one weak area and explain it from source evidence without notes.",
+        revision_recommendation: "Run a short review sprint on the next due items.",
+        suggested_next_session: "Review next due items",
+        due_queue_count: 0,
+        duration_seconds: 60,
+      });
+    }
+    return undefined;
+  });
+
+  render(<SessionView />);
+  expect(await screen.findByText(/Read chapter 8/i)).toBeDefined();
+
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  await waitFor(() => expect(completeCalls).toBe(1));
+  expect(await screen.findByLabelText(/Session complete/i)).toBeDefined();
+  expect(notificationSpy).toHaveBeenCalledWith(
+    "Carrel Pomodoro complete",
+    expect.objectContaining({ body: expect.stringContaining("Read chapter 8") })
+  );
 });
 
 test("duration chips form a radiogroup; selecting 45 sends 45 minutes", async () => {

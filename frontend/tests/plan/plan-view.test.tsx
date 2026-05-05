@@ -219,3 +219,61 @@ test("Add-feed dialog opens and validates required fields", async () => {
   const addButton = within(dialog).getByRole("button", { name: /Add feed/i });
   expect((addButton as HTMLButtonElement).disabled).toBe(true);
 });
+
+test("Add-feed dialog imports an Apple Calendar ICS file", async () => {
+  let uploadBody: BodyInit | null | undefined = null;
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/plan" && init.method === "GET") {
+      return jsonResponse({
+        events: [],
+        suggestions: [],
+        feeds: [],
+        is_freshening: false,
+      });
+    }
+    if (url.pathname === "/api/calendar/ics-upload" && init.method === "POST") {
+      uploadBody = init.body;
+      return jsonResponse({
+        feed: {
+          id: "feed-upload",
+          label: "Apple Calendar",
+          url: "Uploaded .ics file",
+          color: null,
+          is_enabled: true,
+          last_synced_at: new Date().toISOString(),
+          last_successful_sync_at: new Date().toISOString(),
+          consecutive_failures: 0,
+          last_error: null,
+        },
+        raw_url_echo: "Uploaded .ics file",
+        items_seen: 3,
+        items_upserted: 3,
+        items_deleted: 0,
+      });
+    }
+    return undefined;
+  });
+
+  render(<PlanView />);
+
+  fireEvent.click(await screen.findByRole("button", { name: /Connect a calendar/i }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: /ICS file/i }));
+  fireEvent.input(within(dialog).getByLabelText(/^Name$/i), {
+    target: { value: "Apple Calendar" },
+  });
+
+  const file = new File(["BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"], "apple.ics", {
+    type: "text/calendar",
+  });
+  fireEvent.change(within(dialog).getByLabelText(/ICS file/i), {
+    target: { files: [file] },
+  });
+  fireEvent.submit(within(dialog).getByRole("button", { name: /Import file/i }).closest("form")!);
+
+  await waitFor(() => expect(uploadBody).toBeInstanceOf(FormData));
+  expect(await within(dialog).findByText(/Imported 3 events/i)).toBeDefined();
+  const submitted = uploadBody as unknown as FormData;
+  expect(submitted.get("label")).toBe("Apple Calendar");
+  expect(submitted.get("file")).toBe(file);
+});

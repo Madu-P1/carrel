@@ -16,6 +16,8 @@ from api_models import (
     DocumentSubjectRequest,
     DocumentSubjectUpdateResponse,
     DocumentUploadResponse,
+    LibrarySubjectCreateRequest,
+    LibrarySubjectCreateResponse,
     TextDocumentCreateRequest,
 )
 from app_logging import get_logger, log_event
@@ -34,6 +36,7 @@ from services.documents import (
     set_document_subject,
 )
 from services.ingestion import ingest_document_record, normalize_subject_name
+from services.subjects import ensure_subject
 from services.uploads import save_upload_bounded, validate_upload_suffix
 
 
@@ -274,6 +277,15 @@ def library_subjects() -> Dict[str, Any]:
     with db.get_db() as conn:
         subjects = list_subject_summaries(conn)
     return {"subjects": subjects}
+
+
+@router.post("/api/library/subjects", response_model=LibrarySubjectCreateResponse)
+def create_library_subject(payload: LibrarySubjectCreateRequest) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        subject = ensure_subject(conn, payload.subject_name)
+        conn.commit()
+    log_event(LOGGER, logging.INFO, "library_subject_created", subject_name=subject["subject_name"])
+    return {"subject": subject}
 
 
 @router.get("/api/library/duplicates")
