@@ -15,6 +15,11 @@ from services.local_api_security import (
     has_valid_local_api_token,
     is_local_api_request,
 )
+from services.observability import (
+    init_sentry,
+    metrics_endpoint,
+    request_id_and_metrics_middleware,
+)
 
 
 RUNTIME_PATHS = resolve_runtime_paths()
@@ -123,6 +128,10 @@ def _resume_ingestion_jobs() -> None:
 
 app = FastAPI(title="Carrel", lifespan=lifespan)
 
+# Initialize Sentry before any request middleware so error capture
+# wraps the full request lifecycle. No-op if SENTRY_DSN is unset.
+init_sentry()
+
 # The app ships bundled inside a macOS WKWebView loading file:// HTML and, in dev,
 # is reached from localhost via uvicorn. Both surfaces produce a null / file origin
 # or a loopback origin. No legitimate caller lives on a public origin, so we keep
@@ -135,6 +144,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# Metrics endpoint — JSON, no Prometheus dep. Registered directly on
+# the app so it doesn't go through the auth gate (intentional: useful
+# for liveness/readiness).
+app.get("/api/metrics")(metrics_endpoint)
 
 
 @app.middleware("http")
@@ -155,6 +169,12 @@ async def require_local_api_token(request: Request, call_next):
             },
         )
     return await call_next(request)
+
+
+# Request-ID + metrics middleware MUST be registered last so it ends
+# up outermost in FastAPI's reverse-order stack — that way it observes
+# every request, including ones the auth gate above rejects with 403.
+app.middleware("http")(request_id_and_metrics_middleware)
 
 
 register_routes(app)

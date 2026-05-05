@@ -46,6 +46,7 @@ _UNAUTHENTICATED_PATHS = frozenset({
     "/",
     "/api/health",
     "/api/local-token",
+    "/api/metrics",
 })
 
 # Static asset prefixes (also unauth — they're served by StaticFiles).

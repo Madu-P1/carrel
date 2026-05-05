@@ -37,6 +37,16 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+        # Pull the per-request id from the contextvar set by the
+        # observability middleware. Module is imported lazily to keep
+        # logging usable from scripts that don't boot FastAPI.
+        try:
+            from services.observability import request_id_var
+            rid = request_id_var.get()
+            if rid:
+                payload["request_id"] = rid
+        except Exception:
+            pass
         event = getattr(record, "event", None)
         if isinstance(event, str) and event:
             payload["event"] = event

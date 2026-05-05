@@ -1,2 +1,8 @@
 ruff
 mypy
+pip-tools
+pytest
+
+# Optional observability — only needed when SENTRY_DSN is set in env.
+# Pinned in requirements-dev.lock for CI reproducibility.
+sentry-sdk[fastapi]>=2.0,<3.0
