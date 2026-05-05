@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
 from html import escape
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -134,140 +132,17 @@ class HydratedChunkContext:
     score: float
 
 
-@dataclass(frozen=True)
-class QuoteMatch:
-    quote: str
-    repaired: bool
-
-
-@dataclass(frozen=True)
-class NormalizedText:
-    text: str
-    index_map: tuple[int, ...]
-
-
-_WHITESPACE_RE = re.compile(r"\s+")
-_SMART_QUOTES = str.maketrans(
-    {
-        "“": '"',
-        "”": '"',
-        "„": '"',
-        "‟": '"',
-        "’": "'",
-        "‘": "'",
-        "‚": "'",
-        "‛": "'",
-        "\u00a0": " ",
-        "\u2009": " ",
-        "\u202f": " ",
-        "\u200b": " ",
-        "\r": " ",
-        "\n": " ",
-        "\t": " ",
-    }
+# Notes CRUD + quote validation moved to focused modules to keep
+# this file scoped to the LLM-tutor pipeline. Re-exported below so
+# existing imports keep working.
+from services.notes.crud import fetch_notes, upsert_note_record  # noqa: E402, F401
+from services.tutor_quotes import (  # noqa: E402, F401
+    NormalizedText,
+    QuoteMatch,
+    normalize as _normalize_match_text,
+    slice_original as _slice_original_span,
+    validate_quote as _validated_citation_quote,
 )
-
-
-def fetch_notes(
-    conn: sqlite3.Connection,
-    doc_id: Optional[str] = None,
-    concept_id: Optional[str] = None,
-    limit: int = 8,
-) -> List[Dict[str, Any]]:
-    conditions = []
-    params: List[Any] = []
-    if doc_id:
-        conditions.append("n.doc_id = ?")
-        params.append(doc_id)
-    if concept_id:
-        conditions.append("n.concept_id = ?")
-        params.append(concept_id)
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    rows = conn.execute(
-        f"""
-        SELECT n.id, n.doc_id, n.concept_id, n.title, n.content, n.source_snippet, n.note_type, n.goal_id,
-               n.session_id, n.created_at, n.updated_at,
-               d.filename AS document_name, c.name AS concept_name
-        FROM notes n
-        LEFT JOIN documents d ON n.doc_id = d.id
-        LEFT JOIN concepts c ON n.concept_id = c.id
-        {where_clause}
-        ORDER BY n.updated_at DESC
-        LIMIT ?
-        """,
-        (*params, limit),
-    ).fetchall()
-    notes: List[Dict[str, Any]] = []
-    for row in rows:
-        item = dict(row)
-        if item.get("concept_name"):
-            item["concept_name"] = clean_concept_label(item["concept_name"])
-        notes.append(item)
-    return notes
-
-
-def upsert_note_record(
-    conn: sqlite3.Connection,
-    note_id: Optional[str],
-    doc_id: Optional[str],
-    concept_id: Optional[str],
-    title: Optional[str],
-    content: str,
-    source_snippet: Optional[str],
-    note_type: str = "saved_insight",
-    goal_id: Optional[str] = None,
-    session_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    clean_title = (title or "").strip() or "Study note"
-    if note_id:
-        conn.execute(
-            """
-            UPDATE notes
-            SET doc_id = ?, concept_id = ?, title = ?, content = ?, source_snippet = ?, note_type = ?,
-                goal_id = ?, session_id = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                doc_id,
-                concept_id,
-                clean_title,
-                content,
-                source_snippet,
-                note_type,
-                goal_id,
-                session_id,
-                datetime.now(timezone.utc).isoformat(),
-                note_id,
-            ),
-        )
-    else:
-        note_id = str(uuid.uuid4())
-        conn.execute(
-            """
-            INSERT INTO notes (id, doc_id, concept_id, title, content, source_snippet, note_type, goal_id, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (note_id, doc_id, concept_id, clean_title, content, source_snippet, note_type, goal_id, session_id),
-        )
-    conn.commit()
-    row = conn.execute(
-        """
-        SELECT n.id, n.doc_id, n.concept_id, n.title, n.content, n.source_snippet, n.note_type, n.goal_id,
-               n.session_id, n.created_at, n.updated_at,
-               d.filename AS document_name, c.name AS concept_name
-        FROM notes n
-        LEFT JOIN documents d ON n.doc_id = d.id
-        LEFT JOIN concepts c ON n.concept_id = c.id
-        WHERE n.id = ?
-        """,
-        (note_id,),
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Saved note could not be loaded.")
-    item = dict(row)
-    if item.get("concept_name"):
-        item["concept_name"] = clean_concept_label(item["concept_name"])
-    return item
 
 
 def _normalized_subject_name(subject_name: str | None) -> str | None:
@@ -288,78 +163,6 @@ def _clean_strings(values: Sequence[Any]) -> tuple[str, ...]:
         cleaned.append(text)
     return tuple(cleaned)
 
-
-def _normalize_match_text(value: str) -> NormalizedText:
-    normalized_chars: list[str] = []
-    index_map: list[int] = []
-    previous_was_space = True
-    canonical = str(value or "").translate(_SMART_QUOTES)
-    for index, char in enumerate(canonical):
-        lowered = char.lower()
-        if lowered.isspace():
-            if normalized_chars and not previous_was_space:
-                normalized_chars.append(" ")
-                index_map.append(index)
-                previous_was_space = True
-            continue
-        normalized_chars.append(lowered)
-        index_map.append(index)
-        previous_was_space = False
-    if normalized_chars and normalized_chars[-1] == " ":
-        normalized_chars.pop()
-        index_map.pop()
-    return NormalizedText(text="".join(normalized_chars), index_map=tuple(index_map))
-
-
-def _slice_original_span(content: str, normalized: NormalizedText, start: int, size: int) -> str:
-    if size <= 0 or not normalized.index_map:
-        return ""
-    end_position = start + size - 1
-    if start < 0 or end_position >= len(normalized.index_map):
-        return ""
-    start_index = normalized.index_map[start]
-    end_index = normalized.index_map[end_position] + 1
-    return content[start_index:end_index].strip()
-
-
-def _fuzzy_quote_match(raw_quote: str, content: str, normalized_quote: NormalizedText, normalized_content: NormalizedText) -> QuoteMatch | None:
-    if not normalized_quote.text or not normalized_content.text:
-        return None
-    matcher = SequenceMatcher(None, normalized_quote.text, normalized_content.text, autojunk=False)
-    match = matcher.find_longest_match(
-        0,
-        len(normalized_quote.text),
-        0,
-        len(normalized_content.text),
-    )
-    if match.size <= 0:
-        return None
-    min_length = min(40, len(normalized_quote.text))
-    similarity = match.size / max(len(normalized_quote.text), 1)
-    if match.size < min_length or similarity < 0.7:
-        return None
-    quote = _slice_original_span(content, normalized_content, match.b, match.size)
-    if not quote:
-        return None
-    return QuoteMatch(quote=quote, repaired=quote != raw_quote)
-
-
-def _validated_citation_quote(raw_quote: str, content: str) -> QuoteMatch | None:
-    quote = str(raw_quote or "").strip()
-    if not quote or not str(content or "").strip():
-        return None
-    normalized_quote = _normalize_match_text(quote)
-    normalized_content = _normalize_match_text(content)
-    if not normalized_quote.text or not normalized_content.text:
-        return None
-
-    exact_position = normalized_content.text.find(normalized_quote.text)
-    if exact_position >= 0:
-        actual = _slice_original_span(content, normalized_content, exact_position, len(normalized_quote.text))
-        if actual:
-            return QuoteMatch(quote=actual, repaired=actual != quote)
-
-    return _fuzzy_quote_match(quote, content, normalized_quote, normalized_content)
 
 
 def _top_k(value: int | None) -> int:
