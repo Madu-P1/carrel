@@ -1,3 +1,4 @@
+import type { ComponentChildren, FunctionComponent } from "preact";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
@@ -33,6 +34,16 @@ import { AppShell, BundledAppShell } from "./shell/AppShell";
  * triggered by user click rather than a render-time Suspense boundary).
  */
 
+interface RouteEntry {
+  /** Browser-mode pattern for `<Route path>`. Empty string means
+   *  this entry is bundled-only (e.g., the dashboard fallback). */
+  pattern: string;
+  /** Bundled-mode prefix tested against `parseBundledRoute(...).pathname`.
+   *  Null means "default fallback if nothing else matched". */
+  bundledPrefix: string | null;
+  Component: FunctionComponent<{ rawPath: string }>;
+}
+
 function parseBundledRoute(path: string): URL {
   // Default landing is the Dashboard. Historically this defaulted to
   // /library; changed when the Dashboard home landed.
@@ -56,55 +67,54 @@ function bundledReaderChunkId(path: string): string | null {
   return parseBundledRoute(path).searchParams.get("chunk");
 }
 
+/** Reader gets its own component because both renderers need to thread
+ *  `id` and `chunkId` through. Browser mode uses `useLocation()` for
+ *  the `?chunk=` query and accepts `id` as a route param from
+ *  preact-iso (which auto-injects URL params as props). Bundled mode
+ *  uses the raw appShell route since there's no LocationProvider. */
 function BrowserReaderRoute({ id }: { id?: string }) {
   const { query } = useLocation();
-
   return <ReaderView chunkId={query.chunk ?? null} id={id} />;
 }
 
-function renderBundledRoute(rawPath: string) {
-  const path = parseBundledRoute(rawPath).pathname;
+function BundledReaderRoute({ rawPath }: { rawPath: string }) {
+  return (
+    <ReaderView
+      chunkId={bundledReaderChunkId(rawPath)}
+      id={bundledReaderId(rawPath)}
+    />
+  );
+}
 
-  if (path.startsWith("/reader")) {
-    return (
-      <ReaderView
-        chunkId={bundledReaderChunkId(rawPath)}
-        id={bundledReaderId(rawPath)}
-      />
-    );
-  }
+/**
+ * Single source of truth for the route table. Both the bundled-mode
+ * renderer and the LocationProvider `<Router>` read from this array,
+ * so adding a route is one line in one place. (The audit flagged the
+ * old hand-rolled if/else chain as a drift risk.)
+ *
+ * The Reader entry has two `Component`s under the hood — one for
+ * each renderer — because the props plumbing differs.
+ */
+const ROUTES: RouteEntry[] = [
+  { pattern: "/session", bundledPrefix: "/session", Component: () => <SessionView /> },
+  { pattern: "/library", bundledPrefix: "/library", Component: () => <LibraryView /> },
+  { pattern: "/reader/:id?", bundledPrefix: "/reader", Component: BundledReaderRoute },
+  { pattern: "/ask", bundledPrefix: "/ask", Component: () => <AskView /> },
+  { pattern: "/study", bundledPrefix: "/study", Component: () => <StudyView /> },
+  { pattern: "/search", bundledPrefix: "/search", Component: () => <SearchView /> },
+  { pattern: "/concepts", bundledPrefix: "/concepts", Component: () => <ConceptGraphView /> },
+  { pattern: "/plan", bundledPrefix: "/plan", Component: () => <PlanView /> },
+  { pattern: "/", bundledPrefix: null, Component: () => <DashboardView /> },
+];
 
-  if (path.startsWith("/ask")) {
-    return <AskView />;
-  }
-
-  if (path.startsWith("/study")) {
-    return <StudyView />;
-  }
-
-  if (path.startsWith("/library")) {
-    return <LibraryView />;
-  }
-
-  if (path.startsWith("/search")) {
-    return <SearchView />;
-  }
-
-  if (path.startsWith("/concepts")) {
-    return <ConceptGraphView />;
-  }
-
-  if (path.startsWith("/session")) {
-    return <SessionView />;
-  }
-
-  if (path.startsWith("/plan")) {
-    return <PlanView />;
-  }
-
-  // Default landing is the Dashboard — the legacy home the user asked for,
-  // rebuilt on the new frontend.
-  return <DashboardView />;
+function renderBundledRoute(rawPath: string): ComponentChildren {
+  const pathname = parseBundledRoute(rawPath).pathname;
+  const matched = ROUTES.find((entry) =>
+    entry.bundledPrefix !== null && pathname.startsWith(entry.bundledPrefix)
+  );
+  const entry = matched ?? ROUTES[ROUTES.length - 1];
+  const Component = entry.Component;
+  return <Component rawPath={rawPath} />;
 }
 
 export function App() {
@@ -124,15 +134,10 @@ export function App() {
     <LocationProvider>
       <AppShell>
         <Router>
-          <Route component={DashboardView} path="/" />
-          <Route component={SessionView} path="/session" />
-          <Route component={LibraryView} path="/library" />
+          {ROUTES.filter((entry) => entry.pattern !== "/reader/:id?").map((entry) => (
+            <Route key={entry.pattern} component={entry.Component} path={entry.pattern} />
+          ))}
           <Route component={BrowserReaderRoute} path="/reader/:id?" />
-          <Route component={AskView} path="/ask" />
-          <Route component={StudyView} path="/study" />
-          <Route component={SearchView} path="/search" />
-          <Route component={ConceptGraphView} path="/concepts" />
-          <Route component={PlanView} path="/plan" />
           <Route component={NotFoundView} default />
         </Router>
       </AppShell>
