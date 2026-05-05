@@ -73,4 +73,30 @@ export const planApi = {
       `/api/plan/suggestions/${encodeURIComponent(suggestionId)}/restore`,
       { method: "POST", body: {} }
     ),
+
+  /** Read-only "best time to insert a study session" advice. Computed
+   * by the backend from free blocks + detected deadlines + time-of-day
+   * fit. Pass the browser timezone so the fit calculation uses local
+   * hours. Returns up to 3 ranked suggestions. */
+  insertions: (timezone: string) =>
+    api<StudySessionInsertionsResponse>(
+      `/api/plan/insertions?tz=${encodeURIComponent(timezone)}`
+    ),
 };
+
+export interface StudySessionInsertion {
+  start_at: string;
+  end_at: string;
+  duration_minutes: number;
+  score: number;                       // 0..1, top normalized to 1.0
+  reason_text: string;
+  reason_code: "deadline_imminent" | "free_block_overdue_srs" | "free_block";
+  deadline_label: string | null;
+  deadline_at: string | null;
+  source_event_id: string | null;
+}
+
+export interface StudySessionInsertionsResponse {
+  insertions: StudySessionInsertion[];
+  user_timezone: string;
+}

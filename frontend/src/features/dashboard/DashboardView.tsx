@@ -11,6 +11,7 @@ import { HeroAskPrompt } from "./components/HeroAskPrompt";
 import { NextBestAction } from "./components/NextBestAction";
 import { QuickActionGrid } from "./components/QuickActionGrid";
 import { StreakRing } from "./components/StreakRing";
+import { StudyInsertionsCard } from "./components/StudyInsertionsCard";
 import { useCountUp } from "./components/useCountUp";
 import { WeakConceptsRail } from "./components/WeakConceptsRail";
 import { WeekSparkline } from "./components/WeekSparkline";
@@ -129,6 +130,7 @@ export function DashboardView() {
       <Header payload={payload} />
       <HeroAskPrompt />
       <NextBestAction next={payload.next_best_action} />
+      <StudyInsertionsCard />
       <ContinueModule active={payload.active_session} />
       <ActiveSessionCard
         active={payload.active_session}

@@ -35,12 +35,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// probe fails.
     private let backendSupervisor = BackendSupervisor()
 
+    /// Bridges Apple Calendar (EventKit) into the Carrel backend so the
+    /// dashboard re-runs coach advice when the user moves a meeting in
+    /// Calendar.app. Requires NSCalendarsFullAccessUsageDescription in
+    /// Info.plist; without it the EventKit prompt silently fails.
+    private let localCalendarBridge = LocalCalendarBridge()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         MainMenuBuilder.install()
         LaunchTelemetry.markLaunch(frontend: FrontendSelector.resolved().rawValue)
         backendSupervisor.start()
+        // Start the calendar bridge AFTER the backend supervisor so the
+        // first sync attempt has a live target.
+        localCalendarBridge.start()
         appLogger.info(
             "Application finished launching (frontend=\(FrontendSelector.resolved().rawValue, privacy: .public))"
         )
@@ -51,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        localCalendarBridge.stop()
         // BackendSupervisor also installs its own willTerminate
         // observer for SIGTERM delivery; calling stop() here is
         // belt-and-suspenders so the timer + observer both unwind.

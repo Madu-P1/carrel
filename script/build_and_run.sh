@@ -244,6 +244,8 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Carrel reads your Apple Calendar so the dashboard can suggest study sessions in your free blocks and re-plan when meetings move. No event content is sent off your machine.</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
 </dict>

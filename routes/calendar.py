@@ -26,10 +26,12 @@ from api_models import (
     CalendarFeedCreatedResponse,
     CalendarFeedCreateRequest,
     CalendarFeedRow,
+    LocalCalendarSyncRequest,
+    LocalCalendarSyncResponse,
     SyncFeedResponse,
 )
 from app_logging import get_logger
-from services.calendar import repository, sync_service
+from services.calendar import local_sync, repository, sync_service
 from services.calendar.validators import (
     FeedURLRejected,
     mask_url,
@@ -182,6 +184,40 @@ def sync_feed(feed_id: str) -> SyncFeedResponse:
         items_deleted=outcome.items_deleted,
         status=outcome.status,
         error=outcome.error,
+    )
+
+
+@router.post("/api/calendar/local/sync", response_model=LocalCalendarSyncResponse)
+def sync_local_calendar(payload: LocalCalendarSyncRequest) -> LocalCalendarSyncResponse:
+    """Receive an Apple Calendar (EventKit) sync from the macOS shell.
+
+    The macOS bridge calls this on launch and again on every
+    EKEventStoreChanged notification. The body carries one EKCalendar's
+    events; this handler upserts them through the same code path that
+    HTTP feeds use, so downstream consumers (planner, coach, dashboard)
+    don't care which kind of feed produced an event.
+    """
+    with db.get_db() as conn:
+        feed, items_seen, items_upserted, items_deleted = local_sync.sync_local_calendar(
+            conn, payload
+        )
+    LOGGER.info(
+        "local_calendar_synced",
+        extra={
+            "context": {
+                "feed_id": feed.id,
+                "calendar_identifier": payload.calendar_identifier,
+                "items_seen": items_seen,
+                "items_upserted": items_upserted,
+                "items_deleted": items_deleted,
+            }
+        },
+    )
+    return LocalCalendarSyncResponse(
+        feed_id=feed.id,
+        items_seen=items_seen,
+        items_upserted=items_upserted,
+        items_deleted=items_deleted,
     )
 
 

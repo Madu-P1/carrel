@@ -521,3 +521,64 @@ class DemoLibrarySeedResponse(BaseModel):
     seeded: bool
     documents: List[DocumentUploadResponse] = Field(default_factory=list)
     skipped_reason: Optional[str] = None
+
+
+# ---------------------------------------------------------------------
+# Apple Calendar (EventKit) live sync — see migration 0013.
+# The macOS shell reads EKEvents and POSTs them to the backend.
+# ---------------------------------------------------------------------
+
+
+class LocalCalendarEventInput(BaseModel):
+    """One EKEvent rendered for transport. Field bounds match what
+    EventKit can return plus generous slack — a 4 KB title would be
+    pathological but isn't impossible if a script writes one.
+    """
+    uid: str = Field(..., min_length=1, max_length=512)
+    summary: str = Field("", max_length=4096)
+    start_at: str = Field(..., min_length=1, max_length=64)
+    end_at: str = Field(..., min_length=1, max_length=64)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    all_day: bool = False
+    location: Optional[str] = Field(default=None, max_length=1024)
+    status: Literal["confirmed", "cancelled", "tentative"] = "confirmed"
+
+
+class LocalCalendarSyncRequest(BaseModel):
+    """POST /api/calendar/local/sync body — one EKCalendar's worth of
+    events. The macOS shell sends one of these per local calendar
+    after EventKit grants access, and on every EKEventStoreChanged
+    notification.
+    """
+    calendar_identifier: str = Field(..., min_length=1, max_length=256)
+    label: str = Field(..., min_length=1, max_length=120)
+    color: Optional[str] = Field(default=None, max_length=32)
+    events: List[LocalCalendarEventInput] = Field(default_factory=list, max_length=10_000)
+
+
+class LocalCalendarSyncResponse(BaseModel):
+    feed_id: str
+    items_seen: int
+    items_upserted: int
+    items_deleted: int
+
+
+class StudySessionInsertionRow(BaseModel):
+    """One ranked study-session insertion proposed by the planning
+    engine. Read-only advice — accepting/dismissing happens at the
+    suggestion layer (StudySuggestionRow), not here.
+    """
+    start_at: str
+    end_at: str
+    duration_minutes: int = Field(..., ge=1)
+    score: float = Field(..., ge=0.0, le=1.0)
+    reason_text: str
+    reason_code: Literal["deadline_imminent", "free_block_overdue_srs", "free_block"]
+    deadline_label: Optional[str] = None
+    deadline_at: Optional[str] = None
+    source_event_id: Optional[str] = None
+
+
+class StudySessionInsertionsResponse(BaseModel):
+    insertions: List[StudySessionInsertionRow] = Field(default_factory=list)
+    user_timezone: str
