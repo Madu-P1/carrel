@@ -21,7 +21,6 @@ import main
 from services.local_api_security import HEADER_NAME, get_local_api_token
 from services.observability import REQUEST_ID_HEADER
 
-
 HEX32 = re.compile(r"^[0-9a-f]{32}$")
 
 
