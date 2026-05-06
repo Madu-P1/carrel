@@ -47,8 +47,6 @@ enum MainMenuBuilder {
             keyEquivalent: ""
         )
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(buildFrontendSwitcherItem())
-        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(
             withTitle: "Quit \(appName)",
             action: #selector(NSApplication.terminate(_:)),
@@ -57,36 +55,6 @@ enum MainMenuBuilder {
 
         appMenuItem.submenu = appMenu
         return appMenuItem
-    }
-
-    /// Carrel > Frontend submenu. Lets the user flip between the new shell
-    /// and the legacy `app.html` without dropping to the terminal. Works in
-    /// both frontends because it's a native AppKit target/action, not a
-    /// web-bridge command.
-    private static func buildFrontendSwitcherItem() -> NSMenuItem {
-        let container = NSMenuItem(title: "Frontend", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "Frontend")
-
-        let newItem = NSMenuItem(
-            title: "Use New Frontend",
-            action: #selector(FrontendSwitchHandler.switchFrontend(_:)),
-            keyEquivalent: ""
-        )
-        newItem.target = FrontendSwitchHandler.shared
-        newItem.representedObject = Frontend.new.rawValue
-        submenu.addItem(newItem)
-
-        let legacyItem = NSMenuItem(
-            title: "Use Legacy Frontend",
-            action: #selector(FrontendSwitchHandler.switchFrontend(_:)),
-            keyEquivalent: ""
-        )
-        legacyItem.target = FrontendSwitchHandler.shared
-        legacyItem.representedObject = Frontend.legacy.rawValue
-        submenu.addItem(legacyItem)
-
-        container.submenu = submenu
-        return container
     }
 
     private static func buildFileMenu() -> NSMenuItem {
@@ -267,68 +235,6 @@ final class MenuCommandDispatcher: NSObject {
     }
 }
 
-/// Handles the native Carrel > Frontend submenu.
-///
-/// Two items, one per Frontend case, sharing this target. Clicking an item
-/// persists the user's choice via FrontendSelector, then triggers a reload
-/// on the current WKWebView by calling back into its Coordinator. No web
-/// bridge involved, so this works from both the new and legacy frontends.
-///
-/// validateMenuItem puts a checkmark on the currently-active choice so the
-/// user can see which bundle is loaded without having to remember.
-@MainActor
-final class FrontendSwitchHandler: NSObject, NSMenuItemValidation {
-    static let shared = FrontendSwitchHandler()
-
-    /// Tracks the frontend currently loaded in the WKWebView, independent of
-    /// FrontendSelector.resolved(). resolved() honors the EINSTEIN_FRONTEND
-    /// launch env var, which we deliberately want to override when the user
-    /// clicks a menu item. Without this, clicks got silently no-op'd because
-    /// resolved() kept returning the env value.
-    private var activeFrontend: Frontend = FrontendSelector.resolved()
-
-    @objc func switchFrontend(_ sender: NSMenuItem) {
-        guard
-            let raw = sender.representedObject as? String,
-            let frontend = Frontend(rawValue: raw)
-        else {
-            NSSound.beep()
-            return
-        }
-
-        // If the user is already on the requested frontend, do nothing (and
-        // don't beep — a repeat click is a common accident, not a failure).
-        if activeFrontend == frontend {
-            return
-        }
-
-        FrontendSelector.setUserPreference(frontend)
-
-        guard let webView = WebViewBridgeDispatcher.resolveCurrentWebView() else {
-            NSSound.beep()
-            return
-        }
-
-        if let coordinator = webView.navigationDelegate as? Coordinator {
-            coordinator.loadBundledApp(into: webView, explicitFrontend: frontend)
-            activeFrontend = frontend
-        } else {
-            NSSound.beep()
-        }
-    }
-
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard
-            let raw = menuItem.representedObject as? String,
-            let frontend = Frontend(rawValue: raw)
-        else {
-            return true
-        }
-        menuItem.state = (frontend == activeFrontend) ? .on : .off
-        return true
-    }
-}
-
 enum WebViewBridgeDispatcher {
     @MainActor
     static func dispatch(command: String) -> Bool {
@@ -353,9 +259,8 @@ enum WebViewBridgeDispatcher {
         resolveCurrentWebView()
     }
 
-    /// Public variant used by native-only handlers (e.g. FrontendSwitchHandler)
-    /// that need direct access to the current WKWebView without going through
-    /// the JS command bus.
+    /// Public variant for native handlers that need direct access to the
+    /// current WKWebView without going through the JS command bus.
     @MainActor
     static func resolveCurrentWebView() -> WKWebView? {
         if let keyWindow = NSApp.keyWindow, let webView = findWebView(in: keyWindow.contentView) {

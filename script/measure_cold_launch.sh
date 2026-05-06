@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FRONTEND_MODE="${EINSTEIN_FRONTEND:-new}"
 RUNS=1
 APP_NAME="EinsteinDesktop"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,7 +9,7 @@ APP_PID=""
 WAIT_SECONDS="${CARREL_COLD_LAUNCH_WAIT_SECONDS:-8}"
 
 usage() {
-  echo "usage: $0 [--frontend new|legacy] [--runs N]" >&2
+  echo "usage: $0 [--runs N]" >&2
 }
 
 filter_markers() {
@@ -33,14 +32,6 @@ trap cleanup EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --frontend)
-      if [[ $# -lt 2 ]]; then
-        usage
-        exit 2
-      fi
-      FRONTEND_MODE="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
-      shift 2
-      ;;
     --runs)
       if [[ $# -lt 2 ]]; then
         usage
@@ -56,12 +47,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$FRONTEND_MODE" != "legacy" && "$FRONTEND_MODE" != "new" ]]; then
-  echo "Unsupported frontend mode: $FRONTEND_MODE" >&2
-  usage
-  exit 2
-fi
-
 if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
   usage
@@ -76,7 +61,7 @@ fi
 # TODO(cold-launch): replace this unified-log fallback with a deterministic one-shot
 # handshake once the native telemetry path is reliable during direct app launches too.
 
-"$ROOT_DIR/script/build_and_run.sh" --verify --frontend "$FRONTEND_MODE" >/dev/null
+"$ROOT_DIR/script/build_and_run.sh" --verify >/dev/null
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 run_log="$(mktemp)"
@@ -84,7 +69,7 @@ run_log="$(mktemp)"
 for ((run_index = 1; run_index <= RUNS; run_index++)); do
   window_start="$(date '+%Y-%m-%d %H:%M:%S')"
 
-  env EINSTEIN_FRONTEND="$FRONTEND_MODE" "$APP_BINARY" >/dev/null 2>/dev/null &
+  "$APP_BINARY" >/dev/null 2>/dev/null &
   APP_PID=$!
   sleep "$WAIT_SECONDS"
 
@@ -98,8 +83,8 @@ for ((run_index = 1; run_index <= RUNS; run_index++)); do
       | filter_markers || true
   )"
 
-  launch_line="$(printf '%s\n' "$log_window" | grep "launch-start frontend=$FRONTEND_MODE" | tail -n 1 || true)"
-  marker_line="$(printf '%s\n' "$log_window" | grep "app-interactive frontend=$FRONTEND_MODE" | tail -n 1 || true)"
+  launch_line="$(printf '%s\n' "$log_window" | grep "launch-start frontend=new" | tail -n 1 || true)"
+  marker_line="$(printf '%s\n' "$log_window" | grep "app-interactive frontend=new" | tail -n 1 || true)"
   marker_kind="app-interactive"
   if [[ -z "$marker_line" ]]; then
     marker_line="$(printf '%s\n' "$log_window" | grep "DidFirstMeaningfulPaint" | tail -n 1 || true)"
@@ -107,7 +92,7 @@ for ((run_index = 1; run_index <= RUNS; run_index++)); do
   fi
 
   if [[ -z "$launch_line" || -z "$marker_line" ]]; then
-    echo "Failed to capture cold-launch markers for run $run_index frontend=$FRONTEND_MODE" >&2
+    echo "Failed to capture cold-launch markers for run $run_index" >&2
     printf '%s\n' "$log_window" >&2
     exit 1
   fi
@@ -136,15 +121,14 @@ PY
   sleep 0.2
 done
 
-python3 - "$FRONTEND_MODE" "$run_log" <<'PY'
+python3 - "$run_log" <<'PY'
 import json
 import math
 import statistics
 import sys
 from pathlib import Path
 
-frontend = sys.argv[1]
-run_log = Path(sys.argv[2])
+run_log = Path(sys.argv[1])
 
 runs = []
 for line in run_log.read_text().splitlines():
@@ -169,7 +153,6 @@ def percentile(sorted_values: list[float], rank: float) -> float:
     return sorted_values[index]
 
 result = {
-    "frontend": frontend,
     "runs": runs,
     "p50_ms": statistics.median(values),
     "p95_ms": percentile(values, 0.95),

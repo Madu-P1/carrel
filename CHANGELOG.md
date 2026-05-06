@@ -10,6 +10,21 @@ is generated from it at build time.
 
 ## [Unreleased]
 
+### Removed
+- **Legacy frontend completely deleted.** The `app.html.legacy` bundle
+  (303 KB), `Frontend.legacy` enum case, the entire `FrontendSelector`
+  module, the `FrontendSwitchHandler` class, the Carrel > Frontend
+  submenu, the `nativeFrontend` JS bridge, the `--frontend new|legacy`
+  flag in `build_and_run.sh` + `measure_cold_launch.sh`, the
+  `EINSTEIN_FRONTEND` env var, and the `system.switch-frontend-*`
+  command-palette entries. Three stale Finder duplicates of the new
+  HTML (`app.new 3.html` / `4.html` / `5.html`) cleaned up too.
+  `loadBundledApp` now unconditionally loads `app.new.html`.
+
+### Changed
+- `LaunchTelemetry.markLaunch`/`markInteractive` now receive a
+  hardcoded `frontend: "new"` (was: `FrontendSelector.resolved().rawValue`).
+
 ### Changed
 - **`services/documents.py` split** (831 → 241 LoC, down 71%) into three
   focused modules: `services/document_duplicates.py` (243 LoC, source-hash

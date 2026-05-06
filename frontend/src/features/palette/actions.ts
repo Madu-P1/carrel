@@ -2,19 +2,11 @@ import { navigateTo } from "@/app/shell/useAppShell";
 import { sessions } from "@/services/api/endpoints";
 import type { MenuCommand } from "@/services/native/menu";
 
-declare global {
-  interface Window {
-    nativeFrontend?: {
-      switch(mode: "legacy" | "new"): void;
-    };
-  }
-}
-
 export interface PaletteAction {
   id: string;
   label: string;
   hint?: string;
-  group: "Context" | "Navigate" | "View" | "Sources" | "System" | "Help";
+  group: "Context" | "Navigate" | "View" | "Sources" | "Help";
   keywords?: string[];
   /** If present, dispatch this command through the native menu bus. */
   command?: MenuCommand;
@@ -50,21 +42,7 @@ const STATIC_ACTIONS: PaletteAction[] = [
   { id: "reader.toggleFocusMode", label: "Toggle Reader Focus Mode", hint: "⌘⇧F", group: "View", command: "reader.toggleFocusMode", keywords: ["reader", "focus", "fullscreen", "distraction"] },
   { id: "file.import", label: "Import Source…", hint: "⌘I", group: "Sources", command: "file.import", keywords: ["upload", "pdf", "new"] },
   { id: "help.shortcuts", label: "Keyboard Shortcuts", hint: "?", group: "Help", command: "help.shortcuts", keywords: ["keys", "hotkeys", "cheat sheet", "help"] },
-  { id: "help.tour", label: "Replay First-Run Tour", group: "Help", command: "help.open", keywords: ["onboarding", "intro", "walkthrough", "tutorial"] },
-  {
-    id: "system.switch-frontend-legacy",
-    label: "Switch to Legacy Frontend",
-    group: "System",
-    keywords: ["frontend", "escape", "fallback", "legacy", "old"],
-    run: () => window.nativeFrontend?.switch("legacy")
-  },
-  {
-    id: "system.switch-frontend-new",
-    label: "Switch to New Frontend",
-    group: "System",
-    keywords: ["frontend", "default", "modern", "new"],
-    run: () => window.nativeFrontend?.switch("new")
-  }
+  { id: "help.tour", label: "Replay First-Run Tour", group: "Help", command: "help.open", keywords: ["onboarding", "intro", "walkthrough", "tutorial"] }
 ];
 
 /**

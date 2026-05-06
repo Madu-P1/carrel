@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         MainMenuBuilder.install()
-        LaunchTelemetry.markLaunch(frontend: FrontendSelector.resolved().rawValue)
+        LaunchTelemetry.markLaunch(frontend: "new")
         backendSupervisor.start()
         // Start the calendar bridge AFTER the backend supervisor so the
         // first sync attempt has a live target.
@@ -56,9 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // app activation policy to .regular before this so the panel
         // joins the user's space correctly.
         FloatingCompanionWindow.shared.start()
-        appLogger.info(
-            "Application finished launching (frontend=\(FrontendSelector.resolved().rawValue, privacy: .public))"
-        )
+        appLogger.info("Application finished launching")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

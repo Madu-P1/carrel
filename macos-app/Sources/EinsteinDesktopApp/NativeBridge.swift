@@ -3,7 +3,6 @@ enum NativeBridge {
     static let externalOpenHandlerName = "externalOpen"
     static let menuHandlerName = "nativeMenu"
     static let telemetryHandlerName = "nativeTelemetry"
-    static let frontendHandlerName = "nativeFrontend"
     static let calendarHandlerName = "nativeCalendar"
     static let companionHandlerName = "nativeCompanion"
 
@@ -101,19 +100,6 @@ enum NativeBridge {
       if (!window.__dispatchNativeMenu) {
         window.__dispatchNativeMenu = (command) => {
           window.__einsteinMenuBus?.dispatch(command);
-        };
-      }
-
-      if (!window.nativeFrontend) {
-        window.nativeFrontend = {
-          /** Request a frontend swap. Valid modes: "legacy" | "new". */
-          switch(mode) {
-            try {
-              postMessage("nativeFrontend", { action: "switch", mode });
-            } catch (error) {
-              console.error("Native frontend bridge failed", error);
-            }
-          }
         };
       }
 

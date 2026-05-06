@@ -15,9 +15,7 @@ describe("palette actions registry", () => {
       "view.toggleTheme",
       "reader.toggleFocusMode",
       "file.import",
-      "help.tour",
-      "system.switch-frontend-legacy",
-      "system.switch-frontend-new"
+      "help.tour"
     ]) {
       expect(ids).toContain(expected);
     }
@@ -65,12 +63,13 @@ describe("palette actions registry", () => {
     expect(results).toEqual([]);
   });
 
-  test("frontend switcher actions have run handlers, not commands", () => {
-    const legacy = paletteActions.find((a) => a.id === "system.switch-frontend-legacy")!;
-    const next = paletteActions.find((a) => a.id === "system.switch-frontend-new")!;
-    expect(legacy.run).toBeTypeOf("function");
-    expect(next.run).toBeTypeOf("function");
-    expect(legacy.command).toBeUndefined();
-    expect(next.command).toBeUndefined();
+  test("legacy frontend switcher commands are gone (regression: legacy removal)", () => {
+    // The legacy frontend bundle was removed in the legacy-cleanup pass.
+    // Both `system.switch-frontend-*` entries used to call
+    // `window.nativeFrontend.switch(...)`, which no longer exists.
+    // Pin that they don't reappear.
+    const ids = paletteActions.map((a) => a.id);
+    expect(ids).not.toContain("system.switch-frontend-legacy");
+    expect(ids).not.toContain("system.switch-frontend-new");
   });
 });

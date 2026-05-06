@@ -2,7 +2,6 @@
 set -euo pipefail
 
 MODE="run"
-FRONTEND_MODE="${EINSTEIN_FRONTEND:-new}"
 APP_NAME="EinsteinDesktop"
 BUNDLE_ID="com.madu.EinsteinDesktop"
 MIN_SYSTEM_VERSION="14.0"
@@ -22,7 +21,7 @@ BACKEND_PIDFILE="$DIST_DIR/einstein-backend.pid"
 BACKEND_LOG="$DIST_DIR/einstein-backend.log"
 
 usage() {
-  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify] [--frontend new|legacy]" >&2
+  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -31,26 +30,12 @@ while [[ $# -gt 0 ]]; do
       MODE="$1"
       shift
       ;;
-    --frontend)
-      if [[ $# -lt 2 ]]; then
-        usage
-        exit 2
-      fi
-      FRONTEND_MODE="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
-      shift 2
-      ;;
     *)
       usage
       exit 2
       ;;
   esac
 done
-
-if [[ "$FRONTEND_MODE" != "legacy" && "$FRONTEND_MODE" != "new" ]]; then
-  echo "Unsupported frontend mode: $FRONTEND_MODE" >&2
-  usage
-  exit 2
-fi
 
 pick_python() {
   local candidate
@@ -159,23 +144,21 @@ PY
 }
 
 prepare_frontend_resources() {
-  if [[ "$FRONTEND_MODE" == "new" ]]; then
-    # Pick whichever JS runner is on PATH. The script used to require
-    # `corepack pnpm`, which left bun-only environments stuck. The
-    # build:macos npm-script is now runner-agnostic (vite + node
-    # invocations only), so any of these work the same.
-    if command -v bun >/dev/null 2>&1; then
-      ( cd "$ROOT_DIR/frontend" && bun run build:macos )
-    elif command -v pnpm >/dev/null 2>&1; then
-      pnpm --dir "$ROOT_DIR/frontend" build:macos
-    elif command -v corepack >/dev/null 2>&1; then
-      corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
-    elif command -v npm >/dev/null 2>&1; then
-      ( cd "$ROOT_DIR/frontend" && npm run build:macos )
-    else
-      echo "No JS runner found (bun/pnpm/corepack/npm). Install one of them." >&2
-      exit 1
-    fi
+  # Pick whichever JS runner is on PATH. The script used to require
+  # `corepack pnpm`, which left bun-only environments stuck. The
+  # build:macos npm-script is now runner-agnostic (vite + node
+  # invocations only), so any of these work the same.
+  if command -v bun >/dev/null 2>&1; then
+    ( cd "$ROOT_DIR/frontend" && bun run build:macos )
+  elif command -v pnpm >/dev/null 2>&1; then
+    pnpm --dir "$ROOT_DIR/frontend" build:macos
+  elif command -v corepack >/dev/null 2>&1; then
+    corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
+  elif command -v npm >/dev/null 2>&1; then
+    ( cd "$ROOT_DIR/frontend" && npm run build:macos )
+  else
+    echo "No JS runner found (bun/pnpm/corepack/npm). Install one of them." >&2
+    exit 1
   fi
 }
 
@@ -193,7 +176,6 @@ BUILD_BINARY="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)/$APP_
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
-cp "$PROJECT_DIR/Resources/app.html.legacy" "$APP_RESOURCES/app.html.legacy"
 if [[ -f "$PROJECT_DIR/Resources/app.new.html" ]]; then
   cp "$PROJECT_DIR/Resources/app.new.html" "$APP_RESOURCES/app.new.html"
 fi
@@ -276,7 +258,7 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
 PLIST
 
 launch_app() {
-  /usr/bin/open -n --env "EINSTEIN_FRONTEND=$FRONTEND_MODE" "$APP_BUNDLE"
+  /usr/bin/open -n "$APP_BUNDLE"
 }
 
 ensure_backend
@@ -286,7 +268,7 @@ case "$MODE" in
     launch_app
     ;;
   --debug|debug)
-    EINSTEIN_FRONTEND="$FRONTEND_MODE" lldb -- "$APP_BINARY"
+    lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
     launch_app
