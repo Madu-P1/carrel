@@ -46,6 +46,41 @@ is generated from it at build time.
   cap. Bounds the persisted JSON and the reflected payload returned by
   `get_artifact`. Pydantic 422 at the route boundary on overflow.
 
+### Companion cube perfection (12-item pass)
+- **Drag math hardened**: threshold measured from `dragOriginScreen`
+  (not per-event), increment posted from `lastPostedScreen` (not last
+  pointermove). Slow drags + coalesced events both correct now.
+- **Reduced-motion alarm fallback**: vestibular-sensitive users now
+  see a slow color pulse instead of the spinning cube. Pre-fix they
+  had no visual alarm signal at all.
+- **Slowed alarm spin** from 0.55s/rev (~109 RPM, vestibular hazard)
+  to 0.9s/rev (~67 RPM). Still reads as urgent peripheral motion.
+- **Unknown-state warning**: `applyState('typo')` used to silently
+  no-op. Now logs to console + posts `{action:'log', event:'unknown_state'}`
+  to the Swift bridge.
+- **Tokenized timing**: `--spin-alarm`, `--spin-drag`, `--drift-idle`,
+  etc. in CSS `:root`; matching `TIMING` object in JS. Magic numbers
+  gone.
+- **Symmetric left face**: was `['b','b','o','b','o','o','o','o','o']`
+  (4 brights, asymmetric). Now `DIAMOND` shared with front. Reads
+  cleanly at all rotations.
+- **Pointer-release-outside fallback**: `window.blur` and
+  `document.mouseleave` now end a stuck drag the way `pointercancel`
+  doesn't reliably.
+- **Bounded timer registry**: `setT()` wrapper auto-removes fired
+  timers from the Set; long idles can't grow it without bound.
+- **Real `setStreakDays`**: was a no-op stub kept "for bridge compat."
+  Now renders 1-3 brights on the front face's bottom row; >3 days
+  adds a slow pulse. Re-applies after state transitions.
+- **Tightened visibilitychange**: was `querySelectorAll('*')`, now
+  scoped to `.face, .cell, .cube3d, .drift, .anchor, .aura`.
+- **`idleTwinkle` skips streak row**: regression caught by
+  adversarial review — pre-fix, twinkle clobbered streak cells every
+  few seconds. Now filters positions 6..6+streakDays.
+- **21 vitest+jsdom tests** pinning state machine, alarm orthogonality,
+  drop-ready, streak rendering (including the regression), drag bridge
+  contracts, and pointer-release-outside fallback.
+
 ## [0.1.0] — 2026-05-05
 
 First tagged release. Carrel runs locally on macOS as a SwiftUI/WKWebView

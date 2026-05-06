@@ -6,6 +6,7 @@
 <title>Carrel Companion</title>
 <style>
 :root {
+  /* ---- color tokens ----------------------------------------------------- */
   --color-bg-elevated: rgba(22, 22, 26, 0.92);
   --color-border-subtle: rgba(255, 255, 255, 0.06);
   --color-border-default: rgba(255, 255, 255, 0.10);
@@ -17,11 +18,26 @@
   --color-teal-30: rgba(94, 234, 212, 0.30);
   --color-teal-50: rgba(94, 234, 212, 0.50);
 
+  /* ---- transition durations -------------------------------------------- */
   --dur-fast: 120ms; --dur-base: 180ms; --dur-medium: 280ms;
   --dur-long: 640ms;
 
+  /* ---- spin durations (keyframe-driven) -------------------------------- */
+  /* alarm spin slowed from 0.55s (~109 RPM, vestibular hazard) to 0.9s
+   * (~67 RPM). Still reads as urgent peripheral motion. */
+  --spin-alarm: 0.9s;
+  --spin-alarm-drift: 0.45s;
+  --spin-alarm-aura: 0.9s;
+  --spin-drag: 0.45s;
+  --spin-drop-ready: 1.8s;
+  --spin-shake: 0.6s;
+  --spin-streak: 1.6s;
+  --drift-idle: 60s;
+
+  /* ---- easing ---------------------------------------------------------- */
   --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
   --ease-soft:   cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -50,7 +66,7 @@ body.dragging { cursor: grabbing; }
   width: 100%;
   height: 100%;
   perspective: 1400px;
-  perspective-origin: 50% 45%;
+  perspective-origin: 50% 50%;
 }
 
 /* Cube anchor — 100px edge. Margin = -half edge. */
@@ -84,24 +100,29 @@ body.dragging { cursor: grabbing; }
   transform-style: preserve-3d;
   transform: rotateY(0deg);
 }
-.drift.spinning { animation: cubeIdleDrift 60s linear infinite; }
+.drift.spinning {
+  /* ease-in-out eliminates the visible "stutter" at the keyframe loop
+   * point that linear had. The 60s period is long enough that ease
+   * curves are imperceptible per-frame but smooth at loop points. */
+  animation: cubeIdleDrift var(--drift-idle) ease-in-out infinite;
+}
 
 /* While the user is dragging the panel, blow through the idle drift
  * with a fast Y-axis spin. The !important is intentional — it wins
  * over .spinning regardless of which state was active when the drag
  * started. */
 body.dragging .drift {
-  animation: cubeDragSpin 0.45s linear infinite !important;
+  animation: cubeDragSpin var(--spin-drag) linear infinite !important;
 }
 
 /* Alarm — scheduled study session is now. Chaotic 3-axis spin so the
  * cube reads as urgent peripheral motion. Sticks until the user taps
  * the panel; tap clears `body.alarm` via the Swift bridge. */
 body.alarm .cube3d {
-  animation: cubeAlarmSpin 0.55s linear infinite !important;
+  animation: cubeAlarmSpin var(--spin-alarm) linear infinite !important;
 }
 body.alarm .drift {
-  animation: cubeDragSpin 0.30s linear infinite !important;
+  animation: cubeDragSpin var(--spin-alarm-drift) linear infinite !important;
 }
 body.alarm .face {
   box-shadow:
@@ -110,7 +131,7 @@ body.alarm .face {
 }
 body.alarm .aura {
   opacity: 1 !important;
-  animation: cubeAlarmAura 0.9s ease-in-out infinite alternate;
+  animation: cubeAlarmAura var(--spin-alarm-aura) ease-in-out infinite alternate;
 }
 @keyframes cubeAlarmSpin {
   0%   { transform: rotateX(0deg)   rotateY(0deg)   rotateZ(0deg); }
@@ -129,7 +150,7 @@ body.alarm .aura {
  * is ready to receive. The actual upload kicks the cube into 'thinking'
  * via the Swift bridge once the drop fires. */
 body.drop-ready .drift {
-  animation: cubeDragSpin 1.8s linear infinite !important;
+  animation: cubeDragSpin var(--spin-drop-ready) linear infinite !important;
 }
 body.drop-ready .face {
   box-shadow:
@@ -159,6 +180,10 @@ body.drop-ready .face {
   gap: 3px;
   padding: 6px;
   backface-visibility: hidden;
+  /* No `overflow: hidden` here — the teal-bright cells deliberately
+   * bleed their glow past the face edge for atmosphere. Adversarial
+   * review flagged the audit's "subtle bleed" finding as cosmetic
+   * (LOW); clipping it removed visible polish. */
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   transition: box-shadow var(--dur-medium) var(--ease-soft);
 }
@@ -200,6 +225,22 @@ body.drop-ready .face {
 }
 .cell.teal-dim { background: rgba(94, 234, 212, 0.04); border-color: rgba(94, 234, 212, 0.08); }
 
+/* Streak indicator — bottom row of the front face. Slow pulse on >3
+ * days so the user feels the momentum visually without the cube
+ * shouting. */
+.cell.streak-day {
+  background: var(--color-teal);
+  border-color: transparent;
+  box-shadow: 0 0 10px var(--color-teal-50);
+}
+.cell.streak-pulse {
+  animation: streakPulse 2.4s ease-in-out infinite;
+}
+@keyframes streakPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--color-teal-30); }
+  50%      { box-shadow: 0 0 16px var(--color-teal-50); }
+}
+
 .cell.ambient { animation: cubeAmbientPulse 1.6s var(--ease-soft); }
 @keyframes cubeAmbientPulse {
   0%   { background: rgba(255, 255, 255, 0.025); }
@@ -232,11 +273,30 @@ body.drop-ready .face {
 }
 .aura.glowing { opacity: 1; }
 
+/* ---------------------------------------------------------------------
+ * Reduced-motion: pause the cube spin entirely, but keep the alarm
+ * VISIBLE via a slow color pulse so vestibular-sensitive users still
+ * see the signal. The pre-existing rule below also kills transitions,
+ * so we re-enable just the alarm pulse animation explicitly.
+ * --------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .anchor, .cube3d, .drift, .face, .cell, .aura {
     transition-duration: 60ms !important;
     animation: none !important;
   }
+  /* Re-enable a gentle pulse on alarm so the signal is still visible. */
+  body.alarm .face {
+    animation: cubeAlarmPulseRM 1.4s ease-in-out infinite !important;
+    box-shadow: inset 0 0 0 1px var(--color-teal-30) !important;
+  }
+  body.alarm .aura {
+    animation: cubeAlarmPulseRM 1.4s ease-in-out infinite !important;
+    opacity: 0.6 !important;
+  }
+}
+@keyframes cubeAlarmPulseRM {
+  0%, 100% { box-shadow: inset 0 0 0 1px var(--color-teal-30), 0 0 8px var(--color-teal-15); }
+  50%      { box-shadow: inset 0 0 0 2px var(--color-teal),    0 0 32px var(--color-teal-50); }
 }
 </style>
 </head>
@@ -261,15 +321,78 @@ body.drop-ready .face {
 <script>
 'use strict';
 
+/* ---------------------------------------------------------------------
+ * Companion cube — state machine, behaviors, drag bridge.
+ *
+ * State invariants:
+ *   * `currentState` is one of STATES keys; the only mutator is
+ *     `applyState(name)`. Unknown names log a warning + console.warn
+ *     and no-op (was: silent return — caught a real audit finding).
+ *   * `activeTimers` tracks every setTimeout id we've issued; on
+ *     state change we clear the whole set and on individual timer
+ *     fire we remove from the set. Bounded by behavior cadence.
+ *   * `body.alarm` is orthogonal to currentState — alarm + state
+ *     animations stack intentionally (urgency wins).
+ *
+ * Drag bridge invariants:
+ *   * Pointerdown captures `dragOriginScreen`. `lastPostedDx/Dy` is
+ *     the cumulative delta we've already informed Swift about.
+ *   * Each pointermove posts the *increment* since lastPosted, which
+ *     gives Swift's setFrameOrigin a clean per-event delta even when
+ *     events are coalesced or dropped.
+ *   * Threshold is measured from origin (not per-event), so slow
+ *     drags accumulate to threshold cleanly.
+ *   * Pointerup OR window blur OR mouseleave-document all end the
+ *     drag — covers the "release outside the panel" case which the
+ *     prior pointercancel-only approach missed.
+ * ------------------------------------------------------------------ */
+
+const TIMING = {
+  idleTwinkleStartMs: 1500,
+  idleTwinkleHoldMs: 700,
+  idleTwinkleNextMin: 2200,
+  idleTwinkleNextRandom: 1800,
+  ambientStartMs: 2000,
+  ambientCellMs: 1700,
+  ambientNextMin: 3500,
+  ambientNextRandom: 2500,
+  focusPulseHoldMs: 320,
+  focusPulseNextMs: 1600,
+  focusPulseStaggerMs: 220,
+  thinkPulseHoldMs: 260,
+  thinkPulseNextMs: 1700,
+  thinkPulseStaggerMs: 200,
+  citeScanCellMs: 220,
+  citeScanStaggerMs: 90,
+  citeScanNextMs: 1300,
+  cardGoodStaggerMs: 60,
+  cardGoodSettleMs: 700,
+  breakDrainStaggerMs: 180,
+  sleepGlimmerStartMs: 4000,
+  sleepGlimmerHoldMs: 1400,
+  sleepGlimmerNextMin: 8000,
+  sleepGlimmerNextRandom: 4000,
+  streakSpinSettleMs: 700,
+  streakSpinReleaseMs: 1700,
+  shakeRecoveryMs: 700,
+  auraReleaseMs: 2400,
+  behaviorWarmupMs: 450,
+};
+
+/* All faces share the same calm diamond pattern as the base. The
+ * differentiation comes from the active-state animation, not noisy
+ * static cells. (Audit finding F: left face used to have an asymmetric
+ * 4-bright pattern that read as sloppy when rotated into view.) */
+const DIAMOND = ['.', 'o', '.',  'o', 'b', 'o',  '.', 'o', '.'];
 const FACE_DEFAULTS = {
-  front:  ['.', 'o', '.',  'o', 'b', 'o',  '.', 'o', '.'],
+  front:  DIAMOND,
   top:    ['.', 'b', '.',  '.', 'b', '.',  '.', 'b', '.'],
   right:  ['o', '.', 'o',  '.', 'b', '.',  'o', '.', 'o'],
   back:   ['.', '.', '.',  '.', 'o', '.',  '.', '.', '.'],
-  left:   ['b', 'b', 'o',  'b', 'o', 'o',  'o', 'o', 'o'],
+  left:   DIAMOND,
   bottom: ['b', '.', 'b',  '.', 'b', '.',  'b', '.', 'b'],
 };
-const CELL_CLASS = { '.': '', o: 'outlined', f: 'filled', b: 'bright', d: 'dim' };
+const CELL_CLASS      = { '.': '', o: 'outlined',      f: 'filled',      b: 'bright',      d: 'dim' };
 const CELL_CLASS_TEAL = { '.': '', o: 'teal-outlined', f: 'teal-filled', b: 'teal-bright', d: 'teal-dim' };
 
 const STATES = {
@@ -277,11 +400,11 @@ const STATES = {
   focused:      { rotateX: -78, rotateY:  -18, activeFace: 'top',    scale: 1.05, opacity: 1,    behavior: 'focusColumn',  ambient: true },
   thinking:     { rotateX: -14, rotateY:  -78, activeFace: 'right',  scale: 1,    opacity: 1,    behavior: 'thinkSweep',   ambient: true },
   citeChecking: { rotateX:  -8, rotateY:  -98, activeFace: 'right',  scale: 1,    opacity: 1,    behavior: 'citeScan' },
-  encouraging:  { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 1.04, opacity: 1,    behavior: 'cardGood',  auraOnEntry: true },
-  stumped:      { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 0.98, opacity: 1,    behavior: 'cardAgain', shakeOnEntry: true },
+  encouraging:  { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 1.04, opacity: 1,    behavior: 'cardGood',     auraOnEntry: true },
+  stumped:      { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 0.98, opacity: 1,    behavior: 'cardAgain',    shakeOnEntry: true },
   break:        { rotateX: -14, rotateY:  168, activeFace: 'back',   scale: 0.96, opacity: 0.95, behavior: 'breakDrain' },
   sleeping:     { rotateX:  78, rotateY:  -18, activeFace: 'bottom', scale: 0.92, opacity: 0.7,  behavior: 'sleepGlimmer', drift: true },
-  streak:       { rotateX: -14, rotateY:  -18, activeFace: 'front',  scale: 1.08, opacity: 1,    behavior: 'streakSpin', auraOnEntry: true },
+  streak:       { rotateX: -14, rotateY:  -18, activeFace: 'front',  scale: 1.08, opacity: 1,    behavior: 'streakSpin',   auraOnEntry: true },
 };
 
 const faces = {};
@@ -292,7 +415,7 @@ document.querySelectorAll('.face').forEach((face) => {
     const cell = document.createElement('div');
     cell.className = 'cell';
     cell.dataset.face = name;
-    cell.dataset.idx = i;
+    cell.dataset.idx = String(i);
     face.appendChild(cell);
   }
 });
@@ -303,13 +426,23 @@ const drift = document.getElementById('drift');
 const aura = document.getElementById('aura');
 
 let currentState = 'idle';
-const timers = [];
-let ambientTimer = null;
+let streakDays = 0;
 
-function clearTimers() {
-  timers.forEach(clearTimeout);
-  timers.length = 0;
-  if (ambientTimer) { clearTimeout(ambientTimer); ambientTimer = null; }
+/* Bounded timer registry. setT() wraps setTimeout so fired timers
+ * remove themselves from the registry — the array can't grow without
+ * bound during long idle states. (Audit finding H.) */
+const activeTimers = new Set();
+function setT(fn, ms) {
+  const id = setTimeout(() => {
+    activeTimers.delete(id);
+    fn();
+  }, ms);
+  activeTimers.add(id);
+  return id;
+}
+function clearAllTimers() {
+  activeTimers.forEach(clearTimeout);
+  activeTimers.clear();
 }
 
 function applyPattern(faceName, pattern, useTeal) {
@@ -329,6 +462,22 @@ function applyAllPatterns(activeFace) {
   });
   Object.values(faces).forEach((f) => f.classList.remove('active-face'));
   if (faces[activeFace]) faces[activeFace].classList.add('active-face');
+  /* Re-apply streak overlay after pattern reset. The bottom row of
+   * the front face shows up to 3 brights; >3 days adds a slow pulse. */
+  applyStreakOverlay();
+}
+
+function applyStreakOverlay() {
+  const cells = faces.front.children;
+  const positions = [6, 7, 8];
+  const brightCount = Math.max(0, Math.min(3, streakDays));
+  positions.forEach((idx, i) => {
+    cells[idx].classList.remove('streak-day', 'streak-pulse');
+    if (i < brightCount) {
+      cells[idx].classList.add('streak-day');
+      if (streakDays > 3) cells[idx].classList.add('streak-pulse');
+    }
+  });
 }
 
 function startAmbient(activeFace) {
@@ -339,25 +488,38 @@ function startAmbient(activeFace) {
     const idx = Math.floor(Math.random() * 9);
     const cell = cells[idx];
     cell.classList.add('ambient');
-    timers.push(setTimeout(() => cell.classList.remove('ambient'), 1700));
-    ambientTimer = setTimeout(pulse, 3500 + Math.random() * 2500);
+    setT(() => cell.classList.remove('ambient'), TIMING.ambientCellMs);
+    setT(pulse, TIMING.ambientNextMin + Math.random() * TIMING.ambientNextRandom);
   }
-  ambientTimer = setTimeout(pulse, 2000);
+  setT(pulse, TIMING.ambientStartMs);
 }
 
 const BEHAVIORS = {
   idleTwinkle() {
-    const positions = [0, 1, 2, 3, 5, 6, 7, 8];
+    /* Bottom row 6/7/8 hosts the streak indicator. When streak is
+     * active we MUST skip those positions or the twinkle clobbers
+     * the streak signal every few seconds. (Adversarial-review P1.) */
+    const ALL_POS = [0, 1, 2, 3, 5, 6, 7, 8];
     function tick() {
       if (currentState !== 'idle') return;
+      const positions = streakDays > 0
+        ? ALL_POS.filter((p) => p < 6 || p >= 6 + Math.min(3, streakDays))
+        : ALL_POS;
+      if (positions.length === 0) {
+        // Streak fills the entire row 6/7/8 with no other cells to
+        // twinkle — extremely unlikely (would require a 9-cell front
+        // face fully claimed). Schedule the next tick and bail.
+        setT(tick, TIMING.idleTwinkleNextMin + Math.random() * TIMING.idleTwinkleNextRandom);
+        return;
+      }
       const pos = positions[Math.floor(Math.random() * positions.length)];
       const cell = faces.front.children[pos];
       const orig = cell.className;
       cell.className = 'cell teal-bright';
-      timers.push(setTimeout(() => { cell.className = orig; }, 700));
-      timers.push(setTimeout(tick, 2200 + Math.random() * 1800));
+      setT(() => { cell.className = orig; }, TIMING.idleTwinkleHoldMs);
+      setT(tick, TIMING.idleTwinkleNextMin + Math.random() * TIMING.idleTwinkleNextRandom);
     }
-    timers.push(setTimeout(tick, 1500));
+    setT(tick, TIMING.idleTwinkleStartMs);
   },
   focusColumn() {
     const cells = faces.top.children;
@@ -366,13 +528,13 @@ const BEHAVIORS = {
     function pulse() {
       if (currentState !== 'focused') return;
       [1, 4, 7].forEach((idx, n) => {
-        timers.push(setTimeout(() => {
+        setT(() => {
           if (currentState !== 'focused') return;
           cells[idx].className = 'cell teal-bright';
-          timers.push(setTimeout(() => { cells[idx].className = 'cell teal-filled'; }, 320));
-        }, n * 220));
+          setT(() => { cells[idx].className = 'cell teal-filled'; }, TIMING.focusPulseHoldMs);
+        }, n * TIMING.focusPulseStaggerMs);
       });
-      timers.push(setTimeout(pulse, 1600));
+      setT(pulse, TIMING.focusPulseNextMs);
     }
     pulse();
   },
@@ -382,14 +544,14 @@ const BEHAVIORS = {
     function pulse() {
       if (currentState !== 'thinking') return;
       seq.forEach((idx, n) => {
-        timers.push(setTimeout(() => {
+        setT(() => {
           if (currentState !== 'thinking') return;
           const old = cells[idx].className;
           cells[idx].className = 'cell teal-bright';
-          timers.push(setTimeout(() => { cells[idx].className = old; }, 260));
-        }, n * 200));
+          setT(() => { cells[idx].className = old; }, TIMING.thinkPulseHoldMs);
+        }, n * TIMING.thinkPulseStaggerMs);
       });
-      timers.push(setTimeout(pulse, 1700));
+      setT(pulse, TIMING.thinkPulseNextMs);
     }
     pulse();
   },
@@ -400,15 +562,15 @@ const BEHAVIORS = {
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 3; col++) {
           const idx = row * 3 + col;
-          timers.push(setTimeout(() => {
+          setT(() => {
             if (currentState !== 'citeChecking') return;
             const old = cells[idx].className;
             cells[idx].className = 'cell teal-bright';
-            timers.push(setTimeout(() => { cells[idx].className = old; }, 220));
-          }, (row * 3 + col) * 90));
+            setT(() => { cells[idx].className = old; }, TIMING.citeScanCellMs);
+          }, (row * 3 + col) * TIMING.citeScanStaggerMs);
         }
       }
-      timers.push(setTimeout(scan, 1300));
+      setT(scan, TIMING.citeScanNextMs);
     }
     scan();
   },
@@ -416,16 +578,16 @@ const BEHAVIORS = {
     const cells = faces.left.children;
     const order = [0, 1, 2, 5, 8, 7, 6, 3, 4];
     order.forEach((idx, n) => {
-      timers.push(setTimeout(() => { cells[idx].className = 'cell teal-bright'; }, n * 60));
+      setT(() => { cells[idx].className = 'cell teal-bright'; }, n * TIMING.cardGoodStaggerMs);
     });
-    timers.push(setTimeout(() => {
+    setT(() => {
       if (currentState !== 'encouraging') return;
       const pat = FACE_DEFAULTS.left;
       for (let i = 0; i < 9; i++) {
         if (i === 2 || i === 5) cells[i].className = 'cell teal-bright';
         else cells[i].className = 'cell ' + (CELL_CLASS_TEAL[pat[i]] || '');
       }
-    }, 700));
+    }, TIMING.cardGoodSettleMs);
   },
   cardAgain() {
     const cells = faces.left.children;
@@ -439,7 +601,7 @@ const BEHAVIORS = {
   breakDrain() {
     const cells = faces.back.children;
     [4, 1, 3, 5, 7, 0, 2, 6, 8].forEach((idx, n) => {
-      timers.push(setTimeout(() => { cells[idx].className = 'cell dim'; }, n * 180));
+      setT(() => { cells[idx].className = 'cell dim'; }, n * TIMING.breakDrainStaggerMs);
     });
   },
   sleepGlimmer() {
@@ -452,42 +614,51 @@ const BEHAVIORS = {
       const idx = Math.floor(Math.random() * 9);
       const old = cells[idx].className;
       cells[idx].className = 'cell teal-filled';
-      timers.push(setTimeout(() => { cells[idx].className = old; }, 1400));
-      timers.push(setTimeout(glimmer, 8000 + Math.random() * 4000));
+      setT(() => { cells[idx].className = old; }, TIMING.sleepGlimmerHoldMs);
+      setT(glimmer, TIMING.sleepGlimmerNextMin + Math.random() * TIMING.sleepGlimmerNextRandom);
     }
-    timers.push(setTimeout(glimmer, 4000));
+    setT(glimmer, TIMING.sleepGlimmerStartMs);
   },
   streakSpin() {
     const cells = faces.front.children;
     const order = [0, 1, 2, 5, 8, 7, 6, 3, 4];
     order.forEach((idx, n) => {
-      timers.push(setTimeout(() => { cells[idx].className = 'cell teal-bright'; }, n * 70));
+      setT(() => { cells[idx].className = 'cell teal-bright'; }, n * 70);
     });
-    timers.push(setTimeout(() => {
+    setT(() => {
       if (currentState !== 'streak') return;
       const cfg = STATES.streak;
-      cube3d.style.transition = 'transform 1.6s cubic-bezier(0.65, 0, 0.35, 1)';
+      cube3d.style.transition = `transform ${getComputedStyle(document.documentElement).getPropertyValue('--spin-streak') || '1.6s'} cubic-bezier(0.65, 0, 0.35, 1)`;
       cube3d.style.transform = `rotateX(${cfg.rotateX}deg) rotateY(${cfg.rotateY + 360}deg)`;
-      timers.push(setTimeout(() => {
+      setT(() => {
+        if (currentState !== 'streak') return;
         cube3d.style.transition = `transform var(--dur-long) var(--ease-soft)`;
         cube3d.style.transform = `rotateX(${cfg.rotateX}deg) rotateY(${cfg.rotateY}deg)`;
-      }, 1700));
-    }, 700));
+      }, TIMING.streakSpinReleaseMs);
+    }, TIMING.streakSpinSettleMs);
   },
 };
 
 function applyState(name) {
   const cfg = STATES[name];
-  if (!cfg) return;
+  if (!cfg) {
+    /* Audit finding D: silent fallback used to swallow typo'd state
+     * names from the Swift bridge. Surface via console + a log
+     * message to the host so the issue is visible in WKWebView's
+     * console + Swift's os.log. */
+    console.warn('[companion] unknown state:', name);
+    postShell({ action: 'log', level: 'warn', event: 'unknown_state', name: String(name) });
+    return;
+  }
   currentState = name;
-  clearTimers();
+  clearAllTimers();
 
   cube3d.style.setProperty('--rx', cfg.rotateX + 'deg');
   cube3d.style.setProperty('--ry', cfg.rotateY + 'deg');
   cube3d.style.transition = `transform var(--dur-long) var(--ease-soft)`;
   cube3d.style.transform = `rotateX(${cfg.rotateX}deg) rotateY(${cfg.rotateY}deg)`;
   anchor.style.transform = `scale(${cfg.scale})`;
-  anchor.style.opacity = cfg.opacity;
+  anchor.style.opacity = String(cfg.opacity);
 
   applyAllPatterns(cfg.activeFace);
 
@@ -496,18 +667,18 @@ function applyState(name) {
 
   if (cfg.auraOnEntry) {
     aura.classList.add('glowing');
-    timers.push(setTimeout(() => aura.classList.remove('glowing'), 2400));
+    setT(() => aura.classList.remove('glowing'), TIMING.auraReleaseMs);
   } else {
     aura.classList.remove('glowing');
   }
 
   if (cfg.shakeOnEntry) {
-    cube3d.style.animation = 'cubeStumpedShake 0.6s var(--ease-out)';
-    timers.push(setTimeout(() => { cube3d.style.animation = ''; }, 700));
+    cube3d.style.animation = 'cubeStumpedShake var(--spin-shake) var(--ease-out)';
+    setT(() => { cube3d.style.animation = ''; }, TIMING.shakeRecoveryMs);
   }
 
   if (BEHAVIORS[cfg.behavior]) {
-    timers.push(setTimeout(() => BEHAVIORS[cfg.behavior](), 450));
+    setT(() => BEHAVIORS[cfg.behavior](), TIMING.behaviorWarmupMs);
   }
   if (cfg.ambient) startAmbient(cfg.activeFace);
 }
@@ -516,13 +687,21 @@ let alarmActive = false;
 window.companion = {
   setState(name) { applyState(name); },
   getState() { return currentState; },
-  setStreakDays(_n) { /* pill removed; kept for bridge compat */ },
+  /** Set the daily-streak count. Up to 3 cells on the bottom row of
+   *  the front face light up; >3 days adds a slow pulse so the
+   *  user feels the momentum. (Was a no-op pre-audit.) */
+  setStreakDays(n) {
+    const num = Number(n);
+    streakDays = Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
+    applyStreakOverlay();
+  },
+  getStreakDays() { return streakDays; },
   /** Toggle drop-target visual state. Swift's DropAcceptingWebView
    *  calls this on dragEntered / dragExited / performDragOperation. */
   setDropping(active) {
     document.body.classList.toggle('drop-ready', !!active);
-    if (active) { aura.classList.add('glowing'); }
-    else { aura.classList.remove('glowing'); }
+    if (active) aura.classList.add('glowing');
+    else aura.classList.remove('glowing');
   },
   /** Alarm — orthogonal to STATES. Swift drives this when a
    *  scheduled study session is due. Tap on the panel dismisses
@@ -534,26 +713,40 @@ window.companion = {
   isAlarming() { return alarmActive; },
 };
 
+/* Visibility change: pause animations on the cube + aura only.
+ * (Audit finding K: querying * was a code smell, not a perf issue
+ * here, but tightening the selector pins the contract.) */
+const ANIMATABLE_SELECTOR = '.face, .cell, .cube3d, .drift, .anchor, .aura';
 document.addEventListener('visibilitychange', () => {
-  document.querySelectorAll('*').forEach((el) => {
+  document.querySelectorAll(ANIMATABLE_SELECTOR).forEach((el) => {
     try {
       el.getAnimations().forEach((a) => document.hidden ? a.pause() : a.play());
-    } catch (e) { /* not supported */ }
+    } catch (e) { /* getAnimations not supported */ }
   });
 });
 
 applyState('idle');
 
-// ============================================================
-// Drag + tap bridge.
-//
-// WKWebView swallows mouse events before they reach the NSPanel, so
-// the panel's built-in isMovableByWindowBackground does nothing here.
-// We capture pointer events in JS, post incremental deltas to the
-// "companionShell" handler, and Swift moves the panel via
-// setFrameOrigin. A short, threshold-gated mousedown→mouseup with no
-// movement fires a "tap" instead of a drag.
-// ============================================================
+/* =====================================================================
+ * Drag + tap bridge.
+ *
+ * WKWebView swallows mouse events before they reach the NSPanel, so
+ * the panel's built-in isMovableByWindowBackground does nothing here.
+ * We capture pointer events in JS and post incremental deltas to the
+ * "companionShell" handler; Swift moves the panel via setFrameOrigin.
+ * A short, threshold-gated mousedown→mouseup with no movement fires
+ * a "tap" instead of a drag.
+ *
+ * Hardened invariants (audit findings A, G, H):
+ *   * Threshold is measured against `dragOriginScreen` (set on
+ *     pointerdown) — slow drags accumulate cleanly, even when each
+ *     individual pointermove is sub-threshold.
+ *   * Posted deltas are the *increment* from `lastPostedScreen` —
+ *     when pointer events get coalesced, this remains accurate.
+ *   * Window blur AND document mouseleave AND pointerup AND
+ *     pointercancel all end the drag — covers releases outside the
+ *     panel that pointercancel doesn't always report.
+ * ===================================================================== */
 const shellBridge = window.webkit?.messageHandlers?.companionShell;
 function postShell(payload) {
   try { shellBridge?.postMessage(payload); }
@@ -563,27 +756,39 @@ function postShell(payload) {
 const DRAG_THRESHOLD_PX = 3;
 let dragActive = false;
 let dragMoved = false;
-let lastScreen = null;
+let dragOriginScreen = null;
+let lastPostedScreen = null;
 
 window.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   dragActive = true;
   dragMoved = false;
-  lastScreen = { x: e.screenX, y: e.screenY };
+  dragOriginScreen = { x: e.screenX, y: e.screenY };
+  lastPostedScreen = { x: e.screenX, y: e.screenY };
 });
 
 window.addEventListener('pointermove', (e) => {
   if (!dragActive) return;
-  const dx = e.screenX - lastScreen.x;
-  const dy = e.screenY - lastScreen.y;
+  /* Threshold from origin: cumulative distance, not per-event delta.
+   * Slow drags that move 1px per event still cross the threshold at
+   * the third pixel. */
+  const totalDx = e.screenX - dragOriginScreen.x;
+  const totalDy = e.screenY - dragOriginScreen.y;
   if (!dragMoved) {
-    if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+    if (Math.hypot(totalDx, totalDy) < DRAG_THRESHOLD_PX) return;
     dragMoved = true;
     document.body.classList.add('dragging');
     postShell({ action: 'dragStart' });
   }
-  postShell({ action: 'dragMove', dx, dy });
-  lastScreen = { x: e.screenX, y: e.screenY };
+  /* Increment from the last posted position, not from the previous
+   * pointermove. This stays correct even if WebKit coalesces events
+   * (every coalesced sample is reported, so total stays accurate). */
+  const dx = e.screenX - lastPostedScreen.x;
+  const dy = e.screenY - lastPostedScreen.y;
+  if (dx !== 0 || dy !== 0) {
+    postShell({ action: 'dragMove', dx, dy });
+    lastPostedScreen = { x: e.screenX, y: e.screenY };
+  }
 });
 
 function endDrag() {
@@ -591,12 +796,19 @@ function endDrag() {
   const moved = dragMoved;
   dragActive = false;
   dragMoved = false;
+  dragOriginScreen = null;
+  lastPostedScreen = null;
   document.body.classList.remove('dragging');
   if (moved) postShell({ action: 'dragEnd' });
   else postShell({ action: 'tap' });
 }
 window.addEventListener('pointerup', endDrag);
 window.addEventListener('pointercancel', endDrag);
+/* Window-level fallbacks for the case where the user releases the
+ * mouse outside the panel — pointerup may not fire if the cursor has
+ * left the WKWebView's hit-testable region. (Audit finding G.) */
+window.addEventListener('blur', endDrag);
+document.addEventListener('mouseleave', endDrag);
 </script>
 </body>
 </html>
