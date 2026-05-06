@@ -18,11 +18,33 @@ is generated from it at build time.
   (391 LoC, label cleanup + selector ranking + curated-options cache).
   All public names re-exported from `services/documents.py` so the 11
   importing modules keep working unchanged.
+- **`services/artifact_studio.py` split** (886 LoC flat module → 4-module
+  package). Path: `services/artifact_studio/__init__.py` re-exports the
+  public surface; `_orchestrator.py` (~270 LoC) holds `generate_artifact`,
+  `list_artifacts`, `get_artifact`; `grounding.py` (~265 LoC) handles
+  chunk + concept retrieval; `topic_map.py` (~155 LoC) is pure-function
+  focus selection + topic grouping; `generators.py` (~305 LoC) houses
+  the 9 markdown generators, 3 item builders, kind-dispatch, and the
+  shadow JSON `_hidden_artifact_payload`. External callers
+  (`routes/studio.py`, `benchmarks/phase0.py`) keep working via the
+  re-export. Closes the audit's "god-object services" item completely.
 
 ### Added
-- 45 new focused unit tests covering the extracted modules
-  (`test_document_duplicates.py`, `test_library_subjects.py`,
-  `test_concept_labels.py`).
+- 45 new tests for the documents.py split (`test_document_duplicates.py`,
+  `test_library_subjects.py`, `test_concept_labels.py`).
+- 35 new tests for the artifact_studio package — `test_artifact_studio_grounding.py`,
+  `test_artifact_studio_topic_map.py`, `test_artifact_studio_generators.py`,
+  `test_artifact_studio_orchestrator.py`. The orchestrator tests are the
+  first coverage this code has had since it landed.
+- `requested_kind` field on the `/api/studio/generate` response payload.
+  Surfaces unknown-`artifact_kind` rewrites to the frontend so a typo'd
+  kind doesn't silently degrade. Backed by an `artifact_kind_rewritten`
+  audit log entry.
+
+### Security
+- `StudioGenerateRequest.custom_prompt` now has `Field(max_length=4000)`
+  cap. Bounds the persisted JSON and the reflected payload returned by
+  `get_artifact`. Pydantic 422 at the route boundary on overflow.
 
 ## [0.1.0] — 2026-05-05
 

@@ -352,7 +352,11 @@ class StudioGenerateRequest(BaseModel):
     style: str = "prose"
     output_length: str = "medium"
     evidence_strictness: str = "normal"
-    custom_prompt: Optional[str] = None
+    # 4000 chars is roughly 6-8x the longest legitimate user prompt seen
+    # in fixture data; gives plenty of headroom while bounding the
+    # payload that gets persisted into `artifacts.output_json` and
+    # reflected back by `get_artifact`. Audit step (autoplan eng review).
+    custom_prompt: Optional[str] = Field(default=None, max_length=4000)
     grounding_mode: str = "internal_only"
     show_citations: bool = False
 
