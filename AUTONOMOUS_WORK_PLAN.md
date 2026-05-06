@@ -50,14 +50,13 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 - [x] Q1.5 Both PDFs re-exported (deck 478KB, onepager 224KB).
 - [x] Q1.6 About to commit.
 
-### Phase 2 — universal file ingestion (the table-stakes gap)
+### Phase 2 — universal file ingestion (the table-stakes gap) — MOSTLY DONE
 
-- [ ] Q2.1 Verify what's actually working: PDF (yes), what else? Read services/ingest/* and services/parsers/* if they exist.
-- [ ] Q2.2 Identify the easiest 3 file types to add that have library support: probably DOCX (python-docx already in many stacks), Markdown (trivial), and EPUB (ebooklib).
-- [ ] Q2.3 Implement the easiest of the three. Tests + commit.
-- [ ] Q2.4 Implement the next easiest. Tests + commit.
-- [ ] Q2.5 Implement the third. Tests + commit.
-- [ ] Q2.6 Add a frontend update to the upload widget showing supported types.
+- [x] Q2.1 Audit complete. **Massive find:** 15 parsers exist (PDF, DOCX, EPUB, HTML, image, audio, video, RTF, JSON, etc.) but upload allowlist gated to 10. Source-of-truth fix: `services/uploads.py:ALLOWED_SUFFIXES = SUPPORTED_SUFFIXES - {".zip"}`. Now 65 extensions reachable from upload. Tests pass (7 upload-security + 29 dedupe).
+- [x] Q2.2-Q2.5 Reframed: zero new parser code needed. The table-stakes were already coded; only the gate was wrong.
+- [ ] Q2.6 Frontend ImportDropzone copy update: list new categories ("PDFs, slides, docs, EPUB textbooks, audio lectures, photos of notes, web articles"). Defer to next loop iteration.
+- [ ] Q2.7 NEW: manually test EPUB + audio + image upload end-to-end on the running app. Defer to next iteration.
+- [ ] Q2.8 NEW: zip-extraction safety pass so `.zip` can be allowed too (per-entry size cap, format-validation per extracted file). Lower priority.
 
 ### Phase 3 — Plan / Deadlines / SRS heart-of-product polish
 
@@ -69,7 +68,7 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 
 - [ ] Q4.1 Read DESIGN.md, CLAUDE.md, frontend architecture. Identify what's macOS/file://-coupled and what's portable.
 - [ ] Q4.2 Investigate the three viable paths: (a) Capacitor wrap of existing Vite bundle into Android Studio project, (b) Tauri Mobile (alpha), (c) separate React Native app talking to the same FastAPI backend.
-- [ ] Q4.3 Write `docs/android-strategy.md` with a recommendation, the trade-off matrix, the smallest possible MVP scope, and the changes to the existing codebase needed to support it (e.g., abstracting WKWebView-specific bits, replacing `file://` asset resolution with a portable scheme).
+- [x] Q4.3 `docs/android-strategy.md` written. Decision: Capacitor wrap. Trade-off matrix vs Tauri Mobile and React Native included. 6-week implementation plan documented. Backend hosting decision recorded.
 - [ ] Q4.4 If Capacitor is the call: prototype the wrap. Just see if it boots.
 
 ### Phase 5 — Quality gates push (toward 95)

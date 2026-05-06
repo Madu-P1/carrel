@@ -4,21 +4,17 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
+from services.extraction.utils import SUPPORTED_SUFFIXES
+
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-ALLOWED_SUFFIXES = {
-    ".csv",
-    ".docx",
-    ".md",
-    ".markdown",
-    ".pdf",
-    ".pptx",
-    ".tsv",
-    ".txt",
-    ".xls",
-    ".xlsx",
-}
+# Single source of truth: every suffix the parser registry knows how to
+# handle is allowed at upload. Previously this set was hand-maintained and
+# drifted, exposing only 10 of the ~50 formats the extractor supports.
+# Archives are deliberately excluded here pending a per-entry size sweep
+# inside the zip; the parser exists but the upload-time guarantees do not.
+ALLOWED_SUFFIXES = SUPPORTED_SUFFIXES - {".zip"}
 
 
 def validate_upload_suffix(filename: str | None) -> str:
