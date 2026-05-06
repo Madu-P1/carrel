@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Carrel — One Pager</title>
+<style>
+  /* System stack only. No CDN dependency. */
+  :root {
+    --bg: #ffffff;
+    --ink: #0e0e10;
+    --muted: #5a5a62;
+    --hairline: #e6e6ea;
+    --accent: #2563eb;
+    --serif: "Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 11.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { width: 8.5in; min-height: 11in; padding: 0.75in 0.85in; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+  header .brand {
+    font-family: var(--serif);
+    font-size: 36px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  header .meta {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 26px;
+    line-height: 1.2;
+    margin-bottom: 10px;
+    max-width: 6.5in;
+    letter-spacing: -0.01em;
+  }
+  .lead {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin-bottom: 24px;
+    max-width: 6.7in;
+  }
+  .grid { display: grid; gap: 18px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .section { margin-bottom: 22px; }
+  .section .label {
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .section h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 1.2;
+    margin-bottom: 6px;
+    letter-spacing: -0.005em;
+  }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .card .name {
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+  .card .desc {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  /* Hairline dot bullets, neutral color. */
+  ul { padding-left: 0; list-style: none; }
+  ul li {
+    padding-left: 14px;
+    position: relative;
+    margin-bottom: 5px;
+    color: var(--muted);
+  }
+  ul li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .ask-bar {
+    background: #f4f6fb;
+    border: 1px solid #d4dcf0;
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 16px 20px;
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    margin-top: 14px;
+  }
+  .ask-bar .item .k {
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .ask-bar .item .v {
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.1;
+    color: var(--ink);
+    margin-top: 2px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 11px;
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  td.check { color: var(--accent); font-weight: 600; }
+  td.x { color: #c0c4cc; }
+  td.partial { color: var(--muted); }
+  footer {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline);
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+  .accent { color: var(--accent); }
+  @page { size: letter; margin: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="brand">Carrel.</div>
+    <div class="meta">Pre-seed · 2026 · Confidential</div>
+  </header>
+
+  <h1>The study workspace that turns your deadlines into a system. Drop in any file you study from. Carrel plans your week, runs the spaced review, and keeps every answer honest with citations you can click and verify.</h1>
+  <p class="lead">
+    Universal ingest: PDFs, slides, Word docs, Markdown, Excel, plain text, and audio/image roadmap. Deadline-anchored Plan view that schedules against your real calendar. Spaced-repetition review tied to what you actually owe on Friday. Grounded Ask where every claim cites the verbatim span.
+  </p>
+
+  <div class="grid cols-2">
+    <div class="section">
+      <div class="label">Problem</div>
+      <h2>Studying is eight apps and a calendar that lies.</h2>
+      <ul>
+        <li>No tool ties what you study tonight to what you owe Friday. Calendars are passive; study apps are deadline-blind.</li>
+        <li>Lectures are PDFs, slides are PPTX, notes are Markdown, syllabi are HTML. Each tool owns one format.</li>
+        <li>AI study tools fabricate. A student cannot ship a wrong answer to an exam.</li>
+      </ul>
+    </div>
+    <div class="section">
+      <div class="label">Insight</div>
+      <h2>The deadline is the unit of work.</h2>
+      <ul>
+        <li>Start with the exam, the paper, the deliverable. Everything else allocates against it.</li>
+        <li>Universal ingest (10+ formats today) so the format never blocks the workflow.</li>
+        <li>Spaced review and concept graph compound across the semester; switching costs the term.</li>
+        <li>Citation chip flies to the source span on click. Verification in one gesture.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">Competitive position</div>
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Deadline planning</th>
+          <th>Universal ingest</th>
+          <th>Spaced review</th>
+          <th>Cited answers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Notion AI</td><td class="x">No</td><td class="x">No</td><td class="x">No</td><td class="x">No</td></tr>
+        <tr><td>Quizlet / Anki</td><td class="x">No</td><td class="partial">Partial</td><td class="check">Yes</td><td class="x">No</td></tr>
+        <tr><td>NotebookLM</td><td class="x">No</td><td class="partial">Partial</td><td class="x">No</td><td class="partial">Partial</td></tr>
+        <tr><td>ChatGPT Study Mode</td><td class="x">No</td><td class="partial">Partial</td><td class="x">No</td><td class="x">No</td></tr>
+        <tr><td><strong>Carrel</strong></td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td><td class="check">Yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <div class="name">Student · $10/mo</div>
+      <div class="desc">.edu verified. Full product. The wedge. Cohort-viral inside study groups.</div>
+    </div>
+    <div class="card" style="border-color: #d4dcf0; background: #f8faff;">
+      <div class="name accent">Pro · $20/mo</div>
+      <div class="desc">MBA, residency, bar/CFA prep. Outcomes-bound buyers; same engine, higher price.</div>
+    </div>
+    <div class="card">
+      <div class="name">Group · $8/seat</div>
+      <div class="desc">Study groups, tutors, small cohorts. Shared library and shared deadlines.</div>
+    </div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top: 22px;">
+    <div class="section" style="margin-bottom: 0;">
+      <div class="label">Build proof (verifiable in repo)</div>
+      <ul>
+        <li>9 features end-to-end shipped in production-grade macOS app, Android via Capacitor next.</li>
+        <li>710 tests passing: 346 frontend (Vitest), 364 backend (pytest).</li>
+        <li>10 file formats ingested today: PDF, DOCX, PPTX, MD, TXT, CSV, TSV, XLS, XLSX, Markdown.</li>
+        <li>47 KB entry JS bundle, gzipped. 60fps citation flight in WKWebView.</li>
+      </ul>
+    </div>
+    <div class="section" style="margin-bottom: 0;">
+      <div class="label">Why now</div>
+      <ul>
+        <li>Students churned through 8 AI tools in 18 months and hate them all. The workspace that ties to deadlines wins.</li>
+        <li>Cohort-viral distribution: one student in a study group brings 4-7 more, semester-paced.</li>
+        <li>AI-native study budgets exist now: students already pay $50/mo across Notion, Quizlet, ChatGPT.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top: 22px; margin-bottom: 0;">
+    <div class="label">Honest framing</div>
+    <p style="font-size: 11.5px; line-height: 1.5;">
+      Zero paying users today. The ask funds the path to first paid revenue: 50 student design partners across 5 universities in 90 days, Stripe live on the .edu tier, 1,000 paying student subs as the kill-or-keep metric at month 12.
+    </p>
+  </div>
+
+  <div class="ask-bar">
+    <div class="item"><div class="k">Round</div><div class="v">$750K SAFE</div></div>
+    <div class="item"><div class="k">Cap</div><div class="v">$6M post</div></div>
+    <div class="item"><div class="k">Runway</div><div class="v">12 months</div></div>
+    <div class="item"><div class="k">First hire</div><div class="v">Senior eng (Android)</div></div>
+    <div class="item"><div class="k">Kill metric</div><div class="v">1,000 student subs</div></div>
+  </div>
+
+  <footer>
+    <span>Founder: [name] · [email] · [phone]</span>
+    <span>Demo: [calendar link] · Deck: carrel.app/deck</span>
+  </footer>
+</div>
+</body>
+</html>

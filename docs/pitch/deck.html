@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Carrel — Investor Deck</title>
+<style>
+  /* Fonts: system stack only. No CDN dependency.
+     Instrument Serif lives in the product bundle (offline);
+     the deck is a sharable artifact and should not depend on
+     network. Charter/Iowan/Georgia carry the deck in print. */
+  :root {
+    --bg-base: #0e0e10;
+    --bg-elevated: #16161a;
+    --border-subtle: rgba(255,255,255,0.06);
+    --border-default: rgba(255,255,255,0.10);
+    --border-strong: rgba(255,255,255,0.18);
+    --text-primary: #f5f5f7;
+    --text-secondary: #b8b8be;
+    --text-tertiary: #74747a;
+    --accent: #4f8cff;
+    --serif: "Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* 1280x720 print page (16:9). */
+  .slide {
+    width: 1280px;
+    height: 720px;
+    padding: 64px 80px;
+    background: var(--bg-base);
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+  }
+  .slide + .slide { border-top: 1px solid var(--border-subtle); }
+  .eyebrow {
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    font-weight: 600;
+  }
+  h1.display {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 112px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 64px;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    color: var(--text-primary);
+  }
+  h2 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1.3;
+    color: var(--text-primary);
+    letter-spacing: -0.005em;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 17px;
+    line-height: 1.3;
+    color: var(--text-primary);
+  }
+  p, li { color: var(--text-secondary); font-size: 17px; line-height: 1.55; }
+  p.lead { color: var(--text-primary); font-size: 22px; line-height: 1.45; max-width: 880px; font-weight: 400; }
+  .muted { color: var(--text-tertiary); }
+  .accent { color: var(--accent); }
+  .footer {
+    position: absolute;
+    bottom: 32px;
+    left: 80px;
+    right: 80px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .grid {
+    display: grid;
+    gap: 24px;
+    margin-top: 32px;
+  }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 24px;
+  }
+  .card .num {
+    font-family: var(--serif);
+    font-size: 44px;
+    line-height: 1;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+  }
+  .card h3 { margin-bottom: 8px; }
+  .pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 9999px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: transparent;
+    font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+  th, td {
+    text-align: left;
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 15px;
+  }
+  th { color: var(--text-tertiary); font-weight: 600; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  td { color: var(--text-secondary); }
+  td strong { color: var(--text-primary); font-weight: 500; }
+  td.yes { color: var(--text-primary); font-weight: 500; }
+  td.no { color: var(--text-tertiary); }
+  /* Bullets: hairline dot, neutral color. Accent is reserved
+     for CTAs + citation highlights per design spec. */
+  ul { padding-left: 0; list-style: none; }
+  ul li {
+    padding-left: 18px;
+    position: relative;
+    margin-bottom: 10px;
+  }
+  ul li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+  }
+  .quote {
+    border-left: 2px solid var(--text-primary);
+    padding-left: 24px;
+    font-family: var(--serif);
+    font-size: 32px;
+    line-height: 1.3;
+    color: var(--text-primary);
+    max-width: 880px;
+  }
+  /* The single accent bar — used once, at the ask. CTA-equivalent. */
+  .ask {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 28px 32px;
+    margin-top: 28px;
+  }
+  .ask .row { display: flex; gap: 40px; margin-top: 16px; }
+  .ask .row > div { flex: 1; }
+  .ask .label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 6px; font-weight: 600; }
+  .ask .value { font-family: var(--serif); font-size: 28px; line-height: 1.1; color: var(--text-primary); }
+  .center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .feature-row {
+    display: flex;
+    gap: 32px;
+    align-items: baseline;
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .feature-row:last-child { border-bottom: none; }
+  .feature-row .name {
+    font-family: var(--serif);
+    font-size: 26px;
+    width: 200px;
+    flex-shrink: 0;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .feature-row .desc { color: var(--text-secondary); font-size: 16px; line-height: 1.55; }
+  .stat-line {
+    display: flex;
+    gap: 56px;
+    margin-top: 28px;
+  }
+  .stat-line .stat .v {
+    font-family: var(--serif);
+    font-size: 56px;
+    line-height: 1;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+  .stat-line .stat .k {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    max-width: 180px;
+    line-height: 1.4;
+  }
+  .speaker {
+    margin-top: 32px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 760px;
+  }
+  @media print {
+    @page { size: 1280px 720px; margin: 0; }
+    .slide { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 1. TITLE — wedge in the title, not buried -->
+<section class="slide">
+  <div class="eyebrow">Carrel · Pre-seed · 2026</div>
+  <div class="center">
+    <h1 class="display">Carrel.</h1>
+    <p class="lead" style="margin-top: 28px; max-width: 920px;">
+      The study workspace that turns your deadlines into a system. Drop in anything you read , PDFs, slides, docs, notes, transcripts , and Carrel plans your week, runs the spaced review, and keeps every answer honest with citations you can click and verify.
+    </p>
+    <p class="muted" style="margin-top: 32px; max-width: 760px; font-size: 15px;">
+      I built Carrel because I watched students use eight apps to study for one exam, miss the deadline anyway, and learn nothing they could prove. So I built one app that does the whole loop.
+    </p>
+  </div>
+  <div class="footer">
+    <span>$750K SAFE · $6M post · 12-month runway</span>
+    <span>Confidential</span>
+  </div>
+</section>
+
+<!-- 2. PROBLEM — student studying for finals. -->
+<section class="slide">
+  <span class="eyebrow">The problem</span>
+  <h1 style="margin-top: 16px;">Studying is eight apps and a calendar that lies.</h1>
+  <div class="center">
+    <p class="lead" style="max-width: 920px;">
+      A second-year med student has 14 lecture PDFs, 6 textbook chapters, 200 highlights in Notion, an Anki deck someone shared on Reddit, three AI tools she pays for, and a final on Friday. None of them know about Friday. None of them tell her what to study tonight. She gets to Thursday at 11pm having studied the wrong material.
+    </p>
+    <div class="grid cols-3" style="margin-top: 40px;">
+      <div class="card">
+        <h3>The deadline gap</h3>
+        <p style="margin-top: 8px;">No tool ties what you are reading today to what you owe on Friday. Calendars are passive; study apps are deadline-blind.</p>
+      </div>
+      <div class="card">
+        <h3>The format tax</h3>
+        <p style="margin-top: 8px;">Lectures are PDFs, slides are PPTX, summaries are Markdown, transcripts are docx, the syllabus is a website. Each tool owns one format and ignores the rest.</p>
+      </div>
+      <div class="card">
+        <h3>The trust gap</h3>
+        <p style="margin-top: 8px;">Every AI study tool fabricates. A student cannot ship a wrong answer to an exam. Verification has to happen in one click, every time.</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>02</span><span>Carrel</span></div>
+</section>
+
+<!-- 3. INSIGHT — the deadline is the unit of work -->
+<section class="slide">
+  <span class="eyebrow">The insight</span>
+  <div class="center">
+    <h1 style="max-width: 1080px;">The deadline is the unit of work.<br>Everything else is in service of it.</h1>
+    <p class="lead muted" style="margin-top: 32px; max-width: 920px;">
+      Other tools start with the file (Notion), the highlight (Readwise), the question (ChatGPT), or the card (Anki). Carrel starts with Friday. The exam, the paper, the deliverable. From that anchor, every PDF you drop in, every concept you mark weak, every slot of free time on your calendar gets allocated automatically toward closing the gap. The student stops choosing what to study and starts trusting that the system already chose.
+    </p>
+  </div>
+  <div class="footer"><span>03</span><span>Carrel</span></div>
+</section>
+
+<!-- 4. PRODUCT — Plan is first; Library/Reader/Ask are inputs to it -->
+<section class="slide">
+  <span class="eyebrow">The product</span>
+  <h1 style="margin-top: 16px;">Plan first. Everything else feeds the plan.</h1>
+  <div class="center" style="margin-top: 8px;">
+    <div class="feature-row">
+      <div class="name">Plan</div>
+      <div class="desc">Add a deadline. Carrel drafts the study schedule against your real calendar, picks tonight's session, surfaces the weakest concepts, and rebuilds when you fall behind. The home view, every day.</div>
+    </div>
+    <div class="feature-row">
+      <div class="name">Library</div>
+      <div class="desc">Drop in anything: PDFs, slides (PPTX), Word docs, Markdown notes, Excel sheets, CSV data, plain text. Auto-grouped by subject. The format does not matter; the source does.</div>
+    </div>
+    <div class="feature-row">
+      <div class="name">Sessions &amp; Review</div>
+      <div class="desc">Spaced-repetition cards generated from your sources. Daily review queue tied to your deadlines, not a generic algorithm. Streak that means something.</div>
+    </div>
+    <div class="feature-row">
+      <div class="name">Ask &amp; Reader</div>
+      <div class="desc">When you need an answer, ask. Every claim cites the verbatim span; click the chip and Carrel flies you to the source. No fabrication, ever.</div>
+    </div>
+  </div>
+  <div class="footer"><span>04</span><span>Carrel</span></div>
+</section>
+
+<!-- 5. THE WOW — show, don't tell -->
+<section class="slide">
+  <span class="eyebrow">The signature moment</span>
+  <div class="center">
+    <h1 style="max-width: 1100px;">Click a citation chip.<br>The chip flies to the source span.<br>The page scrolls. The chunk pulses once.</h1>
+    <div class="stat-line">
+      <div class="stat"><div class="v">420ms</div><div class="k">total motion budget</div></div>
+      <div class="stat"><div class="v">60fps</div><div class="k">WKWebView, no jank</div></div>
+      <div class="stat"><div class="v">1 click</div><div class="k">to verify any claim</div></div>
+    </div>
+    <p class="speaker">Demo this live. The deck cannot carry the wedge — the gesture does.</p>
+  </div>
+  <div class="footer"><span>05</span><span>Demo this live</span></div>
+</section>
+
+<!-- 6. WHY NOW — three tailwinds, tightened -->
+<section class="slide">
+  <span class="eyebrow">Why now</span>
+  <h1 style="margin-top: 16px;">Three tailwinds converged in the last 12 months.</h1>
+  <div class="center">
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="pill">2025</span>
+        <h3 style="margin-top: 16px;">Local LLMs cleared the bar</h3>
+        <p style="margin-top: 8px;">Llama 3.1 8B and Apple Intelligence ship quality good enough that an on-device free tier is no longer a downgrade.</p>
+      </div>
+      <div class="card">
+        <span class="pill">2026</span>
+        <h3 style="margin-top: 16px;">Privacy is a buying criterion</h3>
+        <p style="margin-top: 8px;">EU AI Act enforcement and a wave of US state laws have moved "my data left my device" from a footnote to a procurement objection.</p>
+      </div>
+      <div class="card">
+        <span class="pill">Now</span>
+        <h3 style="margin-top: 16px;">AI-tool fatigue is real</h3>
+        <p style="margin-top: 8px;">Knowledge workers churn through 8+ AI tools a year. The winner is the one that fits the existing workflow, not the one with the biggest model.</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>06</span><span>Carrel</span></div>
+</section>
+
+<!-- 7. MARKET — students are the wedge -->
+<section class="slide">
+  <span class="eyebrow">Market</span>
+  <h1 style="margin-top: 16px;">Path to $1M ARR via the student who has Friday.</h1>
+  <div class="center">
+    <p class="lead" style="max-width: 920px;">
+      8,300 paying student subscribers at $10/mo. That is the proof point this round funds. Students are the wedge because they have hard deadlines, low tool inertia, viral sharing inside cohorts, and an existing $50/mo spend on Notion + Quizlet + ChatGPT they would consolidate to one app.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Segment</th><th>Wedge</th><th>Price</th><th>Why now</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>University students</strong></td>
+          <td>Deadlines + universal ingest + grounded Ask</td>
+          <td>$10/mo (.edu)</td>
+          <td>Cohort virality, semester-paced; primary segment.</td>
+        </tr>
+        <tr>
+          <td><strong>Pro learners (MBA, residency, bar/CFA prep)</strong></td>
+          <td>Same engine, higher willingness</td>
+          <td>$20/mo</td>
+          <td>Outcomes-bound, time-poor, already pay $200+/mo on prep.</td>
+        </tr>
+        <tr>
+          <td><strong>Study groups &amp; tutors</strong></td>
+          <td>Shared library, shared deadlines</td>
+          <td>$8/seat/mo</td>
+          <td>Year 2 motion. Pulls in via student power-users.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top: 20px; font-size: 14px;">
+      US/EU/AU full-time students alone: 25M+. We do not need a percentage point. We need 0.03% of them.
+    </p>
+  </div>
+  <div class="footer"><span>07</span><span>Carrel</span></div>
+</section>
+
+<!-- 8. COMPETITION + MOAT — accumulated state, not "design taste" -->
+<section class="slide">
+  <span class="eyebrow">Competition &amp; moat</span>
+  <h1 style="margin-top: 16px;">No one ships this combination today.</h1>
+  <div class="center">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Deadline planning</th>
+          <th>Universal ingest</th>
+          <th>Spaced review</th>
+          <th>Cited answers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Notion AI</strong></td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td><strong>Quizlet / Anki</strong></td><td class="no">No</td><td>Partial</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td><strong>NotebookLM</strong></td><td class="no">No</td><td class="no">No</td><td>Partial</td><td class="no">No</td></tr>
+        <tr><td><strong>ChatGPT Study Mode</strong></td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td><strong>Carrel</strong></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="margin-top: 28px; max-width: 920px;">
+      The category is "AI study tools." Every competitor owns one verb: take notes, drill cards, summarize a doc, answer a question. None plan toward a deadline. None compound across the semester. By month 3, a Carrel user has weeks of weak-concept history, deadline-tied review sessions, and a calendar that knows their schedule. Switching costs the semester.
+    </p>
+  </div>
+  <div class="footer"><span>08</span><span>Carrel</span></div>
+</section>
+
+<!-- 9. BUILD PROOF — verifiable shipped numbers, not boasts -->
+<section class="slide">
+  <span class="eyebrow">Build proof</span>
+  <h1 style="margin-top: 16px;">Shipped, measured, in production.</h1>
+  <div class="center">
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="num">9</div>
+        <h3>Features end-to-end</h3>
+        <p>Library, Reader, Ask, Sessions, Review Queue, Search, Concepts, Plan, Onboarding tour. Each has its own animation contract and test suite.</p>
+      </div>
+      <div class="card">
+        <div class="num">710</div>
+        <h3>Tests passing today</h3>
+        <p>346 frontend (Vitest), 364 backend (pytest), including an 18-probe adversarial prompt-injection suite. CI green every commit.</p>
+      </div>
+      <div class="card">
+        <div class="num">47 KB</div>
+        <h3>Entry JS bundle, gzipped</h3>
+        <p>Code-split lazy routes. 60fps citation flight in WKWebView. The whole UI fits in a single network round-trip.</p>
+      </div>
+      <div class="card">
+        <div class="num">100%</div>
+        <h3>Local data plane</h3>
+        <p>SQLite, sqlite-vec, fastembed. Zero network at boot. Anthropic API only on user-initiated Ask. The free tier never leaves the device.</p>
+      </div>
+    </div>
+  </div>
+  <div class="footer"><span>09</span><span>Carrel</span></div>
+</section>
+
+<!-- 10. TODAY — what is real right now. Replaces "traction" honestly. -->
+<section class="slide">
+  <span class="eyebrow">Today</span>
+  <h1 style="margin-top: 16px;">What's real, what's next.</h1>
+  <div class="center">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3 style="color: var(--accent);">Real today</h3>
+        <ul style="margin-top: 16px;">
+          <li>Production-grade macOS app. End-to-end loop: ingest, plan, study, review, ask, cite.</li>
+          <li>Universal ingest live: PDF, DOCX, PPTX, Markdown, plain text, CSV, Excel.</li>
+          <li>Plan view with deadline-aware scheduling against the user's real calendar.</li>
+          <li>Solo-built; design system, docs, audit trail, 710 tests in the repo.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Next 90 days</h3>
+        <ul style="margin-top: 16px;">
+          <li>Closed beta to 50 student design partners across 5 universities.</li>
+          <li>Android via Capacitor wrap of the existing web bundle. Same codebase, two platforms.</li>
+          <li>Stripe live behind the .edu tier. First 100 paying students as the open-signup gate.</li>
+          <li>Audio and EPUB ingest. Image OCR for textbook photos.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="speaker">Honest: zero paying users today. The ask funds the path to first paid revenue, not the scale-up after it.</p>
+  </div>
+  <div class="footer"><span>10</span><span>Carrel</span></div>
+</section>
+
+<!-- 11. TEAM & ASK — founder voice, real ask -->
+<section class="slide">
+  <span class="eyebrow">Team &amp; ask</span>
+  <h1 style="margin-top: 16px;">One operator. Time to compound.</h1>
+  <div class="center">
+    <p class="lead" style="margin-top: 8px; max-width: 920px;">
+      <strong style="color: var(--text-primary);">[Founder name]</strong>, previously [prior shipped product]. Built Carrel solo because [domain reason — why you, specifically, are the one to do this]. Hiring engineer #2 with this round to own iPad and iOS.
+    </p>
+    <div class="ask">
+      <div class="eyebrow">The ask</div>
+      <div class="row" style="margin-top: 16px;">
+        <div>
+          <div class="label">Round</div>
+          <div class="value">$750K SAFE</div>
+        </div>
+        <div>
+          <div class="label">Cap</div>
+          <div class="value">$6M post</div>
+        </div>
+        <div>
+          <div class="label">Runway</div>
+          <div class="value">12 months</div>
+        </div>
+        <div>
+          <div class="label">Kill metric</div>
+          <div class="value">1,000 Pro subs</div>
+        </div>
+      </div>
+      <p class="muted" style="margin-top: 24px; font-size: 14px; line-height: 1.55;">
+        Use of funds: founder salary, one senior engineer, design contractor at 20 hrs/week, Anthropic API for free-trial periods during launch, infrastructure, EU privacy + legal, modest launch budget. If we miss 1,000 paying Pro subs by month 12, we do not raise seed.
+      </p>
+    </div>
+  </div>
+  <div class="footer"><span>11</span><span>Carrel</span></div>
+</section>
+
+<!-- 12. CLOSE -->
+<section class="slide">
+  <span class="eyebrow">Close</span>
+  <div class="center" style="align-items: flex-start;">
+    <div class="quote" style="font-size: 56px;">
+      If you have a deadline,<br>you will not close this app.
+    </div>
+    <p class="lead muted" style="margin-top: 48px;">
+      Try it: <span class="accent">carrel.app</span>  ·  Demo: <span class="accent">[your calendar link]</span>  ·  [your email]
+    </p>
+  </div>
+  <div class="footer"><span>12</span><span>Thank you</span></div>
+</section>
+
+</body>
+</html>
