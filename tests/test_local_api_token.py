@@ -123,6 +123,26 @@ class LocalAPITokenTests(unittest.TestCase):
 
         self.assertEqual(403, response.status_code)
 
+    def test_cors_preflight_options_bypasses_auth_gate(self) -> None:
+        # Regression: browsers send `OPTIONS` preflights automatically
+        # for cross-origin requests; they CAN'T carry custom auth
+        # headers. Pre-fix, the new full-/api gate 403'd every
+        # preflight, which broke every endpoint from the WebView's
+        # file:// origin. The fix exempts OPTIONS from the gate; the
+        # actual request that follows still gets checked.
+        response = self.client.options(
+            "/api/documents",
+            headers={
+                "Origin": "file://",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-carrel-local-token",
+            },
+        )
+        # Should NOT be 403 — let the CORS middleware respond. Status
+        # is typically 200 for an accepted preflight.
+        self.assertNotEqual(403, response.status_code)
+        self.assertIn("access-control-allow-origin", response.headers)
+
 
 if __name__ == "__main__":
     unittest.main()

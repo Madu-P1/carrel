@@ -93,6 +93,15 @@ def is_open_mode() -> bool:
 
 def is_local_api_request(request: Request) -> bool:
     """Does this request need to be gated at all?"""
+    # CORS preflight: browsers send `OPTIONS` automatically before the
+    # actual request to check the cross-origin allowance. Preflights
+    # don't and CAN'T carry custom headers like X-Carrel-Local-Token —
+    # that's the whole point. Let the CORS middleware respond to the
+    # preflight; the real request that follows still gets gated.
+    # (Pre-fix: every preflight 403'd, breaking every cross-origin
+    # call from the WebView's file:// page.)
+    if request.method.upper() == "OPTIONS":
+        return False
     path = request.url.path
     if path in _UNAUTHENTICATED_PATHS:
         return False
