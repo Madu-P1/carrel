@@ -60,6 +60,7 @@ interface CubeWindow extends Window {
   // jsdom-specific bits we need but the lib `Window` type doesn't expose.
   Event: typeof Event;
   console: Console;
+  Math: Math;
   webkit?: {
     messageHandlers?: {
       companionShell?: {
