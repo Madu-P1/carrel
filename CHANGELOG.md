@@ -10,6 +10,20 @@ is generated from it at build time.
 
 ## [Unreleased]
 
+### Changed
+- **`services/documents.py` split** (831 → 241 LoC, down 71%) into three
+  focused modules: `services/document_duplicates.py` (243 LoC, source-hash
+  duplicate detection), `services/library_subjects.py` (193 LoC, subject
+  grouping + per-subject summaries), and `services/concept_labels.py`
+  (391 LoC, label cleanup + selector ranking + curated-options cache).
+  All public names re-exported from `services/documents.py` so the 11
+  importing modules keep working unchanged.
+
+### Added
+- 45 new focused unit tests covering the extracted modules
+  (`test_document_duplicates.py`, `test_library_subjects.py`,
+  `test_concept_labels.py`).
+
 ## [0.1.0] — 2026-05-05
 
 First tagged release. Carrel runs locally on macOS as a SwiftUI/WKWebView
