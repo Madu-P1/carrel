@@ -1,8 +1,9 @@
 import { Stack, toast } from "@/design-system";
 
 import { copyAskCardText, saveCitationAnchor } from "../anchorDrafts";
-import type { CitationRecord } from "../types";
 import styles from "../AskView.module.css";
+import type { CitationRecord } from "../types";
+
 import { AnswerFeedCard } from "./AnswerFeedCard";
 
 interface AnswerSummaryProps {

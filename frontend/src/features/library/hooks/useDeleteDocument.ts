@@ -1,7 +1,7 @@
 import { useSignal } from "@preact/signals";
 
-import { documents } from "@/services/api/endpoints";
 import { invalidateReaderDetailQuery } from "@/features/reader/hooks/useReaderDetail";
+import { documents } from "@/services/api/endpoints";
 
 export function useDeleteDocument() {
   const loading = useSignal(false);

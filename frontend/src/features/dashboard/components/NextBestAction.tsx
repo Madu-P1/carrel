@@ -1,6 +1,6 @@
+import { navigateTo } from "@/app/shell/useAppShell";
 import { Icon } from "@/design-system";
 import type { DashboardPayload } from "@/services/api/endpoints";
-import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "./NextBestAction.module.css";
 

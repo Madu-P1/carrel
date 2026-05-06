@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+
 import { describe, expect, test } from "vitest";
 
 /*
@@ -92,7 +93,17 @@ const indexCssPath = resolve(distDir, "index.css");
 //                  pill, recommendation card. Roughly 6 KB gzipped on
 //                  the entry bundle. Lives in
 //                  frontend/src/features/companion/.
-const ENTRY_JS_GZIP_BUDGET = 106 * 1024;
+// 106 KB → 60 KB: Wave 3f route-level code split. Every non-Dashboard
+//                  route now ships its own chunk via lazyRoute()
+//                  (signal-backed lazy import — see lazyRoute.tsx for
+//                  why we don't use preact/compat Suspense). Entry chunk
+//                  carries only the shell, dashboard, and lazy wiring.
+//                  Live: ~47 KB gz. Budget set at 60 KB to give ~28%
+//                  headroom — adversarial review flagged the original
+//                  55 KB ceiling as too tight given the tier-2/3 roadmap
+//                  items (medium tailoring depth, per-token identity)
+//                  that touch shell-level wiring.
+const ENTRY_JS_GZIP_BUDGET = 60 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

@@ -96,7 +96,7 @@ test("ScopePill picks a document via the picker and fires onChange", () => {
   // The picker's list rows contain filenames.
   fireEvent.click(screen.getByText("mitosis.pdf"));
   expect(onChange).toHaveBeenCalledTimes(1);
-  const next = onChange.mock.calls[0][0] as AskScopeValue;
+  const next = onChange.mock.calls[0]![0] as AskScopeValue;
   expect(next.kind).toBe("document");
   expect(next.docId).toBe("d2");
   expect(next.docTitle).toBe("mitosis.pdf");

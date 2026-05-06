@@ -131,7 +131,6 @@ Useful variants:
 ```bash
 ./script/build_and_run.sh --verify
 ./script/build_and_run.sh --logs
-./script/build_and_run.sh --frontend legacy
 ```
 
 ## Backend-Only Development

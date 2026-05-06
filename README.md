@@ -14,7 +14,7 @@ Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN
 ./script/build_and_run.sh
 ```
 
-Builds the Swift shell + Vite frontend bundle, starts the FastAPI backend on `127.0.0.1:8000`, and launches `Einstein.app`. Use `--frontend legacy` for the pre-PR-E8 bundle.
+Builds the Swift shell + Vite frontend bundle, starts the FastAPI backend on `127.0.0.1:8000`, and launches `Einstein.app`.
 
 ## Quick start — backend only
 
@@ -23,7 +23,7 @@ python3 -m uvicorn main:app --reload
 # then http://127.0.0.1:8000
 ```
 
-Useful for iterating on routes, ingestion, or the legacy web shell without rebuilding the Swift app.
+Useful for iterating on routes or ingestion without rebuilding the Swift app.
 
 ## Configuration
 

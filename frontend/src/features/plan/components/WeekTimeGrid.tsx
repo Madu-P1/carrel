@@ -10,6 +10,7 @@ import {
   sevenDaysFrom,
   todayMidnightLocal,
 } from "../utils/timezone";
+
 import { EventBlock } from "./EventBlock";
 import { SuggestionCard } from "./SuggestionCard";
 import styles from "./WeekTimeGrid.module.css";
@@ -71,7 +72,8 @@ export function WeekTimeGrid({
   const feedColor = useMemo(() => {
     const map: Record<string, string> = {};
     feeds.forEach((feed, index) => {
-      map[feed.id] = feed.color ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+      // FALLBACK_COLORS is a non-empty const; modulo guarantees in-bounds.
+      map[feed.id] = feed.color ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length]!;
     });
     return map;
   }, [feeds]);

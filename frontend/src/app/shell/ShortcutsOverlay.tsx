@@ -1,5 +1,5 @@
-import { useEffect } from "preact/hooks";
 import { signal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 
 import { Icon } from "@/design-system";
 
@@ -111,6 +111,8 @@ export function ShortcutsOverlay() {
   if (!isOpen) return null;
 
   return (
+    // Backdrop is click-to-dismiss; Escape is handled in the effect above.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
       className={styles.backdrop}
       onClick={closeShortcutsOverlay}
@@ -118,6 +120,8 @@ export function ShortcutsOverlay() {
       aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
+      {/* Inner sheet swallows clicks so they don't bubble to the backdrop. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={styles.sheet}
         onClick={(event) => event.stopPropagation()}

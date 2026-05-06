@@ -3,6 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { DocumentDetail } from "@/services/api/endpoints";
 
 import { readerState } from "../../state";
+
 import styles from "./SourcePanel.module.css";
 
 type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];

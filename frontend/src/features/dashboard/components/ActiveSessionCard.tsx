@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
-import { Icon } from "@/design-system";
 import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
-import { ApiError } from "@/services/api/client";
+import { Icon } from "@/design-system";
 import { parseIsoAsUtc } from "@/lib/time";
+import { ApiError } from "@/services/api/client";
 import {
   sessions,
   type ActiveSessionSummary,

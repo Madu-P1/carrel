@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
+import { useEffect, useId, useRef } from "preact/hooks";
 
 import styles from "./Dialog.module.css";
 
@@ -79,7 +79,9 @@ export function Dialog({
       }
 
       event.preventDefault();
-      focusable[nextIndex].focus();
+      // nextIndex is computed from focusable.length above and is always
+      // in-bounds when focusable.length > 0 (guarded earlier).
+      focusable[nextIndex]!.focus();
     };
 
     const onOutsidePress = (event: MouseEvent | PointerEvent) => {
@@ -108,6 +110,12 @@ export function Dialog({
   }
 
   return (
+    // The overlay is a click-outside-to-dismiss target. Keyboard users
+    // close via Escape (handled in the effect above), so the overlay
+    // itself doesn't need its own keyboard handler. Same for the inner
+    // dialog — its onClick is purely event-isolation (stopPropagation),
+    // no user-facing interaction.
+    /* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions */
     <div className={styles.overlay} onClick={onClose}>
       <div
         aria-describedby={description ? descriptionId : undefined}
@@ -133,5 +141,6 @@ export function Dialog({
         {actions ? <footer className={styles.footer}>{actions}</footer> : null}
       </div>
     </div>
+    /* eslint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions */
   );
 }

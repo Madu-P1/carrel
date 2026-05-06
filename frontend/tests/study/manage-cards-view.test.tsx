@@ -145,7 +145,7 @@ test("delete keeps offset in sync — next Load more requests offset = visible c
   await waitFor(() => {
     const last = listCalls[listCalls.length - 1];
     expect(last).toBeDefined();
-    expect(last.offset).toBe(2);
+    expect(last!.offset).toBe(2);
   });
 });
 
@@ -188,7 +188,7 @@ test("create keeps offset in sync — next Load more requests offset = visible c
   await waitFor(() => {
     const last = listCalls[listCalls.length - 1];
     expect(last).toBeDefined();
-    expect(last.offset).toBe(4);
+    expect(last!.offset).toBe(4);
   });
 });
 

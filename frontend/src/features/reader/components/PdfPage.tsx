@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-
 import type {
   PDFDocumentProxy,
   RenderTask
 } from "pdfjs-dist/types/src/display/api";
+import { useEffect, useRef, useState } from "preact/hooks";
+
 
 import { Spinner } from "@/design-system";
 

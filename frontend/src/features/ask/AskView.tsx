@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { appShell, navigateTo } from "@/app/shell/useAppShell";
 import { Badge, Button, Card, Divider, Icon, Stack, Text } from "@/design-system";
+import { recordOnboardingStep } from "@/features/onboarding/FirstRunController";
 import {
   documents as documentsApi,
   study as studyApi,
@@ -9,20 +10,19 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
-import { recordOnboardingStep } from "@/features/onboarding/FirstRunController";
 
-import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
+import { readAskQueryParams, scopeFromRoute } from "./askRoute";
+import styles from "./AskView.module.css";
 import { AnswerSummary } from "./components/AnswerSummary";
 import { ClaimList } from "./components/ClaimList";
+import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { FallbackAnswer } from "./components/FallbackAnswer";
 import { QuestionInput } from "./components/QuestionInput";
 import { ScopePill, type AskScopeValue } from "./components/ScopePill";
 import { UnsupportedSpans } from "./components/UnsupportedSpans";
 import { focusAskInput } from "./focusRegistry";
-import { readAskQueryParams, scopeFromRoute } from "./askRoute";
 import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
-import styles from "./AskView.module.css";
 
 // Subject-agnostic sample that demonstrates Carrel's strength
 // (citation-grounded synthesis across whatever the user has imported)

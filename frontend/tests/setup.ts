@@ -5,6 +5,7 @@ import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import { resetDocumentsQuery } from "../src/features/library/hooks/useDocumentsQuery";
 import { resetReaderDetailQueries } from "../src/features/reader/hooks/useReaderDetail";
 import { readerState, READER_OUTLINE_WIDTH, resetReaderState } from "../src/features/reader/state";
+
 import { installFetchMock, resetFetchMock } from "./support/mockFetch";
 
 installFetchMock();

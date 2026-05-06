@@ -1,9 +1,10 @@
 import { Badge, Stack, Text, toast } from "@/design-system";
 
 import { copyAskCardText, saveAskAnchorDraft } from "../anchorDrafts";
+import styles from "../AskView.module.css";
 import { friendlyErrorFor } from "../errorMessages";
 import type { ClaimRecord } from "../types";
-import styles from "../AskView.module.css";
+
 import { AnswerFeedCard, type AnswerFeedAction } from "./AnswerFeedCard";
 
 interface FallbackAnswerProps {

@@ -2,37 +2,74 @@ import type { ComponentChildren, FunctionComponent } from "preact";
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
-import { AskView } from "@/features/ask/AskView";
-import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
-import { LibraryView } from "@/features/library/LibraryView";
 import { NotFoundView } from "@/features/NotFoundView";
-import { PlanView } from "@/features/plan/PlanView";
-import { ReaderView } from "@/features/reader/ReaderView";
-import { SearchView } from "@/features/search/SearchView";
-import { SessionView } from "@/features/session/SessionView";
-import { StudyView } from "@/features/study/StudyView";
 
-import { appShell } from "./shell/useAppShell";
+import { lazyRoute } from "./lazyRoute";
 import { AppShell, BundledAppShell } from "./shell/AppShell";
+import { appShell } from "./shell/useAppShell";
 
 /*
- * Reader was briefly route-split via `lazy()` + `Suspense` from
- * preact/compat (perf ship 7ac8931). Under the bundled file:// macOS
- * shell that combination produced a blank Reader pane: the chunk
- * fetched successfully (verified via WebKit's resource log) but the
- * Suspense + lazy resolution didn't re-render the tree. preact/compat's
- * Suspense has known limitations in this combination of
- * server-less / file-protocol / inlined-entry that we don't have time
- * to chase down here. Reverted to a static import so Reader renders
- * reliably. Cold-start cost is only ~10 KB gz (under file:// load,
- * imperceptible) — not worth a broken page.
+ * Code-splitting strategy
+ * -----------------------
  *
- * The build script's chunk-path rewrite stays in place for any future
- * code split that doesn't go through preact/compat's Suspense (e.g., a
- * truly optional feature gated behind a user action, where loading is
- * triggered by user click rather than a render-time Suspense boundary).
+ * The Dashboard is the home page — eagerly imported so the first paint
+ * has zero waterfall. Every other route is lazy via `lazyRoute()`,
+ * which is a signal-backed alternative to preact/compat's `lazy()` +
+ * `Suspense`.
+ *
+ * Why not Suspense? Perf ship 7ac8931 briefly route-split Reader via
+ * `lazy()` + `Suspense`. Under the bundled file:// macOS shell, the
+ * chunk fetched fine (verified in WebKit's resource log) but the
+ * Suspense re-render path silently failed: the boundary stayed in its
+ * pending state, the page rendered blank, no error. preact/compat's
+ * Suspense has known edge cases in the no-server / file-protocol /
+ * inlined-entry combination.
+ *
+ * lazyRoute() sidesteps Suspense by writing the loaded component into a
+ * Preact signal. Signals trigger re-renders directly when their value
+ * changes, no render-time tree-magic involved. The build script's
+ * dynamic-chunk path rewrite (build-macos.mjs) already routes
+ * `import("./X.js")` calls to assets.new/X.js, so chunks resolve
+ * correctly under file:// without further work.
  */
+
+const SessionView = lazyRoute(
+  () => import("@/features/session/SessionView").then((m) => ({ default: m.SessionView })),
+  { displayName: "SessionView" }
+);
+const LibraryView = lazyRoute(
+  () => import("@/features/library/LibraryView").then((m) => ({ default: m.LibraryView })),
+  { displayName: "LibraryView" }
+);
+const ReaderView = lazyRoute(
+  () => import("@/features/reader/ReaderView").then((m) => ({ default: m.ReaderView })),
+  { displayName: "ReaderView" }
+);
+const AskView = lazyRoute(
+  () => import("@/features/ask/AskView").then((m) => ({ default: m.AskView })),
+  { displayName: "AskView" }
+);
+const StudyView = lazyRoute(
+  () => import("@/features/study/StudyView").then((m) => ({ default: m.StudyView })),
+  { displayName: "StudyView" }
+);
+const SearchView = lazyRoute(
+  () => import("@/features/search/SearchView").then((m) => ({ default: m.SearchView })),
+  { displayName: "SearchView" }
+);
+const ConceptGraphView = lazyRoute(
+  () => import("@/features/concepts/ConceptGraphView").then((m) => ({ default: m.ConceptGraphView })),
+  { displayName: "ConceptGraphView" }
+);
+const PlanView = lazyRoute(
+  () => import("@/features/plan/PlanView").then((m) => ({ default: m.PlanView })),
+  { displayName: "PlanView" }
+);
+
+interface AppShellChildProps {
+  rawPath: string;
+}
 
 interface RouteEntry {
   /** Browser-mode pattern for `<Route path>`. Empty string means
@@ -41,7 +78,7 @@ interface RouteEntry {
   /** Bundled-mode prefix tested against `parseBundledRoute(...).pathname`.
    *  Null means "default fallback if nothing else matched". */
   bundledPrefix: string | null;
-  Component: FunctionComponent<{ rawPath: string }>;
+  Component: FunctionComponent<AppShellChildProps>;
 }
 
 function parseBundledRoute(path: string): URL {
@@ -112,7 +149,9 @@ function renderBundledRoute(rawPath: string): ComponentChildren {
   const matched = ROUTES.find((entry) =>
     entry.bundledPrefix !== null && pathname.startsWith(entry.bundledPrefix)
   );
-  const entry = matched ?? ROUTES[ROUTES.length - 1];
+  // ROUTES is a non-empty const array; the last entry is the dashboard
+  // fallback so this lookup is always defined.
+  const entry = matched ?? ROUTES[ROUTES.length - 1]!;
   const Component = entry.Component;
   return <Component rawPath={rawPath} />;
 }

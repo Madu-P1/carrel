@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
-import type { DocumentRow } from "../../src/services/api/endpoints";
 import { groupBySubject } from "../../src/features/library/utils/group-by-subject";
+import type { DocumentRow } from "../../src/services/api/endpoints";
 
 const docs: DocumentRow[] = [
   {

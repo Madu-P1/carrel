@@ -26,7 +26,7 @@ describe("nextSevenDays", () => {
 
   test("first entry is today's local-day at 00:00", () => {
     const [first] = nextSevenDays();
-    const d = new Date(first);
+    const d = new Date(first!);
     expect(d.getHours()).toBe(0);
     expect(d.getMinutes()).toBe(0);
     expect(d.getSeconds()).toBe(0);

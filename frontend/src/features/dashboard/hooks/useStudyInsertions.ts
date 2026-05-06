@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 
+import { planApi } from "@/features/plan/api/planApi";
+import type { StudySessionInsertionsResponse } from "@/features/plan/api/planApi";
 import { useQuery } from "@/lib/query";
 import { API_BASE } from "@/services/api/client";
 import { subscribeSse } from "@/services/sse";
-import { planApi } from "@/features/plan/api/planApi";
-import type { StudySessionInsertionsResponse } from "@/features/plan/api/planApi";
 
 /**
  * Live "best time to insert a study session" data + auto-refresh on

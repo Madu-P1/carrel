@@ -100,6 +100,9 @@ export function CommandPalette({ onSelect, context }: CommandPaletteProps) {
   };
 
   return (
+    // role="dialog" plus onKeyDown for Escape; the click handler dismisses
+    // when the user clicks the backdrop. Lint sees `dialog` as non-interactive.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       aria-label="Command palette"
       aria-modal="true"

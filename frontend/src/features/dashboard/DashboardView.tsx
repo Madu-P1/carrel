@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 
+import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 import { Icon } from "@/design-system";
+import { assertNever } from "@/lib/assertNever";
 import { dashboard, type DashboardPayload } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
-import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 
 import { ActiveSessionCard } from "./components/ActiveSessionCard";
 import { ContinueModule } from "./components/ContinueModule";
@@ -223,7 +224,7 @@ function timeOfDayGreeting(
     case "night":
       return "Working late";
     default:
-      return "Welcome back";
+      return assertNever(tod);
   }
 }
 

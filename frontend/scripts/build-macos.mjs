@@ -91,8 +91,19 @@ const safeInline = (source) => source.replace(/<\/script/gi, "<\\/script");
 // named `..js` can't slip through.
 const dynamicImportRewrite =
   /import\("\.\/([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*\.js)"\)/g;
+// Why not inline? Lazy route chunks (LibraryView.js, etc.) have static
+// imports that resolve "./index.js" relative to their own URL. If the
+// entry bundle is inlined into app.new.html, those imports load
+// assets.new/index.js as a SECOND module instance, giving the app two
+// separate Preact copies. Two Preact instances = hooks context mismatch
+// = "[REJECT] null is not an object (evaluating 'j.__H')".
+//
+// The fix: write the entry bundle as assets.new/index.js and reference
+// it via <script src>. The browser registers it under the canonical
+// file:// URL. When a chunk does import("./index.js"), it gets the same
+// URL from the module cache — one Preact, no mismatch.
 const rewrittenJsSource = [
-  'window.__carrelAssetBase = window.__carrelAssetBase ?? new URL("./assets.new/", window.location.href).href;',
+  'window.__carrelAssetBase = window.__carrelAssetBase ?? new URL("./", import.meta.url).href;',
   jsSource
     .replace(dynamicImportRewrite, 'import(window.__carrelAssetBase + "$1")')
     .replaceAll("import.meta.url", "window.__carrelAssetBase")
@@ -133,9 +144,7 @@ const bundledHtml = `<!doctype html>
     <style>
 ${css}
     </style>
-    <script type="module">
-${safeInline(rewrittenJsSource)}
-    </script>
+    <script type="module" src="./assets.new/index.js"></script>
   </head>
   <body>
     <div id="root"></div>
@@ -176,6 +185,9 @@ if (openCount !== closeCount) {
 if (bundledHtml.includes("sourceMappingURL=")) {
   throw new Error("Bundled HTML integrity check failed: source map reference found in app.new.html");
 }
+if (rewrittenJsSource.includes("sourceMappingURL=")) {
+  throw new Error("Bundled HTML integrity check failed: source map reference found in rewritten index.js");
+}
 
 // No asset path should reference the pre-bundle Vite output directory, because
 // ./assets/ is not copied into macos-app/Resources/ — only ./assets.new/ is.
@@ -183,7 +195,7 @@ if (bundledHtml.includes('src="./assets/index.js"')) {
   throw new Error('Bundled HTML integrity check failed: stale "./assets/index.js" reference found');
 }
 
-// Every <script src=...> must point at ./assets.new/... or be absent (we inline main bundle).
+// Every <script src=...> must point at ./assets.new/... (main bundle + any future chunks).
 const externalSrcs = [...bundledHtml.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)].map((m) => m[1]);
 const badSrcs = externalSrcs.filter((src) => !src.startsWith("./assets.new/"));
 if (badSrcs.length > 0) {
@@ -241,3 +253,9 @@ writeFileSync(outHtmlPath, bundledHtml);
 if (existsSync(join(dist, "assets"))) {
   cpSync(join(dist, "assets"), outAssetsPath, { recursive: true });
 }
+
+// Overwrite assets.new/index.js with the rewritten source. cpSync above
+// copies the original build artifact; we replace it with the version that
+// has dynamic import paths pointing at assets.new/ and sets __carrelAssetBase
+// via import.meta.url. This must happen AFTER cpSync so the directory exists.
+writeFileSync(join(outAssetsPath, "index.js"), rewrittenJsSource);

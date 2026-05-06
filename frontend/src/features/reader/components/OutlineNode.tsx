@@ -2,8 +2,9 @@ import { useState } from "preact/hooks";
 
 import { Icon, Text } from "@/design-system";
 
-import { requestReaderPage } from "../state";
 import type { PdfOutlineNode } from "../hooks/usePdfDocument";
+import { requestReaderPage } from "../state";
+
 import styles from "./OutlineRail.module.css";
 
 interface OutlineNodeProps {

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 from ..native_bridge import NativeBridge
 from ..quality import classify_pdf_role, is_bullet_like, is_footer_or_noise, is_formula_text, is_outline_text, strip_bullet_prefix
@@ -181,7 +181,7 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
         path,
         detected_type=suffix,
         mime_type=mime_type,
-        parser_name="pypdf2",
+        parser_name="pypdf",
         elements=elements,
         context=context,
         warnings=warnings,

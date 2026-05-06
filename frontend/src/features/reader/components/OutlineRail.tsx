@@ -1,10 +1,11 @@
-import { useMemo } from "preact/hooks";
 import type { JSX } from "preact";
+import { useMemo } from "preact/hooks";
 
 import { Icon, Text } from "@/design-system";
 
 import type { PdfOutlineNode } from "../hooks/usePdfDocument";
 import { readerState, READER_OUTLINE_WIDTH, setReaderOutlineWidth } from "../state";
+
 import { OutlineNode } from "./OutlineNode";
 import styles from "./OutlineRail.module.css";
 
@@ -143,6 +144,13 @@ export function OutlineRail({ outline }: OutlineRailProps) {
           ))}
         </nav>
       ) : null}
+      {/*
+        Resize separator. role="separator" is structurally non-interactive
+        in lint's eyes, but this one IS interactive (keyboard via onKeyDown,
+        pointer via onPointerDown). Same pattern as the AppShell resize
+        handles. tabIndex toggles between 0 (when open) and -1.
+      */}
+      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div
         aria-hidden={!open}
         aria-label="Resize document outline"
@@ -159,6 +167,7 @@ export function OutlineRail({ outline }: OutlineRailProps) {
         role="separator"
         tabIndex={open ? 0 : -1}
       />
+      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
     </aside>
   );
 }

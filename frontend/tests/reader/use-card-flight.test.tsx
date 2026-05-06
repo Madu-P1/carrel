@@ -2,8 +2,8 @@ import { render } from "@testing-library/preact";
 import { useEffect } from "preact/hooks";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { clearFlight, registerFlight } from "@/features/shared/flightRegistry";
 import { useCardFlight } from "@/features/reader/hooks/useCardFlight";
+import { clearFlight, registerFlight } from "@/features/shared/flightRegistry";
 
 function makeRect(x: number, y: number, w: number, h: number): DOMRect {
   return {

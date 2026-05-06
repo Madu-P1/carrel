@@ -1,8 +1,9 @@
+import { navigateTo } from "@/app/shell/useAppShell";
 import type { DocumentDetail } from "@/services/api/endpoints";
 
-import { navigateTo } from "@/app/shell/useAppShell";
-import { requestReaderPage } from "../../state";
 import { buildReaderChunkPath } from "../../hooks/useChunkDeepLink";
+import { requestReaderPage } from "../../state";
+
 import { ChunkRow } from "./ChunkRow";
 import { EmptyState } from "./EmptyState";
 import styles from "./SourcePanel.module.css";

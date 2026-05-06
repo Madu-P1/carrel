@@ -1,5 +1,7 @@
 # Legacy frontend loads under a synthetic https origin
 
+> **RESOLVED 2026-05-06:** The legacy `app.html.legacy` bundle and its `--frontend legacy` escape hatch were deleted in commit `d1ba6a80`. This note is preserved as historical context — it explains why the synthetic `http://einstein.local/` origin existed during the dual-bundle period.
+
 **Date:** 2026-04-21
 **Scope:** `macos-app/Sources/EinsteinDesktopApp/WebAppView.swift::loadBundledApp`
 

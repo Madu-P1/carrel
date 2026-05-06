@@ -162,9 +162,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
 
     /// Allowed state names. Mirrors the JS STATES keys; kept in Swift so
     /// the type system can guard the bridge boundary. If you add a new
-    /// state to the JS, add it here too — the test in
-    /// `Tests/EinsteinDesktopTests/FloatingCompanionPolicyTests.swift`
-    /// pins the contract.
+    /// state to the JS, add it here too.
     static let allowedStates: Set<String> = [
         "idle", "focused", "thinking", "citeChecking",
         "encouraging", "stumped", "break", "sleeping", "streak",

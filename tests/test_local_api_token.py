@@ -143,6 +143,63 @@ class LocalAPITokenTests(unittest.TestCase):
         self.assertNotEqual(403, response.status_code)
         self.assertIn("access-control-allow-origin", response.headers)
 
+    def test_cors_preflight_works_for_every_authed_route(self) -> None:
+        # The original CORS bug was found on /api/documents only — the
+        # audit's #2 "what would slip past CI" was another route having
+        # the same bug. Parametrize across the routes the WebView
+        # actually calls so we catch any future middleware regression
+        # before it hits the user.
+        #
+        # Mutating routes (POST/PATCH/DELETE) are the highest-risk for
+        # preflight regressions because the browser ALWAYS sends a
+        # preflight for non-simple methods, while many GETs slide
+        # through as simple requests. Every mutating route exercised by
+        # the WebView gets a probe here.
+        ROUTES_TO_PROBE = [
+            # Read paths (covered by simple-request fast path in browsers,
+            # but a regression here still breaks any custom-header GET).
+            ("/api/documents", "GET"),
+            ("/api/shell/status", "GET"),
+            ("/api/plan", "GET"),
+            ("/api/plan/insertions?tz=UTC", "GET"),
+            ("/api/jobs", "GET"),
+            ("/api/studio/artifacts", "GET"),
+            ("/api/library/subjects", "GET"),
+            ("/api/library/duplicates", "GET"),
+            ("/api/system/provider", "GET"),
+            # Write paths — must preflight per CORS spec, so a broken
+            # preflight blocks the entire flow at the browser before
+            # the backend ever sees the actual request.
+            ("/api/studio/generate", "POST"),
+            ("/api/usage-events", "POST"),
+            ("/api/goal", "POST"),
+            ("/api/calendar/feeds", "POST"),
+            ("/api/onboarding/demo-library", "POST"),
+            ("/api/jobs/import", "POST"),
+        ]
+        for path, method in ROUTES_TO_PROBE:
+            # subTest isolates failures so a single broken route doesn't
+            # mask the rest of the table.
+            with self.subTest(path=path, method=method):
+                response = self.client.options(
+                    path,
+                    headers={
+                        "Origin": "file://",
+                        "Access-Control-Request-Method": method,
+                        "Access-Control-Request-Headers": "x-carrel-local-token",
+                    },
+                )
+                self.assertNotEqual(
+                    403,
+                    response.status_code,
+                    f"OPTIONS preflight 403'd for {method} {path} — auth gate is back",
+                )
+                self.assertIn(
+                    "access-control-allow-origin",
+                    response.headers,
+                    f"CORS headers missing for {method} {path}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

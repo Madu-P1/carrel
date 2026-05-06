@@ -1,4 +1,5 @@
 import type { CalendarFeed } from "../api/calendarApi";
+
 import styles from "./FeedStatusBadge.module.css";
 
 interface FeedStatusBadgeProps {

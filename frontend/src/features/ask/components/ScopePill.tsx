@@ -180,6 +180,9 @@ export function ScopePill({ value, onChange, documents, subjects }: ScopePillPro
             <div className={styles.picker}>
               <input
                 aria-label="Search documents"
+                // Pop-over search field; auto-focus on open is the standard
+                // pattern for keyboard-driven pickers (cmd-K, etc.).
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 className={styles.search}
                 onInput={(e) => setDocQuery((e.currentTarget as HTMLInputElement).value)}

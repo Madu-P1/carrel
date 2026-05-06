@@ -1,5 +1,5 @@
-import { Icon, type IconName } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Icon, type IconName } from "@/design-system";
 
 import styles from "./QuickActionGrid.module.css";
 

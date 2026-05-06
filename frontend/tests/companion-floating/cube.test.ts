@@ -24,14 +24,15 @@
  *     `matchMedia` shim only, not via active stylesheet matching)
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 // jsdom doesn't ship a typings file. We only consume `JSDOM`'s
 // constructor + the `window.close()` method, so a minimal local
 // declaration keeps the dep slim — adding @types/jsdom for two
 // methods would be overkill.
 // @ts-expect-error — see comment above.
 import { JSDOM } from "jsdom";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const HTML_PATH = path.resolve(

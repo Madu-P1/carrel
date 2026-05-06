@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
+import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 import { Button, Icon, Stack, Text, toast } from "@/design-system";
+import {
+  ScopePill,
+  type AskScopeValue,
+} from "@/features/ask/components/ScopePill";
 import { ApiError } from "@/services/api/client";
 import {
   documents as documentsApi,
@@ -14,12 +19,7 @@ import {
   type SrsSubjectSummary,
   type SubjectSummary,
 } from "@/services/api/endpoints";
-import { navigateTo, setActiveSession } from "@/app/shell/useAppShell";
 
-import {
-  ScopePill,
-  type AskScopeValue,
-} from "@/features/ask/components/ScopePill";
 
 import { DurationChips } from "./components/DurationChips";
 import { ModeCard, type ModeCardData } from "./components/ModeCard";
@@ -107,7 +107,9 @@ function decodeObjective(stored: string | null | undefined): {
   if (!stored) return { uiMode: null, text: "" };
   const match = stored.match(/^\[ui:(pomodoro|flowtime|notes|flashcards)\]\s*(.*)$/);
   if (match) {
-    return { uiMode: match[1] as UiMode, text: match[2] };
+    // Regex has 2 capture groups, both required (no `?` suffix), so
+    // when `match` is non-null the captures are present.
+    return { uiMode: match[1] as UiMode, text: match[2]! };
   }
   return { uiMode: null, text: stored };
 }
@@ -414,7 +416,8 @@ function SetupForm({
       nextIdx = (idx - 1 + MODES.length) % MODES.length;
     else if (key === "Home") nextIdx = 0;
     else if (key === "End") nextIdx = MODES.length - 1;
-    const next = MODES[nextIdx];
+    // nextIdx computed via modulo on MODES.length above; always in-bounds.
+    const next = MODES[nextIdx]!;
     onSelectMode(next.id as UiMode);
     // Move focus to the newly selected card so the focus ring tracks
     // the value. Cards expose role=radio so we can target them by role.
@@ -433,6 +436,7 @@ function SetupForm({
           aria-label="Session mode"
           className={styles.modeGrid}
           onKeyDown={handleModeKeyDown}
+          tabIndex={-1}
         >
           {MODES.map((mode) => (
             <ModeCard

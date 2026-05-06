@@ -44,11 +44,11 @@ describe("flipFromRect", () => {
     expect(animation).not.toBeNull();
     const animateSpy = (el as unknown as { animate: ReturnType<typeof vi.fn> }).animate;
     expect(animateSpy).toHaveBeenCalledTimes(1);
-    const [keyframes, options] = animateSpy.mock.calls[0];
+    const [keyframes, options] = animateSpy.mock.calls[0]!;
     expect(Array.isArray(keyframes)).toBe(true);
-    expect((keyframes as Keyframe[])[0].transform).toMatch(/translate/);
-    expect((keyframes as Keyframe[])[0].transform).toMatch(/scale/);
-    expect((keyframes as Keyframe[])[1].transform).toMatch(/translate\(0, 0\)/);
+    expect((keyframes as Keyframe[])[0]!.transform).toMatch(/translate/);
+    expect((keyframes as Keyframe[])[0]!.transform).toMatch(/scale/);
+    expect((keyframes as Keyframe[])[1]!.transform).toMatch(/translate\(0, 0\)/);
     expect(options?.duration).toBe(320);
   });
 

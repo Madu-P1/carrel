@@ -1,8 +1,8 @@
-import { useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useState } from "preact/hooks";
 
-import { Icon } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Icon } from "@/design-system";
 import { buildAskUrl } from "@/features/ask/askRoute";
 
 import styles from "./HeroAskPrompt.module.css";

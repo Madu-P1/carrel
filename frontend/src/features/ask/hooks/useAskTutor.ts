@@ -4,6 +4,7 @@ import { useMemo, useRef } from "preact/hooks";
 import type { TutorQueryRequest } from "@/services/api/endpoints";
 import { tutor } from "@/services/api/endpoints";
 import { companion } from "@/services/companion/bus";
+
 import { normalizeGroundedAnswer } from "../types";
 import type { GroundedAnswerEnvelope } from "../types";
 

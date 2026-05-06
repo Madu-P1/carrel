@@ -1,8 +1,8 @@
 import { render } from "@testing-library/preact";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { clearFlight, registerFlight } from "@/features/shared/flightRegistry";
 import { useCitationFlight } from "@/features/reader/hooks/useCitationFlight";
+import { clearFlight, registerFlight } from "@/features/shared/flightRegistry";
 
 function makeRect(x: number, y: number, w: number, h: number): DOMRect {
   return {

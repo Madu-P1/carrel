@@ -1,5 +1,5 @@
-import { Icon } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Icon } from "@/design-system";
 import type { WeakConcept } from "@/services/api/endpoints";
 
 import styles from "./WeakConceptsRail.module.css";
@@ -41,11 +41,11 @@ export function WeakConceptsRail({ concepts }: WeakConceptsRailProps) {
         <span className={styles.eyebrow}>Revisit</span>
         <h2 className={styles.title}>Concepts you tested on but haven't cleared.</h2>
       </header>
-      <div className={styles.strip} role="list">
+      <ul className={styles.strip}>
         {concepts.map((concept) => (
           <WeakConceptCard key={concept.id} concept={concept} />
         ))}
-      </div>
+      </ul>
     </section>
   );
 }
@@ -67,35 +67,41 @@ function WeakConceptCard({ concept }: WeakConceptCardProps) {
   };
 
   return (
-    <button
-      type="button"
-      className={styles.card}
-      onClick={handleClick}
-      role="listitem"
-      aria-label={`${concept.name}, ${masteryPct}% mastery, in ${concept.document_name ?? "source"}. Click to open in Reader.`}
-    >
-      <div className={styles.cardHeader}>
-        <span className={styles.conceptName} title={concept.name}>
-          {concept.name}
-        </span>
-        <span className={styles.cardArrow} aria-hidden>
-          <Icon name="arrow-right" size={12} />
-        </span>
-      </div>
-      <div className={styles.masteryRow}>
-        <div className={styles.masteryBar}>
-          <div
-            className={styles.masteryFill}
-            style={{ width: `${masteryPct}%` }}
-            aria-hidden
-          />
+    // Native <li><button> nesting keeps the screen-reader's "N of M list
+    // items" announcement AND preserves the button's "clickable, will
+    // activate on Enter/Space" semantics. The previous shape (button
+    // with role="listitem") stripped the button role entirely on some
+    // ATs, masking activation. Caught by adversarial review.
+    <li className={styles.cardItem}>
+      <button
+        type="button"
+        className={styles.card}
+        onClick={handleClick}
+        aria-label={`${concept.name}, ${masteryPct}% mastery, in ${concept.document_name ?? "source"}. Click to open in Reader.`}
+      >
+        <div className={styles.cardHeader}>
+          <span className={styles.conceptName} title={concept.name}>
+            {concept.name}
+          </span>
+          <span className={styles.cardArrow} aria-hidden>
+            <Icon name="arrow-right" size={12} />
+          </span>
         </div>
-        <span className={styles.masteryValue}>{masteryPct}%</span>
-      </div>
-      <div className={styles.cardMeta}>
-        {concept.document_name ?? "Source"}
-        {concept.subject_name ? ` · ${concept.subject_name}` : ""}
-      </div>
-    </button>
+        <div className={styles.masteryRow}>
+          <div className={styles.masteryBar}>
+            <div
+              className={styles.masteryFill}
+              style={{ width: `${masteryPct}%` }}
+              aria-hidden
+            />
+          </div>
+          <span className={styles.masteryValue}>{masteryPct}%</span>
+        </div>
+        <div className={styles.cardMeta}>
+          {concept.document_name ?? "Source"}
+          {concept.subject_name ? ` · ${concept.subject_name}` : ""}
+        </div>
+      </button>
+    </li>
   );
 }

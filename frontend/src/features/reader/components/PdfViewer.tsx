@@ -1,6 +1,6 @@
+import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
 import { Button, Card, Text, toast } from "@/design-system";
 import { anchors } from "@/services/api/endpoints";
@@ -8,16 +8,17 @@ import { anchors } from "@/services/api/endpoints";
 import { usePageVirtualizer } from "../hooks/usePageVirtualizer";
 import type { PdfState } from "../hooks/usePdfDocument";
 import { useReaderSelection } from "../hooks/useReaderSelection";
+import styles from "../ReaderView.module.css";
 import {
   persistReaderRestorationState,
   readerState,
   readReaderRestorationState,
   setReaderCurrentPage
 } from "../state";
+
+import { PdfPage } from "./PdfPage";
 import { ReaderErrorState } from "./ReaderErrorState";
 import { ReaderLoadingState } from "./ReaderLoadingState";
-import { PdfPage } from "./PdfPage";
-import styles from "../ReaderView.module.css";
 
 interface PdfViewerProps {
   docId: string;

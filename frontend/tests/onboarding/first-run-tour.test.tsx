@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { appShell } from "@/app/shell/useAppShell";
 import { FirstRunTour, openFirstRunTour } from "@/features/onboarding/FirstRunTour";
+
 import { mockJson } from "../support/mockFetch";
 
 const STORAGE_KEY = "carrel.first-run-tour.completed";

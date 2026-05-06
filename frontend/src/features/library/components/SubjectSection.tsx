@@ -1,11 +1,12 @@
 import { useState } from "preact/hooks";
 
-import { Badge, Button, Input, Stack, Text, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Badge, Button, Input, Stack, Text, toast } from "@/design-system";
 import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 
 import { useDeleteDocument } from "../hooks/useDeleteDocument";
 import { useSetSubject } from "../hooks/useSetSubject";
+
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { DocumentRow } from "./DocumentRow";
 import styles from "./SubjectSection.module.css";

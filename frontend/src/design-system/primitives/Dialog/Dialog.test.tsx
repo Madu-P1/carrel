@@ -3,6 +3,7 @@ import { useState } from "preact/hooks";
 import { expect, test } from "vitest";
 
 import { Button } from "../Button";
+
 import { Dialog } from "./Dialog";
 
 function Harness() {

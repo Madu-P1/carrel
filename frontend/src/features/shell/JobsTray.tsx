@@ -1,7 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
 
-import { Button, Dialog, Icon, Stack, Text, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Button, Dialog, Icon, Stack, Text, toast } from "@/design-system";
+import type { IngestionJob } from "@/services/api/endpoints";
 
 import {
   activeJobCount,
@@ -11,7 +12,6 @@ import {
   retryJob,
   startJobsFeed
 } from "./jobsStore";
-import type { IngestionJob } from "@/services/api/endpoints";
 import styles from "./JobsTray.module.css";
 
 const stageOrder: IngestionJob["stage"][] = [

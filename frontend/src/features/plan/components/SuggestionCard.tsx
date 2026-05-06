@@ -1,5 +1,6 @@
 import type { PlanSuggestion } from "../api/planApi";
 import { formatTimeRange } from "../utils/timezone";
+
 import styles from "./SuggestionCard.module.css";
 
 interface SuggestionCardProps {

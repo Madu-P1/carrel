@@ -1,9 +1,7 @@
 import { useState } from "preact/hooks";
 
 import { toast } from "@/design-system";
-
 import type { StudySessionInsertion } from "@/features/plan/api/planApi";
-
 import {
   CalendarBridgeUnavailableError,
   insertNativeCalendarEvent,

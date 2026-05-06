@@ -1,5 +1,6 @@
-import type { CitationRecord } from "./types";
 import { anchors } from "@/services/api/endpoints";
+
+import type { CitationRecord } from "./types";
 
 export const ASK_ANCHOR_DRAFTS_STORAGE_KEY = "einstein.ask.anchor-drafts";
 

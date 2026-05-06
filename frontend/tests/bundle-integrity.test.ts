@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 // This suite guards against the class of build bug where inlined JS contains
@@ -27,7 +28,7 @@ describe("bundled app.new.html integrity", () => {
     const html = readFileSync(bundlePath, "utf8");
     const blocks = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
     const offenders = blocks
-      .map((match, index) => ({ index, inner: match[1] }))
+      .map((match, index) => ({ index, inner: match[1]! }))
       .filter((block) => /<\/script/i.test(block.inner));
 
     if (offenders.length > 0) {
@@ -63,7 +64,7 @@ describe("bundled app.new.html integrity", () => {
 
   test("every <script src=...> points at ./assets.new/", () => {
     const html = readFileSync(bundlePath, "utf8");
-    const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)].map((m) => m[1]);
+    const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)].map((m) => m[1]!);
     const bad = srcs.filter((src) => !src.startsWith("./assets.new/"));
     if (bad.length > 0) {
       throw new Error(`Unresolvable external script src(s) under file://: ${bad.join(", ")}`);
@@ -102,7 +103,7 @@ describe("bundled app.new.html integrity", () => {
   test("every CSS url(./assets.new/...) points at a real file on disk", () => {
     const html = readFileSync(bundlePath, "utf8");
     const assetsDir = resolve(__dirname, "..", "..", "macos-app", "Resources", "assets.new");
-    const refs = [...html.matchAll(/url\(['"]?\.\/assets\.new\/([^'")\s]+)['"]?\)/gi)].map((m) => m[1]);
+    const refs = [...html.matchAll(/url\(['"]?\.\/assets\.new\/([^'")\s]+)['"]?\)/gi)].map((m) => m[1]!);
     const missing = refs.filter((name) => !existsSync(resolve(assetsDir, name)));
     if (missing.length > 0) {
       throw new Error(

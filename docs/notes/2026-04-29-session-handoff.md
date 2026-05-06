@@ -143,7 +143,6 @@ Rough complexity: ~150 lines of Python, mostly fuzzy-matching + scheduler math. 
 ### Older debts (pre-this-session)
 
 - ESLint flat-config migration. The ESLINTRC_USE_FLAT_CONFIG warning fires on every lint run.
-- `app.html.legacy` removal. Blocked on end-to-end human verification of the new bundle.
 - Command palette ⌘K registry. Stubbed in `AppShell`; never built out.
 - Swift menu-dispatch tests should be XCTest, not shell harness.
 

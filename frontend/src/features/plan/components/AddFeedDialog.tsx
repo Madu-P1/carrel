@@ -1,8 +1,10 @@
-import { useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useState } from "preact/hooks";
 
 import { Button, Dialog, Icon, Input, Stack, Text } from "@/design-system";
+
 import type { CalendarFeedCreatedResponse, CalendarIcsUploadResponse } from "../api/calendarApi";
+
 import styles from "./AddFeedDialog.module.css";
 
 interface AddFeedDialogProps {
@@ -36,7 +38,9 @@ export function AddFeedDialog({ open, onClose, onSubmit, onUploadIcs }: AddFeedD
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [color, setColor] = useState(DEFAULT_COLORS[0]);
+  // DEFAULT_COLORS is a non-empty const array; [0] is always defined,
+  // hence the `!` (noUncheckedIndexedAccess widens to `string | undefined`).
+  const [color, setColor] = useState(DEFAULT_COLORS[0]!);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<AddResult>(null);
 
@@ -90,7 +94,7 @@ export function AddFeedDialog({ open, onClose, onSubmit, onUploadIcs }: AddFeedD
     setLabel("");
     setUrl("");
     setFile(null);
-    setColor(DEFAULT_COLORS[0]);
+    setColor(DEFAULT_COLORS[0]!);
     setResult(null);
     onClose();
   };
@@ -136,6 +140,9 @@ export function AddFeedDialog({ open, onClose, onSubmit, onUploadIcs }: AddFeedD
           placeholder={mode === "file" ? "e.g. Apple Calendar" : "e.g. ESCP Blackboard"}
           value={label}
           onInput={(e) => setLabel((e.currentTarget as HTMLInputElement).value)}
+          // Modal-on-open auto-focus pattern — first field of a form the
+          // user explicitly opened. Standard dialog UX.
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           required
         />

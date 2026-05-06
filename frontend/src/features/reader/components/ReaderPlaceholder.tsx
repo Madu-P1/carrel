@@ -1,6 +1,6 @@
-import type { DocumentDetailDocument } from "@/services/api/endpoints";
-import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Badge, Button, Card, Icon, Stack, Text } from "@/design-system";
+import type { DocumentDetailDocument } from "@/services/api/endpoints";
 
 import styles from "../ReaderView.module.css";
 

@@ -2,6 +2,26 @@
 
 Generated: 2026-04-19 23:46:42
 
+> **STALE — historical snapshot only.** This document was generated on
+> 2026-04-19 against the legacy frontend. Since then:
+>
+> - The legacy single-file frontend (`app.js`, `app.js.extract`,
+>   `app.html.legacy`, `EINSTEIN_FRONTEND` flag, `--frontend legacy`,
+>   `FrontendSelector`, `test_frontend_selector.sh`) has been **removed
+>   in full**. Any reference to those filenames or paths in the
+>   sections below is no longer accurate; the active UI lives in
+>   `frontend/` (Preact + Signals + Vite, code-split per route).
+> - The macOS shell still loads the same bundled HTML, but it now comes
+>   from `frontend/scripts/build-macos.mjs` writing
+>   `macos-app/Resources/app.new.html`.
+> - The app was renamed Einstein → **Carrel**. References to "Einstein"
+>   below are historical.
+>
+> Do not treat this file as authoritative. For current state read
+> `CLAUDE.md`, `AUDIT.md`, and `git log`. Regenerate this doc only if a
+> new full-snapshot handoff is genuinely useful — otherwise let it
+> stand as a historical artifact.
+
 This file is a single-place handoff for the current app: stack summary, architecture notes, repo inventory, and the full source contents of the main code that powers the app today.
 
 ## What This Covers

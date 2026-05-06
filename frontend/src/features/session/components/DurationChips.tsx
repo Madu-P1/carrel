@@ -59,7 +59,10 @@ export function DurationChips({
     else if (key === "ArrowLeft") next = (idx - 1 + options.length) % options.length;
     else if (key === "Home") next = 0;
     else if (key === "End") next = options.length - 1;
-    onChange(options[next]);
+    // `next` is computed via modulo on options.length above, so the
+    // index is always in-bounds when options is non-empty (idx >= 0
+    // implies options.length > 0).
+    onChange(options[next]!);
     // Move focus to the newly selected chip so the ring tracks the value.
     const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>(
       "[role=\"radio\"]"
@@ -81,6 +84,7 @@ export function DurationChips({
       aria-label={ariaLabel}
       className={styles.group}
       onKeyDown={handleKeyDown}
+      tabIndex={-1}
     >
       {options.map((minutes) => {
         const isSelected = minutes === value;

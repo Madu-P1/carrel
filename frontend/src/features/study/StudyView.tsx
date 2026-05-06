@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 
 import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
+import { useQuery } from "@/lib/query";
 import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
 import { companion } from "@/services/companion/bus";
 import { events } from "@/services/metrics/events";
-import { useQuery } from "@/lib/query";
 
 import { ManageCardsView } from "./ManageCardsView";
 import styles from "./StudyView.module.css";

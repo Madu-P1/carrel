@@ -7,24 +7,10 @@ import {
   toggleLeft,
   toggleRight
 } from "@/app/shell/useAppShell";
+import { Stack, Text } from "@/design-system";
 import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
-import { Stack, Text } from "@/design-system";
 
-import { useCardFlight } from "./hooks/useCardFlight";
-import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
-import { useCitationFlight } from "./hooks/useCitationFlight";
-import { usePdfDocument } from "./hooks/usePdfDocument";
-import { useReaderDetail } from "./hooks/useReaderDetail";
-import {
-  persistReaderRestorationState,
-  readerState,
-  readReaderRestorationState,
-  resetReaderState,
-  restoreReaderState,
-  setReaderFocusAvailable,
-  toggleReaderOutline
-} from "./state";
 import { NonPdfReader } from "./components/NonPdfReader";
 import { OutlineRail } from "./components/OutlineRail";
 import { PdfSearchBar } from "./components/PdfSearchBar";
@@ -34,7 +20,21 @@ import { ReaderErrorState } from "./components/ReaderErrorState";
 import { ReaderLoadingState } from "./components/ReaderLoadingState";
 import { ReaderPlaceholder } from "./components/ReaderPlaceholder";
 import { SourcePanel } from "./components/source-panel/SourcePanel";
+import { useCardFlight } from "./hooks/useCardFlight";
+import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
+import { useCitationFlight } from "./hooks/useCitationFlight";
+import { usePdfDocument } from "./hooks/usePdfDocument";
+import { useReaderDetail } from "./hooks/useReaderDetail";
 import styles from "./ReaderView.module.css";
+import {
+  persistReaderRestorationState,
+  readerState,
+  readReaderRestorationState,
+  resetReaderState,
+  restoreReaderState,
+  setReaderFocusAvailable,
+  toggleReaderOutline
+} from "./state";
 
 interface ReaderViewProps {
   id?: string;

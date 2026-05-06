@@ -1,7 +1,9 @@
-import type { CalendarFeed } from "../api/calendarApi";
 import { Button, Icon } from "@/design-system";
-import { FeedStatusBadge } from "./FeedStatusBadge";
+
+import type { CalendarFeed } from "../api/calendarApi";
+
 import styles from "./FeedList.module.css";
+import { FeedStatusBadge } from "./FeedStatusBadge";
 
 interface FeedListProps {
   feeds: CalendarFeed[];

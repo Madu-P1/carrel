@@ -5,6 +5,7 @@ import { ClaimList } from "../src/features/ask/components/ClaimList";
 import { FallbackAnswer } from "../src/features/ask/components/FallbackAnswer";
 import { UnsupportedSpans } from "../src/features/ask/components/UnsupportedSpans";
 import { DEMO_ANSWER, DEMO_FALLBACK } from "../src/features/ask/fixtures/grounded-answer.fixture";
+
 import { mockJson } from "./support/mockFetch";
 
 test("claim list renders claims and clicking a citation chip fires the handler", () => {

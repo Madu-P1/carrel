@@ -3,6 +3,7 @@ import { expect, test, vi } from "vitest";
 
 import { PdfSearchBar } from "../../src/features/reader/components/PdfSearchBar";
 import { readerState } from "../../src/features/reader/state";
+import type { DocumentDetail } from "../../src/services/api/endpoints";
 
 function chunk(id: string, content: string, page = 1) {
   return {
@@ -11,9 +12,7 @@ function chunk(id: string, content: string, page = 1) {
     section: null,
     page_num: page,
     doc_id: "doc-1",
-  } as unknown as NonNullable<
-    import("../../src/services/api/endpoints").DocumentDetail["chunks"]
-  >[number];
+  } as unknown as NonNullable<DocumentDetail["chunks"]>[number];
 }
 
 test("PdfSearchBar returns null when closed", () => {

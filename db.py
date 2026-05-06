@@ -55,6 +55,33 @@ def configure_paths(
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, factory=ManagedConnection)
     conn.row_factory = sqlite3.Row
+    # SQLite's default for `PRAGMA foreign_keys` is OFF. Every
+    # `REFERENCES` clause in the 14 migrations is purely advisory
+    # under the default. This is a real correctness bug — audit
+    # finding "FK violations corrupt the DB silently."
+    #
+    # WARNING: turning this ON in production WILL crash the same code
+    # paths that fail in test (delete_document_record cascade misses
+    # quiz_log/claims/concept_examples/etc.). The crash now surfaces as
+    # IntegrityError instead of silent corruption — strictly better, but
+    # operator-visible. Do NOT flip CARREL_DB_FOREIGN_KEYS=on in prod
+    # until the 0015 cascade migration ships.
+    #
+    # The env var exists today as a forcing function: developers can
+    # turn it ON locally to surface cascade gaps before they ship, and
+    # the variable is the on-ramp for flipping the default to ON once
+    # the migration lands. Adversarial review (Wave 4) flagged this:
+    # without an integration test exercising the ON path, the branch
+    # rots silently and "production opt-in" reads as a footgun.
+    #
+    # TODO(db-fk-cascade): add a 0015_on_delete_cascade.sql migration
+    # that recreates the affected tables with explicit ON DELETE
+    # CASCADE on every concept_id/question_id/doc_id FK, then default
+    # this PRAGMA to ON. Add an integration test that turns the env
+    # var ON against a fresh DB and exercises every cascade path
+    # (delete_document_record + similar) so the branch stops rotting.
+    if os.getenv("CARREL_DB_FOREIGN_KEYS", "off").lower() in {"1", "true", "on"}:
+        conn.execute("PRAGMA foreign_keys = ON")
     _load_extensions(conn)
     return conn
 

@@ -1,5 +1,5 @@
-import { useId } from "preact/hooks";
 import type { ComponentChildren, JSX } from "preact";
+import { useId } from "preact/hooks";
 
 import styles from "./Input.module.css";
 

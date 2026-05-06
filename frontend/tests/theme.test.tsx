@@ -39,13 +39,13 @@ function findThemeValue(selector: string, property: string): string {
   const blockEnd = themesCss.indexOf("}", blockStart);
   const block = themesCss.slice(blockStart + 1, blockEnd);
   const match = block.match(new RegExp(`${property}:\\s*([^;]+);`));
-  return match ? match[1].trim() : "";
+  return match ? match[1]!.trim() : "";
 }
 
 function parseOklchLightness(value: string): number | null {
   const match = value.match(/oklch\(\s*([0-9.]+)/);
   if (!match) return null;
-  const lightness = Number.parseFloat(match[1]);
+  const lightness = Number.parseFloat(match[1]!);
   return Number.isFinite(lightness) ? lightness : null;
 }
 
@@ -113,8 +113,8 @@ test("both themes define a cool-teal accent token", () => {
   expect(darkHueMatch).not.toBeNull();
   expect(lightHueMatch).not.toBeNull();
 
-  const darkHue = Number.parseFloat(darkHueMatch![1]);
-  const lightHue = Number.parseFloat(lightHueMatch![1]);
+  const darkHue = Number.parseFloat(darkHueMatch![1]!);
+  const lightHue = Number.parseFloat(lightHueMatch![1]!);
   expect(darkHue).toBeGreaterThanOrEqual(180);
   expect(darkHue).toBeLessThanOrEqual(220);
   expect(lightHue).toBeGreaterThanOrEqual(180);
@@ -127,7 +127,7 @@ test("state-warn stays warm (amber) so alerts read distinct from the cool accent
 
   const hueFor = (value: string) => {
     const match = value.match(/oklch\([0-9.]+\s+[0-9.]+\s+([0-9.]+)/);
-    return match ? Number.parseFloat(match[1]) : null;
+    return match ? Number.parseFloat(match[1]!) : null;
   };
 
   expect(hueFor(warnDark)).toBeGreaterThanOrEqual(40);

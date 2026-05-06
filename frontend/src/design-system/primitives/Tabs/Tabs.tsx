@@ -1,5 +1,5 @@
-import { useCallback, useId } from "preact/hooks";
 import type { ComponentChildren, JSX } from "preact";
+import { useCallback, useId } from "preact/hooks";
 
 import styles from "./Tabs.module.css";
 
@@ -89,6 +89,7 @@ export function Tabs({
       id={listId}
       onKeyDown={handleKeyDown}
       role="tablist"
+      tabIndex={-1}
       {...rest}
     >
       {items.map((item) => {

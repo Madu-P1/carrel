@@ -1,5 +1,7 @@
-import { useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useState } from "preact/hooks";
+
+import logoUrl from "@/assets/logo.png?url";
 
 import styles from "./BrandMark.module.css";
 
@@ -21,7 +23,6 @@ import styles from "./BrandMark.module.css";
 // missing, the build would fail — so we try/catch via a URL constructor
 // pattern instead. Simpler: a static import with `?url` suffix and a
 // runtime onError handler.
-import logoUrl from "@/assets/logo.png?url";
 
 interface BrandMarkProps {
   /** Optional click handler. When provided, the mark renders as an

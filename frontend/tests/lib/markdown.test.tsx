@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { render } from "@testing-library/preact";
+import { describe, expect, test } from "vitest";
 
 import { renderMarkdown } from "../../src/lib/markdown";
 

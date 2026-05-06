@@ -1,7 +1,8 @@
-import { useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
+import { useState } from "preact/hooks";
 
 import { Icon } from "../Icon";
+
 import styles from "./Pane.module.css";
 
 export interface PaneProps {

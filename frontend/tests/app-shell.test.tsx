@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact
 import { afterEach, expect, test } from "vitest";
 
 import { App } from "../src/app/App";
-import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import shellStyles from "../src/app/shell/AppShell.module.css";
+import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import { readerState } from "../src/features/reader/state";
 import { dispatchMenuCommand } from "../src/services/native/menu";
+
 import { mockJson } from "./support/mockFetch";
 
 async function renderAppReady() {

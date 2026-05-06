@@ -277,6 +277,14 @@ def _hydrate_chunk_context(
     return contexts
 
 
+# Per-chunk content cap before the prompt is assembled. ~8 KB covers
+# the largest legitimate chunk we've ever seen (long PDF tables ~6 KB)
+# with headroom; anything beyond that is either chunker drift or a
+# resource-exhaustion attempt. Truncation is logged so we notice if
+# real content starts hitting the cap.
+_MAX_CHUNK_BYTES_IN_PROMPT = 8 * 1024
+
+
 def _build_user_prompt(question: str, contexts: Sequence[HydratedChunkContext]) -> str:
     lines = [f"<question>{escape(question)}</question>", "<chunks>"]
     for index, context in enumerate(contexts, start=1):
@@ -284,7 +292,24 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedChunkContext]) 
         section = escape(context.section or "", quote=True)
         page = escape(str(context.page_num) if context.page_num is not None else "", quote=True)
         lines.append(f'<chunk index="{index}" doc="{doc}" section="{section}" page="{page}">')
-        lines.append(context.content)
+        # Two adversarial-review findings closed here:
+        #   1. Envelope breakout — a chunk containing literal "</chunk>"
+        #      followed by a fake "<chunk index=...>" opener could forge a
+        #      second envelope the LLM might treat as a real source.
+        #      `escape()` neutralises < > & so the model never sees a
+        #      raw closing tag inside the content.
+        #   2. Resource exhaustion — a 10 MB whitespace chunk passed
+        #      through unchanged before this fix, producing ~20 MB
+        #      prompts. Truncate to a hard byte cap; the verbatim-quote
+        #      validator gets the same truncated text so it stays
+        #      consistent with what the model saw.
+        content = context.content
+        if len(content.encode("utf-8")) > _MAX_CHUNK_BYTES_IN_PROMPT:
+            # Walk back from the byte cap to a UTF-8 boundary so we don't
+            # split a multi-byte character.
+            truncated = content.encode("utf-8")[:_MAX_CHUNK_BYTES_IN_PROMPT]
+            content = truncated.decode("utf-8", errors="ignore")
+        lines.append(escape(content))
         lines.append("</chunk>")
     lines.append("</chunks>")
     return "\n".join(lines)

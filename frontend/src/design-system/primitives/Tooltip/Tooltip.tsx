@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 
 import styles from "./Tooltip.module.css";
 
@@ -54,6 +54,10 @@ export function Tooltip({ content, delay = 400, multiline = false, children }: T
   const hideOnClick = () => hide();
 
   return (
+    // Tooltip wrapper is decorative; the actual trigger element inside
+    // owns its own keyboard semantics. Hover/focus drive show/hide; the
+    // click-handler is purely a "dismiss on activation" affordance.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <span
       aria-describedby={open ? tooltipId : undefined}
       className={styles.trigger}

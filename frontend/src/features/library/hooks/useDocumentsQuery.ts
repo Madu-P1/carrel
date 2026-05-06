@@ -1,9 +1,9 @@
 import { signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 
+import { createQuery } from "@/lib/query";
 import type { DocumentRow } from "@/services/api/endpoints";
 import { documents } from "@/services/api/endpoints";
-import { createQuery } from "@/lib/query";
 
 export const documentsQuery = createQuery<DocumentRow[]>(() => documents.list());
 const documentsQueryInitialized = signal(false);

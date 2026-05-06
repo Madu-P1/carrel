@@ -50,9 +50,22 @@
    * scroll edge; left padding lives on the wrap so the strip aligns with
    * sibling sections. */
   padding-right: var(--space-1);
+  /* Reset the default <ul> margin/padding so the rail visually reads
+   * as a flex strip, not a bullet list. */
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
 }
 
 .strip::-webkit-scrollbar { display: none; }
+
+/* Each <li> wraps a button card. flex:0 0 auto so the button's own
+ * width: 220px applies to the row item. display:flex stretches the
+ * inner button to fill the cell so click target stays full-card. */
+.cardItem {
+  flex: 0 0 auto;
+  display: flex;
+}
 
 .card {
   flex: 0 0 auto;

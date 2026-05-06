@@ -1,15 +1,16 @@
 import { signal, type Signal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
-
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
   RefProxy
 } from "pdfjs-dist/types/src/display/api";
+import { useEffect, useRef } from "preact/hooks";
 
-import { readerState } from "../state";
-import { loadPdfJs } from "../lib/pdfjs-setup";
+
 import type { DocumentDetail } from "@/services/api/endpoints";
+
+import { loadPdfJs } from "../lib/pdfjs-setup";
+import { readerState } from "../state";
 
 interface PdfOutlineItem {
   dest?: string | null | unknown[] | undefined;

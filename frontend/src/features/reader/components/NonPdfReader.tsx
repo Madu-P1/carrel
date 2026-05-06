@@ -1,12 +1,13 @@
 import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 
-import type { DocumentDetail } from "@/services/api/endpoints";
 import { Button, Text, toast } from "@/design-system";
+import type { DocumentDetail } from "@/services/api/endpoints";
 import { anchors } from "@/services/api/endpoints";
 
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import { readerState } from "../state";
+
 import styles from "./NonPdfReader.module.css";
 
 type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];

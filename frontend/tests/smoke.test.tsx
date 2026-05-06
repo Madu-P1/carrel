@@ -17,6 +17,9 @@ test("App renders the Library home when navigated to /library", async () => {
   render(<App />);
 
   expect(screen.getByText(/Carrel/i)).toBeDefined();
-  expect(screen.getByText(/Your sources\./i)).toBeDefined();
+  // LibraryView is code-split (signal-backed lazy route), so its content
+  // arrives after the import promise resolves rather than on first paint.
+  // findBy* awaits the next render the lazy signal triggers.
+  expect(await screen.findByText(/Your sources\./i)).toBeDefined();
   expect(await screen.findByText(/No sources yet\./i)).toBeDefined();
 });

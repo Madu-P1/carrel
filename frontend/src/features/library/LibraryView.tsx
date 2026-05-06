@@ -5,9 +5,7 @@ import { Button, Card, Icon, Input, Stack, Text } from "@/design-system";
 import { library, type DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 
-import { groupBySubject } from "./utils/group-by-subject";
-import { useDocumentsQuery } from "./hooks/useDocumentsQuery";
-import { useDeleteDocument } from "./hooks/useDeleteDocument";
+import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { DocumentRow } from "./components/DocumentRow";
 import { DuplicateCleanupPanel } from "./components/DuplicateCleanupPanel";
 import { ImportDropzone } from "./components/ImportDropzone";
@@ -15,7 +13,10 @@ import { LibraryEmptyState } from "./components/LibraryEmptyState";
 import { LibraryErrorState } from "./components/LibraryErrorState";
 import { SubjectCardGrid } from "./components/SubjectCardGrid";
 import { SubjectSection } from "./components/SubjectSection";
+import { useDeleteDocument } from "./hooks/useDeleteDocument";
+import { useDocumentsQuery } from "./hooks/useDocumentsQuery";
 import styles from "./LibraryView.module.css";
+import { groupBySubject } from "./utils/group-by-subject";
 
 // Lowercase-substring match across filename + subject_name. Intentionally
 // dumb and allocation-light so a 2000-doc library stays snappy without a trie.
@@ -123,17 +124,36 @@ export function LibraryView() {
   // tabbing into it from the dropzone. If discoverability becomes a real
   // concern, a Cmd+K palette entry is the next step, not a keybind fight.
 
+  const [deleteTarget, setDeleteTarget] = useState<DocumentRowType | null>(null);
+  const [deleteError, setDeleteError] = useState<Error | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const handleResultDelete = (doc: DocumentRowType) => {
-    const name = doc.filename ?? "this source";
-    // Search-results delete uses a native confirm so we don't need to haul the
-    // full DeleteConfirmDialog state machine into this view. For nuanced
-    // undo / rename / reassign, users drill into the subject.
-    if (!window.confirm(`Delete "${name}"? This also removes its chunks and embeddings.`)) return;
-    deleteDocument(doc.id)
-      .then(refreshAll)
-      .catch((err) => {
-        console.error("Library search delete failed", err);
+    setDeleteTarget(doc);
+    setDeleteError(null);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    deleteDocument(deleteTarget.id)
+      .then(() => {
+        setDeleteTarget(null);
+        refreshAll();
+      })
+      .catch((err: Error) => {
+        setDeleteError(err);
+      })
+      .finally(() => {
+        setDeleteLoading(false);
       });
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleteLoading) return;
+    setDeleteTarget(null);
+    setDeleteError(null);
   };
 
   return (
@@ -290,6 +310,15 @@ export function LibraryView() {
           </Text>
         </Card>
       ) : null}
+
+      <DeleteConfirmDialog
+        documentName={deleteTarget?.filename ?? "this source"}
+        error={deleteError}
+        loading={deleteLoading}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        open={deleteTarget !== null}
+      />
     </Stack>
   );
 }

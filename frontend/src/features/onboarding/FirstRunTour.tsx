@@ -1,14 +1,14 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 
-import { Button, Icon, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Button, Icon, toast } from "@/design-system";
 import { onboarding } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 
+import styles from "./FirstRunTour.module.css";
 import { OnboardingMockup, type TourStepIndex } from "./OnboardingMockup";
 import { ProgressSegments } from "./ProgressSegments";
-import styles from "./FirstRunTour.module.css";
 
 const STORAGE_KEY = "carrel.first-run-tour.completed";
 const STORAGE_VERSION_KEY = "carrel.first-run-tour.version";
@@ -153,7 +153,9 @@ export function FirstRunTour() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const current = STEPS[step] ?? STEPS[0];
+  // STEPS is a non-empty const-defined array; STEPS[0] is always defined,
+  // so the ?? fallback's `!` is type-safe (not a runtime crash risk).
+  const current = STEPS[step] ?? STEPS[0]!;
   const currentStep = (step + 1) as TourStepIndex;
 
   useEffect(() => {
@@ -205,8 +207,9 @@ export function FirstRunTour() {
         return;
       }
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      // Length checked above, so first/last are guaranteed defined.
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -266,6 +269,9 @@ export function FirstRunTour() {
   }
 
   return (
+    // Click-outside-to-dismiss overlay; Escape is handled by the effect.
+    // The inner panel's onClick is event-isolation only (stopPropagation).
+    /* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions */
     <div className={styles.overlay} onClick={close}>
       <section
         aria-describedby={descriptionId}
@@ -324,5 +330,6 @@ export function FirstRunTour() {
         </button>
       </section>
     </div>
+    /* eslint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions */
   );
 }

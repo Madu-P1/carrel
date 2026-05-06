@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { API_BASE } from "@/services/api/client";
 import { subscribeSse } from "@/services/sse";
+
 import {
   calendarApi,
   type CalendarFeed,

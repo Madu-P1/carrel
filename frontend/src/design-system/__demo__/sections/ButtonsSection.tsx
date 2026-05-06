@@ -1,7 +1,7 @@
 import { Button, Icon, Stack } from "@/design-system";
 
-import styles from "./SectionShell.module.css";
 import { SectionShell } from "./SectionShell";
+import styles from "./SectionShell.module.css";
 
 export function ButtonsSection() {
   return (

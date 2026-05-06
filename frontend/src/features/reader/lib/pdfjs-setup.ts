@@ -9,6 +9,7 @@ declare global {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 type PdfJsModule = typeof import("pdfjs-dist");
 
 let pdfJsPromise: Promise<PdfJsModule> | null = null;

@@ -4,8 +4,9 @@ import { expect, test } from "vitest";
 import { App } from "../src/app/App";
 import { appShell } from "../src/app/shell/useAppShell";
 import { AskView } from "../src/features/ask/AskView";
-import { useAskTutor } from "../src/features/ask/hooks/useAskTutor";
 import { DEMO_ANSWER, DEMO_FALLBACK } from "../src/features/ask/fixtures/grounded-answer.fixture";
+import { useAskTutor } from "../src/features/ask/hooks/useAskTutor";
+
 import { getFetchCalls, jsonResponse, mockJson, registerFetchHandler } from "./support/mockFetch";
 
 function HookHarness() {
@@ -226,7 +227,8 @@ test("Ask flow navigates to the reader deep link when a citation chip is clicked
   window.history.pushState({}, "", "/ask");
   render(<App />);
 
-  fireEvent.input(screen.getByLabelText(/Question/i), {
+  // AskView is code-split — wait for it to mount before driving the form.
+  fireEvent.input(await screen.findByLabelText(/Question/i), {
     currentTarget: { value: "What is mitosis?" },
     target: { value: "What is mitosis?" }
   });

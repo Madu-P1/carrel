@@ -3,8 +3,8 @@ import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { registerFlight } from "@/features/shared/flightRegistry";
 import { evidence, type EvidenceResolution } from "@/services/api/endpoints";
 
-import type { CitationRecord } from "../types";
 import styles from "../AskView.module.css";
+import type { CitationRecord } from "../types";
 
 interface CitationChipProps {
   citation: CitationRecord;

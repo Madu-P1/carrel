@@ -65,7 +65,7 @@ test("CardAiDraftDialog: topic → generate → review → save keeps the includ
 
   // Uncheck the first draft so only one is saved.
   const checkboxes = screen.getAllByRole("checkbox");
-  fireEvent.click(checkboxes[0]);
+  fireEvent.click(checkboxes[0]!);
   await screen.findByText(/Save 1 card/i);
 
   // Save.
@@ -74,9 +74,9 @@ test("CardAiDraftDialog: topic → generate → review → save keeps the includ
   await waitFor(() => {
     expect(onCardsCreated).toHaveBeenCalledTimes(1);
   });
-  const [savedCards] = onCardsCreated.mock.calls[0];
+  const [savedCards] = onCardsCreated.mock.calls[0]!;
   expect(savedCards).toHaveLength(1);
-  expect((savedCards as { front: string }[])[0].front).toBe("Why does NPV matter?");
+  expect((savedCards as { front: string }[])[0]!.front).toBe("Why does NPV matter?");
   expect(createBodies).toHaveLength(1);
 });
 

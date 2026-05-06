@@ -1,7 +1,10 @@
 import { effect, signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 
+import { assertNever } from "@/lib/assertNever";
+
 import { Icon } from "../Icon";
+
 import styles from "./Toast.module.css";
 
 /**
@@ -148,8 +151,10 @@ function iconForKind(kind: ToastKind): "sparkle" | "x" | "ask" | "command" {
       return "x";
     case "warning":
       return "ask";
-    default:
+    case "info":
       return "command";
+    default:
+      return assertNever(kind);
   }
 }
 

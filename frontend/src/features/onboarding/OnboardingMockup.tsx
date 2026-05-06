@@ -17,13 +17,14 @@ function cx(...parts: Array<string | false | undefined>): string {
 }
 
 function stateClassName(state: MockupState): string {
+  // CSS-module class names exist at build time; `!` is safe here.
   if (state === "target") {
-    return styles.stateTarget;
+    return styles.stateTarget!;
   }
   if (state === "active") {
-    return styles.stateActive;
+    return styles.stateActive!;
   }
-  return styles.stateInactive;
+  return styles.stateInactive!;
 }
 
 function stateFor(currentStep: TourStepIndex, element: MockupElement): MockupState {

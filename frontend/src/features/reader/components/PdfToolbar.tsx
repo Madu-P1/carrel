@@ -12,6 +12,7 @@ import {
   setReaderScale,
   zoomReaderBy
 } from "../state";
+
 import styles from "./PdfToolbar.module.css";
 
 interface PdfToolbarProps {

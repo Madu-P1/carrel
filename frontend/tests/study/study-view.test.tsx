@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from "@testing-library/preact";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { StudyView } from "@/features/study/StudyView";
+
 import { mockJson } from "../support/mockFetch";
 
 afterEach(() => {

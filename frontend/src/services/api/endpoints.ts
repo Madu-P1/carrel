@@ -1,6 +1,6 @@
+import { API_BASE, api } from "./client";
 import type { components, paths } from "./types.gen";
 
-import { API_BASE, api } from "./client";
 
 export type DocumentRow =
   paths["/api/documents"]["get"]["responses"][200]["content"]["application/json"][number];

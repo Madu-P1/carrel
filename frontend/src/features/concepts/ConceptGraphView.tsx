@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
+import { navigateTo } from "@/app/shell/useAppShell";
 import { Card, Stack, Text } from "@/design-system";
 import {
   concepts,
@@ -9,7 +10,6 @@ import {
   type SubjectSummary,
 } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
-import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "./ConceptGraphView.module.css";
 
@@ -120,7 +120,10 @@ const PALETTE_BACKUP: Array<{ css: string; hex: number; tag: string }> = [
   { css: "rgb(190, 160, 230)", hex: 0xbea0e6, tag: "tagOther" },
   { css: "rgb(150, 220, 180)", hex: 0x96dcb4, tag: "tagOther" },
 ];
-const FALLBACK_SUBJECT = SUBJECT_PALETTE.Other;
+// `Other` is a hardcoded key in SUBJECT_PALETTE above, but
+// noUncheckedIndexedAccess widens record-lookups to `T | undefined` —
+// hence the assertion. Don't rename the key without updating this too.
+const FALLBACK_SUBJECT = SUBJECT_PALETTE.Other!;
 
 function _hashSubject(name: string): number {
   let h = 0;
@@ -132,7 +135,9 @@ function paletteFor(subject: string | null | undefined) {
   if (!subject) return FALLBACK_SUBJECT;
   const pinned = SUBJECT_PALETTE[subject];
   if (pinned) return pinned;
-  return PALETTE_BACKUP[_hashSubject(subject) % PALETTE_BACKUP.length];
+  // PALETTE_BACKUP is a non-empty const array; index is `hash % length`
+  // which is always in-bounds, so the lookup is type-safe.
+  return PALETTE_BACKUP[_hashSubject(subject) % PALETTE_BACKUP.length]!;
 }
 
 interface SelectedConcept {

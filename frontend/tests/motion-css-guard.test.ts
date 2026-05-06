@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 const root = resolve(__dirname, "..", "src");
@@ -43,8 +44,8 @@ describe("motion CSS guardrails", () => {
       .flatMap(({ file, source }) => {
         const matches = [...source.matchAll(/transition\s*:\s*([\s\S]*?);/g)];
         return matches
-          .filter((match) => /\b(width|height|top|left|margin|padding)\b/.test(match[1]))
-          .map((match) => ({ file, transition: match[1].trim() }));
+          .filter((match) => /\b(width|height|top|left|margin|padding)\b/.test(match[1]!))
+          .map((match) => ({ file, transition: match[1]!.trim() }));
       });
 
     expect(offenders).toEqual([]);

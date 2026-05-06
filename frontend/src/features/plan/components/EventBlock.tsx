@@ -3,6 +3,7 @@ import { Icon } from "@/design-system";
 import type { PlanEvent } from "../api/planApi";
 import { isUserStudyBlock } from "../utils/eventClassification";
 import { formatTimeRange } from "../utils/timezone";
+
 import styles from "./EventBlock.module.css";
 
 interface EventBlockProps {

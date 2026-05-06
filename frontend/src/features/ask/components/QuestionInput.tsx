@@ -43,6 +43,11 @@ export function QuestionInput({
        * just restated what was above and below it).
        */}
       <Input
+        // The Ask page's primary affordance is "type your question." Auto-
+        // focusing the field is an expected UX pattern — same as Spotlight
+        // or any command palette — and there's only one input on the page,
+        // so there's no contention for keyboard focus.
+        // eslint-disable-next-line jsx-a11y/no-autofocus
         autoFocus
         className={styles.questionInputField}
         data-focus-target="ask-question"

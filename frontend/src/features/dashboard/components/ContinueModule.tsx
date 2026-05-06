@@ -1,6 +1,6 @@
+import { navigateTo } from "@/app/shell/useAppShell";
 import { Icon } from "@/design-system";
 import type { ActiveSessionSummary } from "@/services/api/endpoints";
-import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "./ContinueModule.module.css";
 

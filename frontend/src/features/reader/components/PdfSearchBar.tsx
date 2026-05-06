@@ -4,6 +4,7 @@ import { Icon } from "@/design-system";
 import type { DocumentDetail } from "@/services/api/endpoints";
 
 import { readerState, requestReaderPage } from "../state";
+
 import styles from "./PdfSearchBar.module.css";
 
 type ReaderChunk = NonNullable<DocumentDetail["chunks"]>[number];

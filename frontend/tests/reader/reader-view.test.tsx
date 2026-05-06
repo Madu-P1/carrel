@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact
 import { expect, test, vi } from "vitest";
 
 import { appShell } from "../../src/app/shell/useAppShell";
+import { ReaderView } from "../../src/features/reader/ReaderView";
 import { readerState } from "../../src/features/reader/state";
 import { mockJson } from "../support/mockFetch";
 
@@ -38,8 +39,6 @@ vi.mock("pdfjs-dist", () => {
     }))
   };
 });
-
-import { ReaderView } from "../../src/features/reader/ReaderView";
 
 test("ReaderView without a document id shows the empty placeholder", () => {
   render(<ReaderView />);

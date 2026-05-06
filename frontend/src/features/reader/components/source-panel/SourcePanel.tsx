@@ -1,17 +1,18 @@
 import { useEffect, useState } from "preact/hooks";
 
-import type { DocumentDetail, EvidenceResolution } from "@/services/api/endpoints";
 import { Tabs } from "@/design-system";
 import type { TabItem } from "@/design-system";
+import type { DocumentDetail, EvidenceResolution } from "@/services/api/endpoints";
 
+import { readerState } from "../../state";
+
+import { AnchorColumn } from "./AnchorColumn";
 import { ChunksList } from "./ChunksList";
 import { ConceptsList } from "./ConceptsList";
 import { EmptyState } from "./EmptyState";
+import { EvidenceInspector } from "./EvidenceInspector";
 import { MetadataStripe } from "./MetadataStripe";
 import { NotesList } from "./NotesList";
-import { EvidenceInspector } from "./EvidenceInspector";
-import { AnchorColumn } from "./AnchorColumn";
-import { readerState } from "../../state";
 import styles from "./SourcePanel.module.css";
 
 type TabId = "chunks" | "concepts" | "anchors" | "notes" | "related";

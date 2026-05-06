@@ -19,7 +19,9 @@ icalendar>=7.0,<8.0
 recurring-ical-events>=3.8,<4.0
 
 # Document parsing
-PyPDF2>=3.0,<4.0
+# Migrated from PyPDF2 (deprecated, abandoned upstream) to pypdf which is
+# the same project's modern fork — same API, active maintenance.
+pypdf>=4.0,<7.0
 python-docx>=1.2,<2.0
 python-pptx>=1.0,<2.0
 openpyxl>=3.1,<4.0

@@ -62,7 +62,9 @@ function parseInline(source: string, keyPrefix: string): (VNode | string)[] {
 function renderParagraphContent(source: string, keyPrefix: string): (VNode | string)[] {
   const lines = source.split("\n");
   if (lines.length === 1) {
-    return parseInline(lines[0], keyPrefix);
+    // split() on a non-empty string always returns ≥1 element; gated on
+    // length === 1 above, so [0] is defined.
+    return parseInline(lines[0]!, keyPrefix);
   }
   const out: (VNode | string)[] = [];
   lines.forEach((line, i) => {
@@ -104,13 +106,15 @@ function toBlocks(source: string): Block[] {
         flush();
         current = { kind: "ul", lines: [] };
       }
-      current.lines.push(bulletMatch[1]);
+      // Capture group 1 in the regex is non-optional, so when the
+      // match succeeds the captured text is always defined.
+      current.lines.push(bulletMatch[1]!);
     } else if (orderedMatch) {
       if (current?.kind !== "ol") {
         flush();
         current = { kind: "ol", lines: [] };
       }
-      current.lines.push(orderedMatch[1]);
+      current.lines.push(orderedMatch[1]!);
     } else {
       if (current?.kind !== "paragraph") {
         flush();

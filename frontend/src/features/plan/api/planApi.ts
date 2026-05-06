@@ -1,4 +1,5 @@
 import { api } from "@/services/api/client";
+
 import type { CalendarFeed } from "./calendarApi";
 
 /**

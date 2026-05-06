@@ -1,21 +1,22 @@
 import { useMemo, useState } from "preact/hooks";
 
 import { Button, Stack, Text, showToast, toast } from "@/design-system";
-import {
-  browserTimeZone,
-  formatWeekRange,
-  shiftDaysLocal,
-  todayMidnightLocal,
-} from "./utils/timezone";
+
+import type { CalendarFeed } from "./api/calendarApi";
+import type { PlanEvent } from "./api/planApi";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
 import { EventDetailDialog } from "./components/EventDetailDialog";
 import { FeedList } from "./components/FeedList";
 import { WeekTimeGrid } from "./components/WeekTimeGrid";
 import { usePlan } from "./hooks/usePlan";
-import type { CalendarFeed } from "./api/calendarApi";
-import type { PlanEvent } from "./api/planApi";
 import styles from "./PlanView.module.css";
+import {
+  browserTimeZone,
+  formatWeekRange,
+  shiftDaysLocal,
+  todayMidnightLocal,
+} from "./utils/timezone";
 
 /**
  * Plan home — the cockpit-style view of the user's week with the
@@ -85,11 +86,14 @@ export function PlanView() {
   };
 
   const handleDelete = async (feed: CalendarFeed) => {
-    if (
-      !window.confirm(
-        `Remove "${feed.label}"? Events from this feed will be cleared from your plan.`
-      )
-    ) {
+    // TODO(plan-confirm-dialog): replace this native confirm with the
+    // styled Dialog primitive (already used for Library deletes via
+    // DeleteConfirmDialog). Low-frequency action, deferred to a
+    // dedicated UX pass; suppress the lint rule until then.
+    const message = `Remove "${feed.label}"? Events from this feed will be cleared from your plan.`;
+    // eslint-disable-next-line no-restricted-syntax
+    const confirmed = window.confirm(message);
+    if (!confirmed) {
       return;
     }
     try {

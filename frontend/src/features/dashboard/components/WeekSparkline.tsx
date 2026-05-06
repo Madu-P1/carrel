@@ -38,8 +38,10 @@ export function WeekSparkline({ minutesByDay }: WeekSparklineProps) {
   });
 
   const polyline = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const areaPath = `M ${points[0].x.toFixed(1)} ${(padY + usableH).toFixed(1)} L ${polyline} L ${points[points.length - 1].x.toFixed(1)} ${(padY + usableH).toFixed(1)} Z`;
-  const last = points[points.length - 1];
+  // points was built from `data` (always 7 elements after normalizeWeekData
+  // below), so points[0] and points[length-1] are guaranteed defined.
+  const areaPath = `M ${points[0]!.x.toFixed(1)} ${(padY + usableH).toFixed(1)} L ${polyline} L ${points[points.length - 1]!.x.toFixed(1)} ${(padY + usableH).toFixed(1)} Z`;
+  const last = points[points.length - 1]!;
 
   if (allZero) {
     return (

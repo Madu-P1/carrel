@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 
-import { Badge, Card, Icon, Stack, Text } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Badge, Card, Icon, Stack, Text } from "@/design-system";
 import { search, type SearchHit } from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
 

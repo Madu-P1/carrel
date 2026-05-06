@@ -1,10 +1,11 @@
 import { toast } from "@/design-system";
 
 import { copyAskCardText, saveCitationAnchor } from "../anchorDrafts";
+import styles from "../AskView.module.css";
 import type { CitationRecord, ClaimRecord } from "../types";
+
 import { AnswerFeedCard } from "./AnswerFeedCard";
 import { CitationChip } from "./CitationChip";
-import styles from "../AskView.module.css";
 
 interface ClaimListProps {
   claims: ClaimRecord[];

@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 
 import { Spinner } from "../Spinner";
+
 import styles from "./Button.module.css";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";

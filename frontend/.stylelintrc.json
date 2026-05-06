@@ -1,0 +1,24 @@
+{
+  "ignoreFiles": [
+    "src/design-system/tokens.css",
+    "src/design-system/themes.css",
+    "src/design-system/reset.css",
+    "src/design-system/animations.css",
+    "dist/**",
+    "node_modules/**"
+  ],
+  "rules": {
+    "color-no-hex": [
+      true,
+      {
+        "message": "Use a design token from tokens.css instead of a raw hex."
+      }
+    ],
+    "function-disallowed-list": [
+      ["rgb", "rgba", "hsl", "hsla"],
+      {
+        "message": "Use a design token (var(--color-*)) instead of a raw colour function."
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import {
   transition,
   transitions
 } from "../src/design-system/motion";
+
 import { setReducedMotionPreference } from "./setup";
 
 function AnimatedHarness() {
