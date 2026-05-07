@@ -68,35 +68,51 @@ export function DeadlineRail(_: DeadlineRailProps) {
         </button>
       </div>
       {deadlines.length > 0 ? (
-        <Stack direction="horizontal" gap={2} className={styles.cards}>
-          {deadlines.map((d) => (
-            <div
-              key={`${d.source}:${d.event_id ?? d.deadline_at}`}
-              className={[
-                styles.card,
-                d.severity === "high"
-                  ? styles.high
-                  : d.severity === "low"
-                    ? styles.low
-                    : styles.normal,
-              ].join(" ")}
-              data-source={d.source}
-            >
-              <div className={styles.label}>{d.label}</div>
-              <div className={styles.metaRow}>
-                <span className={styles.relative}>
-                  {formatRelativeDays(d.days_until)}
-                </span>
-                <span className={styles.dot} aria-hidden>
-                  ·
-                </span>
-                <span className={styles.absolute}>
-                  {formatAbsolute(d.deadline_at)}
-                </span>
+        <div role="list" className={styles.listWrap}>
+          <Stack direction="horizontal" gap={2} className={styles.cards}>
+            {deadlines.map((d) => {
+            // Color carries severity for sighted users; the aria-label
+            // carries it for screen readers. Without this the card
+            // sounds identical at any urgency.
+            const severityWord =
+              d.severity === "high"
+                ? "urgent"
+                : d.severity === "low"
+                  ? "later"
+                  : "upcoming";
+            const ariaLabel = `${severityWord}: ${d.label}, ${formatRelativeDays(d.days_until)}, ${formatAbsolute(d.deadline_at)}`;
+            return (
+              <div
+                key={`${d.source}:${d.event_id ?? d.deadline_at}`}
+                className={[
+                  styles.card,
+                  d.severity === "high"
+                    ? styles.high
+                    : d.severity === "low"
+                      ? styles.low
+                      : styles.normal,
+                ].join(" ")}
+                data-source={d.source}
+                role="listitem"
+                aria-label={ariaLabel}
+              >
+                <div className={styles.label}>{d.label}</div>
+                <div className={styles.metaRow}>
+                  <span className={styles.relative}>
+                    {formatRelativeDays(d.days_until)}
+                  </span>
+                  <span className={styles.dot} aria-hidden>
+                    ·
+                  </span>
+                  <span className={styles.absolute}>
+                    {formatAbsolute(d.deadline_at)}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </Stack>
+            );
+          })}
+          </Stack>
+        </div>
       ) : (
         <Text tone="tertiary" variant="caption">
           No deadlines yet. Add one to start the coach planning toward it.

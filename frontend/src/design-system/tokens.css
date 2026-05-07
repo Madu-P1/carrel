@@ -214,6 +214,28 @@
    * reads on any surface (app bg, card, sidebar) without chroma clash.
    * --------------------------------------------------------------------- */
   --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent);
+
+  /* Elevation shadows. Three tiers, designed for the dark theme — the
+     light-theme override below tones them down so cards on white don't
+     read as floating slabs. Use these with `box-shadow:`; do not invent
+     ad-hoc rgb() shadows in component CSS. */
+  --shadow-hairline: 0 1px 0 color-mix(in srgb, black 6%, transparent);
+  --shadow-card:
+    0 1px 0 color-mix(in srgb, black 4%, transparent),
+    0 8px 24px color-mix(in srgb, black 18%, transparent);
+  --shadow-overlay:
+    0 4px 12px color-mix(in srgb, black 24%, transparent),
+    0 16px 48px color-mix(in srgb, black 32%, transparent);
+}
+
+html.theme-light {
+  --shadow-hairline: 0 1px 0 color-mix(in srgb, black 4%, transparent);
+  --shadow-card:
+    0 1px 0 color-mix(in srgb, black 4%, transparent),
+    0 8px 24px color-mix(in srgb, black 8%, transparent);
+  --shadow-overlay:
+    0 4px 12px color-mix(in srgb, black 12%, transparent),
+    0 16px 48px color-mix(in srgb, black 18%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -11,19 +11,15 @@
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
-  box-shadow:
-    0 1px 0 rgb(0 0 0 / 4%),
-    0 8px 24px rgb(0 0 0 / 18%);
+  box-shadow: var(--shadow-card);
   font-family: "Calibri", "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--color-text-primary);
 }
 
 html.theme-light .page {
-  background: #ffffff;
-  border-color: rgb(0 0 0 / 8%);
-  box-shadow:
-    0 1px 0 rgb(0 0 0 / 4%),
-    0 8px 24px rgb(0 0 0 / 8%);
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+  box-shadow: var(--shadow-card);
 }
 
 .body {
