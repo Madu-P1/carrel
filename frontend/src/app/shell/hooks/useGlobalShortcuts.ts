@@ -33,9 +33,55 @@ function isEditableTarget(target: EventTarget | null): boolean {
  *   - `?` → toggle the shortcuts overlay
  *   - `/` → navigate to /ask and focus the question input (Linear/GitHub idiom)
  */
+interface NativeCompanionBridge {
+  setState?: (state: string) => void;
+}
+
+/**
+ * Cycle the floating companion through four states for marketing
+ * recordings. Triggered by Cmd+Shift+Option+R from anywhere in the
+ * app. Hidden from the shortcut overlay because it is a dev/asset-
+ * capture affordance, not a user-facing feature. Sequence: idle 3s,
+ * thinking 3s, encouraging 3s, sleeping 2.5s. Total 11.5s — fits the
+ * landing-page section spec.
+ */
+function cycleCompanionForRecording(): void {
+  const bridge = (window as unknown as { nativeCompanion?: NativeCompanionBridge })
+    .nativeCompanion;
+  if (!bridge?.setState) {
+    return;
+  }
+  const setState = bridge.setState.bind(bridge);
+  const sequence: Array<{ state: string; holdMs: number }> = [
+    { state: "idle", holdMs: 3000 },
+    { state: "thinking", holdMs: 3000 },
+    { state: "encouraging", holdMs: 3000 },
+    { state: "sleeping", holdMs: 2500 }
+  ];
+  let cumulative = 0;
+  for (const step of sequence) {
+    window.setTimeout(() => setState(step.state), cumulative);
+    cumulative += step.holdMs;
+  }
+}
+
 export function useGlobalShortcuts(): void {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      // Hidden recording shortcut — Cmd+Shift+Option+R fires the
+      // companion-states cycle. Checked before the modifier-bail
+      // because it deliberately requires three modifiers held.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.altKey &&
+        (event.key === "r" || event.key === "R")
+      ) {
+        event.preventDefault();
+        cycleCompanionForRecording();
+        return;
+      }
+
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
       // Esc always closes the shortcuts overlay if it's open. Guard is
