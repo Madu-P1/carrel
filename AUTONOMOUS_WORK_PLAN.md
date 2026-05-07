@@ -69,6 +69,14 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 - [x] Q3.6 Visual deadline markers shipped. usePlanDeadlines hook extracted; WeekTimeGrid reads the signal directly; high-severity day gets an accent dot with soft glow on its day header (visible "SAT 9 MAY" with the dot in the live verification).
 - [x] Q3.7 Coach dedup widened to (kind, start_at, source_event_id). Multiple deadlines no longer collapse when they share a first free block.
 
+### Phase 6 — First-run hardening + demo readiness (this run)
+
+- [x] Q6.1 demo-readiness.sh smoke check (8 gates, exits 0 → safe to demo). Documented in runbook.
+- [x] Q6.2 Token-resolution race in the check fixed (prefer /api/local-token over log-tail).
+- [x] Q6.3 PlanView: rail always rendered. Brand-new users can add a deadline without calendar setup.
+- [x] Q6.4 EmptyPlanState: deadline-first CTA pair. Headline now matches the thesis.
+- [x] Q6.5 HeroAskPrompt: empty-library guardrail. Stranger no longer hits "no source chunks matched" via misleading suggestion chips.
+
 ### Phase 5 — Quality gates (running tally)
 
 - [x] Q5.1 Verify chain run end-to-end. 371 pytest + 1 skipped + 18 subtests passing; 346 Vitest passing; tsc clean; swift build clean.

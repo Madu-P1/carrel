@@ -76,6 +76,16 @@ This is the demo a YC partner will respect.
 | Q3.5 polish | Manual deadline UI: list + delete affordances on existing manual deadlines, edit-in-place, recurring support | Currently you can add but not see the manual list separately | half a day |
 | Phase 4 | Capacitor scaffold for Android (docs/android-strategy.md is the recipe) | Round-funded next step; 6-week implementation plan documented | 6 weeks of focused build |
 
+## First-run hardening (this run)
+
+A stranger opening Carrel for the first time now has a clean path:
+
+- **Dashboard Hero Ask** detects an empty library, swaps suggestion chips for "Import a source" and "Browse the library." Typed questions still work; broken suggestions don't appear.
+- **Plan view** always renders the WORKING TOWARD rail with the "+ Add" button, even with zero calendar feeds. The deadline thesis is reachable on cold-start without iCal setup.
+- **EmptyPlanState** rewritten to lead with "Start with what's due on Friday" + primary "Add a deadline" CTA; "Connect a calendar" is now the secondary path.
+- **EmptyLibrary** already had "Load sample library" backed by `/api/onboarding/demo-library` (3 demo PDFs in `assets/demo-library/`). Verified.
+- **ReaderPlaceholder** already had clear copy + "Open Library" CTA. Verified.
+
 ## Demo-readiness check (run before any meeting)
 
 ```bash
