@@ -418,6 +418,82 @@ If the founder optimizes one thing about this page after launch, it is that numb
 
 ---
 
+---
+
+## Section 11 — The companion (added 2026-05-08)
+
+This section was missing from v1 of the spec. The Carrel app ships a real desktop companion: a small floating cube that lives in a separate borderless macOS panel, always-on-top, follows you across spaces and fullscreen apps. It has nine reactive states tied to product events. It is the brand mark in motion.
+
+This is not a logo. It is a *character*. Students will tell their friends about it before they tell them about the citations.
+
+**Where it appears on the landing page:** a single section between Pricing (Section 7) and FAQ (Section 8). Reason for placement: by this point the visitor has decided they like the product; the companion is the moment that converts "I'll try it" into "I'll tell my roommate about this tonight."
+
+**Goal:** make the visitor want the cube on their screen.
+
+**Layout:** centered, narrow. A single autoplaying loop showing the cube cycling through 4 of its 9 states with a one-line caption per state. Plus one wide screenshot of the cube parked in the corner of a real desktop (Notion open in front, Mail open behind), unbothered, ambient-twinkling.
+
+**Copy:**
+
+```
+Eyebrow:    THE COMPANION
+Headline:   It lives on your desktop, not in a tab.
+
+Body:       A small cube parks in your corner. It reads when Carrel
+            is reading. It glows when you finish a card. It spins
+            when you hit your streak. It sleeps when you do. You can
+            drag it anywhere on screen. It never steals focus from
+            whatever you are working in.
+
+States loop:
+  idle         "I'm here when you're ready."
+  thinking     "Carrel is reading the source."
+  encouraging  "You got the card. The streak is alive."
+  sleeping     "Your library is on disk. So am I. Goodnight."
+```
+
+**Design notes:**
+
+- The four-state loop is a 12-second autoplaying MP4. The cube appears alone on a transparent / `--color-bg-base` background — no laptop chrome, no fake macOS dock. The loop is *the cube on a black canvas*, the same way Carrel itself feels.
+- The companion video file: `docs/pitch/companion-states.mp4`. Founder records once at 2x retina, ~4 MB target. Recorded by triggering each state in sequence via the existing JS hook (`window.companion.setState('idle')` etc.) in the development build.
+- The wide screenshot below the loop shows the cube *in context* on a real desktop — the user's Notion or VS Code or Spotify open in front of it, the cube parked top-right, unobtrusive. Demonstrates "always present, never in the way." Founder captures this once on their actual machine.
+- The states-loop captions are set in Instrument Serif italic 22px, one per state, fading in over 800ms each. Same tier-2 narrative motion the rest of the page uses.
+- The whole section sits on `--color-bg-base` (slightly recessed from the elevated pricing cards above), so the cube reads as a moment of quiet contrast.
+
+**Anti-patterns for this section:**
+- No "AI assistant" framing. The cube is not Cortana, not Clippy, not a Tamagotchi. It is a presence, not a personality. Resist the urge to give it dialogue beyond the four state captions.
+- No anthropomorphic copy ("your study buddy," "your AI friend"). The cube is a mark, not a character with feelings.
+- No 60-second autoplay. 12 seconds, four states, looped silently, with reduced-motion fallback to a single still frame.
+- No use of the cube as a generic decorative element elsewhere on the page. It appears in this section, in the favicon, in the social-share image, and nowhere else. Scarcity is the brand.
+
+**Reduced motion:** if the visitor has `prefers-reduced-motion`, the loop becomes a 4-frame still montage with the four state names labeled below. The cube's defining property in motion is its restraint; it should still feel like the cube even when it isn't moving.
+
+**Mobile (< 768px):** the loop scales down to ~200px wide, the wide context screenshot drops out entirely. State captions stack vertically.
+
+---
+
+## Companion in the global page chrome
+
+The cube also appears outside Section 11, but only in three places, with deliberate scarcity:
+
+1. **The favicon.** A 16×16 isometric cube facet, `--color-accent` on `--color-bg-base`. No initials, no "C" lettermark.
+2. **The Open Graph / social-share image.** A 1200×630 PNG showing only the cube + the headline "Friday is the unit of work." Nothing else. This is the single image that ships with every link share.
+3. **The sticky CTA bar from Section 9.** A 24×24 still cube on the left of the bar, perfectly centered vertically, ambient-twinkling at idle pace. Disappears with the bar on dismiss. Mobile bar omits it.
+
+That is the entire companion footprint on the marketing site. Three placements + one section. The cube earns its rarity.
+
+---
+
+## What this changes about the rest of the spec
+
+A few small reconciliations now that the companion is in scope:
+
+- **Hero (Section 1):** unchanged. The cube does NOT appear in the hero. The hero is the product video; the cube earns its own moment lower on the page.
+- **Visual + design system:** the cube is a fifth permitted accent surface. Add it to the accent-usage rule: "primary CTAs, the RECOMMENDED pill, the privacy diagram's data-flow arrow, the Carrel row's left-border in the comparison table, **and the cube companion in Sections 11 + global chrome**. Nothing else."
+- **Performance budgets:** companion MP4 + the favicon + the OG image are part of the < 1.5 MB total page weight. Likely sizes: companion-states.mp4 ≈ 600 KB, favicon ≈ 2 KB, OG image ≈ 80 KB. Comfortably within budget.
+- **Day-1 A/B tests:** add a fourth test. Section 11 present vs. removed. Hypothesis: presence increases share rate (people who screenshot the page) without affecting raw signup conversion. Measure share rate via the `referer` header on inbound traffic from Twitter/X and Discord.
+
+---
+
 ## What "perfect" looks like
 
 A page that you can show to:
