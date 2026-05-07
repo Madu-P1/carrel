@@ -3,6 +3,31 @@
 Operational playbook for Carrel. Each section answers a single
 question: "what do I run when X breaks?"
 
+## Demo readiness check (run before any investor / design-partner demo)
+
+```bash
+bash script/demo-readiness.sh
+```
+
+Hits 8 endpoints against the running backend and reports pass/fail
+per gate. Catches the failure modes the autonomous overnight runs
+hit at least once each:
+
+- Backend reachable
+- Local-API token resolves (catches the stale-cache bug)
+- /api/documents returns 200 with auth header
+- /api/plan returns events + suggestions
+- /api/plan/deadlines surfaces detector output
+- First document's detail loads with chunks (citation flight needs both)
+- Calendar feeds present (else Plan view shows empty-state CTA)
+- SRS pipeline live
+
+Exit codes: 0 = all green, demo confidently. 1 = at least one check
+failed, fix before going live. 2 = backend unreachable.
+
+The script is non-destructive — it only reads. Safe to run mid-demo
+in a side terminal.
+
 ## Backups
 
 ### What gets backed up

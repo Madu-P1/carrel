@@ -76,6 +76,18 @@ This is the demo a YC partner will respect.
 | Q3.5 polish | Manual deadline UI: list + delete affordances on existing manual deadlines, edit-in-place, recurring support | Currently you can add but not see the manual list separately | half a day |
 | Phase 4 | Capacitor scaffold for Android (docs/android-strategy.md is the recipe) | Round-funded next step; 6-week implementation plan documented | 6 weeks of focused build |
 
+## Demo-readiness check (run before any meeting)
+
+```bash
+bash script/demo-readiness.sh
+```
+
+Eight endpoint checks. Exits 0 → demo confidently. Exits 1 → fix the
+red gate before going live. Catches every failure mode the overnight
+runs hit at least once: stale token, dead /api/documents, empty plan,
+missing deadline rail, broken document detail. Non-destructive
+read-only checks; safe to run mid-demo in a side terminal.
+
 ## What I would do first this morning
 
 1. **Demo the deadline loop to one human** (anyone — partner, friend, a student you know). Watch them try to add a deadline. Note the first thing they ask. That's the next product cycle.
