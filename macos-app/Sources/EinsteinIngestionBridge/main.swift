@@ -159,6 +159,14 @@ func pdfPayload(url: URL) throws -> BridgePayload {
     )
 }
 
+// Audio transcription is intentionally NOT implemented in this CLI bridge.
+// SFSpeechRecognizer requires an Info.plist privacy declaration
+// (NSSpeechRecognitionUsageDescription) and an app-bundle context for the
+// system permission prompt; CLI tools cannot satisfy either, and the
+// process is killed with SIGABRT before any code runs. Audio transcription
+// has to live in the main EinsteinDesktopApp bundle. See
+// docs/audio-transcription-plan.md for the full implementation path.
+
 func payload(for url: URL) throws -> BridgePayload {
     let ext = url.pathExtension.lowercased()
     if ext == "pdf" {
