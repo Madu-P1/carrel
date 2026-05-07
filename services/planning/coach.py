@@ -45,6 +45,7 @@ from typing import List, Optional
 
 from app_logging import get_logger
 from services.calendar import repository
+from services.planning.deadlines import detect_upcoming_deadlines
 
 
 LOGGER = get_logger("planning.coach")
@@ -97,8 +98,8 @@ def synthesize_suggestions(
     """
     rules = [
         _rule_free_block_overdue_srs,
+        _rule_deadline_imminent,
         # Phase 2 plug points:
-        # _rule_deadline_imminent,
         # _rule_low_recent_review,
         # _rule_gap_between_classes,
     ]
@@ -159,6 +160,116 @@ def refresh_active_suggestions(
 # ---------------------------------------------------------------------
 # Rules
 # ---------------------------------------------------------------------
+
+# Score envelope for the deadline rule. Calibrated so:
+#   - Any high-severity deadline (≤3 days) outranks the v1 SRS rule (1.0)
+#   - The most-imminent high-severity deadline outranks any normal-severity
+#     deadline (1.5 ceiling)
+#   - Low-severity deadlines (>7 days out) are suppressed; the user does
+#     not need the coach to nag about a final three weeks away.
+_DEADLINE_SCORE_HIGH_BASE = 2.0
+_DEADLINE_SCORE_HIGH_URGENCY_BOOST = 0.2  # per day closer to today
+_DEADLINE_SCORE_NORMAL = 1.5
+_MAX_DEADLINE_SUGGESTIONS = 3
+
+
+def _rule_deadline_imminent(
+    conn: sqlite3.Connection, *, user_id: str
+) -> List[CandidateSuggestion]:
+    """Emit a study_block before each high/normal-severity deadline.
+
+    Picks the soonest free block ≥60 min between now and the deadline
+    so the user has prep time before the date arrives. The block is
+    capped at the standard 60-minute session length; users who want
+    more can extend by clicking the suggestion.
+
+    Skips:
+      - low-severity deadlines (>7 days out): not "imminent" enough
+      - SRS-overdue aggregates: the v1 rule already covers them
+      - past deadlines: nothing to plan toward
+      - deadlines whose entire run-up window is fully booked
+
+    Score: high-severity deadlines outrank the v1 rule (1.0); the
+    closer the deadline, the higher the score, so a midterm tomorrow
+    beats an exam in 5 days.
+
+    Caps at 3 suggestions per refresh to avoid overwhelming the user
+    when several deadlines stack inside the same week.
+    """
+    deadlines = detect_upcoming_deadlines(conn, user_id=user_id)
+    now = datetime.now(timezone.utc)
+
+    candidates: List[CandidateSuggestion] = []
+    for deadline in deadlines:
+        if deadline.severity == "low":
+            continue
+        if deadline.source != "calendar_event":
+            # SRS-overdue aggregate is already surfaced by the v1
+            # free_block_overdue_srs rule. Avoid double-emitting.
+            continue
+        try:
+            deadline_dt = _parse_iso(deadline.deadline_at)
+        except ValueError:
+            continue
+        if deadline_dt <= now:
+            continue
+
+        # Free-block window: from now until either the deadline itself
+        # or 24h ahead, whichever is sooner. We don't propose study
+        # time three days out for a Friday exam — "tonight" is more
+        # actionable advice for the rule's first version.
+        window_end = min(deadline_dt, now + timedelta(hours=LOOKAHEAD_HOURS))
+        if window_end <= now:
+            continue
+
+        free_blocks = _find_free_blocks(
+            conn,
+            window_start=now,
+            window_end=window_end,
+            min_minutes=MIN_FREE_BLOCK_MINUTES,
+            user_id=user_id,
+        )
+        if not free_blocks:
+            continue
+
+        block = free_blocks[0]
+        suggested_end = _iso_add_minutes(block.start_at, MIN_FREE_BLOCK_MINUTES)
+
+        if deadline.severity == "high":
+            urgency_boost = max(0.0, 3.0 - deadline.days_until) * _DEADLINE_SCORE_HIGH_URGENCY_BOOST
+            score = _DEADLINE_SCORE_HIGH_BASE + urgency_boost
+        else:  # normal
+            score = _DEADLINE_SCORE_NORMAL
+
+        candidates.append(
+            CandidateSuggestion(
+                kind="study_block",
+                start_at=block.start_at,
+                end_at=suggested_end,
+                reason_code="deadline_imminent",
+                reason_text=(
+                    f"{MIN_FREE_BLOCK_MINUTES}-min slot before {deadline.label} "
+                    f"({_format_relative_days(deadline.days_until)})."
+                ),
+                score=score,
+                due_at=deadline.deadline_at,
+                source_event_id=deadline.event_id,
+            )
+        )
+        if len(candidates) >= _MAX_DEADLINE_SUGGESTIONS:
+            break
+
+    return candidates
+
+
+def _format_relative_days(days_until: float) -> str:
+    rounded = round(days_until)
+    if rounded <= 0:
+        return "today"
+    if rounded == 1:
+        return "tomorrow"
+    return f"in {rounded} days"
+
 
 def _rule_free_block_overdue_srs(
     conn: sqlite3.Connection, *, user_id: str

@@ -88,6 +88,20 @@ def _events_to_response(rows: List[repository.EventRow]) -> List[CalendarEventRo
 def _suggestions_to_response(
     rows: List[repository.SuggestionRow],
 ) -> List[StudySuggestionRow]:
+    # Rules emit raw scores in any 0..N range so multi-rule pipelines
+    # can rank candidates against each other (e.g., deadline_imminent
+    # uses 2.0+, free_block_overdue_srs uses 1.0). The API contract
+    # caps score at 0..1 because the UI only needs the relative
+    # ordering, never the magnitude. Normalize against the max here
+    # so all rules can keep their natural score units internally.
+    raw_scores = [s.score for s in rows if s.score is not None]
+    max_score = max(raw_scores) if raw_scores else None
+
+    def _normalize(score: Optional[float]) -> Optional[float]:
+        if score is None or max_score is None or max_score <= 0:
+            return score
+        return min(1.0, score / max_score)
+
     return [
         StudySuggestionRow(
             id=s.id,
@@ -98,7 +112,7 @@ def _suggestions_to_response(
             due_at=s.due_at,
             reason_code=s.reason_code,
             reason_text=s.reason_text,
-            score=s.score,
+            score=_normalize(s.score),
         )
         for s in rows
     ]
