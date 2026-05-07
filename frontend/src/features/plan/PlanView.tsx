@@ -185,7 +185,11 @@ export function PlanView() {
         onAddFeed={() => setAddOpen(true)}
       />
 
-      {feeds.length > 0 ? <DeadlineRail /> : null}
+      {/* Always render the rail, including before any calendar feed
+          is connected. The deadline thesis says "start with what's due
+          on Friday" — gating the rail behind feeds.length > 0 broke
+          first-run for students who don't have an iCal URL handy. */}
+      <DeadlineRail />
 
       {feeds.length === 0 && !loading ? (
         <EmptyPlanState onAddFeed={() => setAddOpen(true)} />

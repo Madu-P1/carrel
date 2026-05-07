@@ -24,7 +24,7 @@ const ONE_PM_TODAY = (() => {
   return d.toISOString();
 })();
 
-test("Plan empty state renders the connect-a-calendar CTA", async () => {
+test("Plan empty state renders the deadline-first CTA pair", async () => {
   registerFetchHandler((url, init) => {
     if (url.pathname === "/api/plan" && init.method === "GET") {
       return jsonResponse({
@@ -34,13 +34,23 @@ test("Plan empty state renders the connect-a-calendar CTA", async () => {
         is_freshening: false,
       });
     }
+    if (url.pathname === "/api/plan/deadlines" && init.method === "GET") {
+      return jsonResponse({ deadlines: [] });
+    }
     return undefined;
   });
 
   render(<PlanView />);
 
-  expect(await screen.findByText(/See your week and where to study/i)).toBeDefined();
-  // Empty-state primary CTA. Voice rule: verb-led label.
+  // Headline reflects the student/deadline thesis (was "See your week
+  // and where to study" — the calendar-first framing). Now: "Start
+  // with what's due on Friday."
+  expect(await screen.findByText(/Start with what's due on Friday/i)).toBeDefined();
+  // Primary CTA: add a deadline (the wedge). Secondary: connect a calendar.
+  // Two "Add a deadline" buttons exist — one in the always-rendered
+  // DeadlineRail header ("+ Add") and one in the EmptyPlanState card.
+  // We just confirm both reachable, not their exact placement.
+  expect(screen.getAllByRole("button", { name: /Add a deadline/i }).length).toBeGreaterThanOrEqual(1);
   expect(screen.getByRole("button", { name: /Connect a calendar/i })).toBeDefined();
 });
 
