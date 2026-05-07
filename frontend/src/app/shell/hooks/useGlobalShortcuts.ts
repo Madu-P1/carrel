@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
 
+import { toast } from "@/design-system";
 import { focusAskInput } from "@/features/ask/focusRegistry";
 import { readerState, setReaderFocusMode } from "@/features/reader/state";
 import { events } from "@/services/metrics/events";
@@ -39,16 +40,25 @@ interface NativeCompanionBridge {
 
 /**
  * Cycle the floating companion through four states for marketing
- * recordings. Triggered by Cmd+Shift+Option+R from anywhere in the
- * app. Hidden from the shortcut overlay because it is a dev/asset-
- * capture affordance, not a user-facing feature. Sequence: idle 3s,
- * thinking 3s, encouraging 3s, sleeping 2.5s. Total 11.5s — fits the
- * landing-page section spec.
+ * recordings. Triggered by Cmd+Shift+0 (numeric zero) from anywhere
+ * in the app. Hidden from the shortcut overlay because it is a dev/
+ * asset-capture affordance. Sequence: idle 3s, thinking 3s,
+ * encouraging 3s, sleeping 2.5s. Total 11.5s.
+ *
+ * Loud diagnostics: every step toasts so the founder can tell from
+ * inside the running app whether the keypress fired, the bridge was
+ * present, and each state landed. Quiet failure here makes recording
+ * untestable, so we trade signal for noise during the asset capture.
  */
 function cycleCompanionForRecording(): void {
+  toast.info("Companion cycle started", "idle → thinking → encouraging → sleeping");
   const bridge = (window as unknown as { nativeCompanion?: NativeCompanionBridge })
     .nativeCompanion;
   if (!bridge?.setState) {
+    toast.error(
+      "Companion bridge missing",
+      "window.nativeCompanion is undefined. Floating cube panel may not be running."
+    );
     return;
   }
   const setState = bridge.setState.bind(bridge);
@@ -60,7 +70,10 @@ function cycleCompanionForRecording(): void {
   ];
   let cumulative = 0;
   for (const step of sequence) {
-    window.setTimeout(() => setState(step.state), cumulative);
+    window.setTimeout(() => {
+      setState(step.state);
+      toast.info(`Companion → ${step.state}`, "");
+    }, cumulative);
     cumulative += step.holdMs;
   }
 }
@@ -68,14 +81,16 @@ function cycleCompanionForRecording(): void {
 export function useGlobalShortcuts(): void {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      // Hidden recording shortcut — Cmd+Shift+Option+R fires the
+      // Hidden recording shortcut — Cmd+Shift+0 fires the
       // companion-states cycle. Checked before the modifier-bail
-      // because it deliberately requires three modifiers held.
+      // because it deliberately requires Cmd+Shift held. Numeric zero
+      // chosen because Option doesn't remap it (Option+R produces ®
+      // on US keyboards which can confuse event.key on some layouts);
+      // also no conflict with any common macOS shortcut.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
-        event.altKey &&
-        (event.key === "r" || event.key === "R")
+        (event.key === "0" || event.code === "Digit0")
       ) {
         event.preventDefault();
         cycleCompanionForRecording();
