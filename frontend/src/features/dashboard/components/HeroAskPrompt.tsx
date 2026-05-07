@@ -4,6 +4,8 @@ import { useState } from "preact/hooks";
 import { navigateTo } from "@/app/shell/useAppShell";
 import { Icon } from "@/design-system";
 import { buildAskUrl } from "@/features/ask/askRoute";
+import { useDocumentsQuery } from "@/features/library/hooks/useDocumentsQuery";
+import { dispatchMenuCommand } from "@/services/native/menu";
 
 import styles from "./HeroAskPrompt.module.css";
 
@@ -40,6 +42,13 @@ function askWith(prompt: string): void {
 
 export function HeroAskPrompt() {
   const [value, setValue] = useState("");
+  // First-run guardrail: a stranger who clicks "Explain this simply"
+  // with an empty library gets a confusing "No source chunks matched..."
+  // answer. Detecting the empty case lets us deflect to "drop a source
+  // first" while still allowing typed questions to flow through (which
+  // produces the same response, just less surprising).
+  const { data, loading } = useDocumentsQuery();
+  const isLibraryEmpty = !loading.value && (data.value?.length ?? 0) === 0;
 
   const submit = (event: JSX.TargetedEvent<HTMLFormElement, Event>) => {
     event.preventDefault();
@@ -62,7 +71,11 @@ export function HeroAskPrompt() {
           onInput={(event) =>
             setValue((event.currentTarget as HTMLInputElement).value)
           }
-          placeholder="What do you want to understand right now?"
+          placeholder={
+            isLibraryEmpty
+              ? "Drop a source first, then ask anything about it."
+              : "What do you want to understand right now?"
+          }
           autoComplete="off"
           autoCapitalize="off"
           spellcheck={true}
@@ -77,22 +90,37 @@ export function HeroAskPrompt() {
           <Icon name="arrow-right" size={16} />
         </button>
       </div>
-      <div
-        className={styles.suggestions}
-        aria-label="Suggested prompts"
-        role="group"
-      >
-        {SUGGESTION_PROMPTS.map((prompt) => (
+      {isLibraryEmpty ? (
+        <div className={styles.suggestions} aria-label="Empty library guidance" role="group">
           <button
-            key={prompt}
             type="button"
             className={styles.suggestionChip}
-            onClick={() => askWith(prompt)}
+            onClick={() => dispatchMenuCommand("file.import")}
           >
-            {prompt}
+            Import a source
           </button>
-        ))}
-      </div>
+          <button
+            type="button"
+            className={styles.suggestionChip}
+            onClick={() => navigateTo("/library")}
+          >
+            Browse the library
+          </button>
+        </div>
+      ) : (
+        <div className={styles.suggestions} aria-label="Suggested prompts" role="group">
+          {SUGGESTION_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className={styles.suggestionChip}
+              onClick={() => askWith(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
     </form>
   );
 }

@@ -49,10 +49,27 @@ def grey(s: str) -> str:
 
 
 def fetch_token() -> Optional[str]:
-    """Pull the active local-API token from the backend log. The token
-    is logged on every authenticated request via the ?token= fallback
-    used by SSE clients. Falls back to /api/local-token endpoint if no
-    log line is found (cold start)."""
+    """Resolve the active local-API token.
+
+    Prefers /api/local-token over log-parsing because the log can hold
+    a stale token across a backend restart (a real footgun: this
+    script reported "all green" against an old token, then "6/8 red"
+    after a fresh build_and_run). The /api/local-token endpoint is
+    deliberately unauth-gated by the backend so the frontend can
+    bootstrap; we use the same path. Falls back to scanning the log
+    only if the endpoint is unreachable (e.g. cold start before the
+    routes have registered).
+    """
+    try:
+        req = urllib_request.Request(f"{API}/api/local-token")
+        with urllib_request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            tok = data.get("token")
+            if isinstance(tok, str) and tok:
+                return tok
+    except (HTTPError, URLError, json.JSONDecodeError, OSError):
+        pass
+    # Last-resort fallback: tail the log.
     if LOG.exists():
         try:
             text = LOG.read_text(encoding="utf-8", errors="ignore")
@@ -61,15 +78,7 @@ def fetch_token() -> Optional[str]:
         matches = TOKEN_RE.findall(text)
         if matches:
             return matches[-1]
-    # Cold-start fallback: hit the /api/local-token endpoint directly
-    # (deliberately unauth-gated by the backend so the frontend can
-    # bootstrap).
-    try:
-        with urllib_request.urlopen(f"{API}/api/local-token", timeout=3) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("token")
-    except (HTTPError, URLError, json.JSONDecodeError, OSError):
-        return None
+    return None
 
 
 def get(path: str, token: Optional[str], timeout: float = 10.0) -> dict:
