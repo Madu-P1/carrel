@@ -34,6 +34,7 @@ from routes.calendar import _row_to_response
 from services.calendar import repository
 from services.calendar.sync_queue import get_calendar_sync_queue
 from services.planning import coach
+from services.planning import deadlines as deadline_engine
 from services.planning import insertion as insertion_engine
 
 
@@ -254,6 +255,35 @@ def get_study_session_insertions(tz: str = "UTC") -> StudySessionInsertionsRespo
         ],
         user_timezone=tz,
     )
+
+
+@router.get("/api/plan/deadlines")
+def get_upcoming_deadlines() -> Dict[str, list]:
+    """Read-only list of detected deadlines within the next 30 days.
+
+    Combines calendar-event keyword matches (midterm, exam, final, test,
+    quiz, deadline) with the overdue-SRS aggregate. The frontend renders
+    this as a horizontal rail above the WeekTimeGrid so students see what
+    they are working toward without scrolling.
+
+    Each deadline has a severity (high/normal/low) tied to days_until,
+    so the UI can color-code urgency without re-deriving it.
+    """
+    with db.get_db() as conn:
+        items = deadline_engine.detect_upcoming_deadlines(conn)
+    return {
+        "deadlines": [
+            {
+                "label": d.label,
+                "deadline_at": d.deadline_at,
+                "days_until": d.days_until,
+                "severity": d.severity,
+                "source": d.source,
+                "event_id": d.event_id,
+            }
+            for d in items
+        ],
+    }
 
 
 def register_plan_routes(app) -> None:

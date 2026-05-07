@@ -83,7 +83,26 @@ export const planApi = {
     api<StudySessionInsertionsResponse>(
       `/api/plan/insertions?tz=${encodeURIComponent(timezone)}`
     ),
+
+  /** Read-only list of upcoming deadlines within the next 30 days.
+   * Combines calendar-event keyword matches (midterm/exam/final/test/
+   * quiz/deadline) with the overdue-SRS aggregate. Each item carries a
+   * severity (high/normal/low) tied to days_until. */
+  deadlines: () => api<DeadlinesResponse>("/api/plan/deadlines"),
 };
+
+export interface PlanDeadline {
+  label: string;
+  deadline_at: string;
+  days_until: number;
+  severity: "high" | "normal" | "low";
+  source: "calendar_event" | "srs_overdue";
+  event_id: string | null;
+}
+
+export interface DeadlinesResponse {
+  deadlines: PlanDeadline[];
+}
 
 export interface StudySessionInsertion {
   start_at: string;

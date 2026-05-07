@@ -1,10 +1,11 @@
 import { useMemo, useState } from "preact/hooks";
 
-import { Button, Stack, Text, showToast, toast } from "@/design-system";
+import { Button, Dialog, Stack, Text, showToast, toast } from "@/design-system";
 
 import type { CalendarFeed } from "./api/calendarApi";
 import type { PlanEvent } from "./api/planApi";
 import { AddFeedDialog } from "./components/AddFeedDialog";
+import { DeadlineRail } from "./components/DeadlineRail";
 import { EmptyPlanState } from "./components/EmptyPlanState";
 import { EventDetailDialog } from "./components/EventDetailDialog";
 import { FeedList } from "./components/FeedList";
@@ -67,6 +68,12 @@ export function PlanView() {
   // Click-to-view event detail.
   const [selectedEvent, setSelectedEvent] = useState<PlanEvent | null>(null);
 
+  // Feed delete confirmation. Replaced the previous window.confirm()
+  // call with the design-system Dialog primitive so the experience
+  // matches the Library delete flow and respects the dark theme.
+  const [feedToDelete, setFeedToDelete] = useState<CalendarFeed | null>(null);
+  const [deleteFeedLoading, setDeleteFeedLoading] = useState(false);
+
   const handleSync = async (feedId: string) => {
     try {
       const result = await syncFeed(feedId);
@@ -85,23 +92,27 @@ export function PlanView() {
     }
   };
 
-  const handleDelete = async (feed: CalendarFeed) => {
-    // TODO(plan-confirm-dialog): replace this native confirm with the
-    // styled Dialog primitive (already used for Library deletes via
-    // DeleteConfirmDialog). Low-frequency action, deferred to a
-    // dedicated UX pass; suppress the lint rule until then.
-    const message = `Remove "${feed.label}"? Events from this feed will be cleared from your plan.`;
-    // eslint-disable-next-line no-restricted-syntax
-    const confirmed = window.confirm(message);
-    if (!confirmed) {
-      return;
-    }
+  const handleDelete = (feed: CalendarFeed) => {
+    setFeedToDelete(feed);
+  };
+
+  const handleConfirmDeleteFeed = async () => {
+    if (!feedToDelete) return;
+    setDeleteFeedLoading(true);
     try {
-      await removeFeed(feed.id);
-      toast.info(`Removed "${feed.label}"`);
+      await removeFeed(feedToDelete.id);
+      toast.info(`Removed "${feedToDelete.label}"`);
+      setFeedToDelete(null);
     } catch (caught) {
       toast.error("Could not remove feed", (caught as Error).message);
+    } finally {
+      setDeleteFeedLoading(false);
     }
+  };
+
+  const handleCloseDeleteDialog = () => {
+    if (deleteFeedLoading) return;
+    setFeedToDelete(null);
   };
 
   const handleDismissSuggestion = async (id: string) => {
@@ -174,6 +185,8 @@ export function PlanView() {
         onAddFeed={() => setAddOpen(true)}
       />
 
+      {feeds.length > 0 ? <DeadlineRail /> : null}
+
       {feeds.length === 0 && !loading ? (
         <EmptyPlanState onAddFeed={() => setAddOpen(true)} />
       ) : (
@@ -237,6 +250,31 @@ export function PlanView() {
         feeds={feeds}
         onClose={() => setSelectedEvent(null)}
       />
+
+      <Dialog
+        actions={
+          <Stack direction="horizontal" gap={2}>
+            <Button onClick={handleCloseDeleteDialog} variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              isLoading={deleteFeedLoading}
+              onClick={() => void handleConfirmDeleteFeed()}
+              variant="danger"
+            >
+              Remove feed
+            </Button>
+          </Stack>
+        }
+        description="Events from this feed will be cleared from your plan. The calendar source itself is unchanged."
+        onClose={handleCloseDeleteDialog}
+        open={feedToDelete !== null}
+        title={feedToDelete ? `Remove "${feedToDelete.label}"?` : ""}
+      >
+        <Text tone="secondary">
+          You can re-add the feed any time from the Add a feed dialog.
+        </Text>
+      </Dialog>
     </div>
   );
 }
