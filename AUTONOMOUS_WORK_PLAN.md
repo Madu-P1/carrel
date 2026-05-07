@@ -64,7 +64,7 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 - [x] Q3.1 Audited; documented in commit message of phase4 deadlines work. The detection layer existed all along (services/planning/deadlines.py); only the UI surface was missing.
 - [x] Q3.2 Replaced window.confirm with the Dialog primitive in PlanView (top TODO). Other coarse edges queued in Q3.4-Q3.6.
 - [x] Q3.3 Deadlines now first-class in the Plan view: GET /api/plan/deadlines + DeadlineRail above the WeekTimeGrid. Calendar-event-detected deadlines visible without scrolling; severity color-coded.
-- [ ] Q3.4 Activate coach._rule_deadline_imminent so suggestions get scored higher near deadlines (commented out in services/planning/coach.py:101).
+- [x] Q3.4 _rule_deadline_imminent activated. Score envelope: high-sev 2.0+, normal-sev 1.5, low-sev skipped. Outranks v1 SRS rule (1.0). Pipeline: synthesize_suggestions runs both rules, sorts by raw score, persists to study_suggestions; the route normalizes to 0..1 at the API boundary so the existing pydantic contract holds. 7 new unit tests in tests/test_planning_coach.py.
 - [ ] Q3.5 Manual deadline entry — UI for "I have an exam Friday" without needing to put it on the calendar first. New table or reuse calendar_events with source='manual'.
 - [ ] Q3.6 Visual deadline markers ON the WeekTimeGrid (today the grid only renders raw events; deadlines pulse the column header).
 
