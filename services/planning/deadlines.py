@@ -142,6 +142,14 @@ def _calendar_event_deadlines(
         summary = (row["summary"] or "").strip()
         if not DEADLINE_KEYWORDS.search(summary):
             continue
+        # Exclude events that read as study-prep blocks (typically the
+        # accepted output of the deadline_imminent coach rule, which
+        # creates events titled "Study — Deadline: Macro paper"). Without
+        # this guard, an accepted suggestion becomes a calendar event
+        # that matches the keyword regex and gets surfaced as its own
+        # deadline, causing the rail to render the same exam twice.
+        if STUDY_ALLOCATION_KEYWORDS.search(summary):
+            continue
         try:
             deadline_dt = _parse_iso(row["start_at"])
         except ValueError:

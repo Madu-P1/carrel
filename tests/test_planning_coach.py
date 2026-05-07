@@ -211,6 +211,45 @@ class DeadlineImminentRuleTests(unittest.TestCase):
             candidates = coach._rule_deadline_imminent(conn, user_id="local")
         self.assertLessEqual(len(candidates), 3)
 
+    def test_accepted_study_suggestion_does_not_become_a_deadline(self) -> None:
+        """Regression: when the user accepts a deadline_imminent
+        suggestion, the resulting calendar event is titled "Study —
+        Deadline: <label>". The deadline keyword regex matches "deadline"
+        in that string, so without the study-exclusion guard the
+        accepted suggestion would itself surface as a fresh deadline,
+        triggering yet another suggestion next refresh, ad infinitum."""
+        from services.planning.deadlines import detect_upcoming_deadlines
+
+        now = datetime.now(UTC)
+        with db.get_db() as conn:
+            _seed_feed(conn)
+            # Original user-added deadline
+            _seed_event(
+                conn, feed_id="f1", uid="ev-orig",
+                summary="Bio midterm",
+                start_at=_iso(now + timedelta(days=2, hours=2)),
+                end_at=_iso(now + timedelta(days=2, hours=4)),
+            )
+            # Simulated accepted study suggestion (what the coach
+            # creates when the user clicks "Add" on a deadline_imminent
+            # suggestion)
+            _seed_event(
+                conn, feed_id="f1", uid="ev-study-block",
+                summary="Study — Deadline: Bio midterm",
+                start_at=_iso(now + timedelta(hours=4)),
+                end_at=_iso(now + timedelta(hours=5)),
+            )
+            deadlines = detect_upcoming_deadlines(conn)
+
+        # Only the original "Bio midterm" should appear, not the
+        # study-block twin.
+        labels = [d.label for d in deadlines]
+        self.assertIn("Bio midterm", labels)
+        self.assertFalse(
+            any("Study" in label for label in labels),
+            f"Expected no study-prefixed deadlines; got {labels}",
+        )
+
     def test_synthesize_ranks_deadline_above_v1_srs_rule(self) -> None:
         """Both rules fire; deadline candidate must be at the top."""
         now = datetime.now(UTC)
