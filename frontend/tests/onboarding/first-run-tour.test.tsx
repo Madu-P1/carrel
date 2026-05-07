@@ -10,7 +10,10 @@ const STORAGE_KEY = "carrel.first-run-tour.completed";
 
 test("first-run tour can be replayed after completion and advances through the product loop", async () => {
   window.localStorage.setItem(STORAGE_KEY, "1");
-  window.localStorage.setItem("carrel.first-run-tour.version", "5");
+  // Must match the current TOUR_VERSION in FirstRunTour.tsx; bump
+  // here whenever the production version bumps (the bump is by
+  // design — re-prompts users on substantive content updates).
+  window.localStorage.setItem("carrel.first-run-tour.version", "6");
   mockJson("POST", "/api/onboarding/demo-library", {
     seeded: true,
     documents: [],
@@ -25,8 +28,8 @@ test("first-run tour can be replayed after completion and advances through the p
 
   expect(await screen.findByRole("dialog", { name: /Bring in a source you trust/i })).toBeDefined();
   expect(screen.getByText("IMPORT")).toBeDefined();
-  expect(screen.getByLabelText("Step 1 of 4")).toBeDefined();
-  expect(screen.queryByText(/Step 1 of 4/i)).toBeNull();
+  expect(screen.getByLabelText("Step 1 of 5")).toBeDefined();
+  expect(screen.queryByText(/Step 1 of 5/i)).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: /Load samples/i }));
 
@@ -42,7 +45,10 @@ test("first-run tour can be replayed after completion and advances through the p
 
 test("first-run tour defines product terms inline", async () => {
   window.localStorage.setItem(STORAGE_KEY, "1");
-  window.localStorage.setItem("carrel.first-run-tour.version", "5");
+  // Must match the current TOUR_VERSION in FirstRunTour.tsx; bump
+  // here whenever the production version bumps (the bump is by
+  // design — re-prompts users on substantive content updates).
+  window.localStorage.setItem("carrel.first-run-tour.version", "6");
 
   render(<FirstRunTour />);
 

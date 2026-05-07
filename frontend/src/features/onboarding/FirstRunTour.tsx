@@ -13,10 +13,14 @@ import { ProgressSegments } from "./ProgressSegments";
 const STORAGE_KEY = "carrel.first-run-tour.completed";
 const STORAGE_VERSION_KEY = "carrel.first-run-tour.version";
 const TOUR_EVENT = "carrel:first-run-tour:open";
-const TOUR_VERSION = "5";
+// v6 adds the "PLAN — deadline loop" closing step. Bumping the version
+// re-triggers the auto-open for users who already saw v5, since the
+// new step is the actual product wedge under the student/deadline
+// thesis and they shouldn't miss it.
+const TOUR_VERSION = "6";
 
 interface TourStep {
-  key: "import" | "read" | "inspect" | "draft";
+  key: "import" | "read" | "inspect" | "draft" | "plan";
   eyebrow: string;
   title: string;
   body: ComponentChildren;
@@ -28,7 +32,9 @@ const termDefinitions = {
   inspector: "Shows the original passage behind any citation.",
   jobs: "Live status of imports and extraction.",
   anchor: "A passage tied to a specific page in a source.",
-  card: "A flashcard generated from an anchor."
+  card: "A flashcard generated from an anchor.",
+  deadline: "An exam, paper, or due date the coach plans backward from.",
+  rail: "The 'WORKING TOWARD' strip above the week grid in Plan."
 } as const;
 
 const STEPS: TourStep[] = [
@@ -81,6 +87,22 @@ const STEPS: TourStep[] = [
         Use the saved anchor to draft a{" "}
         <TermDefinition label="Card" definition={termDefinitions.card} />, edit the best one,
         and keep it for review.
+      </>
+    ),
+    action: "Next"
+  },
+  {
+    key: "plan",
+    eyebrow: "PLAN",
+    title: "Friday is the unit of work.",
+    body: (
+      <>
+        Add the{" "}
+        <TermDefinition label="Deadline" definition={termDefinitions.deadline} /> that is
+        stressing you out. Carrel surfaces it on the{" "}
+        <TermDefinition label="Working Toward rail" definition={termDefinitions.rail} />,
+        marks the day in the week grid, and schedules study blocks backward from it.
+        Imports, citations, and cards above all funnel into it. This is the loop.
       </>
     ),
     action: "Finish"
@@ -258,6 +280,16 @@ export function FirstRunTour() {
     if (current.key === "inspect") {
       navigateTo("/reader");
       setStep(3);
+      return;
+    }
+
+    if (current.key === "draft") {
+      // Advance to the PLAN step (was previously the close path —
+      // Finish — before the deadline-loop step landed). Land the
+      // user on /plan so the rail and "+ Add" button are visible
+      // when the body copy mentions them.
+      navigateTo("/plan");
+      setStep(4);
       return;
     }
 

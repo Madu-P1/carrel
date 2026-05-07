@@ -660,13 +660,18 @@
 }
 
 .progressSegments {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Flex (not grid with hardcoded column count) so the bar adapts to
+     the current STEPS.length. Was previously `grid-template-columns:
+     repeat(4, ...)` and silently collapsed 5+ children into 4 visible
+     columns — caught when the PLAN step landed and the last segment
+     stacked under the rest. */
+  display: flex;
   gap: var(--space-2);
   padding: 0 var(--space-8);
 }
 
 .progressSegment {
+  flex: 1 1 0;
   display: block;
   height: 5px;
   border-radius: 999px;

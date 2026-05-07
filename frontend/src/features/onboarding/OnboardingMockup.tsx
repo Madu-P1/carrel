@@ -1,6 +1,6 @@
 import styles from "./FirstRunTour.module.css";
 
-export type TourStepIndex = 1 | 2 | 3 | 4;
+export type TourStepIndex = 1 | 2 | 3 | 4 | 5;
 
 type MockupState = "active" | "inactive" | "target";
 type MockupElement = "source" | "excerpt" | "jobs" | "answer" | "citation" | "anchor" | "draft";
@@ -9,7 +9,8 @@ const captions: Record<TourStepIndex, string> = {
   1: "This is a Source - a PDF you've imported.",
   2: "Read the highlighted passage before you trust the claim.",
   3: "Citation -> Anchor in Evidence Inspector.",
-  4: "Draft three cards from the saved anchor."
+  4: "Draft three cards from the saved anchor.",
+  5: "The deadline frames every step above — Carrel schedules them backward from Friday."
 };
 
 function cx(...parts: Array<string | false | undefined>): string {
@@ -52,13 +53,22 @@ function stateFor(currentStep: TourStepIndex, element: MockupElement): MockupSta
     return "inactive";
   }
 
-  if (element === "draft") {
-    return "target";
+  if (currentStep === 4) {
+    if (element === "draft") {
+      return "target";
+    }
+    if (element === "source" || element === "answer" || element === "anchor" || element === "citation") {
+      return "active";
+    }
+    return "inactive";
   }
-  if (element === "source" || element === "answer" || element === "anchor" || element === "citation") {
-    return "active";
-  }
-  return "inactive";
+
+  // Step 5 — closing frame. Every prior surface stays active so the
+  // viewer sees the whole loop at once; nothing is highlighted as
+  // target because the lesson is "deadlines tie all of these
+  // together," not "click this one thing." The body copy carries the
+  // teaching; the mockup just visualizes the system in motion.
+  return "active";
 }
 
 export function OnboardingMockup({ currentStep }: { currentStep: TourStepIndex }) {
@@ -73,7 +83,7 @@ export function OnboardingMockup({ currentStep }: { currentStep: TourStepIndex }
         </div>
         <div className={styles.frameBody}>
           <div className={styles.stepRail}>
-            {[1, 2, 3, 4].map((dot) => (
+            {[1, 2, 3, 4, 5].map((dot) => (
               <span
                 className={cx(
                   styles.stepDot,

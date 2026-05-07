@@ -110,7 +110,13 @@ beforeEach(() => {
   document.documentElement.className = "";
   delete document.body.dataset.appBooted;
   window.localStorage.setItem("carrel.first-run-tour.completed", "1");
-  window.localStorage.setItem("carrel.first-run-tour.version", "5");
+  // Keep this in sync with TOUR_VERSION in
+  // src/features/onboarding/FirstRunTour.tsx. When the production
+  // version bumps (substantive content updates), bump it here too —
+  // otherwise tests render the auto-opening tour over the route under
+  // test, and "Found multiple elements with the text Carrel" failures
+  // start showing up across smoke/feature suites.
+  window.localStorage.setItem("carrel.first-run-tour.version", "6");
   prefersDark = true;
   prefersReducedMotion = false;
   act(() => {
