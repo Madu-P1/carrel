@@ -6,6 +6,19 @@ import { formatTimeRange } from "../utils/timezone";
 
 import styles from "./EventBlock.module.css";
 
+// Manual deadlines are stored with a "Deadline: " prefix so the keyword
+// detector regex always hits. The prefix is a backend implementation
+// detail, not user-facing copy — strip it before rendering on the grid.
+const MANUAL_DEADLINE_PREFIX = "Deadline: ";
+
+function presentSummary(summary: string | null | undefined): string {
+  const raw = (summary ?? "").trim();
+  if (raw.startsWith(MANUAL_DEADLINE_PREFIX)) {
+    return raw.slice(MANUAL_DEADLINE_PREFIX.length);
+  }
+  return raw;
+}
+
 interface EventBlockProps {
   event: PlanEvent;
   /** Hex color for the feed this event came from. The background uses a
@@ -43,6 +56,7 @@ export function EventBlock({
   // blocks the planner is counting as allocated prep time. Matches the
   // backend's STUDY_ALLOCATION_KEYWORDS regex — keep them in sync.
   const isStudy = isUserStudyBlock(event.summary);
+  const presented = presentSummary(event.summary);
   const className = [
     styles.block,
     event.status === "tentative" ? styles.blockTentative : "",
@@ -73,10 +87,10 @@ export function EventBlock({
         // + tint so we only set the variable in one place.
         ["--event-color" as string]: accent,
       }}
-      title={event.summary}
+      title={presented}
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
-      aria-label={interactive ? `${event.summary || "Untitled"} — view details` : undefined}
+      aria-label={interactive ? `${presented || "Untitled"} — view details` : undefined}
       onClick={handleClick}
       onKeyDown={handleKey}
     >
@@ -89,7 +103,7 @@ export function EventBlock({
           <Icon name="study" size={12} />
         </span>
       ) : null}
-      <span className={styles.title}>{event.summary || "(untitled)"}</span>
+      <span className={styles.title}>{presented || "(untitled)"}</span>
       <span className={styles.meta}>{formatTimeRange(event.start_at, event.end_at)}</span>
       {event.location ? (
         <span className={styles.meta}>{event.location}</span>

@@ -27,10 +27,19 @@ insert. This means:
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+
+# Mirrors services/planning/deadlines.DEADLINE_KEYWORDS. Imported as a
+# constant rather than a Python import so a future split doesn't make
+# them drift; see the test below in test_planning_coach for coverage.
+_DEADLINE_KEYWORDS_RE = re.compile(
+    r"\b(midterm|exam|final|test|quiz|deadline)\b",
+    re.IGNORECASE,
+)
 
 # Sentinel URL for the manual feed. url_hash is unique per (user_id,
 # url_hash); the sentinel ensures one manual feed per user even after
@@ -90,14 +99,17 @@ def insert_manual_deadline(
     feed_id = ensure_manual_feed(conn, user_id=user_id)
     event_id = str(uuid.uuid4())
 
-    # Prefix the label so the deadline detector's keyword regex hits
-    # consistently regardless of user wording. The frontend strips
-    # the prefix on display.
-    summary = (
-        f"{DISPLAY_PREFIX}{label.strip()}"
-        if not label.lower().startswith(DISPLAY_PREFIX.lower().rstrip())
-        else label.strip()
-    )
+    # Prefix the label only if the user's wording doesn't already
+    # contain a deadline keyword the detector regex picks up. "Bio
+    # midterm" or "Final exam" stays clean; "Macro paper" or
+    # "Capstone presentation" gets prefixed so it surfaces.
+    cleaned = label.strip()
+    if _DEADLINE_KEYWORDS_RE.search(cleaned) or cleaned.lower().startswith(
+        DISPLAY_PREFIX.lower().rstrip()
+    ):
+        summary = cleaned
+    else:
+        summary = f"{DISPLAY_PREFIX}{cleaned}"
 
     end_at = _add_hour(deadline_at)
     conn.execute(
