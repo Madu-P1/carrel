@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { CalendarFeed } from "../api/calendarApi";
 import type { PlanEvent, PlanSuggestion } from "../api/planApi";
+import { planDeadlinesSignal } from "../hooks/usePlanDeadlines";
 import {
   formatDayHeader,
   hourOfDay,
@@ -105,6 +106,21 @@ export function WeekTimeGrid({
           (event) => !event.all_day && isSameLocalDay(event.start_at, day)
         );
         const daySuggestions = suggestions.filter((s) => isSameLocalDay(s.start_at, day));
+        // Reading the signal here subscribes the column to deadline
+        // changes — when the user adds a manual deadline that falls on
+        // this day, the marker appears without a Plan-view-wide refetch.
+        const dayDeadlines = planDeadlinesSignal.value.filter(
+          (d) => d.source === "calendar_event" && isSameLocalDay(d.deadline_at, day)
+        );
+        const topSeverity = dayDeadlines.reduce<"high" | "normal" | "low" | null>(
+          (acc, d) => {
+            const order = { high: 3, normal: 2, low: 1, "": 0 } as const;
+            const next = d.severity;
+            if (acc === null) return next;
+            return order[next] > order[acc] ? next : acc;
+          },
+          null
+        );
 
         return (
           <div
@@ -116,7 +132,29 @@ export function WeekTimeGrid({
               .join(" ")}
             key={day}
           >
-            <header className={styles.dayHeader}>{formatDayHeader(day)}</header>
+            <header
+              className={[
+                styles.dayHeader,
+                topSeverity ? styles.dayHeaderHasDeadline : "",
+                topSeverity === "high" ? styles.dayHeaderHigh : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              title={
+                dayDeadlines.length > 0
+                  ? dayDeadlines.map((d) => d.label).join(", ")
+                  : undefined
+              }
+            >
+              {formatDayHeader(day)}
+              {topSeverity ? (
+                <span
+                  className={styles.deadlineMarker}
+                  data-severity={topSeverity}
+                  aria-label={`Deadline: ${dayDeadlines.map((d) => d.label).join(", ")}`}
+                />
+              ) : null}
+            </header>
             <div className={styles.dayBody} aria-label={`Events for ${formatDayHeader(day)}`}>
               {Array.from({ length: HOUR_SPAN }, (_, i) => (
                 <div className={styles.hourRow} key={i} />

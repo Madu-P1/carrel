@@ -1,9 +1,8 @@
-import { useEffect, useState } from "preact/hooks";
-import { signal } from "@preact/signals";
+import { useState } from "preact/hooks";
 
 import { Stack, Text } from "@/design-system";
 
-import { planApi, type PlanDeadline } from "../api/planApi";
+import { usePlanDeadlines } from "../hooks/usePlanDeadlines";
 
 import { AddDeadlineDialog } from "./AddDeadlineDialog";
 import styles from "./DeadlineRail.module.css";
@@ -25,24 +24,6 @@ import styles from "./DeadlineRail.module.css";
 interface DeadlineRailProps {
   // No props for now — the rail decides its own data shape. If the
   // user wants per-week filtering we can pass `weekStart` later.
-}
-
-const deadlinesSignal = signal<PlanDeadline[]>([]);
-let lastFetchTs = 0;
-const FETCH_TTL_MS = 60_000;
-
-async function fetchDeadlines(force = false): Promise<void> {
-  const now = Date.now();
-  if (!force && now - lastFetchTs < FETCH_TTL_MS) return;
-  lastFetchTs = now;
-  try {
-    const response = await planApi.deadlines();
-    deadlinesSignal.value = response.deadlines;
-  } catch {
-    // Silent fail: rail collapses, the rest of the Plan view stays
-    // working. The next /api/plan poll will retry on its own cadence.
-    deadlinesSignal.value = [];
-  }
 }
 
 function formatRelativeDays(daysUntil: number): string {
@@ -69,14 +50,7 @@ function formatAbsolute(deadlineAt: string): string {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export function DeadlineRail(_: DeadlineRailProps) {
   const [addOpen, setAddOpen] = useState(false);
-
-  useEffect(() => {
-    void fetchDeadlines();
-    const id = setInterval(() => void fetchDeadlines(), FETCH_TTL_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  const deadlines = deadlinesSignal.value;
+  const { deadlines, refresh } = usePlanDeadlines();
 
   return (
     <div className={styles.rail} aria-label="Upcoming deadlines">
@@ -131,7 +105,7 @@ export function DeadlineRail(_: DeadlineRailProps) {
       <AddDeadlineDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onAdded={() => void fetchDeadlines(true)}
+        onAdded={() => void refresh()}
       />
     </div>
   );

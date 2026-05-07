@@ -126,18 +126,28 @@ def refresh_active_suggestions(
     Called from GET /api/plan after expiring past-due pending ones.
     Strategy: keep already-pending suggestions (so an open dialog or a
     suggestion the user is mid-decision on doesn't disappear under
-    them), and only insert new ones whose (kind, start_at) tuple
-    isn't already represented in the pending set. Past-start_at
-    pending suggestions are expired by the caller before this runs.
+    them), and only insert new ones whose (kind, start_at,
+    source_event_id) tuple isn't already represented in the pending
+    set. Past-start_at pending suggestions are expired by the caller
+    before this runs.
+
+    Why source_event_id is in the key: when multiple imminent
+    deadlines compete for the same first free block, the rule picks
+    the same start_at for each. If we deduped only on (kind,
+    start_at), the second deadline would silently disappear. With
+    source_event_id in the key, both deadlines persist as distinct
+    suggestions and the user can see and act on each. The
+    free_block_overdue_srs rule has source_event_id=None and so
+    still dedups correctly against itself.
     """
     repository.expire_past_pending_suggestions(conn, user_id=user_id)
 
     existing = repository.list_active_suggestions(conn, user_id=user_id)
-    existing_keys = {(s.kind, s.start_at) for s in existing}
+    existing_keys = {(s.kind, s.start_at, s.source_event_id) for s in existing}
 
     candidates = synthesize_suggestions(conn, user_id=user_id)
     for candidate in candidates:
-        key = (candidate.kind, candidate.start_at)
+        key = (candidate.kind, candidate.start_at, candidate.source_event_id)
         if key in existing_keys:
             continue
         repository.insert_suggestion(

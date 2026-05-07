@@ -63,6 +63,28 @@
   color: var(--color-accent);
 }
 
+/* Day-header deadline marker — small dot rendered after the date
+   label. Appears when one or more deadlines fall on this day. The
+   high-severity variant gets the accent color so a midterm tomorrow
+   visually pops; normal-severity uses a quieter neutral. */
+.dayHeaderHasDeadline {
+  gap: 8px;
+}
+
+.deadlineMarker {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+
+.dayHeaderHigh .deadlineMarker {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
 .dayHeader {
   font-family: var(--font-mono);
   font-size: 10px;

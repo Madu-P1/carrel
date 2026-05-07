@@ -37,7 +37,7 @@ test("ImportDropzone uploads dropped files and calls onUploaded", async () => {
     new File(["beta"], "beta.txt", { type: "text/plain" })
   ];
 
-  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+  fireEvent.drop(screen.getByText(/Drop in anything you study from/i).closest("div")!, {
     dataTransfer: { files }
   });
 
@@ -55,7 +55,7 @@ test("ImportDropzone sends the selected subject folder with uploads", async () =
     currentTarget: { value: "Finance" },
     target: { value: "Finance" }
   });
-  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+  fireEvent.drop(screen.getByText(/Drop in anything you study from/i).closest("div")!, {
     dataTransfer: { files: [new File(["review,score\nMilan,5"], "milan_reviews.csv", { type: "text/csv" })] }
   });
 
@@ -120,7 +120,7 @@ test("ImportDropzone shows backend upload detail instead of a generic bad-reques
 
   render(<ImportDropzone onUploaded={onUploaded} />);
 
-  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+  fireEvent.drop(screen.getByText(/Drop in anything you study from/i).closest("div")!, {
     dataTransfer: { files: [new File(["x"], "milan_reviews.csv", { type: "text/csv" })] }
   });
 
@@ -145,7 +145,7 @@ test("ImportDropzone surfaces a Retry button after a failed upload; clicking it 
 
   render(<ImportDropzone onUploaded={onUploaded} />);
 
-  const dropzone = screen.getByText(/Drop files here to ingest them/i).closest("div")!;
+  const dropzone = screen.getByText(/Drop in anything you study from/i).closest("div")!;
   fireEvent.drop(dropzone, {
     dataTransfer: { files: [new File(["boom"], "retry.txt", { type: "text/plain" })] }
   });
@@ -183,7 +183,7 @@ test("ImportDropzone keeps duplicates behind a disclosure and doesn't offer Retr
 
   render(<ImportDropzone onUploaded={onUploaded} />);
 
-  fireEvent.drop(screen.getByText(/Drop files here to ingest them/i).closest("div")!, {
+  fireEvent.drop(screen.getByText(/Drop in anything you study from/i).closest("div")!, {
     dataTransfer: { files: [new File(["x"], "dup.txt", { type: "text/plain" })] }
   });
 

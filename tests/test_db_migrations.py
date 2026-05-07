@@ -101,6 +101,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (12, "0012_calendar_feed_secret_refs.sql"),
                 (13, "0013_library_subjects.sql"),
                 (14, "0014_calendar_local_feed_kind.sql"),
+                (15, "0015_calendar_manual_feed_kind.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -127,11 +128,12 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
 
-        # +7 for 0008_anchors, 0009_calendar_and_planning,
+        # +8 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
         # 0012_calendar_feed_secret_refs, 0013_library_subjects,
-        # 0014_calendar_local_feed_kind — all unconditional.
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 7
+        # 0014_calendar_local_feed_kind, 0015_calendar_manual_feed_kind —
+        # all unconditional.
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 8
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -167,6 +169,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0012_calendar_feed_secret_refs.sql",
                 "0013_library_subjects.sql",
                 "0014_calendar_local_feed_kind.sql",
+                "0015_calendar_manual_feed_kind.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))
