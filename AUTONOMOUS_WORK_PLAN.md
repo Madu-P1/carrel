@@ -73,8 +73,8 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 
 - [x] Q5.1 Verify chain run end-to-end. 371 pytest + 1 skipped + 18 subtests passing; 346 Vitest passing; tsc clean; swift build clean.
 - [x] Q5.2 Fixed test-fixture drift caused by earlier session work: tests/test_db_migrations.py (added 0015 to the three assertion sites), frontend/tests/library/import-dropzone.test.tsx (5 selectors updated to match new copy).
-- [ ] Q5.3 Accessibility audit on Library + Plan + Reader. Add aria/keyboard fixes as needed.
-- [ ] Q5.4 Stylelint design-token violations remaining (color-no-hex + function-disallowed-list). Reduce them.
+- [x] Q5.3 A11y audit complete. State of the codebase was already strong (Toast/Skeleton aria-live, Dialog focus trap, icon-only buttons labelled). Real find: DeadlineRail cards conveyed severity through color alone — fixed with role="list"/listitem + aria-label that includes severity word ("urgent", "upcoming", "later").
+- [x] Q5.4 Stylelint 169 → 0. Added shadow tokens (--shadow-hairline/card/overlay) and a single --color-tour-accent for the onboarding moment; bulk-rewrote 5 component CSS files to use canonical --color-* tokens + color-mix() for derived alphas. Fully clean.
 
 ### Phase 4 — Android readiness
 

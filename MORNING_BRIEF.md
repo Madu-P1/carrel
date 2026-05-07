@@ -1,5 +1,25 @@
 # Morning brief — 2026-05-07 autonomous run
 
+## Addendum (after the 16:00 push)
+
+Six more commits landed in a single autonomous block continuing from the original brief:
+
+| Commit | What |
+|---|---|
+| `3376282b` | DeadlineRail a11y (severity announced via aria-label) + shadow design tokens |
+| `53b562e1` | **Stylelint 169 → 0** across all component CSS. Added `--shadow-card`/`--shadow-overlay` and `--color-tour-accent` tokens; rewrote 5 files to use canonical tokens + color-mix |
+| `9ec8ac38` | Q3.5 polish: hover-revealed × on manually-added deadline cards (only `feed_kind: "manual"`); display-prefix strip on the rail |
+| `ae28e74d` | Fix: deadline ↔ suggestion feedback loop. Coach-spawned "Study — Deadline:" events no longer surface as their own deadlines (STUDY_ALLOCATION_KEYWORDS exclusion + regression test) |
+| `_(unhashed)_` | Smart-prefix: only prepend "Deadline:" when the user's wording lacks a keyword. EventBlock strips the prefix for grid display so labels are clean everywhere |
+
+Final gate state: **372 backend tests** + 18 subtests + 1 skipped; **346 frontend tests** across 72 files; **stylelint zero**; **tsc clean**; Swift build clean.
+
+The deadline thesis is now polished end-to-end: add → see in rail → severity in label and color → marker on the day → coach generates study time → accept → deadline doesn't double-count → remove with hover X. Demoable as a coherent product feature, not a stack of disconnected parts.
+
+---
+
+
+
 > Single-page summary of what shipped overnight, what's queued, and what to do first when you wake up.
 
 ## TL;DR
