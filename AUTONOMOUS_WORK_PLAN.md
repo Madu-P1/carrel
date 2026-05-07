@@ -66,8 +66,15 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 - [x] Q3.3 Deadlines now first-class in the Plan view: GET /api/plan/deadlines + DeadlineRail above the WeekTimeGrid. Calendar-event-detected deadlines visible without scrolling; severity color-coded.
 - [x] Q3.4 _rule_deadline_imminent activated. Score envelope: high-sev 2.0+, normal-sev 1.5, low-sev skipped. Outranks v1 SRS rule (1.0). Pipeline: synthesize_suggestions runs both rules, sorts by raw score, persists to study_suggestions; the route normalizes to 0..1 at the API boundary so the existing pydantic contract holds. 7 new unit tests in tests/test_planning_coach.py.
 - [x] Q3.5 Manual deadline entry shipped. + Add button in the rail opens AddDeadlineDialog (label + datetime-local). Backend lazy-creates a kind='manual' calendar feed, writes the deadline to calendar_events with a "Deadline: " prefix so the existing keyword detector hits. Migration 0015 widens the kind CHECK. Verified live with "Macro paper" deadline rendering at high severity.
-- [ ] Q3.6 Visual deadline markers ON the WeekTimeGrid (today the grid only renders raw events; deadlines could pulse the column header on the deadline date).
-- [ ] Q3.7 Refine coach dedup: refresh_active_suggestions keys by (kind, start_at), so multiple deadlines competing for the same first free block collapse into one suggestion. Either widen the key to include source_event_id, or spread the rule's choices across distinct free blocks.
+- [x] Q3.6 Visual deadline markers shipped. usePlanDeadlines hook extracted; WeekTimeGrid reads the signal directly; high-severity day gets an accent dot with soft glow on its day header (visible "SAT 9 MAY" with the dot in the live verification).
+- [x] Q3.7 Coach dedup widened to (kind, start_at, source_event_id). Multiple deadlines no longer collapse when they share a first free block.
+
+### Phase 5 — Quality gates (running tally)
+
+- [x] Q5.1 Verify chain run end-to-end. 371 pytest + 1 skipped + 18 subtests passing; 346 Vitest passing; tsc clean; swift build clean.
+- [x] Q5.2 Fixed test-fixture drift caused by earlier session work: tests/test_db_migrations.py (added 0015 to the three assertion sites), frontend/tests/library/import-dropzone.test.tsx (5 selectors updated to match new copy).
+- [ ] Q5.3 Accessibility audit on Library + Plan + Reader. Add aria/keyboard fixes as needed.
+- [ ] Q5.4 Stylelint design-token violations remaining (color-no-hex + function-disallowed-list). Reduce them.
 
 ### Phase 4 — Android readiness
 
