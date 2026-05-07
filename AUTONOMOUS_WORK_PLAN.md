@@ -61,9 +61,12 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 
 ### Phase 3 — Plan / Deadlines / SRS heart-of-product polish
 
-- [ ] Q3.1 Audit PlanView.tsx + Sessions + Review Queue. List every TODO, every gap, every coarse edge.
-- [ ] Q3.2 Implement the top 3 polish items.
-- [ ] Q3.3 Add a "Deadlines" first-class concept if it doesn't exist (calendar event linked to a source/concept with target mastery date).
+- [x] Q3.1 Audited; documented in commit message of phase4 deadlines work. The detection layer existed all along (services/planning/deadlines.py); only the UI surface was missing.
+- [x] Q3.2 Replaced window.confirm with the Dialog primitive in PlanView (top TODO). Other coarse edges queued in Q3.4-Q3.6.
+- [x] Q3.3 Deadlines now first-class in the Plan view: GET /api/plan/deadlines + DeadlineRail above the WeekTimeGrid. Calendar-event-detected deadlines visible without scrolling; severity color-coded.
+- [ ] Q3.4 Activate coach._rule_deadline_imminent so suggestions get scored higher near deadlines (commented out in services/planning/coach.py:101).
+- [ ] Q3.5 Manual deadline entry — UI for "I have an exam Friday" without needing to put it on the calendar first. New table or reuse calendar_events with source='manual'.
+- [ ] Q3.6 Visual deadline markers ON the WeekTimeGrid (today the grid only renders raw events; deadlines pulse the column header).
 
 ### Phase 4 — Android readiness
 
