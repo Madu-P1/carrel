@@ -72,6 +72,14 @@ const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
 let cachedLocalApiToken: string | null = null;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
+  return apiInner<T>(path, init, false);
+}
+
+async function apiInner<T>(
+  path: string,
+  init: RequestInitEx,
+  alreadyRetriedAfter403: boolean
+): Promise<T> {
   const { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const isObjectBody =
     body !== undefined && body !== null && !(body instanceof FormData) && typeof body === "object";
@@ -109,6 +117,16 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
   }
 
   if (!response.ok) {
+    // Stale-token recovery: backend rotated the local-API token (e.g.,
+    // because it restarted), but the frontend still has the old one
+    // cached in memory. Clear the cache, re-fetch a fresh token via
+    // resolveLocalApiToken(), and retry the request once. The
+    // alreadyRetriedAfter403 flag guards against an infinite loop if
+    // the token endpoint itself is also broken.
+    if (response.status === 403 && !alreadyRetriedAfter403 && cachedLocalApiToken) {
+      cachedLocalApiToken = null;
+      return apiInner<T>(path, { ...init, signal: undefined }, true);
+    }
     let payload: unknown;
     try {
       payload = await response.json();

@@ -207,8 +207,10 @@ export function ImportDropzone({
           Import sources
         </Text>
         <Text tone="secondary">
-          Drop files here to ingest them, or choose files manually from your machine.
-          Duplicate files are skipped automatically.
+          Drop in anything you study from. PDFs, slides (PPTX), Word docs (DOCX),
+          EPUB textbooks, Excel sheets, lecture audio (MP3, M4A), photos of notes
+          (PNG, JPG, HEIC), web pages (HTML), code files, plain text. Duplicates
+          are skipped automatically.
         </Text>
       </Stack>
 
@@ -248,7 +250,33 @@ export function ImportDropzone({
 
       <input
         id="library-import-input"
-        accept=".pdf,.txt,.md,.markdown,.docx,.pptx,.csv,.tsv,.xlsx,.xls"
+        // Mirrors services/uploads.py:ALLOWED_SUFFIXES (which derives from
+        // services/extraction/utils.py:SUPPORTED_SUFFIXES). Any file the
+        // backend can ingest is offered in the native picker; the server
+        // is the source of truth and rejects anything it cannot parse.
+        accept={[
+          // Documents
+          ".pdf", ".docx", ".doc", ".rtf", ".epub", ".html", ".htm", ".xml",
+          // Slides
+          ".pptx", ".ppt",
+          // Spreadsheets + tabular
+          ".xlsx", ".xls", ".csv", ".tsv",
+          // Structured
+          ".json", ".jsonl",
+          // Plain text + markup + subtitles
+          ".txt", ".md", ".markdown", ".rst", ".log", ".tex", ".srt", ".vtt",
+          // Code (CS coursework)
+          ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".c", ".cpp", ".h",
+          ".hpp", ".rs", ".go", ".rb", ".swift",
+          // Config
+          ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+          // Images (textbook photos, whiteboards, screenshots)
+          ".png", ".jpg", ".jpeg", ".heic", ".tiff", ".tif", ".bmp", ".gif", ".webp",
+          // Audio (lecture recordings)
+          ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
+          // Video (recorded lectures, capped by 100MB upload limit)
+          ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm"
+        ].join(",")}
         multiple
         onChange={async (event) => {
           const input = event.currentTarget as HTMLInputElement | null;
