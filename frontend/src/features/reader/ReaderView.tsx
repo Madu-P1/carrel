@@ -11,6 +11,8 @@ import { Stack, Text } from "@/design-system";
 import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 
+import { DocxReader } from "./components/DocxReader";
+import { ExcelReader } from "./components/ExcelReader";
 import { NonPdfReader } from "./components/NonPdfReader";
 import { OutlineRail } from "./components/OutlineRail";
 import { PdfSearchBar } from "./components/PdfSearchBar";
@@ -46,7 +48,14 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const detail = data.value;
   const document = detail?.document;
   const chunks = detail?.chunks ?? [];
-  const isPdf = document?.file_type?.toLowerCase() === "pdf";
+  const fileTypeLower = document?.file_type?.toLowerCase() ?? "";
+  const isPdf = fileTypeLower === "pdf";
+  const isDocx = fileTypeLower === "docx" || fileTypeLower === "doc";
+  const isExcel =
+    fileTypeLower === "xlsx" ||
+    fileTypeLower === "xls" ||
+    fileTypeLower === "csv" ||
+    fileTypeLower === "tsv";
   const fileUrl = isPdf ? documents.fileUrl(id) : null;
   const pdfState = usePdfDocument(fileUrl, chunks);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -226,23 +235,33 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   const filename = document.filename ?? "Untitled";
   const fileType = document.file_type ?? "FILE";
 
-  // ---- Non-PDF branch: plain-text view with a page-heading block -----
+  // ---- Non-PDF branch: format-aware view (Word-like for .docx,
+  //      Excel-like for .xlsx, plain-text chunks for everything else).
   //
   // Non-PDF sources keep the old hero header because there's no toolbar
   // to absorb the title. SM-1 card flight lands on this header.
   if (!isPdf) {
+    const subline = isDocx
+      ? "Document view"
+      : isExcel
+        ? "Spreadsheet view"
+        : `${chunks.length} chunk${chunks.length === 1 ? "" : "s"} · plain-text rendering`;
     return (
       <div className={styles.reader}>
         <header className={styles.nonPdfHeader} ref={headerFlightRef}>
           <Stack gap={2}>
             <span className={styles.readerEyebrow}>Reader</span>
             <h1 className={styles.readerHeading}>{filename}</h1>
-            <Text tone="secondary">
-              {chunks.length} chunk{chunks.length === 1 ? "" : "s"} · plain-text rendering
-            </Text>
+            <Text tone="secondary">{subline}</Text>
           </Stack>
         </header>
-        <NonPdfReader chunks={chunks} docId={id} />
+        {isDocx ? (
+          <DocxReader docId={id} />
+        ) : isExcel ? (
+          <ExcelReader docId={id} />
+        ) : (
+          <NonPdfReader chunks={chunks} docId={id} />
+        )}
       </div>
     );
   }

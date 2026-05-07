@@ -1,0 +1,171 @@
+/* Word-like read-only document chrome. The "page" is a centered card
+   that mimics the feel of a printed page on a desk: 8.5×11 ratio,
+   generous margins, slight elevation, white surface in light mode and
+   tonal off-black in dark mode so the reading still feels like paper. */
+
+.page {
+  max-width: 8.5in;
+  margin: var(--space-6) auto;
+  padding: var(--space-12) var(--space-12);
+  min-height: calc(100vh - 200px);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgb(0 0 0 / 4%),
+    0 8px 24px rgb(0 0 0 / 18%);
+  font-family: "Calibri", "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--color-text-primary);
+}
+
+html.theme-light .page {
+  background: #ffffff;
+  border-color: rgb(0 0 0 / 8%);
+  box-shadow:
+    0 1px 0 rgb(0 0 0 / 4%),
+    0 8px 24px rgb(0 0 0 / 8%);
+}
+
+.body {
+  font-size: 13.5pt;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+}
+
+/* Word-style typographic scale. Headings stay paragraph-like (no
+   serif heroics) so the document reads as a Word file, not a magazine. */
+
+.body h1 {
+  font-size: 24pt;
+  line-height: 1.2;
+  font-weight: 600;
+  margin: 0 0 var(--space-4);
+}
+
+.body h2 {
+  font-size: 18pt;
+  line-height: 1.25;
+  font-weight: 600;
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.body h3 {
+  font-size: 14pt;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.body h4,
+.body h5,
+.body h6 {
+  font-size: 12pt;
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.body p {
+  margin: 0 0 var(--space-3);
+}
+
+.body ul,
+.body ol {
+  margin: 0 0 var(--space-3) var(--space-4);
+  padding-left: var(--space-4);
+}
+
+.body li {
+  margin-bottom: var(--space-1);
+}
+
+.body strong { font-weight: 600; }
+.body em { font-style: italic; }
+
+.body a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Tables: Word's default look is borderless with subtle header rules.
+   We pick a slightly more legible default (full thin grid) since the
+   reader uses tables for data, not layout. */
+.body table {
+  border-collapse: collapse;
+  margin: var(--space-3) 0;
+  font-size: 12pt;
+  width: auto;
+  max-width: 100%;
+}
+
+.body th,
+.body td {
+  border: 1px solid var(--color-border-default);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+.body th {
+  background: var(--color-bg-hover);
+  font-weight: 600;
+}
+
+.body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.body blockquote {
+  border-left: 3px solid var(--color-border-strong);
+  padding-left: var(--space-4);
+  margin: var(--space-4) 0;
+  color: var(--color-text-secondary);
+}
+
+.body pre,
+.body code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5pt;
+}
+
+.body pre {
+  background: var(--color-bg-base);
+  padding: var(--space-3);
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+/* Loading skeleton: paragraph-sized shimmering bars. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeletonLine {
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-hover),
+    var(--color-bg-active),
+    var(--color-bg-hover)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 3px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonLine {
+    animation: none;
+    opacity: 0.6;
+  }
+}

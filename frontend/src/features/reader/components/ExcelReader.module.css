@@ -1,0 +1,174 @@
+/* Excel-like spreadsheet chrome. Frozen row/column headers, gridline
+   table, sheet tabs along the bottom, monospace numerics. The intent is
+   "this looks like Excel" without pretending to be Excel — read-only,
+   no editing affordances. */
+
+.frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: calc(100vh - 200px);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gridWrap {
+  flex: 1;
+  overflow: auto;
+  background: var(--color-bg-base);
+}
+
+.grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: "Calibri", "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+/* The column letter headers (A, B, C…) and the corner cell stay pinned
+   at the top while scrolling vertically. */
+.grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-bg-elevated);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.cornerCell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 40px;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.columnHeader {
+  min-width: 96px;
+  padding: 6px 10px;
+  text-align: center;
+  border-right: 1px solid var(--color-border-subtle);
+  letter-spacing: 0.04em;
+}
+
+/* Row numbers stay pinned at the left while scrolling horizontally. */
+.rowHeader {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 40px;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-border-default);
+  text-align: center;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+.cell {
+  padding: 6px 10px;
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+  vertical-align: top;
+}
+
+.cell:hover {
+  background: var(--color-bg-hover);
+}
+
+.numericCell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Sheet tabs: Excel-style. Active tab gets the "raised" treatment. */
+.sheetTabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 8px;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border-default);
+  overflow-x: auto;
+}
+
+.sheetTab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.sheetTab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.sheetTabActive {
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+  font-weight: 500;
+}
+
+.sheetTabActive:hover {
+  background: var(--color-bg-base);
+}
+
+.errorBox {
+  padding: var(--space-6);
+  text-align: center;
+}
+
+/* Loading skeleton: row-shaped shimmering bars. */
+.skeleton {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeletonRow {
+  height: 28px;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-hover),
+    var(--color-bg-active),
+    var(--color-bg-hover)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 3px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonRow {
+    animation: none;
+    opacity: 0.6;
+  }
+}
