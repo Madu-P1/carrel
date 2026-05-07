@@ -189,9 +189,17 @@ body.drop-ready .face {
 }
 
 .face.active-face {
+  /* Edge-glow refinement (2026-05-08): the previous treatment stacked
+     a 1px inset teal border + a 32px outer halo on top of the bright
+     center cell's own 12px glow. The three layers added up to a
+     visible green halo all around the face plus brighter corner
+     pixels where the inner border met the radius. Pulled the inset
+     border down to teal-15 and the outer halo to a softer 18px so
+     the active face still reads as "alive" without the cube looking
+     like it's ringed in neon. */
   box-shadow:
-    inset 0 0 0 1px var(--color-teal-30),
-    0 0 32px var(--color-teal-15);
+    inset 0 0 0 1px var(--color-teal-15),
+    0 0 18px var(--color-teal-15);
 }
 
 /* Half-edge = 50px (face is 100x100) */
@@ -221,7 +229,11 @@ body.drop-ready .face {
 .cell.teal-bright {
   background: var(--color-teal);
   border-color: transparent;
-  box-shadow: 0 0 12px var(--color-teal-50);
+  /* Smaller blur (8px, was 12px) and a lower-alpha teal so the cell
+     reads as "lit" without bleeding past the face edge into the
+     surrounding panel space. Pairs with the active-face glow refit
+     so the two layers no longer compound into a hard ring. */
+  box-shadow: 0 0 8px var(--color-teal-30);
 }
 .cell.teal-dim { background: rgba(94, 234, 212, 0.04); border-color: rgba(94, 234, 212, 0.08); }
 
