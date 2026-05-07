@@ -54,7 +54,7 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 
 - [x] Q2.1 Audit complete. **Massive find:** 15 parsers exist (PDF, DOCX, EPUB, HTML, image, audio, video, RTF, JSON, etc.) but upload allowlist gated to 10. Source-of-truth fix: `services/uploads.py:ALLOWED_SUFFIXES = SUPPORTED_SUFFIXES - {".zip"}`. Now 65 extensions reachable from upload. Tests pass (7 upload-security + 29 dedupe).
 - [x] Q2.2-Q2.5 Reframed: zero new parser code needed. The table-stakes were already coded; only the gate was wrong.
-- [ ] Q2.6 Frontend ImportDropzone copy update: list new categories ("PDFs, slides, docs, EPUB textbooks, audio lectures, photos of notes, web articles"). Defer to next loop iteration.
+- [x] Q2.6 ImportDropzone copy + accept= attribute updated to match the 65-suffix backend allowlist. Native file picker no longer filters out the new types.
 - [ ] Q2.7 NEW: manually test EPUB + audio + image upload end-to-end on the running app. Defer to next iteration.
 - [ ] Q2.8 NEW: zip-extraction safety pass so `.zip` can be allowed too (per-entry size cap, format-validation per extracted file). Lower priority.
 

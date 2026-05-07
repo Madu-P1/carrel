@@ -1,19 +1,15 @@
-# Discovered blockers (autonomous run, 2026-05-07)
+# Blockers (autonomous run, 2026-05-07)
 
-## B1 — Stale local-token after app restart
+## ~~B1 — Stale local-token after app restart~~ RESOLVED 2026-05-07
 
-**Symptom:** After `bash script/build_and_run.sh run`, the Library subject grid renders skeletons indefinitely. Backend log shows `GET /api/documents → 403 Forbidden` repeatedly.
+**Symptom:** After `bash script/build_and_run.sh run`, Library subject grid renders skeletons indefinitely; backend log shows `GET /api/documents → 403`.
 
-**Root cause hypothesis:** the in-memory local-API token rotates on every backend restart (`services/local_api_security.py`). The frontend caches the token from a previous session in `localStorage` (or wherever) and keeps sending the stale value.
+**Root cause:** `frontend/src/services/api/client.ts` cached the local-API token in a module-level `cachedLocalApiToken` variable. The token regenerates on every backend startup but the frontend never re-fetched. Stale cache → 403 forever, no retry path.
 
-**Where to look:** the token-fetch path. There's a `GET /api/local-token` call early in the boot, but if it succeeds and yields a NEW token, the frontend's cached value should update; if it doesn't, that's the bug. Check `services/api/endpoints.ts` or the auth wrapper for where the token is read/written.
+**Fix:** wrapped `api()` in a recursion-guarded `apiInner(path, init, alreadyRetriedAfter403)`. On 403 with a cached token present, clear the cache and recurse once. Lands in commit on the post-Wave-5 series.
 
-**Workaround:** unknown. Current data shows even fresh requests hit 403, suggesting the cached token is being preferred over a freshly fetched one.
+**Verification:** backend log after relaunch shows `GET /api/documents → 200 OK` consistently.
 
-**Severity:** medium. Doesn't prevent ingestion (uploads work via direct curl + correct header). Does prevent the user from seeing what they uploaded in the Library grid until manually fixed.
+## ~~B2 — Library SubjectCardGrid skeleton stuck~~ RESOLVED 2026-05-07
 
-**Not investigating further this turn:** out of scope for the Word/Excel viewer thread. Flag for the morning brief.
-
-## B2 — SubjectCardGrid rendering bug (related to B1)
-
-The grid stays in skeleton state. Almost certainly downstream of B1; once /api/documents stops 403'ing, the grid likely populates. Verify after fixing B1.
+Downstream of B1; resolved by the same fix.
