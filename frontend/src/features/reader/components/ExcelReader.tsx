@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { Text } from "@/design-system";
+import { withLocalApiToken } from "@/services/api/client";
 import { documents } from "@/services/api/endpoints";
 
 import styles from "./ExcelReader.module.css";
@@ -42,7 +43,8 @@ export function ExcelReader({ docId }: ExcelReaderProps) {
 
     (async () => {
       try {
-        const response = await fetch(documents.fileUrl(docId));
+        const url = await withLocalApiToken(documents.fileUrl(docId));
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
