@@ -181,7 +181,27 @@ export function FirstRunTour() {
   const currentStep = (step + 1) as TourStepIndex;
 
   useEffect(() => {
-    if (shouldOpenAutomatically()) {
+    // Auto-open is OFF as of 2026-05-07. The abstract-mockup overlay
+    // tour was retired; first-run guidance now lives inline on the
+    // actual frontend UI per docs/onboarding-tutorial-script.md.
+    // The component stays mounted so the Tour button in the top bar
+    // and the cmd+k "Replay tour" command still open it on demand
+    // for users who want the high-level loop overview. Once the
+    // inline tutorial ships, this whole component is a candidate
+    // for deletion; for now we keep the manual entry point so the
+    // existing test coverage and the keyboard shortcut don't regress.
+    //
+    // To re-enable auto-open during development, set
+    // window.localStorage.setItem("carrel.first-run-tour.auto-open", "1")
+    // (which is gated below) — useful for screenshotting the existing
+    // tour content while building the replacement.
+    let autoOpenForce = false;
+    try {
+      autoOpenForce = window.localStorage.getItem("carrel.first-run-tour.auto-open") === "1";
+    } catch {
+      autoOpenForce = false;
+    }
+    if (autoOpenForce && shouldOpenAutomatically()) {
       setOpen(true);
     }
   }, []);

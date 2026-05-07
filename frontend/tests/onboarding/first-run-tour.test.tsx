@@ -62,9 +62,29 @@ test("first-run tour defines product terms inline", async () => {
   expect(screen.getByText(/Live status of imports and extraction/i)).toBeDefined();
 });
 
-test("first-run tour reopens automatically when the stored tour version is stale", async () => {
-  window.localStorage.setItem(STORAGE_KEY, "1");
-  window.localStorage.setItem("carrel.first-run-tour.version", "1");
+test("first-run tour does NOT auto-open by default", async () => {
+  // Auto-open was retired 2026-05-07 in favor of inline on-app guidance
+  // (see docs/onboarding-tutorial-script.md). The component stays mounted
+  // for the manual Tour button + cmd+k shortcut, but a fresh user no
+  // longer gets a modal overlay covering the actual UI on first launch.
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem("carrel.first-run-tour.version");
+  window.localStorage.removeItem("carrel.first-run-tour.auto-open");
+
+  render(<FirstRunTour />);
+
+  // No dialog rendered, even with no completion marker set.
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("first-run tour CAN be force-opened via the dev override flag", async () => {
+  // Useful for screenshotting the existing overlay while we build the
+  // inline replacement. The flag is intentionally a localStorage opt-in
+  // so a tester or designer can flip it from the devtools console
+  // without rebuilding.
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem("carrel.first-run-tour.version");
+  window.localStorage.setItem("carrel.first-run-tour.auto-open", "1");
 
   render(<FirstRunTour />);
 
