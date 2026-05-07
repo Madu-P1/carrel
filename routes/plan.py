@@ -31,11 +31,14 @@ from api_models import (
     StudySuggestionRow,
 )
 from routes.calendar import _row_to_response
+from pydantic import BaseModel, Field
+
 from services.calendar import repository
 from services.calendar.sync_queue import get_calendar_sync_queue
 from services.planning import coach
 from services.planning import deadlines as deadline_engine
 from services.planning import insertion as insertion_engine
+from services.planning import manual_deadlines
 
 
 router = APIRouter()
@@ -298,6 +301,72 @@ def get_upcoming_deadlines() -> Dict[str, list]:
             for d in items
         ],
     }
+
+
+class ManualDeadlineCreate(BaseModel):
+    """Body for POST /api/plan/deadlines/manual.
+
+    Why constrain `label` to 200 chars: matches the calendar_events
+    summary truncation at deadline_engine line 150 (we slice [:120]
+    when surfacing). 200 leaves a small buffer for the prefix.
+    """
+    label: str = Field(min_length=1, max_length=200)
+    # ISO 8601 in UTC. The frontend converts the user's local
+    # date+time to UTC before posting.
+    deadline_at: str = Field(min_length=8, max_length=40)
+
+
+@router.post("/api/plan/deadlines/manual")
+def create_manual_deadline(body: ManualDeadlineCreate) -> Dict[str, str]:
+    """Add a deadline without needing it on the user's calendar.
+
+    Lazy-creates a per-user 'manual' calendar feed on first call. The
+    deadline lands in calendar_events under that feed; the existing
+    detector picks it up automatically and the coach starts emitting
+    deadline_imminent suggestions for it on the next /api/plan call.
+    """
+    label = body.label.strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="Label is required.")
+    try:
+        # Light validation that deadline_at parses; let the planner
+        # surface "deadline in the past" as a low-severity skip rather
+        # than rejecting here, so the user can record retroactive
+        # entries (e.g. for backlog catch-up).
+        datetime.fromisoformat(body.deadline_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="deadline_at must be ISO 8601",
+        ) from exc
+
+    with db.get_db() as conn:
+        event_id = manual_deadlines.insert_manual_deadline(
+            conn, label=label, deadline_at=body.deadline_at,
+        )
+    return {"id": event_id, "status": "ok"}
+
+
+@router.delete("/api/plan/deadlines/manual/{event_id}")
+def delete_manual_deadline(event_id: str) -> Dict[str, str]:
+    """Remove a previously added manual deadline."""
+    with db.get_db() as conn:
+        deleted = manual_deadlines.delete_manual_deadline(
+            conn, event_id=event_id,
+        )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Manual deadline not found.")
+    return {"status": "ok"}
+
+
+@router.get("/api/plan/deadlines/manual")
+def list_manual_deadlines_route() -> Dict[str, list]:
+    """List the user's manually-added deadlines (so the UI can render a
+    'remove' affordance against just those, not the calendar-detected
+    ones)."""
+    with db.get_db() as conn:
+        items = manual_deadlines.list_manual_deadlines(conn)
+    return {"deadlines": items}
 
 
 def register_plan_routes(app) -> None:

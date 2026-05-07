@@ -1,10 +1,11 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { signal } from "@preact/signals";
 
 import { Stack, Text } from "@/design-system";
 
 import { planApi, type PlanDeadline } from "../api/planApi";
 
+import { AddDeadlineDialog } from "./AddDeadlineDialog";
 import styles from "./DeadlineRail.module.css";
 
 /**
@@ -30,9 +31,9 @@ const deadlinesSignal = signal<PlanDeadline[]>([]);
 let lastFetchTs = 0;
 const FETCH_TTL_MS = 60_000;
 
-async function fetchDeadlines(): Promise<void> {
+async function fetchDeadlines(force = false): Promise<void> {
   const now = Date.now();
-  if (now - lastFetchTs < FETCH_TTL_MS) return;
+  if (!force && now - lastFetchTs < FETCH_TTL_MS) return;
   lastFetchTs = now;
   try {
     const response = await planApi.deadlines();
@@ -67,6 +68,8 @@ function formatAbsolute(deadlineAt: string): string {
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export function DeadlineRail(_: DeadlineRailProps) {
+  const [addOpen, setAddOpen] = useState(false);
+
   useEffect(() => {
     void fetchDeadlines();
     const id = setInterval(() => void fetchDeadlines(), FETCH_TTL_MS);
@@ -74,44 +77,62 @@ export function DeadlineRail(_: DeadlineRailProps) {
   }, []);
 
   const deadlines = deadlinesSignal.value;
-  if (deadlines.length === 0) return null;
 
   return (
     <div className={styles.rail} aria-label="Upcoming deadlines">
-      <div className={styles.eyebrow}>
-        <Text variant="caption" tone="tertiary">
+      <div className={styles.headerRow}>
+        <Text variant="caption" tone="tertiary" className={styles.eyebrow}>
           Working toward
         </Text>
+        <button
+          type="button"
+          className={styles.addButton}
+          onClick={() => setAddOpen(true)}
+          aria-label="Add a deadline"
+        >
+          + Add
+        </button>
       </div>
-      <Stack direction="horizontal" gap={2} className={styles.cards}>
-        {deadlines.map((d) => (
-          <div
-            key={`${d.source}:${d.event_id ?? d.deadline_at}`}
-            className={[
-              styles.card,
-              d.severity === "high"
-                ? styles.high
-                : d.severity === "low"
-                  ? styles.low
-                  : styles.normal,
-            ].join(" ")}
-            data-source={d.source}
-          >
-            <div className={styles.label}>{d.label}</div>
-            <div className={styles.metaRow}>
-              <span className={styles.relative}>
-                {formatRelativeDays(d.days_until)}
-              </span>
-              <span className={styles.dot} aria-hidden>
-                ·
-              </span>
-              <span className={styles.absolute}>
-                {formatAbsolute(d.deadline_at)}
-              </span>
+      {deadlines.length > 0 ? (
+        <Stack direction="horizontal" gap={2} className={styles.cards}>
+          {deadlines.map((d) => (
+            <div
+              key={`${d.source}:${d.event_id ?? d.deadline_at}`}
+              className={[
+                styles.card,
+                d.severity === "high"
+                  ? styles.high
+                  : d.severity === "low"
+                    ? styles.low
+                    : styles.normal,
+              ].join(" ")}
+              data-source={d.source}
+            >
+              <div className={styles.label}>{d.label}</div>
+              <div className={styles.metaRow}>
+                <span className={styles.relative}>
+                  {formatRelativeDays(d.days_until)}
+                </span>
+                <span className={styles.dot} aria-hidden>
+                  ·
+                </span>
+                <span className={styles.absolute}>
+                  {formatAbsolute(d.deadline_at)}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
-      </Stack>
+          ))}
+        </Stack>
+      ) : (
+        <Text tone="tertiary" variant="caption">
+          No deadlines yet. Add one to start the coach planning toward it.
+        </Text>
+      )}
+      <AddDeadlineDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={() => void fetchDeadlines(true)}
+      />
     </div>
   );
 }

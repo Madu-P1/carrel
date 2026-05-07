@@ -89,6 +89,22 @@ export const planApi = {
    * quiz/deadline) with the overdue-SRS aggregate. Each item carries a
    * severity (high/normal/low) tied to days_until. */
   deadlines: () => api<DeadlinesResponse>("/api/plan/deadlines"),
+
+  /** Add a deadline directly, without needing it on the calendar.
+   * The backend lazy-creates a per-user 'manual' feed and writes the
+   * deadline as a calendar_events row inside it; the detector picks it
+   * up automatically. `deadline_at` is ISO 8601 in UTC. */
+  createManualDeadline: (label: string, deadlineAt: string) =>
+    api<{ id: string; status: string }>("/api/plan/deadlines/manual", {
+      method: "POST",
+      body: { label, deadline_at: deadlineAt },
+    }),
+
+  deleteManualDeadline: (eventId: string) =>
+    api<{ status: string }>(
+      `/api/plan/deadlines/manual/${encodeURIComponent(eventId)}`,
+      { method: "DELETE" }
+    ),
 };
 
 export interface PlanDeadline {
