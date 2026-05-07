@@ -215,6 +215,13 @@
    * --------------------------------------------------------------------- */
   --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent);
 
+  /* Onboarding tour mint/teal accent. Lives only in
+     `frontend/src/features/onboarding/FirstRunTour.module.css`; the
+     SM-5 first-paint moment has a deliberately distinct palette from
+     the rest of the product so it reads as "welcome to Carrel" not
+     "another card." Keep this at one site. Use color-mix for alphas. */
+  --color-tour-accent: #7ee3c5;
+
   /* Elevation shadows. Three tiers, designed for the dark theme — the
      light-theme override below tones them down so cards on white don't
      read as floating slabs. Use these with `box-shadow:`; do not invent

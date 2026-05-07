@@ -125,8 +125,8 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--color-teal, #5eead4);
-  box-shadow: 0 0 6px rgba(94, 234, 212, 0.55);
+  background: var(--color-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 55%, transparent);
   z-index: 4;
   pointer-events: none;
 }
@@ -138,8 +138,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-teal, #5eead4);
-  box-shadow: 0 0 8px rgba(94, 234, 212, 0.6);
+  background: var(--color-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 60%, transparent);
 }
 
 .hourRow:first-child {
