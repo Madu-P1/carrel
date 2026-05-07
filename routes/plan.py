@@ -297,6 +297,7 @@ def get_upcoming_deadlines() -> Dict[str, list]:
                 "severity": d.severity,
                 "source": d.source,
                 "event_id": d.event_id,
+                "feed_kind": d.feed_kind,
             }
             for d in items
         ],

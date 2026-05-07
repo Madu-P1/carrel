@@ -1,11 +1,24 @@
 import { useState } from "preact/hooks";
 
-import { Stack, Text } from "@/design-system";
+import { Stack, Text, toast } from "@/design-system";
 
+import { planApi } from "../api/planApi";
 import { usePlanDeadlines } from "../hooks/usePlanDeadlines";
 
 import { AddDeadlineDialog } from "./AddDeadlineDialog";
 import styles from "./DeadlineRail.module.css";
+
+// The backend prefixes manual deadlines with "Deadline: " so the
+// keyword detector regex always hits regardless of user wording.
+// Strip the prefix here so the display matches what the user typed.
+const DISPLAY_PREFIX = "Deadline: ";
+
+function displayLabel(rawLabel: string): string {
+  if (rawLabel.startsWith(DISPLAY_PREFIX)) {
+    return rawLabel.slice(DISPLAY_PREFIX.length);
+  }
+  return rawLabel;
+}
 
 /**
  * Horizontal rail of upcoming deadlines, rendered above the WeekTimeGrid.
@@ -71,6 +84,7 @@ export function DeadlineRail(_: DeadlineRailProps) {
         <div role="list" className={styles.listWrap}>
           <Stack direction="horizontal" gap={2} className={styles.cards}>
             {deadlines.map((d) => {
+            const visibleLabel = displayLabel(d.label);
             // Color carries severity for sighted users; the aria-label
             // carries it for screen readers. Without this the card
             // sounds identical at any urgency.
@@ -80,7 +94,19 @@ export function DeadlineRail(_: DeadlineRailProps) {
                 : d.severity === "low"
                   ? "later"
                   : "upcoming";
-            const ariaLabel = `${severityWord}: ${d.label}, ${formatRelativeDays(d.days_until)}, ${formatAbsolute(d.deadline_at)}`;
+            const ariaLabel = `${severityWord}: ${visibleLabel}, ${formatRelativeDays(d.days_until)}, ${formatAbsolute(d.deadline_at)}`;
+            const isManual = d.feed_kind === "manual" && d.event_id !== null;
+            const handleRemove = async (event: Event) => {
+              event.stopPropagation();
+              if (!d.event_id) return;
+              try {
+                await planApi.deleteManualDeadline(d.event_id);
+                toast.info("Deadline removed", visibleLabel);
+                await refresh();
+              } catch (caught) {
+                toast.error("Could not remove", (caught as Error).message);
+              }
+            };
             return (
               <div
                 key={`${d.source}:${d.event_id ?? d.deadline_at}`}
@@ -96,7 +122,7 @@ export function DeadlineRail(_: DeadlineRailProps) {
                 role="listitem"
                 aria-label={ariaLabel}
               >
-                <div className={styles.label}>{d.label}</div>
+                <div className={styles.label}>{visibleLabel}</div>
                 <div className={styles.metaRow}>
                   <span className={styles.relative}>
                     {formatRelativeDays(d.days_until)}
@@ -108,6 +134,16 @@ export function DeadlineRail(_: DeadlineRailProps) {
                     {formatAbsolute(d.deadline_at)}
                   </span>
                 </div>
+                {isManual ? (
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={handleRemove}
+                    aria-label={`Remove ${visibleLabel}`}
+                  >
+                    ×
+                  </button>
+                ) : null}
               </div>
             );
           })}

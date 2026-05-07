@@ -114,6 +114,13 @@ export interface PlanDeadline {
   severity: "high" | "normal" | "low";
   source: "calendar_event" | "srs_overdue";
   event_id: string | null;
+  /** Calendar feed kind for event-driven deadlines:
+   *    'url'    — HTTP-synced ICS feed
+   *    'local'  — macOS EventKit
+   *    'manual' — user-added via AddDeadlineDialog; only these can be
+   *               removed from inside Carrel.
+   * null for aggregate (SRS) deadlines. */
+  feed_kind: "url" | "local" | "manual" | null;
 }
 
 export interface DeadlinesResponse {

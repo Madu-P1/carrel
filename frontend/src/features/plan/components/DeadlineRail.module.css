@@ -52,6 +52,7 @@
 }
 
 .card {
+  position: relative;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
   border-left: 3px solid var(--color-border-strong);
@@ -64,6 +65,46 @@
   gap: var(--space-1);
   transition: border-color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
+}
+
+/* Remove X for manually-added deadlines. Tucked into the top-right
+   of the card so the label and metadata are unaffected. Hidden by
+   default; revealed on card hover or button focus so the rail stays
+   visually quiet. */
+.removeButton {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.card:hover .removeButton,
+.removeButton:focus-visible {
+  opacity: 1;
+}
+
+.removeButton:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-danger);
+}
+
+.removeButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .card:hover {

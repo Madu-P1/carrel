@@ -69,6 +69,12 @@ class Deadline:
     `event_id` is None for aggregate sources (SRS overdue count); it
     points at a `calendar_events.id` for event-driven deadlines so the
     UI can deep-link.
+
+    `feed_kind` is the calendar_feeds.kind for event-driven deadlines:
+    'url' (HTTP-synced ICS), 'local' (EventKit), or 'manual'
+    (user-added directly via the AddDeadlineDialog). The frontend uses
+    this to surface a delete affordance only on manual deadlines —
+    deleting an event-driven one would reappear on the next sync.
     """
     label: str                  # "Bio midterm", "12 cards overdue"
     deadline_at: str            # ISO 8601 UTC
@@ -76,6 +82,7 @@ class Deadline:
     source: str                 # "calendar_event" | "srs_overdue"
     event_id: str | None = None
     severity: str = "normal"    # "low" | "normal" | "high"
+    feed_kind: str | None = None  # 'url' | 'local' | 'manual' | None
 
 
 def detect_upcoming_deadlines(
@@ -118,12 +125,14 @@ def _calendar_event_deadlines(
     end_iso = horizon.isoformat().replace("+00:00", "Z")
     rows = conn.execute(
         """
-        SELECT id, summary, start_at FROM calendar_events
-        WHERE user_id = ?
-          AND status != 'cancelled'
-          AND start_at >= ?
-          AND start_at <= ?
-        ORDER BY start_at ASC
+        SELECT e.id, e.summary, e.start_at, f.kind AS feed_kind
+        FROM calendar_events e
+        LEFT JOIN calendar_feeds f ON f.id = e.feed_id
+        WHERE e.user_id = ?
+          AND e.status != 'cancelled'
+          AND e.start_at >= ?
+          AND e.start_at <= ?
+        ORDER BY e.start_at ASC
         """,
         (user_id, start_iso, end_iso),
     ).fetchall()
@@ -153,6 +162,7 @@ def _calendar_event_deadlines(
                 source="calendar_event",
                 event_id=row["id"],
                 severity=severity,
+                feed_kind=row["feed_kind"],
             )
         )
     return out
