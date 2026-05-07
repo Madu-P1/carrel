@@ -76,6 +76,7 @@ If a task fails irrecoverably: write to `BLOCKERS.md` with file + line + the exa
 - [x] Q6.3 PlanView: rail always rendered. Brand-new users can add a deadline without calendar setup.
 - [x] Q6.4 EmptyPlanState: deadline-first CTA pair. Headline now matches the thesis.
 - [x] Q6.5 HeroAskPrompt: empty-library guardrail. Stranger no longer hits "no source chunks matched" via misleading suggestion chips.
+- [x] Q6.6 FirstRunTour gains step 5 — PLAN. Teaches the deadline thesis (the actual product wedge under the new positioning). TOUR_VERSION bumped 5 → 6 so existing users get re-prompted. Progress bar fixed (was hardcoded grid-template-columns: repeat(4, ...) — now flex). DRAFT step gets "Next" button; PLAN step owns "Finish". Lands user on /plan so the rail is visible while the body copy mentions it.
 
 ### Phase 5 — Quality gates (running tally)
 

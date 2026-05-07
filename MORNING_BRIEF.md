@@ -85,6 +85,7 @@ A stranger opening Carrel for the first time now has a clean path:
 - **EmptyPlanState** rewritten to lead with "Start with what's due on Friday" + primary "Add a deadline" CTA; "Connect a calendar" is now the secondary path.
 - **EmptyLibrary** already had "Load sample library" backed by `/api/onboarding/demo-library` (3 demo PDFs in `assets/demo-library/`). Verified.
 - **ReaderPlaceholder** already had clear copy + "Open Library" CTA. Verified.
+- **FirstRunTour** bumped 5 → 6 with a new closing PLAN step. Teaches the deadline thesis (the actual product wedge): "Friday is the unit of work. Add the Deadline that is stressing you out. Carrel surfaces it on the Working Toward rail, marks the day in the week grid, and schedules study blocks backward from it. Imports, citations, and cards above all funnel into it. This is the loop." Progress bar regression fixed (CSS grid was hardcoded to 4 columns). Existing users who completed v5 are auto-prompted on next launch.
 
 ## Demo-readiness check (run before any meeting)
 
