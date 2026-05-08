@@ -367,6 +367,80 @@ export const search = {
 };
 
 /**
+ * Free-tier Ask cards. Wraps `/api/ask/cards`, which runs the typed-node
+ * hybrid retrieval (BM25 + vector + RRF, optional cross-encoder rerank)
+ * and returns citation-ready cards. The cards ARE the answer — no
+ * synthesis, no model hallucination surface. Each card carries
+ * everything the UI + reader pane need to land the citation chip on
+ * the exact passage: doc_id, page, char_start/char_end, verbatim_text,
+ * heading_path.
+ *
+ * The endpoint exists in main behind no flag — the FRONTEND chooses
+ * when to call it. Until char-offset alignment with the pypdf reader
+ * is resolved (PR 4.2), card "Open" buttons navigate page-level only.
+ */
+export interface AskCard {
+  /** rowid in the `nodes` table — the citation's complete identity. */
+  node_id: number;
+  doc_id: string;
+  filename: string | null;
+  subject_name: string | null;
+  /** heading|body|list_item|caption|table_cell|equation|footnote|header|footer */
+  node_type: string;
+  /** "Chapter 3 > Photosynthesis > Light reactions" */
+  heading_path: string;
+  /** 1-indexed page number; null when the source has no pagination. */
+  page: number | null;
+  /** Char offsets into the document's canonical normalized text. */
+  char_start: number;
+  char_end: number;
+  /** Exact substring — never normalized, never paraphrased. */
+  verbatim_text: string;
+  /** FTS5 snippet with <<>> highlight markers if the FTS retriever
+   *  surfaced it; otherwise the verbatim_text trimmed to ~240 chars. */
+  snippet: string;
+  /** Final score: pure RRF (rerank off) or 0.7×rerank + 0.3×rrf (on). */
+  score: number;
+  /** Raw cross-encoder relevance in [0,1]; null when rerank off. */
+  rerank_score: number | null;
+  /** Which retriever(s) surfaced this card. Both = stronger match. */
+  sources: ReadonlyArray<"fts" | "vec">;
+}
+
+export interface AskCardsResponse {
+  query: string;
+  cards: AskCard[];
+  /** Library-wide totals so the UI can render an honest empty state
+   *  ("ingest some documents first") vs "no hits for this query". */
+  library: { total_nodes: number };
+  rerank_used: boolean;
+}
+
+export interface AskCardsParams {
+  /** Required. Trimmed and length-capped server-side at 500 chars. */
+  q: string;
+  /** Optional cap on result count. Server enforces 1..20; default 5. */
+  limit?: number;
+  /** Optional subject filter, exact match. */
+  subjectName?: string;
+  /** Optional document filter; restricts hits to one doc. */
+  docId?: string;
+  /** Override RETRIEVAL_USE_RERANKER env flag. Omit = follow flag. */
+  useReranker?: boolean;
+}
+
+export const ask = {
+  cards: (params: AskCardsParams) => {
+    const qs = new URLSearchParams({ q: params.q });
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params.subjectName) qs.set("subject_name", params.subjectName);
+    if (params.docId) qs.set("doc_id", params.docId);
+    if (params.useReranker !== undefined) qs.set("use_reranker", String(params.useReranker));
+    return api<AskCardsResponse>(`/api/ask/cards?${qs.toString()}`);
+  }
+};
+
+/**
  * Concept graph — nodes + edges across the user's library, scoped by
  * doc or subject. Positions (x, y) are pre-computed server-side via
  * `services.helpers.concept_positions`, so the renderer can place nodes

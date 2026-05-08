@@ -13,6 +13,7 @@ import { recordOnboardingStep } from "@/features/onboarding/FirstRunController";
 
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { AnswerSummary } from "./components/AnswerSummary";
+import { AskCardList } from "./components/AskCardList";
 import { ClaimList } from "./components/ClaimList";
 import { FallbackAnswer } from "./components/FallbackAnswer";
 import { QuestionInput } from "./components/QuestionInput";
@@ -20,9 +21,17 @@ import { ScopePill, type AskScopeValue } from "./components/ScopePill";
 import { UnsupportedSpans } from "./components/UnsupportedSpans";
 import { focusAskInput } from "./focusRegistry";
 import { readAskQueryParams, scopeFromRoute } from "./askRoute";
+import { useAskCards } from "./hooks/useAskCards";
 import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
+import type { AskCard as AskCardData, AskCardsParams } from "@/services/api/endpoints";
 import styles from "./AskView.module.css";
+
+// Build-time flag — when "true", AskView swaps the synthesised-answer
+// renderer for the typed-node card list. Keep the flag at the build
+// boundary so production bundles pick exactly one path; runtime toggles
+// would force every user to pay for both code paths in the bundle.
+const CARDS_MODE = import.meta.env.VITE_RETRIEVAL_USE_NODES === "true";
 
 // Subject-agnostic sample that demonstrates Carrel's strength
 // (citation-grounded synthesis across whatever the user has imported)
@@ -83,6 +92,10 @@ function AskErrorState({ message, onRetry }: { message: string; onRetry: () => v
 export function AskView() {
   const [question, setQuestion] = useState("");
   const { answer, error, pending, responseSerial, retry, submit } = useAskTutor();
+  // Cards-mode hook always initialises but only fires when CARDS_MODE
+  // is on. The pair-of-hooks shape keeps the AskView render branch
+  // minimal at the cost of two unused signals when one mode is dead.
+  const cards = useAskCards();
   const prefilledRef = useRef<string | null>(null);
 
   // Scope state. Default = Library (no filter). Persisted in the Thread
@@ -129,6 +142,22 @@ export function AskView() {
     []
   );
 
+  // Cards endpoint uses camelCase params (frontend convention) vs the
+  // tutor endpoint's snake_case. Single mapping to keep the render
+  // branch tidy.
+  const scopeToCardsParams = useCallback(
+    (current: AskScopeValue): Partial<Omit<AskCardsParams, "q">> => {
+      if (current.kind === "document" && current.docId) {
+        return { docId: current.docId };
+      }
+      if (current.kind === "subject" && current.subjectName) {
+        return { subjectName: current.subjectName };
+      }
+      return {};
+    },
+    []
+  );
+
   const trackFirstAsk = useCallback((scopeKind: AskScopeValue["kind"] = scope.kind) => {
     try {
       if (window.localStorage.getItem(FIRST_ASK_EVENT_KEY) === "1") return;
@@ -163,7 +192,11 @@ export function AskView() {
       trackFirstAsk();
       trackScopedSubmit(scope);
     }
-    await submit(question, scopeToPayload(scope));
+    if (CARDS_MODE) {
+      await cards.submit(question, scopeToCardsParams(scope));
+    } else {
+      await submit(question, scopeToPayload(scope));
+    }
   };
 
   const focusQuestionInput = useCallback(() => {
@@ -183,7 +216,11 @@ export function AskView() {
     if (params.auto) {
       trackFirstAsk(routeScope.kind);
       trackScopedSubmit(routeScope);
-      void submit(params.question, scopeToPayload(routeScope));
+      if (CARDS_MODE) {
+        void cards.submit(params.question, scopeToCardsParams(routeScope));
+      } else {
+        void submit(params.question, scopeToPayload(routeScope));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docs, scopeToPayload, submit, trackFirstAsk, trackScopedSubmit]);
@@ -216,6 +253,32 @@ export function AskView() {
     navigateTo(
       `/reader/${encodeURIComponent(citation.document_id)}?chunk=${encodeURIComponent(citation.chunk_id)}`
     );
+  };
+
+  // Cards-mode counterpart to handleCitationClick. The reader pane
+  // doesn't yet route on `?node=` (PR 4.2 wires that), so for now we
+  // navigate page-level. The query param is sent so the reader can
+  // pick it up once the route handler lands.
+  const handleCardOpen = (card: AskCardData) => {
+    void events.track(
+      "first_citation_verified",
+      {
+        doc_id: card.doc_id,
+        chunk_id: null,
+        page_num: card.page ?? null,
+      },
+      "reader",
+    );
+    recordOnboardingStep({
+      step: "verified_first_citation",
+      firstDocId: card.doc_id,
+    });
+    const params = new URLSearchParams();
+    params.set("node", String(card.node_id));
+    if (card.page !== null && card.page !== undefined) {
+      params.set("page", String(card.page));
+    }
+    navigateTo(`/reader/${encodeURIComponent(card.doc_id)}?${params.toString()}`);
   };
 
   const activeAnswer = answer.value;
@@ -286,7 +349,7 @@ export function AskView() {
                 </Text>
               </div>
               <QuestionInput
-                disabled={pending.value}
+                disabled={CARDS_MODE ? cards.pending.value : pending.value}
                 error={null}
                 onSubmit={() => {
                   void handleSubmit();
@@ -297,14 +360,26 @@ export function AskView() {
             </Stack>
             <Divider />
 
-            {pending.value ? (
+            {CARDS_MODE ? (
+              <AskCardList
+                response={cards.response.value}
+                pending={cards.pending.value}
+                error={cards.error.value}
+                onOpen={handleCardOpen}
+                onRetry={() => {
+                  void cards.retry();
+                }}
+              />
+            ) : null}
+
+            {!CARDS_MODE && pending.value ? (
               <ColdLoadIndicator
                 pending={pending.value}
                 lastProvider={lastProvider}
                 lastSuccessAt={lastSuccessAt}
               />
             ) : null}
-            {!pending.value && error.value ? (
+            {!CARDS_MODE && !pending.value && error.value ? (
               <AskErrorState
                 message={error.value.message}
                 onRetry={() => {
@@ -312,7 +387,7 @@ export function AskView() {
                 }}
               />
             ) : null}
-            {!pending.value && !error.value && !activeAnswer ? (
+            {!CARDS_MODE && !pending.value && !error.value && !activeAnswer ? (
               <AskEmptyState
                 onPrimaryAction={() => {
                   setQuestion(ASK_EMPTY_SAMPLE);
@@ -320,7 +395,7 @@ export function AskView() {
                 }}
               />
             ) : null}
-            {!pending.value && !error.value && activeAnswer ? (
+            {!CARDS_MODE && !pending.value && !error.value && activeAnswer ? (
               <Stack gap={3} key={answerRevealKey}>
                 {isGrounded ? (
                   <AnswerSummary
