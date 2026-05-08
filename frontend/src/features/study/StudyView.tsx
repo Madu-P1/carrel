@@ -1,22 +1,60 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
-import { study, type SrsDueCard, type SrsRating } from "@/services/api/endpoints";
+import {
+  study,
+  type SrsDueCard,
+  type SrsRating,
+  type SrsSubjectSummary,
+} from "@/services/api/endpoints";
 import { friendlyError } from "@/services/api/errorMessages";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
+import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
 import { ManageCardsView } from "./ManageCardsView";
 import styles from "./StudyView.module.css";
 
 type Phase = "intro" | "front" | "back" | "done" | "error";
 type Mode = "review" | "manage";
 
-function useDueCardsQuery() {
-  // Stable fetcher reference so the useQuery underlying createQuery doesn't
-  // remount every render. Per-view identity; not shared across routes.
-  const fetcher = useCallback(() => study.due(), []);
+const SUBJECT_SCOPE_STORAGE_KEY = "carrel.study.subjectScope";
+
+function _readPersistedSubjectScope(): string | null {
+  try {
+    const value = window.localStorage.getItem(SUBJECT_SCOPE_STORAGE_KEY);
+    return value && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function _persistSubjectScope(value: string | null): void {
+  try {
+    if (value === null) {
+      window.localStorage.removeItem(SUBJECT_SCOPE_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(SUBJECT_SCOPE_STORAGE_KEY, value);
+    }
+  } catch {
+    /* localStorage unavailable (private mode etc.); scope just doesn't persist. */
+  }
+}
+
+function useDueCardsQuery(subject: string | null) {
+  // The fetcher closes over the current subject so the query
+  // automatically refetches with the new filter when subject changes.
+  // useCallback keeps the closure identity stable per-subject.
+  const fetcher = useCallback(
+    () => study.due({ subject: subject ?? undefined }),
+    [subject],
+  );
   return useQuery<{ cards: SrsDueCard[] }>(fetcher);
+}
+
+function useSrsSubjectsQuery() {
+  const fetcher = useCallback(() => study.subjects(), []);
+  return useQuery<{ subjects: SrsSubjectSummary[] }>(fetcher);
 }
 
 const RATINGS: Array<{ rating: SrsRating; label: string; tone: "danger" | "warning" | "success" | "info"; key: string }> = [
@@ -27,7 +65,18 @@ const RATINGS: Array<{ rating: SrsRating; label: string; tone: "danger" | "warni
 ];
 
 export function StudyView() {
-  const { data, error, loading, refetch } = useDueCardsQuery();
+  // Subject scope persists across sessions so the user's "Biology only"
+  // preference survives reloads. Read it once on mount; future changes
+  // route through the setter, which writes through to localStorage.
+  const [subjectScope, setSubjectScopeState] = useState<string | null>(() =>
+    _readPersistedSubjectScope(),
+  );
+  const setSubjectScope = useCallback((next: string | null) => {
+    setSubjectScopeState(next);
+    _persistSubjectScope(next);
+  }, []);
+  const { data, error, loading, refetch } = useDueCardsQuery(subjectScope);
+  const subjectsQuery = useSrsSubjectsQuery();
   const [mode, setMode] = useState<Mode>("review");
   const [phase, setPhase] = useState<Phase>("intro");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -36,11 +85,13 @@ export function StudyView() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   // When the user switches to Manage and back, we re-fetch due so any cards
-  // they deleted disappear from the next review session.
+  // they deleted disappear from the next review session. Also refetch the
+  // subjects roll-up so the chip counts stay honest after a delete.
   const enterManage = () => setMode("manage");
   const enterReview = () => {
     setMode("review");
     void refetch();
+    void subjectsQuery.refetch();
   };
 
   const cards = data.value?.cards ?? [];
@@ -115,6 +166,25 @@ export function StudyView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, phase, currentIndex, cards.length]);
 
+  // Subjects roll-up; memoised so identity is stable across renders
+  // when the payload didn't change. Used both by the cleanup effect
+  // below and the intro screen's pill.
+  const subjectsQueryData = subjectsQuery.data.value;
+  const subjectsList = useMemo(
+    () => subjectsQueryData?.subjects ?? [],
+    [subjectsQueryData],
+  );
+
+  // Defensive: if a previously-saved subject was deleted, drop the
+  // stale scope. Runs in an effect (not render) so we don't violate
+  // React/Preact's render purity. Lives above the early returns to
+  // keep the hook call order stable per Rules of Hooks.
+  useEffect(() => {
+    if (!subjectScope || !subjectsQueryData) return;
+    const stillExists = subjectsList.some((s) => s.subject_name === subjectScope);
+    if (!stillExists) setSubjectScope(null);
+  }, [subjectScope, subjectsList, subjectsQueryData, setSubjectScope]);
+
   // Render branch: Manage mode swaps the UI for card management. The early
   // return lives below the hooks so the hook call order stays stable across
   // mode changes (Rules of Hooks).
@@ -166,6 +236,13 @@ export function StudyView() {
   }
 
   const totalDue = cards.length;
+  // The scoped due count is what the user is about to start. The
+  // unfiltered total — used as the All option's count in the scope
+  // pill — comes from the subjects roll-up.
+  const allDueCount = subjectsList.reduce(
+    (sum, subject) => sum + (subject.due_count ?? 0),
+    0,
+  );
 
   if (phase === "intro") {
     return (
@@ -176,17 +253,30 @@ export function StudyView() {
               <span className={styles.stateEyebrow}>
                 {totalDue === 0
                   ? "Nothing due"
-                  : `${totalDue} card${totalDue === 1 ? "" : "s"} due`}
+                  : `${totalDue} card${totalDue === 1 ? "" : "s"} due${subjectScope ? ` in ${subjectScope}` : ""}`}
               </span>
               <Text as="h1" className={styles.stateHeading}>
                 {totalDue === 0 ? "You're caught up." : "Ready for review?"}
               </Text>
               <Text tone="secondary">
                 {totalDue === 0
-                  ? "No flashcards are due right now. Come back later or ingest more material in Library."
+                  ? subjectScope
+                    ? `No ${subjectScope} cards are due right now. Pick a different scope or come back later.`
+                    : "No flashcards are due right now. Come back later or ingest more material in Library."
                   : "Answer each card, rate your recall, and the scheduler will space the next review."}
               </Text>
             </Stack>
+            <div className={styles.scopeRow}>
+              <SrsSubjectScopePill
+                value={subjectScope}
+                subjects={subjectsList}
+                onChange={(next) => {
+                  setSubjectScope(next);
+                  void refetch();
+                }}
+                allDueCount={allDueCount}
+              />
+            </div>
             <Stack direction="horizontal" gap={3} wrap>
               <Button
                 disabled={totalDue === 0}
