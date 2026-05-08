@@ -21,6 +21,11 @@ Usage
     ./.venv/bin/python script/validate_typed_retrieval.py --questions q.json
     ./.venv/bin/python script/validate_typed_retrieval.py --no-rerank --max-docs 5
 """
+# Imports below the sys.path.insert call must NOT be sorted into the
+# stdlib block by ruff/isort — they only resolve once REPO_ROOT is on
+# the path. The per-line E402 noqa silences "import not at top of
+# file"; this file-level skip silences the I001 import-sort rule.
+# ruff: noqa: I001
 from __future__ import annotations
 
 import argparse
