@@ -1,0 +1,153 @@
+/*
+ * Focus mode overlay for the SRS review session.
+ *
+ * Two layers behind the card:
+ *   1. .dim — a flat translucent black layer that takes the live
+ *      page from "look-at-me" to "out of focus". Per the design
+ *      brief, NO blur on this layer so the user can still parse
+ *      what's behind if needed.
+ *   2. .glassFrame — the liquid-glass card surround. Translucent
+ *      fill, backdrop-filter blur (so what's behind THE CARD is
+ *      blurred, not the whole background), soft inner highlight,
+ *      outer drop shadow. The card content sits inside this frame.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  /* Scaling reveal — overlay fades + grows in over a beat. */
+  animation: study-focus-fade-in var(--dur-medium) var(--ease-out) both;
+}
+
+@keyframes study-focus-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-bg-base) 70%, rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+
+.chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chrome > * {
+  pointer-events: auto;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-3);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text-secondary) 80%, transparent);
+}
+
+.progress {
+  /* Same eyebrow treatment used elsewhere — keeps the visual
+     vocabulary consistent. */
+}
+
+.scope {
+  color: color-mix(in srgb, var(--color-text-tertiary) 90%, transparent);
+}
+
+.close {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  background: color-mix(in srgb, var(--color-bg-elevated) 60%, transparent);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+
+.close:hover {
+  background: color-mix(in srgb, var(--color-bg-elevated) 90%, transparent);
+  color: var(--color-text-primary);
+}
+
+/*
+ * Liquid-glass card frame.
+ *
+ * - background: a faint translucent fill so the dim shows through
+ *   subtly. The fill picks up `--color-bg-elevated` so it remains
+ *   theme-aware.
+ * - backdrop-filter: blur + saturation boost. Blurs ONLY what's
+ *   visible through the card itself — the surrounding .dim stays
+ *   crisp (per the design brief).
+ * - inset highlight: a 1px top edge picked out via box-shadow inset
+ *   to give the appearance of light catching the glass.
+ * - outer shadow: soft, low-spread for depth, plus a colour-tinted
+ *   glow so the card feels like it's lit from within.
+ */
+.glassFrame {
+  position: relative;
+  z-index: 2;
+  width: min(720px, calc(100vw - var(--space-10)));
+  border-radius: var(--radius-5, 24px);
+  padding: var(--space-7);
+  background: color-mix(in srgb, var(--color-bg-elevated) 55%, rgba(255, 255, 255, 0.04));
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(36px) saturate(180%);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 24px 60px -20px rgba(0, 0, 0, 0.55),
+    0 0 60px -20px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  animation: study-focus-card-in var(--dur-medium) var(--ease-soft) both;
+}
+
+@keyframes study-focus-card-in {
+  from {
+    transform: translateY(8px) scale(0.99);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .glassFrame {
+    animation-duration: 60ms !important;
+  }
+}
