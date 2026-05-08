@@ -4,19 +4,29 @@ PR 3 of 6 from the Ask-pipeline rebuild. The hybrid retriever in
 `typed_hybrid.py` returns RRF-fused candidates from BM25 + vector
 lists; this module re-scores the top of that list with a cross-encoder
 that reads the (query, document) pair jointly. Cross-encoders are slow
-(~150ms for 50 pairs on M-series CPU) but recall@k jumps significantly
-because the model attends across the pair instead of comparing two
-independent embeddings.
+relative to bi-encoders but recall@k jumps because the model attends
+across the pair instead of comparing two independent embeddings.
 
 **Model choice — deviation from the parent algorithm spec.** The spec
 specifies `BAAI/bge-reranker-v2-m3` (568M params, multi-lingual). That
-model isn't yet exposed by fastembed 0.8 (the bundled list goes up
-through `bge-reranker-base` and `jina-reranker-v2-base-multilingual`).
-We default to `BAAI/bge-reranker-base` (1.04 GB, same family,
-predecessor of v2-m3) so PR 3 ships without adding a second model
-runtime. The model is configurable via `RETRIEVAL_RERANKER_MODEL` so
-operators can swap to v2-m3 once fastembed adds it (or via a manual
-ONNX export). Documented as a known scope reduction in the PR.
+model isn't yet exposed by fastembed 0.8 (the bundled list runs from
+`Xenova/ms-marco-MiniLM-L-6-v2` (80MB) up through
+`jinaai/jina-reranker-v2-base-multilingual` (1.1GB)).
+
+We default to `Xenova/ms-marco-MiniLM-L-12-v2` (120 MB) based on the
+2026-05-08 side-by-side validation against the founder's library
+(see `docs/algorithms/validation-2026-05-08.md`):
+
+- 5x average latency win over the heavier BAAI/bge-reranker-base
+  (per-query rerank cost dropped from 2-31s to 0.4-9.3s on a CPU).
+- Quality matched on 4/5 hand-graded queries; one slight regression
+  on the most technical query (multiple linear regression spec).
+- 9x smaller first-run download.
+
+The model is configurable via `RETRIEVAL_RERANKER_MODEL` so operators
+can swap to BAAI/bge-reranker-base, jina-reranker-v2, or the spec's
+v2-m3 (once fastembed adds it / via manual ONNX export) without a
+code change.
 """
 from __future__ import annotations
 
@@ -29,7 +39,7 @@ from typing import Iterable, Protocol, Sequence
 # who never instantiate `default_reranker()` don't pay any runtime
 # cost — important for the flag-off path.
 
-DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-base"
+DEFAULT_RERANKER_MODEL = "Xenova/ms-marco-MiniLM-L-12-v2"
 
 
 class Reranker(Protocol):

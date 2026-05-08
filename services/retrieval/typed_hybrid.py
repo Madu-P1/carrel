@@ -168,7 +168,7 @@ def search_typed_hybrid(
     rrf_k: int = 60,
     use_reranker: bool = False,
     reranker: Reranker | None = None,
-    rerank_top: int = 50,
+    rerank_top: int = 20,
     rerank_blend: float = 0.7,
 ) -> list[RetrievedNode]:
     """Top-`limit` typed-node hits, fused via RRF over BM25 + vector.
@@ -180,9 +180,14 @@ def search_typed_hybrid(
 
     When `use_reranker=True`, the top `rerank_top` RRF candidates are
     re-scored by a cross-encoder (defaults to `default_reranker()`,
-    which lazy-loads `BAAI/bge-reranker-base` on first call). Final
-    score becomes `rerank_blend * rerank + (1 - rerank_blend) * rrf`,
+    which lazy-loads `Xenova/ms-marco-MiniLM-L-12-v2` on first call).
+    Final score becomes `rerank_blend * rerank + (1 - rerank_blend) * rrf`,
     both min-max normalised across the result set.
+
+    `rerank_top` defaults to 20 based on the 2026-05-08 validation
+    against the founder's library: the bottom 30 RRF candidates
+    rarely contain the answer, so reranking 50 just spends CPU.
+    See `docs/algorithms/validation-2026-05-08.md`.
     """
     if not query.strip():
         return []
