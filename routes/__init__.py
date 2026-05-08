@@ -1,4 +1,5 @@
 from routes.anchors import register_anchor_routes
+from routes.ask_cards import register_ask_cards_routes
 from routes.calendar import register_calendar_routes
 from routes.concepts import register_concept_routes
 from routes.dashboard import register_dashboard_routes
@@ -36,6 +37,8 @@ def register_routes(app) -> None:
     register_dashboard_routes(app)
     # Hybrid (FTS + vector) library search. Wraps services.retrieval.
     register_search_routes(app)
+    # Free-tier Ask cards over the typed-node retrieval path (PR 4).
+    register_ask_cards_routes(app)
     # Calendar-driven study planning (Phase 1: feed sync + stub coach).
     register_calendar_routes(app)
     register_plan_routes(app)
