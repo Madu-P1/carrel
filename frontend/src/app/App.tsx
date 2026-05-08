@@ -56,10 +56,29 @@ function bundledReaderChunkId(path: string): string | null {
   return parseBundledRoute(path).searchParams.get("chunk");
 }
 
+function bundledReaderNodeId(path: string): number | null {
+  const raw = parseBundledRoute(path).searchParams.get("node");
+  if (raw === null || raw === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+}
+
+function _parseQueryNodeId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+}
+
 function BrowserReaderRoute({ id }: { id?: string }) {
   const { query } = useLocation();
 
-  return <ReaderView chunkId={query.chunk ?? null} id={id} />;
+  return (
+    <ReaderView
+      chunkId={query.chunk ?? null}
+      nodeId={_parseQueryNodeId(query.node)}
+      id={id}
+    />
+  );
 }
 
 function renderBundledRoute(rawPath: string) {
@@ -69,6 +88,7 @@ function renderBundledRoute(rawPath: string) {
     return (
       <ReaderView
         chunkId={bundledReaderChunkId(rawPath)}
+        nodeId={bundledReaderNodeId(rawPath)}
         id={bundledReaderId(rawPath)}
       />
     );

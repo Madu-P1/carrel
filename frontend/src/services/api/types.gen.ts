@@ -527,7 +527,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Due Cards */
+        /**
+         * Due Cards
+         * @description Cards due for review, optionally scoped to one subject or doc.
+         *
+         *     Both filters AND together. Omit both to get the full due queue.
+         *     Mirrors the filter shape on /api/srs/cards so the Manage view and
+         *     the Review session share a vocabulary.
+         */
         get: operations["due_cards_api_srs_due_get"];
         put?: never;
         post?: never;
@@ -1443,6 +1450,23 @@ export interface paths {
         };
         /** Ask Cards */
         get: operations["ask_cards_api_ask_cards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reader/node/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reader Node */
+        get: operations["get_reader_node_api_reader_node__node_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3525,7 +3549,10 @@ export interface operations {
     };
     due_cards_api_srs_due_get: {
         parameters: {
-            query?: never;
+            query?: {
+                subject?: string | null;
+                doc_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3543,6 +3570,15 @@ export interface operations {
                             [key: string]: unknown;
                         }[];
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5315,6 +5351,39 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reader_node_api_reader_node__node_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node_id: number;
+            };
             cookie?: never;
         };
         requestBody?: never;
