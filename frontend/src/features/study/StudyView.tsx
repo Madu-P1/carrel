@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
-import { Badge, Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
+import { Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
 import {
   study,
   type SrsDueCard,
@@ -11,7 +11,10 @@ import { friendlyError } from "@/services/api/errorMessages";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
+import { FlipCard } from "./components/FlipCard";
+import { RatingRow } from "./components/RatingRow";
 import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
+import { StudyFocusOverlay } from "./components/StudyFocusOverlay";
 import { ManageCardsView } from "./ManageCardsView";
 import styles from "./StudyView.module.css";
 
@@ -57,12 +60,31 @@ function useSrsSubjectsQuery() {
   return useQuery<{ subjects: SrsSubjectSummary[] }>(fetcher);
 }
 
-const RATINGS: Array<{ rating: SrsRating; label: string; tone: "danger" | "warning" | "success" | "info"; key: string }> = [
-  { rating: "again", label: "Again", tone: "danger", key: "1" },
-  { rating: "hard", label: "Hard", tone: "warning", key: "2" },
-  { rating: "good", label: "Good", tone: "success", key: "3" },
-  { rating: "easy", label: "Easy", tone: "info", key: "4" }
+const RATINGS: Array<{ rating: SrsRating; label: string; key: string }> = [
+  { rating: "again", label: "Again", key: "1" },
+  { rating: "hard", label: "Hard", key: "2" },
+  { rating: "good", label: "Good", key: "3" },
+  { rating: "easy", label: "Easy", key: "4" }
 ];
+
+const FOCUS_MODE_STORAGE_KEY = "carrel.study.focusMode";
+
+function _readFocusMode(): boolean {
+  try {
+    return window.localStorage.getItem(FOCUS_MODE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function _persistFocusMode(value: boolean): void {
+  try {
+    if (value) window.localStorage.setItem(FOCUS_MODE_STORAGE_KEY, "1");
+    else window.localStorage.removeItem(FOCUS_MODE_STORAGE_KEY);
+  } catch {
+    /* private-mode tab; preference just doesn't persist. */
+  }
+}
 
 export function StudyView() {
   // Subject scope persists across sessions so the user's "Biology only"
@@ -83,6 +105,14 @@ export function StudyView() {
   const [completedCount, setCompletedCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  // Focus mode persists across sessions on the same machine — same
+  // pattern as subjectScope. Only takes effect during phase=front|back;
+  // toggling on/off mid-session is harmless.
+  const [focusMode, setFocusModeState] = useState<boolean>(() => _readFocusMode());
+  const setFocusMode = useCallback((next: boolean) => {
+    setFocusModeState(next);
+    _persistFocusMode(next);
+  }, []);
 
   // When the user switches to Manage and back, we re-fetch due so any cards
   // they deleted disappear from the next review session. Also refetch the
@@ -291,6 +321,13 @@ export function StudyView() {
               <Button leadingIcon={<Icon name="library" />} onClick={enterManage} variant="ghost">
                 Manage cards
               </Button>
+              <Button
+                leadingIcon={<Icon name="focus" />}
+                onClick={() => setFocusMode(!focusMode)}
+                variant="ghost"
+              >
+                {focusMode ? "Focus mode: on" : "Focus mode: off"}
+              </Button>
             </Stack>
           </Stack>
         </Card>
@@ -352,79 +389,110 @@ export function StudyView() {
   // takes over.
   const total = cards.length;
   const progressFraction = total === 0 ? 0 : completedCount / total;
-  // Key the reveal body on phase+index so Preact remounts the animation
-  // element on every card transition — keeps the reveal choreography
-  // firing at the right time, even after a fast sequence.
-  const revealKey = `reveal-${currentIndex}-${phase}`;
 
-  return (
-    <div className={styles.wrap}>
-      <Stack gap={4}>
-        <Stack direction="horizontal" className={styles.progress}>
-          <Text tone="tertiary" variant="caption">
-            Card {currentIndex + 1} of {total}
+  const cardSubject = currentCard.subject_name ?? subjectScope ?? null;
+
+  // The card body is identical in standard mode and focus mode — only
+  // the surrounding chrome differs. Keying on currentIndex re-mounts
+  // the FlipCard between cards so the slide-in animation fires fresh
+  // each transition.
+  const flipBody = (
+    <FlipCard
+      key={`flip-${currentIndex}`}
+      flipped={phase === "back"}
+      onFlip={phase === "front" ? revealAnswer : undefined}
+      front={
+        <div className={styles.cardFace}>
+          <span className={styles.cardEyebrow}>
+            {currentCard.concept} · {currentCard.document_name}
+          </span>
+          <Text as="p" variant="h1" weight="semibold" className={styles.cardQuestion}>
+            {currentCard.front}
           </Text>
-          <Text tone="tertiary" variant="caption">
-            {completedCount} reviewed
-          </Text>
-        </Stack>
-        <div
-          aria-label={`Session progress, ${completedCount} of ${total} cards reviewed`}
-          aria-valuemax={total}
-          aria-valuemin={0}
-          aria-valuenow={completedCount}
-          className={styles.progressBar}
-          role="progressbar"
-        >
-          <div
-            className={styles.progressBarFill}
-            style={{ transform: `scaleX(${progressFraction})` }}
-          />
+          <span className={styles.cardHint}>
+            Press space or click to reveal
+          </span>
         </div>
-        <Card padding="lg">
-          <Stack gap={5}>
-            <Stack gap={2}>
-              <Text tone="tertiary" variant="caption">
-                {currentCard.concept} · {currentCard.document_name}
-              </Text>
-              <Text as="p" variant="h1" weight="semibold">
-                {currentCard.front}
-              </Text>
-            </Stack>
-            {phase === "back" ? (
-              <Stack gap={3} key={revealKey}>
-                <div aria-hidden className={styles.revealDivider} />
-                <Text as="p" className={styles.revealBody}>
-                  {currentCard.back}
-                </Text>
-              </Stack>
-            ) : null}
-            <Stack direction="horizontal" gap={2} wrap>
-              {phase === "front" ? (
-                <Button
-                  keyHint="Space"
-                  leadingIcon={<Icon name="sparkle" />}
-                  onClick={revealAnswer}
-                >
-                  Reveal the source-grounded answer
-                </Button>
-              ) : (
-                RATINGS.map((r) => (
-                  <Button
-                    disabled={submitting}
-                    key={r.rating}
-                    onClick={() => void rateCard(r.rating)}
-                    variant={r.rating === "good" ? "primary" : "secondary"}
-                  >
-                    <Badge tone={r.tone}>{r.key}</Badge>
-                    &nbsp;{r.label}
-                  </Button>
-                ))
-              )}
-            </Stack>
-          </Stack>
-        </Card>
-      </Stack>
-    </div>
+      }
+      back={
+        <div className={styles.cardFace}>
+          <span className={styles.cardEyebrow}>
+            {currentCard.concept} · {currentCard.document_name}
+          </span>
+          <Text as="p" className={styles.cardAnswer}>
+            {currentCard.back}
+          </Text>
+        </div>
+      }
+    />
   );
+
+  const ratingsRow =
+    phase === "back" ? (
+      <RatingRow
+        ratings={RATINGS}
+        submitting={submitting}
+        onSelect={(rating) => void rateCard(rating)}
+      />
+    ) : null;
+
+  const sessionContent = (
+    <Stack gap={4}>
+      {!focusMode ? (
+        <>
+          <Stack direction="horizontal" className={styles.progress}>
+            <Text tone="tertiary" variant="caption">
+              Card {currentIndex + 1} of {total}
+            </Text>
+            <Text tone="tertiary" variant="caption">
+              {completedCount} reviewed
+              {subjectScope ? ` · ${subjectScope}` : ""}
+            </Text>
+          </Stack>
+          <div
+            aria-label={`Session progress, ${completedCount} of ${total} cards reviewed`}
+            aria-valuemax={total}
+            aria-valuemin={0}
+            aria-valuenow={completedCount}
+            className={styles.progressBar}
+            role="progressbar"
+          >
+            <div
+              className={styles.progressBarFill}
+              style={{ transform: `scaleX(${progressFraction})` }}
+            />
+          </div>
+        </>
+      ) : null}
+      <div className={styles.cardArea}>{flipBody}</div>
+      {ratingsRow}
+      {!focusMode ? (
+        <div className={styles.sessionFooter}>
+          <Button
+            variant="ghost"
+            size="sm"
+            leadingIcon={<Icon name="sparkle" size={12} />}
+            onClick={() => setFocusMode(true)}
+          >
+            Focus mode
+          </Button>
+        </div>
+      ) : null}
+    </Stack>
+  );
+
+  if (focusMode) {
+    return (
+      <StudyFocusOverlay
+        open={true}
+        onClose={() => setFocusMode(false)}
+        progress={`Card ${currentIndex + 1} of ${total}`}
+        scope={cardSubject}
+      >
+        {sessionContent}
+      </StudyFocusOverlay>
+    );
+  }
+
+  return <div className={styles.wrap}>{sessionContent}</div>;
 }
