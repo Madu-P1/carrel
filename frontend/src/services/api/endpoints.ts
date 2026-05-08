@@ -840,7 +840,19 @@ function srsListQuery(params: SrsListParams = {}): string {
 }
 
 export const study = {
-  due: () => api<{ cards: SrsDueCard[] }>("/api/srs/due"),
+  /**
+   * Cards due for review, optionally scoped to one subject or doc.
+   * Both filters AND together. Omit both to get the full due queue.
+   * Mirrors the filter shape on `listCards` so the Manage view and
+   * the Review session share a vocabulary.
+   */
+  due: (params: { subject?: string | null; docId?: string | null } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.subject) qs.set("subject", params.subject);
+    if (params.docId) qs.set("doc_id", params.docId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api<{ cards: SrsDueCard[] }>(`/api/srs/due${suffix}`);
+  },
   review: (cardId: string, rating: SrsRating) =>
     api<SrsReviewResponse>("/api/srs/review", {
       method: "POST",

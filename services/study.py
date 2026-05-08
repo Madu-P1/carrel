@@ -57,19 +57,38 @@ def fetch_questions(conn: sqlite3.Connection, limit: int = 10) -> List[Dict[str,
     return items
 
 
-def fetch_due_cards(conn: sqlite3.Connection) -> List[Dict[str, object]]:
-    rows = conn.execute(
-        """
-        SELECT s.id, s.front, s.back, s.state, s.stability, s.difficulty, s.reps,
-               s.lapses, s.due_date, c.name AS concept, d.filename AS document_name, d.subject_name
-        FROM srs_cards s
-        LEFT JOIN concepts c ON s.concept_id = c.id
-        LEFT JOIN documents d ON c.doc_id = d.id
-        WHERE s.due_date IS NULL OR s.due_date <= ?
-        ORDER BY COALESCE(s.due_date, ?) ASC, s.rowid ASC
-        """,
-        (date.today().isoformat(), date.today().isoformat()),
-    ).fetchall()
+def fetch_due_cards(
+    conn: sqlite3.Connection,
+    *,
+    subject: str | None = None,
+    doc_id: str | None = None,
+) -> List[Dict[str, object]]:
+    """Cards due for review, optionally scoped to a subject or doc.
+
+    `subject` and `doc_id` AND together. Passing neither returns the
+    full due queue (the legacy behaviour). Subject match is exact on
+    `documents.subject_name`; doc_id match is exact on `concepts.doc_id`.
+    """
+    today = date.today().isoformat()
+    sql = [
+        "SELECT s.id, s.front, s.back, s.state, s.stability, s.difficulty, s.reps,",
+        "       s.lapses, s.due_date, c.name AS concept, d.filename AS document_name, d.subject_name",
+        "FROM srs_cards s",
+        "LEFT JOIN concepts c ON s.concept_id = c.id",
+        "LEFT JOIN documents d ON c.doc_id = d.id",
+        "WHERE (s.due_date IS NULL OR s.due_date <= ?)",
+    ]
+    params: List[object] = [today]
+    if subject is not None:
+        sql.append("AND d.subject_name = ?")
+        params.append(subject)
+    if doc_id is not None:
+        sql.append("AND c.doc_id = ?")
+        params.append(doc_id)
+    sql.append("ORDER BY COALESCE(s.due_date, ?) ASC, s.rowid ASC")
+    params.append(today)
+
+    rows = conn.execute("\n".join(sql), params).fetchall()
     replacements = _name_replacements(conn)
     items = []
     for row in rows:

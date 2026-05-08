@@ -149,9 +149,24 @@ def draft_flashcards(payload: FlashcardDraftRequest) -> Dict[str, Any]:
 
 
 @router.get("/api/srs/due")
-def due_cards() -> Dict[str, List[Dict[str, object]]]:
+def due_cards(
+    subject: Optional[str] = None,
+    doc_id: Optional[str] = None,
+) -> Dict[str, List[Dict[str, object]]]:
+    """Cards due for review, optionally scoped to one subject or doc.
+
+    Both filters AND together. Omit both to get the full due queue.
+    Mirrors the filter shape on /api/srs/cards so the Manage view and
+    the Review session share a vocabulary.
+    """
     with db.get_db() as conn:
-        return {"cards": study_service.fetch_due_cards(conn)}
+        return {
+            "cards": study_service.fetch_due_cards(
+                conn,
+                subject=subject,
+                doc_id=doc_id,
+            )
+        }
 
 
 @router.get("/api/srs/cards")
