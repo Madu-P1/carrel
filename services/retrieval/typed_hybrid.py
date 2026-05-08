@@ -7,8 +7,11 @@ from migration 0016 and emits a richer `RetrievedNode` row that
 includes everything the citation chip needs (doc_id, page,
 heading_path, verbatim_text, char_start/char_end).
 
-PR 2 of 6 from the Ask-pipeline rebuild. Cross-encoder rerank ships in
-PR 3 — until then `score` is the RRF sum only.
+PR 2 landed BM25 + vector + RRF; PR 3 adds optional cross-encoder
+rerank (gated by `RETRIEVAL_USE_RERANKER`) and a blended final score
+of `0.7 * rerank_normalized + 0.3 * rrf_normalized`. Both paths are
+exercised by the same entry point — callers pass `use_reranker=True`
+to opt in.
 """
 from __future__ import annotations
 
@@ -21,15 +24,18 @@ from services.retrieval.embeddings import Embedder
 from services.retrieval.node_type_router import node_types_for_query
 from services.retrieval.nodes_fts import NodeHit, search_node_fts
 from services.retrieval.nodes_vector import search_node_vectors
+from services.retrieval.rerank import Reranker, default_reranker, normalize_scores
 
 
 @dataclass(frozen=True)
 class RetrievedNode:
     """Citation-ready retrieval result.
 
-    `score` is the RRF sum across the BM25 + vector lists in PR 2.
-    PR 3 will add a `rerank_score` field and recompute `score` as
-    `0.7 * rerank + 0.3 * rrf_normalized`.
+    `score` is the RRF sum from BM25 + vector when rerank is off,
+    or the blended `0.7 * rerank_normalized + 0.3 * rrf_normalized`
+    when rerank is on. `rerank_score` carries the raw [0, 1]
+    cross-encoder score for inspection / logging; it's None when
+    rerank wasn't applied.
     """
 
     node_id: int
@@ -44,6 +50,7 @@ class RetrievedNode:
     score: float
     components: dict[str, float] = field(default_factory=dict)
     sources: tuple[str, ...] = ()
+    rerank_score: float | None = None
 
 
 def retrieval_use_nodes_enabled() -> bool:
@@ -53,6 +60,17 @@ def retrieval_use_nodes_enabled() -> bool:
     behavior. PR 4 (Free-tier card UI) flips it on for new sessions.
     """
     return os.getenv("RETRIEVAL_USE_NODES", "false").lower() in ("1", "true", "yes")
+
+
+def retrieval_use_reranker_enabled() -> bool:
+    """Cross-encoder rerank flag — independent of `RETRIEVAL_USE_NODES`.
+
+    Defaults off so first-run users don't pay the ~1 GB cross-encoder
+    model download until rerank is actually wanted. The flag is read by
+    callers above retrieval, not by `search_typed_hybrid` itself —
+    keeping retrieval pure makes it testable without env-var fiddling.
+    """
+    return os.getenv("RETRIEVAL_USE_RERANKER", "false").lower() in ("1", "true", "yes")
 
 
 def _rrf_score(rank: int, k: int = 60) -> float:
@@ -90,6 +108,53 @@ def _upsert_hit(
         bucket["hit"] = hit
 
 
+def _apply_rerank(
+    candidates: list[RetrievedNode],
+    query: str,
+    reranker: Reranker,
+    blend: float,
+) -> list[RetrievedNode]:
+    """Re-score `candidates` via cross-encoder + blend with normalized RRF.
+
+    Returns a new list (RetrievedNode is frozen) sorted by the blended
+    final score. The blend formula is `blend * rerank + (1 - blend) * rrf`
+    after both sides are min-max normalised to [0, 1] across the result
+    set, which is what the parent algorithm spec asks for.
+    """
+    if not candidates:
+        return []
+    rerank_scores = reranker.rerank_pairs(query, [n.verbatim_text for n in candidates])
+    if len(rerank_scores) != len(candidates):
+        # Defensive: a misbehaving reranker that doesn't return one
+        # score per document should not silently mislabel hits.
+        raise ValueError(
+            f"reranker returned {len(rerank_scores)} scores for {len(candidates)} candidates"
+        )
+    rrf_norm = normalize_scores(c.score for c in candidates)
+    rerank_norm = normalize_scores(rerank_scores)
+    rescored: list[RetrievedNode] = []
+    for cand, rrf_n, rer_n, raw_rer in zip(candidates, rrf_norm, rerank_norm, rerank_scores):
+        rescored.append(
+            RetrievedNode(
+                node_id=cand.node_id,
+                doc_id=cand.doc_id,
+                node_type=cand.node_type,
+                heading_path=cand.heading_path,
+                page=cand.page,
+                char_start=cand.char_start,
+                char_end=cand.char_end,
+                verbatim_text=cand.verbatim_text,
+                snippet=cand.snippet,
+                score=blend * rer_n + (1.0 - blend) * rrf_n,
+                components=cand.components,
+                sources=cand.sources,
+                rerank_score=float(raw_rer),
+            )
+        )
+    rescored.sort(key=lambda hit: hit.score, reverse=True)
+    return rescored
+
+
 def search_typed_hybrid(
     conn: sqlite3.Connection,
     query: str,
@@ -101,6 +166,10 @@ def search_typed_hybrid(
     limit: int = 10,
     candidate_k: int = 50,
     rrf_k: int = 60,
+    use_reranker: bool = False,
+    reranker: Reranker | None = None,
+    rerank_top: int = 50,
+    rerank_blend: float = 0.7,
 ) -> list[RetrievedNode]:
     """Top-`limit` typed-node hits, fused via RRF over BM25 + vector.
 
@@ -108,6 +177,12 @@ def search_typed_hybrid(
     `node_types_for_query` — base prose types plus any extras
     triggered by query keywords (table, figure, formula, footnote).
     Pass an explicit set to override.
+
+    When `use_reranker=True`, the top `rerank_top` RRF candidates are
+    re-scored by a cross-encoder (defaults to `default_reranker()`,
+    which lazy-loads `BAAI/bge-reranker-base` on first call). Final
+    score becomes `rerank_blend * rerank + (1 - rerank_blend) * rrf`,
+    both min-max normalised across the result set.
     """
     if not query.strip():
         return []
@@ -164,4 +239,10 @@ def search_typed_hybrid(
         )
 
     fused.sort(key=lambda hit: hit.score, reverse=True)
+
+    if use_reranker:
+        top = fused[:rerank_top]
+        active_reranker = reranker if reranker is not None else default_reranker()
+        fused = _apply_rerank(top, query, active_reranker, rerank_blend)
+
     return fused[:limit]
