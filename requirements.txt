@@ -16,3 +16,6 @@ chardet
 striprtf
 sqlite-vec~=0.1
 fastembed~=0.4
+# Optional: typed-node ingest path (PR 1, behind INGEST_USE_DOCLING flag).
+# First install pulls ~1-2 GB of model weights — see docs/algorithms/ask-pipeline-pr1-typed-nodes.md.
+docling~=2.93
