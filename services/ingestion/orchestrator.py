@@ -1,23 +1,71 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 import uuid
 from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import db
+from app_logging import get_logger, log_event
 from services import provenance_service, stale_tracker
 from services.extraction_pipeline import IngestedAsset
 
+from . import docling_parser, typed_walker
 from .cards import build_card_records
 from .concept_candidates import clean_candidate_label, select_concept_phrases
 from .concepts import chunk_text, sentence_for_term, summarize_document
-from .persistence import index_chunk_rowids_on_ingest, mark_vector_backfill_pending
+from .persistence import (
+    embed_and_index_nodes,
+    index_chunk_rowids_on_ingest,
+    insert_typed_nodes,
+    mark_vector_backfill_pending,
+)
 from .questions import build_question_record
 from .relationships import _extract_concept_depth, infer_relationship, rank_supporting_chunk_ids
 from .text_utils import clean_learning_text, normalize_subject_name
 from .topics import build_concept_payloads_from_chunks
+
+LOGGER = get_logger("ingestion.orchestrator")
+
+
+def _docling_enabled_for(extension: str) -> bool:
+    """Two env-var feature flags gate the typed-node ingest path.
+
+    INGEST_USE_DOCLING (default false) — master switch.
+    INGEST_DOCLING_FORMATS (default 'pdf') — comma-separated allowlist of
+    file extensions to route through Docling. Start with PDF only;
+    expand once parity is proven on real documents.
+    """
+    if os.getenv("INGEST_USE_DOCLING", "false").lower() not in ("1", "true", "yes"):
+        return False
+    formats = os.getenv("INGEST_DOCLING_FORMATS", "pdf").lower().split(",")
+    allowed = {fmt.strip() for fmt in formats if fmt.strip()}
+    return extension.lstrip(".").lower() in allowed
+
+
+def _resolve_ingest_path(filename: str, storage_name: Optional[str]) -> Optional[Path]:
+    """Best-effort resolution of the original file path on disk.
+
+    Manual-text ingests have no file. Uploaded files live under
+    `db.UPLOAD_DIR / storage_name`. Returns None when no readable file
+    is reachable so callers can skip the Docling path silently.
+    """
+    if not storage_name:
+        return None
+    try:
+        candidate = (db.UPLOAD_DIR / storage_name).resolve(strict=False)
+    except Exception:
+        return None
+    return candidate if candidate.exists() else None
+
+
+def _file_extension(filename: str, storage_name: Optional[str]) -> str:
+    name = storage_name or filename or ""
+    return Path(name).suffix.lstrip(".").lower()
 
 
 def ingest_document_record(
@@ -171,6 +219,39 @@ def ingest_document_record(
             index_chunk_rowids_on_ingest(conn, chunk_rowids)
         except Exception:
             mark_vector_backfill_pending(conn)
+
+    # PR 1: parallel typed-node ingest path (feature-flagged).
+    #
+    # Hard rule: this block must NEVER fail the chunks ingest. Any
+    # exception is swallowed and logged — the user still gets a working
+    # document on the legacy retrieval path. Once retrieval (PR 2) reads
+    # from `nodes`, the flag flip happens behind its own gate.
+    extension = _file_extension(filename, storage_name)
+    if _docling_enabled_for(extension):
+        if not docling_parser.is_available():
+            log_event(LOGGER, logging.WARNING, "docling_unavailable", doc_id=doc_id)
+        else:
+            ingest_path = _resolve_ingest_path(filename, storage_name)
+            if ingest_path is None:
+                log_event(
+                    LOGGER, logging.WARNING, "docling_skipped_no_file",
+                    doc_id=doc_id, storage_name=storage_name,
+                )
+            else:
+                try:
+                    doc = docling_parser.parse_document(ingest_path)
+                    nodes = typed_walker.walk(doc)
+                    node_ids = insert_typed_nodes(conn, doc_id, nodes)
+                    embed_and_index_nodes(conn, nodes, node_ids)
+                    log_event(
+                        LOGGER, logging.INFO, "typed_nodes_indexed",
+                        doc_id=doc_id, node_count=len(nodes),
+                    )
+                except Exception as exc:
+                    log_event(
+                        LOGGER, logging.ERROR, "docling_ingest_failed",
+                        doc_id=doc_id, error=str(exc),
+                    )
 
     concept_payloads = build_concept_payloads_from_chunks(chunk_rows, filename)
     concept_ids: List[str] = []

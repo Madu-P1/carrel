@@ -1,2 +1,5 @@
 ruff
 mypy
+# Test-only: reportlab generates the PDF fixtures consumed by
+# test_docling_pdf_ingest.py. Not pulled into the app bundle.
+reportlab>=4.0,<5.0
