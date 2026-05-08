@@ -14,6 +14,7 @@ import { Stack, Text } from "@/design-system";
 import { useCardFlight } from "./hooks/useCardFlight";
 import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
 import { useCitationFlight } from "./hooks/useCitationFlight";
+import { useNodeDeepLink } from "./hooks/useNodeDeepLink";
 import { usePdfDocument } from "./hooks/usePdfDocument";
 import { useReaderDetail } from "./hooks/useReaderDetail";
 import {
@@ -39,9 +40,14 @@ import styles from "./ReaderView.module.css";
 interface ReaderViewProps {
   id?: string;
   chunkId?: string | null;
+  nodeId?: number | null;
 }
 
-function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; id: string }) {
+function ReaderDocumentView({
+  chunkId = null,
+  nodeId = null,
+  id,
+}: { chunkId?: string | null; nodeId?: number | null; id: string }) {
   const { data, error, loading, refetch } = useReaderDetail(id);
   const detail = data.value;
   const document = detail?.document;
@@ -77,6 +83,11 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
   // animate it to the target chunk.
   useCitationFlight(id, chunkId);
+  // PR 4.2: if the user arrived via Ask card click (?node=N), fetch
+  // the node, navigate to its page, and highlight the verbatim_text in
+  // the rendered DOM. Independent of the chunk path so deep links from
+  // the legacy synthesised-answer view still work as before.
+  useNodeDeepLink(id, nodeId);
 
   useEffect(() => {
     restoredReaderRef.current = null;
@@ -284,7 +295,7 @@ function ReaderDocumentView({ chunkId = null, id }: { chunkId?: string | null; i
   );
 }
 
-export function ReaderView({ chunkId = null, id }: ReaderViewProps) {
+export function ReaderView({ chunkId = null, nodeId = null, id }: ReaderViewProps) {
   const resolvedId = id ?? appShell.lastReaderDocumentId.value ?? undefined;
 
   if (!resolvedId) {
@@ -294,7 +305,14 @@ export function ReaderView({ chunkId = null, id }: ReaderViewProps) {
   // key ensures the whole subtree remounts on doc change so hooks
   // restart cleanly (was silently working before because internal
   // state reset fired on id change).
-  return <ReaderDocumentView chunkId={chunkId} id={resolvedId} key={resolvedId} />;
+  return (
+    <ReaderDocumentView
+      chunkId={chunkId}
+      nodeId={nodeId}
+      id={resolvedId}
+      key={resolvedId}
+    />
+  );
 }
 
 // Legacy named export retained so useCardFlight import paths stay stable

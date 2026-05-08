@@ -91,6 +91,33 @@
   will-change: transform, box-shadow;
 }
 
+/*
+ * Reader citation highlight — wraps the verbatim_text matched by
+ * useNodeDeepLink (PR 4.2). Soft-yellow background fades to
+ * transparent over the highlight's lifecycle. Used as a global class
+ * on a `<mark>` element so the JS-side wrapper doesn't need to import
+ * a CSS module from outside the reader feature.
+ */
+.carrel-node-highlight {
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  padding: 0 1px;
+  transition: background var(--dur-long) ease, box-shadow var(--dur-long) ease;
+}
+
+.carrel-node-highlight--fade {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carrel-node-highlight,
+  .carrel-node-highlight--fade {
+    transition: none;
+  }
+}
+
 @keyframes anim-shimmer {
   0% {
     background-position: -200% 0;

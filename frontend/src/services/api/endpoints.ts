@@ -441,6 +441,36 @@ export const ask = {
 };
 
 /**
+ * Reader-side typed-node lookup (PR 4.2). Powers `?node=N` deep links
+ * from Ask cards: the reader fetches THIS endpoint to learn the node's
+ * page + verbatim_text, navigates to the page, and text-searches the
+ * rendered DOM to highlight the exact passage.
+ *
+ * char_start / char_end are returned for future use — once a
+ * canonical-text reader pane lands, the reader can scroll directly to
+ * those offsets instead of doing a verbatim-text search.
+ */
+export interface ReaderNodeResponse {
+  node_id: number;
+  doc_id: string;
+  filename: string | null;
+  subject_name: string | null;
+  /** heading|body|list_item|caption|table_cell|equation|footnote|header|footer */
+  node_type: string;
+  heading_path: string;
+  /** 1-indexed page number; null when the source has no pagination. */
+  page: number | null;
+  char_start: number;
+  char_end: number;
+  verbatim_text: string;
+}
+
+export const reader = {
+  fetchNode: (nodeId: number) =>
+    api<ReaderNodeResponse>(`/api/reader/node/${encodeURIComponent(String(nodeId))}`)
+};
+
+/**
  * Concept graph — nodes + edges across the user's library, scoped by
  * doc or subject. Positions (x, y) are pre-computed server-side via
  * `services.helpers.concept_positions`, so the renderer can place nodes
