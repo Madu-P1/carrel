@@ -524,15 +524,134 @@ nav .nav-cta:hover {
   display: flex; flex-direction: column; gap: 32px;
   align-items: center;
 }
-.companion-video {
-  width: 240px; height: 240px;
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--color-bg-base);
+
+/*
+ * Interactive 3D companion cube.
+ *
+ * Pure CSS cube (no Three.js): four side faces, translateZ outward,
+ * a perspective on the stage, a slow vertical bob on the wrapper, and
+ * a horizontal rotation on the cube itself that snaps between the four
+ * states. The four states map to the 4 quarter turns:
+ *   IDLE        → rotateY(0deg)        front face
+ *   THINKING    → rotateY(-90deg)      right face
+ *   ENCOURAGING → rotateY(-180deg)     back face   (accent halo)
+ *   SLEEPING    → rotateY(-270deg)     left face
+ *
+ * The cube auto-cycles on a 4s timer; hover/focus pauses it; click
+ * advances by one and pauses for 8s before resuming the timer. Mirrors
+ * the four `.companion-state` rows below — the active row gets a
+ * leading accent dot so the eye can connect cube face → grid row.
+ */
+.cube-stage {
+  width: 240px;
+  height: 240px;
+  display: grid;
+  place-items: center;
+  perspective: 1000px;
+  perspective-origin: 50% 35%;
 }
-.companion-video video {
-  width: 100%; height: 100%; object-fit: cover;
+.cube-bob {
+  animation: cubeBob 4.4s ease-in-out infinite;
+  transform-style: preserve-3d;
 }
+@keyframes cubeBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.cube {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  transform-style: preserve-3d;
+  transform: rotateX(-14deg) rotateY(0deg);
+  transition: transform 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  outline: none;
+}
+.cube:focus-visible {
+  /* Focus ring tracks the bounding box, not a 3D-projected outline. */
+  box-shadow: 0 0 0 3px var(--color-bg-base), 0 0 0 5px var(--color-accent);
+  border-radius: 14px;
+}
+.cube[data-state="idle"]        { transform: rotateX(-14deg) rotateY(0deg); }
+.cube[data-state="thinking"]    { transform: rotateX(-14deg) rotateY(-90deg); }
+.cube[data-state="encouraging"] { transform: rotateX(-14deg) rotateY(-180deg); }
+.cube[data-state="sleeping"]    { transform: rotateX(-14deg) rotateY(-270deg); }
+
+.cube-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--color-bg-elevated) 92%, transparent);
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 12px 32px rgba(0, 0, 0, 0.32);
+  /* Backface still rendered on rotation; the cube has visible volume
+     during the transition. */
+}
+.cube-face .face-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-secondary);
+  transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.cube-face .face-label {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+/* Map each face to its translateZ position. translateZ(80px) pushes
+   them outward by half the 160px cube edge so they form a closed box. */
+.cube-face.face-front { transform: rotateY(0deg)    translateZ(80px); }
+.cube-face.face-right { transform: rotateY(90deg)   translateZ(80px); }
+.cube-face.face-back  { transform: rotateY(180deg)  translateZ(80px); }
+.cube-face.face-left  { transform: rotateY(-90deg)  translateZ(80px); }
+
+/* Encouraging state: the back face is showing, paint it with the
+   accent. Soft halo around the whole cube reinforces the "you got
+   the card" moment per the design brief. */
+.cube[data-state="encouraging"] .face-back {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border-default));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 0 60px color-mix(in srgb, var(--color-accent) 28%, transparent),
+    0 12px 32px rgba(0, 0, 0, 0.32);
+}
+.cube[data-state="encouraging"] .face-back .face-icon {
+  color: var(--color-accent);
+}
+.cube[data-state="encouraging"] .face-back .face-label {
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-tertiary));
+}
+
+/* Sleeping: dim the back-pointed face slightly so the cube reads as
+   "low-power" without going invisible. */
+.cube[data-state="sleeping"] .face-left {
+  background: color-mix(in srgb, var(--color-bg-elevated) 70%, transparent);
+}
+.cube[data-state="sleeping"] .face-left .face-icon {
+  color: var(--color-text-tertiary);
+}
+
+.cube-caption {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-top: -8px;
+}
+
 .companion-states {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -545,6 +664,16 @@ nav .nav-cta:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
+}
+.companion-state.is-active {
+  /* The cube's currently-shown face. Subtle accent border reads as
+     "the cube is HERE right now" without overwhelming the grid. */
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
 }
 .companion-state .name {
   font-family: var(--mono);
@@ -552,6 +681,9 @@ nav .nav-cta:hover {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-tour-accent);
+}
+.companion-state.is-active .name {
+  color: var(--color-accent);
 }
 .companion-state .quote {
   font-family: var(--serif);
@@ -576,9 +708,23 @@ nav .nav-cta:hover {
   font-family: var(--mono);
   font-size: 12px;
 }
+.companion-context img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 @media (max-width: 600px) {
   .companion-context { display: none; }
   .companion-states { grid-template-columns: 1fr; }
+}
+
+/* Reduced motion: skip the bob, but keep the cube interactive — the
+   state transitions still convey meaning, just without the "alive"
+   flourish. */
+@media (prefers-reduced-motion: reduce) {
+  .cube-bob { animation: none !important; }
+  .cube { transition: none !important; }
 }
 
 /* ─────────────────────────── faq ─────────────────────────── */
@@ -1125,31 +1271,73 @@ a[href]:focus-visible {
       your streak. It sleeps when you do. You can drag it anywhere on
       screen. It never steals focus from whatever you are working in.
     </p>
-    <div class="companion-video">
-      <video autoplay loop muted playsinline preload="auto"
-             src="../pitch/companion-states.mp4"
-             aria-label="Companion cube cycling through four states"></video>
+    <div class="cube-stage" aria-hidden="false">
+      <div class="cube-bob">
+        <button
+          type="button"
+          class="cube"
+          data-state="idle"
+          aria-label="Companion cube. Currently idle. Click or press space to cycle through the four states."
+        >
+          <div class="cube-face face-front">
+            <!-- IDLE: a quiet single dot, "I'm here when you're ready" -->
+            <svg class="face-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="24" cy="24" r="3" fill="currentColor"/>
+            </svg>
+            <span class="face-label">Idle</span>
+          </div>
+          <div class="cube-face face-right">
+            <!-- THINKING: three dots, the typing/reading indicator -->
+            <svg class="face-icon" viewBox="0 0 48 48" fill="currentColor" stroke="none" aria-hidden="true">
+              <circle cx="12" cy="24" r="3"/>
+              <circle cx="24" cy="24" r="3"/>
+              <circle cx="36" cy="24" r="3"/>
+            </svg>
+            <span class="face-label">Thinking</span>
+          </div>
+          <div class="cube-face face-back">
+            <!-- ENCOURAGING: a checkmark, "you got the card" -->
+            <svg class="face-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 25l7 7 14-16"/>
+            </svg>
+            <span class="face-label">Encouraging</span>
+          </div>
+          <div class="cube-face face-left">
+            <!-- SLEEPING: a crescent moon, "your library is on disk, so am I" -->
+            <svg class="face-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M34 27a12 12 0 1 1-13-15 9 9 0 0 0 13 15z"/>
+            </svg>
+            <span class="face-label">Sleeping</span>
+          </div>
+        </button>
+      </div>
     </div>
-    <div class="companion-states" aria-hidden>
-      <div class="companion-state">
+    <p class="cube-caption" aria-hidden="true">Click to cycle · auto-advances every 4s</p>
+    <div class="companion-states" aria-label="Companion cube state captions">
+      <div class="companion-state" data-state="idle">
         <span class="name">Idle</span>
         <span class="quote">"I'm here when you're ready."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="thinking">
         <span class="name">Thinking</span>
         <span class="quote">"Carrel is reading the source."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="encouraging">
         <span class="name">Encouraging</span>
         <span class="quote">"You got the card. The streak is alive."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="sleeping">
         <span class="name">Sleeping</span>
         <span class="quote">"Your library is on disk. So am I. Goodnight."</span>
       </div>
     </div>
-    <div class="companion-context" aria-label="The cube parked in the corner of a real desktop">
-      [ companion-context.png — cube parked top-right, Notion in front ]
+    <div class="companion-context" aria-label="The cube parked in the corner of a real desktop, Notion in front">
+      <img
+        src="site/assets/companion-context.webp"
+        alt="The Carrel companion cube parked in the top-right of a desktop, with Notion open in front of it"
+        loading="lazy"
+        onerror="this.style.display='none'; this.parentNode.textContent='[ companion-context.png — cube parked top-right, Notion in front ]';"
+      />
     </div>
   </div>
 </section>
@@ -1321,6 +1509,101 @@ a[href]:focus-visible {
       });
     }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
     targets.forEach(function (el) { io.observe(el); });
+  }
+})();
+
+(function () {
+  /*
+   * Companion cube — auto-cycles every 4s, hover/focus pauses, click
+   * advances by one and pauses for 8s before resuming. The cube's
+   * data-state drives both the rotation (via CSS) and the highlight
+   * on the matching .companion-state row, so the eye can connect
+   * "the cube is showing X" to "X means this".
+   */
+  const cube = document.querySelector(".cube");
+  const stateRows = document.querySelectorAll(".companion-state");
+  if (!cube) return;
+  const states = ["idle", "thinking", "encouraging", "sleeping"];
+  const STATE_LABELS = {
+    idle: "Currently idle. Click to cycle.",
+    thinking: "Carrel is reading. Click to cycle.",
+    encouraging: "Streak alive. Click to cycle.",
+    sleeping: "At rest. Click to cycle.",
+  };
+  const AUTO_MS = 4000;
+  const RESUME_AFTER_INTERACTION_MS = 8000;
+  const reducedMotion =
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let index = 0;
+  let timer = null;
+
+  function setIndex(next) {
+    index = ((next % states.length) + states.length) % states.length;
+    const name = states[index];
+    cube.dataset.state = name;
+    cube.setAttribute("aria-label", "Companion cube. " + STATE_LABELS[name]);
+    stateRows.forEach((row) => {
+      row.classList.toggle("is-active", row.dataset.state === name);
+    });
+  }
+  function advance() { setIndex(index + 1); }
+  function start() {
+    if (timer || reducedMotion) return;
+    timer = window.setInterval(advance, AUTO_MS);
+  }
+  function stop() {
+    if (timer) { window.clearInterval(timer); timer = null; }
+  }
+
+  setIndex(0);
+  start();
+
+  cube.addEventListener("click", function () {
+    stop();
+    advance();
+    if (!reducedMotion) {
+      window.setTimeout(start, RESUME_AFTER_INTERACTION_MS);
+    }
+  });
+  cube.addEventListener("mouseenter", stop);
+  cube.addEventListener("mouseleave", start);
+  cube.addEventListener("focus", stop);
+  cube.addEventListener("blur", start);
+  cube.addEventListener("keydown", function (event) {
+    // Space + Enter advance; ArrowRight forward, ArrowLeft back.
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      stop();
+      advance();
+      if (!reducedMotion) window.setTimeout(start, RESUME_AFTER_INTERACTION_MS);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      stop();
+      setIndex(index + 1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      stop();
+      setIndex(index - 1);
+    }
+  });
+
+  // Pause when the section scrolls offscreen so we're not burning
+  // CSS layers behind a section the user can't see.
+  if ("IntersectionObserver" in window) {
+    const section = cube.closest(".companion");
+    if (section) {
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            start();
+          } else {
+            stop();
+          }
+        });
+      }, { threshold: 0.1 });
+      io.observe(section);
+    }
   }
 })();
 
