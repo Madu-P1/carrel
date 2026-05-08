@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0e10">
+<title>Carrel — Friday is the unit of work.</title>
+<meta name="description" content="The student software for people with deadlines. Drop in your lectures. Add your exam. Carrel plans your week, runs the spaced review, and answers questions with citations you can click and verify. Local-first. macOS-native.">
+<meta property="og:title" content="Carrel — Friday is the unit of work.">
+<meta property="og:description" content="Drop in your lectures. Add your exam. Carrel plans your week, runs the spaced review, and answers questions with citations you can click and verify.">
+<meta property="og:image" content="og-image.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Carrel — Friday is the unit of work.">
+<meta name="twitter:description" content="Drop in your lectures. Add your exam. Carrel does the rest.">
+<meta name="twitter:image" content="og-image.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" as="video" href="../pitch/citation-flight.mp4" type="video/mp4">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=instrument-serif:400" rel="stylesheet">
+<style>
+/* ─────────────────────────── tokens ─────────────────────────── */
+:root {
+  /* Mirror the in-app design system. Dark only on this page. */
+  --color-bg-base: #0e0e10;
+  --color-bg-elevated: #16161a;
+  --color-bg-hover: rgba(255,255,255,0.06);
+  --color-border-subtle: rgba(255,255,255,0.06);
+  --color-border-default: rgba(255,255,255,0.10);
+  --color-border-strong: rgba(255,255,255,0.18);
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #b8b8be;
+  --color-text-tertiary: #74747a;
+  --color-text-inverse: #0e0e10;
+  --color-accent: #4f8cff;
+  --color-accent-hover: #6ba0ff;
+  --color-success: #34c759;
+  --color-warning: #ff9f0a;
+  --color-tour-accent: #7ee3c5;
+
+  --shadow-card:
+    0 1px 0 color-mix(in srgb, black 4%, transparent),
+    0 8px 24px color-mix(in srgb, black 22%, transparent);
+  --shadow-hairline: 0 1px 0 color-mix(in srgb, black 6%, transparent);
+
+  --serif: "Instrument Serif", "Charter", "Iowan Old Style", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --max-content: 1200px;
+  --section-pad-y: 96px;
+  --section-pad-x: 32px;
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (max-width: 768px) {
+  :root { --section-pad-y: 64px; --section-pad-x: 20px; }
+}
+
+/* ─────────────────────────── reset ─────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img, video { display: block; max-width: 100%; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+
+/* ─────────────────────────── shared ─────────────────────────── */
+section {
+  padding: var(--section-pad-y) var(--section-pad-x);
+}
+.wrap {
+  max-width: var(--max-content);
+  margin: 0 auto;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+}
+.headline {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
+}
+h1.headline { font-size: clamp(44px, 7vw, 80px); line-height: 1.05; }
+h2.headline { font-size: clamp(36px, 5vw, 56px); line-height: 1.08; }
+.subhead {
+  font-size: clamp(17px, 1.6vw, 20px);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  max-width: 60ch;
+}
+
+/* ─────────────────────────── nav ─────────────────────────── */
+nav.topbar {
+  position: absolute;
+  inset: 24px 32px auto 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 5;
+  pointer-events: none;
+}
+nav.topbar > * { pointer-events: auto; }
+.brand {
+  font-family: var(--serif);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+.brand-mark {
+  display: inline-block;
+  width: 14px; height: 14px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  background: var(--color-accent);
+  transform: rotate(45deg);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 40%, transparent);
+}
+nav .nav-cta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+nav .nav-cta:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+/* ─────────────────────────── buttons ─────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: opacity var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  opacity: 0.96;
+}
+.btn-primary:hover { opacity: 1; }
+.btn-primary .kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  background: rgba(0,0,0,0.18);
+  color: rgba(0,0,0,0.74);
+  font-size: 13px;
+  font-family: var(--mono);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+.btn-ghost:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
+}
+
+/* ─────────────────────────── hero ─────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 64px;
+  align-items: center;
+  min-height: 100vh;
+  padding-top: max(var(--section-pad-y), 120px);
+  padding-bottom: var(--section-pad-y);
+  max-width: var(--max-content);
+  margin: 0 auto;
+}
+.hero-copy { display: flex; flex-direction: column; gap: 24px; }
+.hero-eyebrow { color: var(--color-text-tertiary); }
+.hero-cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.hero-trust {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+.hero-trust strong {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.hero-video-frame {
+  position: relative;
+  aspect-ratio: 16/13;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+}
+.hero-video-frame video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    text-align: left;
+  }
+  .hero-cta-row .btn { flex: 1; min-width: 0; justify-content: center; }
+}
+
+/* ─────────────────────────── section: demo ─────────────────────────── */
+.demo {
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.demo-inner { display: flex; flex-direction: column; gap: 32px; align-items: center; text-align: center; }
+.demo-video {
+  width: 100%;
+  max-width: 1040px;
+  aspect-ratio: 16/13;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+}
+.demo-video video { width: 100%; height: 100%; object-fit: cover; }
+.demo-formats {
+  display: flex; gap: 24px; flex-wrap: wrap;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+}
+.demo-formats span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ─────────────────────────── pillar (deadline / grounding / privacy) ─────────────────────────── */
+.pillar { padding-top: var(--section-pad-y); padding-bottom: var(--section-pad-y); }
+.pillar-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+.pillar-copy { display: flex; flex-direction: column; gap: 20px; }
+.pillar-pull {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-style: italic;
+  line-height: 1.3;
+  padding-left: 24px;
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text-primary);
+  margin-top: 8px;
+}
+.pillar-img {
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-card);
+  aspect-ratio: 4/3;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-tertiary);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+  padding: 24px;
+}
+@media (max-width: 900px) {
+  .pillar-grid { grid-template-columns: 1fr; gap: 40px; }
+  .pillar-img { aspect-ratio: 16/10; }
+}
+
+/* ─────────────────────────── three-column grounding ─────────────────────────── */
+.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin-top: 48px;
+}
+.three-col-item { display: flex; flex-direction: column; gap: 8px; }
+.three-col-item .col-icon {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.three-col-item h3 {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.three-col-item p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+@media (max-width: 768px) { .three-col { grid-template-columns: 1fr; gap: 24px; } }
+
+/* ─────────────────────────── privacy ─────────────────────────── */
+.privacy { background: var(--color-bg-elevated); }
+.privacy-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: left;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.privacy-diagram {
+  margin-top: 24px;
+  padding: 32px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-base);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: center;
+}
+.privacy-box {
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.privacy-box.outer { background: color-mix(in srgb, var(--color-accent) 6%, transparent); border-color: color-mix(in srgb, var(--color-accent) 36%, transparent); }
+.privacy-box .label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: 8px;
+}
+.privacy-box .inner-box {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  padding: 16px 12px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+.privacy-arrow {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--color-accent);
+  text-align: center;
+}
+.privacy-arrow svg { stroke: var(--color-accent); }
+@media (max-width: 700px) {
+  .privacy-diagram { grid-template-columns: 1fr; }
+  .privacy-arrow { transform: rotate(90deg); }
+}
+
+/* ─────────────────────────── comparison table ─────────────────────────── */
+.compare table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 32px;
+  font-size: 14px;
+}
+.compare th, .compare td {
+  text-align: left;
+  padding: 16px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.compare thead th {
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+}
+.compare tbody td:first-child {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.compare .yes { color: var(--color-success); font-weight: 500; }
+.compare .partial { color: var(--color-warning); }
+.compare .no { color: var(--color-text-tertiary); }
+.compare tr.carrel-row td {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+.compare tr.carrel-row td:first-child {
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.compare tr.carrel-row td.yes { font-weight: 600; }
+.compare-caption {
+  margin-top: 24px;
+  font-style: italic;
+  font-family: var(--serif);
+  font-size: 18px;
+  color: var(--color-text-secondary);
+  max-width: 60ch;
+}
+@media (max-width: 700px) {
+  .compare table { font-size: 12px; }
+  .compare th, .compare td { padding: 12px 6px; }
+}
+
+/* ─────────────────────────── pricing ─────────────────────────── */
+.pricing { background: var(--color-bg-elevated); }
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-top: 48px;
+}
+.price-card {
+  position: relative;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: var(--shadow-hairline);
+}
+.price-card.recommended {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+  border-left: 3px solid var(--color-accent);
+  box-shadow: var(--shadow-card);
+}
+.price-card .badge {
+  position: absolute;
+  top: -10px;
+  left: 24px;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+}
+.price-tier {
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+.price-amount {
+  font-family: var(--serif);
+  font-size: 40px;
+  line-height: 1;
+  color: var(--color-text-primary);
+}
+.price-features {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+.price-features li {
+  position: relative;
+  padding-left: 18px;
+}
+.price-features li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 9px;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+}
+.price-cta {
+  margin-top: auto;
+  padding-top: 16px;
+}
+.pricing-fineprint {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+@media (max-width: 900px) {
+  .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
+  .price-card.recommended { order: -1; }
+}
+
+/* ─────────────────────────── companion (Section 11) ─────────────────────────── */
+.companion {
+  text-align: center;
+  background: var(--color-bg-base);
+}
+.companion-inner {
+  display: flex; flex-direction: column; gap: 32px;
+  align-items: center;
+}
+.companion-video {
+  width: 240px; height: 240px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--color-bg-base);
+}
+.companion-video video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.companion-states {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 32px;
+  max-width: 600px;
+  margin-top: 16px;
+}
+.companion-state {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.companion-state .name {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-tour-accent);
+}
+.companion-state .quote {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+.companion-context {
+  margin-top: 16px;
+  width: 100%;
+  max-width: 1080px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+  aspect-ratio: 16/10;
+  background: var(--color-bg-elevated);
+  display: grid;
+  place-items: center;
+  color: var(--color-text-tertiary);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .companion-context { display: none; }
+  .companion-states { grid-template-columns: 1fr; }
+}
+
+/* ─────────────────────────── faq ─────────────────────────── */
+.faq { background: var(--color-bg-elevated); }
+.faq-list {
+  max-width: 720px;
+  margin: 32px auto 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.faq details {
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 20px 0;
+}
+.faq summary {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after {
+  content: "";
+  width: 8px; height: 8px;
+  border-right: 1.5px solid var(--color-text-tertiary);
+  border-bottom: 1.5px solid var(--color-text-tertiary);
+  transform: rotate(-45deg);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq .answer {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  max-width: 64ch;
+}
+
+/* ─────────────────────────── sticky CTA ─────────────────────────── */
+.sticky-cta {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 56px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 96%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  z-index: 100;
+  transform: translateY(100%);
+  transition: transform 240ms var(--ease-out);
+}
+.sticky-cta.visible { transform: translateY(0); }
+.sticky-cta-text {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+.sticky-cta-cube {
+  width: 22px; height: 22px;
+  background: var(--color-accent);
+  transform: rotate(45deg);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 40%, transparent);
+}
+.sticky-cta-actions { display: flex; align-items: center; gap: 8px; }
+.sticky-cta-actions .btn { height: 36px; padding: 0 18px; font-size: 13px; }
+.sticky-cta .dismiss {
+  background: transparent;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 18px;
+  width: 28px; height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+}
+.sticky-cta .dismiss:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+@media (max-width: 600px) {
+  .sticky-cta-text { display: none; }
+}
+
+/* ─────────────────────────── footer ─────────────────────────── */
+footer {
+  padding: 64px 32px 80px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 48px;
+  max-width: var(--max-content);
+  margin: 0 auto;
+}
+.footer-col h4 {
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+.footer-col a {
+  display: block;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.footer-col a:hover { color: var(--color-text-primary); }
+.footer-line {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--color-border-subtle);
+  max-width: var(--max-content);
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-width: 700px) {
+  .footer-cols { grid-template-columns: 1fr; gap: 32px; }
+}
+
+/* ─────────────────────────── focus rings (a11y) ─────────────────────────── */
+.btn:focus-visible,
+.nav-cta:focus-visible,
+.brand:focus-visible,
+.sticky-dismiss:focus-visible,
+a[href]:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-bg-base),
+    0 0 0 4px var(--color-accent);
+  border-radius: inherit;
+}
+/* Restore the rounded corner on buttons so the focus ring tracks the shape */
+.btn:focus-visible { border-radius: 8px; }
+
+/* ─────────────────────────── hover lift / press ─────────────────────────── */
+.btn {
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 20px color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 1px 0 color-mix(in srgb, black 6%, transparent);
+}
+.btn-ghost:hover {
+  transform: translateY(-1px);
+}
+.btn:active { transform: translateY(0) scale(0.985); }
+
+.nav-cta {
+  transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+/* Comparison table: subtle row tint on hover so the user can scan with their pointer. */
+.compare tbody tr {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.compare tbody tr:not(.carrel-row):hover td {
+  background: color-mix(in srgb, white 3%, transparent);
+}
+.compare tbody tr.carrel-row:hover td {
+  background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+}
+
+/* Pricing cards: tactile lift, recommended card gets an accent halo on hover. */
+.price-card {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.price-card:hover { transform: translateY(-2px); }
+.price-card.recommended:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, black 4%, transparent),
+    0 12px 36px color-mix(in srgb, black 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ─────────────────────────── hero load choreography ─────────────────────────── */
+/*
+ * Three-beat fade-up on first paint: eyebrow → headline → subhead → CTA row →
+ * trust line → video. Each delayed 80ms from the prior. This is the only
+ * load-time animation on the page; subsequent sections reveal on scroll.
+ */
+.hero-copy > *,
+.hero-video-frame {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: heroFadeUp 480ms var(--ease-out) forwards;
+}
+.hero-copy > *:nth-child(1) { animation-delay: 0ms; }
+.hero-copy > *:nth-child(2) { animation-delay: 80ms; }
+.hero-copy > *:nth-child(3) { animation-delay: 160ms; }
+.hero-copy > *:nth-child(4) { animation-delay: 240ms; }
+.hero-copy > *:nth-child(5) { animation-delay: 320ms; }
+.hero-video-frame { animation-delay: 400ms; }
+
+@keyframes heroFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─────────────────────────── scroll-reveal ─────────────────────────── */
+/*
+ * Opt-in via [data-reveal] (set by the JS at the bottom). Pre-state lifts
+ * the element 12px and zeroes opacity; .is-visible (added by the
+ * IntersectionObserver) restores both. 600ms is calmer than the hero's
+ * 480ms — the eye is already moving, the page just catches up.
+ */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 600ms var(--ease-out),
+    transform 600ms var(--ease-out);
+  will-change: opacity, transform;
+}
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Replace emoji icons with line-art SVG (per the design brief: no emojis). */
+.format-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-tertiary);
+  flex: 0 0 auto;
+  vertical-align: -3px;
+}
+
+/* ─────────────────────────── reduced motion ─────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* Ensure the scroll-reveal items don't stay invisible when the
+     IntersectionObserver is bypassed — the JS also force-applies
+     .is-visible up-front, but the CSS guard is belt-and-braces. */
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  /* Hero load: skip the fade-up and just paint immediately. */
+  .hero-copy > *,
+  .hero-video-frame {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────── topbar ─────────────────────────── -->
+<nav class="topbar">
+  <a href="#" class="brand"><span class="brand-mark"></span>Carrel</a>
+  <a href="#download" class="nav-cta">Download</a>
+</nav>
+
+<!-- ─────────────────────────── hero ─────────────────────────── -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <span class="eyebrow hero-eyebrow">The student software for people with deadlines</span>
+    <h1 id="hero-title" class="headline">Friday is the unit of work.</h1>
+    <p class="subhead">
+      Drop in your lectures. Add your exam. Carrel plans your week,
+      runs the spaced review, and answers questions with citations
+      you can click and verify. Local-first. macOS-native.
+    </p>
+    <div class="hero-cta-row">
+      <a href="#download" class="btn btn-primary" id="cta-hero-primary">
+        Download for macOS
+        <span class="kbd">↵</span>
+      </a>
+      <a href="#demo" class="btn btn-ghost">See it in 90 seconds</a>
+    </div>
+    <p class="hero-trust">
+      <strong>Free tier never leaves your laptop.</strong>
+      Pro is $10/month with .edu.
+    </p>
+  </div>
+  <div class="hero-video-frame">
+    <video autoplay loop muted playsinline preload="auto"
+           src="../pitch/citation-flight.mp4"
+           aria-label="Carrel demo: ask a question, click a citation chip, the source span pulses">
+    </video>
+  </div>
+</section>
+
+<!-- ─────────────────────────── demo ─────────────────────────── -->
+<section class="demo" id="demo" aria-labelledby="demo-title">
+  <div class="wrap demo-inner">
+    <span class="eyebrow">The wedge</span>
+    <h2 id="demo-title" class="headline">Click any claim. Land on the source. 420ms.</h2>
+    <p class="subhead">
+      Every answer in Carrel flies back to the verbatim chunk it came
+      from. No fabrication, no "trust me," no re-reading the paper to
+      check.
+    </p>
+    <div class="demo-video">
+      <video autoplay loop muted playsinline preload="metadata"
+             src="../pitch/citation-flight.mp4"
+             aria-label="Citation flight demo, looping"></video>
+    </div>
+    <div class="demo-formats">
+      <svg class="format-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <path d="M14 2v6h6"/>
+        <path d="M9 13h6M9 17h6M9 9h2"/>
+      </svg>
+      <span>PDFs</span>
+      <svg class="format-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="12" rx="2"/>
+        <path d="M8 20h8M12 16v4"/>
+      </svg>
+      <span>Slides</span>
+      <svg class="format-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/>
+        <path d="M4 19.5V21h16"/>
+      </svg>
+      <span>EPUB textbooks</span>
+      <span style="color: var(--color-text-tertiary)">and 50+ other formats.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── deadline pillar ─────────────────────────── -->
+<section class="pillar" aria-labelledby="deadline-title">
+  <div class="wrap pillar-grid">
+    <div class="pillar-copy">
+      <span class="eyebrow">Plan</span>
+      <h2 id="deadline-title" class="headline">The deadline schedules itself backward.</h2>
+      <p class="subhead">
+        Add the exam, the paper, the problem set. Carrel ranks the
+        soonest free block in your real calendar and offers a 60-min
+        study session, weighted by how close the deadline is and how
+        weak the underlying concept is. Every Friday is fed from the
+        work you do every Tuesday.
+      </p>
+      <p class="pillar-pull">
+        Notion stores your notes. Anki drills your cards. Carrel
+        knows your Friday.
+      </p>
+    </div>
+    <div class="pillar-img" aria-label="Plan view screenshot">
+      [ Plan view screenshot — WORKING TOWARD rail with 3 deadlines + coach study block on grid ]
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── grounding pillar ─────────────────────────── -->
+<section class="pillar" style="background: var(--color-bg-elevated)" aria-labelledby="grounding-title">
+  <div class="wrap" style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px;">
+    <span class="eyebrow">Ask</span>
+    <h2 id="grounding-title" class="headline">Source-grounded by architecture, not by promise.</h2>
+    <div style="margin-top: 16px;" class="pillar-img" aria-label="Ask answer with citation chips">
+      [ Ask view screenshot — claim list, two citation chips, one unsupported span ]
+    </div>
+    <div class="three-col">
+      <div class="three-col-item">
+        <div class="col-icon" aria-hidden>↗</div>
+        <h3>Cited</h3>
+        <p>
+          Every claim links to the verbatim span the model used.
+          Click the chip, the Reader scrolls to the source, the chunk
+          highlights for one beat. You can ship the answer.
+        </p>
+      </div>
+      <div class="three-col-item">
+        <div class="col-icon" aria-hidden>◇</div>
+        <h3>Bounded</h3>
+        <p>
+          Carrel only answers from sources you've imported. If the
+          answer isn't in your library, Carrel says so loudly instead
+          of guessing.
+        </p>
+      </div>
+      <div class="three-col-item">
+        <div class="col-icon" aria-hidden>✓</div>
+        <h3>Auditable</h3>
+        <p>
+          The unsupported-spans list shows exactly what the model
+          could not back up. Three guards: hybrid retrieval, escaped
+          XML envelopes, verbatim citations.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── privacy pillar ─────────────────────────── -->
+<section class="privacy" aria-labelledby="privacy-title">
+  <div class="wrap privacy-inner">
+    <span class="eyebrow">Local-first</span>
+    <h2 id="privacy-title" class="headline">Your library never leaves your laptop unless you say so.</h2>
+    <p class="subhead">
+      The Free tier ingests, retrieves, and answers entirely on-device
+      using a local LLM. Pro upgrades you to Claude for harder
+      questions, and only the question plus the retrieved chunks
+      travel, never your full library, never your highlights, never
+      your reading patterns. We do not train on your data. We do not
+      store it on a server. We do not have a server.
+    </p>
+    <div class="privacy-diagram" aria-hidden>
+      <div class="privacy-box">
+        <div class="label">Your laptop</div>
+        <div class="inner-box">Your library</div>
+      </div>
+      <div class="privacy-arrow">
+        <svg width="60" height="20" viewBox="0 0 60 20" fill="none">
+          <path d="M2 10 L52 10 M48 6 L52 10 L48 14" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Pro tier only</span>
+        <span style="color: var(--color-text-tertiary); font-size: 10px;">question + chunks</span>
+      </div>
+      <div class="privacy-box outer">
+        <div class="label">Claude API</div>
+        <div class="inner-box">Stateless</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── comparison table ─────────────────────────── -->
+<section class="compare" aria-labelledby="compare-title">
+  <div class="wrap">
+    <span class="eyebrow">The student stack</span>
+    <h2 id="compare-title" class="headline" style="margin-top: 12px;">No one else ships this combination.</h2>
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Deadline planning</th>
+          <th>Universal ingest</th>
+          <th>Spaced review</th>
+          <th>Cited answers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Notion AI</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>Quizlet / Anki</td><td class="no">No</td><td class="partial">Partial</td><td class="yes">Yes</td><td class="no">No</td></tr>
+        <tr><td>NotebookLM</td><td class="no">No</td><td class="partial">Partial</td><td class="no">No</td><td class="partial">Partial</td></tr>
+        <tr><td>ChatGPT Study Mode</td><td class="no">No</td><td class="partial">Partial</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr class="carrel-row"><td>Carrel</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      </tbody>
+    </table>
+    <p class="compare-caption">
+      You probably use 3 of these now. The point isn't that Carrel is
+      better at any single column. The point is that no other app is
+      in all four.
+    </p>
+  </div>
+</section>
+
+<!-- ─────────────────────────── pricing ─────────────────────────── -->
+<section class="pricing" id="download" aria-labelledby="pricing-title">
+  <div class="wrap">
+    <span class="eyebrow">Pricing</span>
+    <h2 id="pricing-title" class="headline" style="margin-top: 12px;">Pick the tier that matches Friday.</h2>
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="price-tier">Free</div>
+        <div class="price-amount">$0<span style="font-size: 16px; font-family: var(--sans); color: var(--color-text-tertiary);">/forever</span></div>
+        <ul class="price-features">
+          <li>On-device LLM (Llama 3.1 8B)</li>
+          <li>10 sources max</li>
+          <li>All product features</li>
+          <li>Never expires, never asks</li>
+        </ul>
+        <div class="price-cta">
+          <a href="#" class="btn btn-ghost" style="width: 100%; justify-content: center;">Get Carrel Free</a>
+        </div>
+      </div>
+      <div class="price-card recommended">
+        <div class="badge">Recommended</div>
+        <div class="price-tier">Student · .edu</div>
+        <div class="price-amount">$10<span style="font-size: 16px; font-family: var(--sans); color: var(--color-text-tertiary);">/month</span></div>
+        <ul class="price-features">
+          <li>Unlimited sources</li>
+          <li>Claude-powered Ask</li>
+          <li>Calendar coach + spaced review</li>
+          <li>Sync across your devices</li>
+        </ul>
+        <div class="price-cta">
+          <a href="#" class="btn btn-primary" style="width: 100%; justify-content: center;">Get the Student plan</a>
+        </div>
+      </div>
+      <div class="price-card">
+        <div class="price-tier">Pro</div>
+        <div class="price-amount">$20<span style="font-size: 16px; font-family: var(--sans); color: var(--color-text-tertiary);">/month</span></div>
+        <ul class="price-features">
+          <li>For grad students, MBA, residency, bar prep</li>
+          <li>Unlimited everything</li>
+          <li>Priority API for harder questions</li>
+          <li>Earlier access to new features</li>
+        </ul>
+        <div class="price-cta">
+          <a href="#" class="btn btn-ghost" style="width: 100%; justify-content: center;">Get Pro</a>
+        </div>
+      </div>
+    </div>
+    <p class="pricing-fineprint">
+      Annual prepay saves 20%. Cancel any time. We don't auto-renew
+      without an email warning a week ahead.
+    </p>
+  </div>
+</section>
+
+<!-- ─────────────────────────── companion (Section 11) ─────────────────────────── -->
+<section class="companion" aria-labelledby="companion-title">
+  <div class="wrap companion-inner">
+    <span class="eyebrow">The companion</span>
+    <h2 id="companion-title" class="headline">It lives on your desktop, not in a tab.</h2>
+    <p class="subhead" style="text-align: center;">
+      A small cube parks in your corner. It reads when Carrel is
+      reading. It glows when you finish a card. It spins when you hit
+      your streak. It sleeps when you do. You can drag it anywhere on
+      screen. It never steals focus from whatever you are working in.
+    </p>
+    <div class="companion-video">
+      <video autoplay loop muted playsinline preload="auto"
+             src="../pitch/companion-states.mp4"
+             aria-label="Companion cube cycling through four states"></video>
+    </div>
+    <div class="companion-states" aria-hidden>
+      <div class="companion-state">
+        <span class="name">Idle</span>
+        <span class="quote">"I'm here when you're ready."</span>
+      </div>
+      <div class="companion-state">
+        <span class="name">Thinking</span>
+        <span class="quote">"Carrel is reading the source."</span>
+      </div>
+      <div class="companion-state">
+        <span class="name">Encouraging</span>
+        <span class="quote">"You got the card. The streak is alive."</span>
+      </div>
+      <div class="companion-state">
+        <span class="name">Sleeping</span>
+        <span class="quote">"Your library is on disk. So am I. Goodnight."</span>
+      </div>
+    </div>
+    <div class="companion-context" aria-label="The cube parked in the corner of a real desktop">
+      [ companion-context.png — cube parked top-right, Notion in front ]
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── faq ─────────────────────────── -->
+<section class="faq" aria-labelledby="faq-title">
+  <div class="wrap">
+    <span class="eyebrow">FAQ</span>
+    <h2 id="faq-title" class="headline" style="margin-top: 12px; text-align: center;">The questions you actually have.</h2>
+    <div class="faq-list">
+      <details>
+        <summary>Is this just NotebookLM?</summary>
+        <p class="answer">
+          No. NotebookLM is a cloud-only, account-gated chat-with-PDF
+          tool from Google. Carrel is a local-first study workspace
+          built around your deadlines, with spaced repetition, calendar
+          planning, and auditable citations. NotebookLM is the demo
+          for the category. Carrel is the system you actually study
+          with.
+        </p>
+      </details>
+      <details>
+        <summary>Does my library go to the cloud?</summary>
+        <p class="answer">
+          No on the Free tier, everything runs on-device. On Pro, only
+          the question plus the retrieved chunks go to Claude per
+          request, never your full library. We don't train on your
+          data and we don't have a server to store it on.
+        </p>
+      </details>
+      <details>
+        <summary>How is this different from Anki?</summary>
+        <p class="answer">
+          Anki drills cards you already wrote. Carrel writes the cards
+          from your sources, schedules the review against your real
+          calendar, and ties the whole queue to whatever exam you have
+          on Friday.
+        </p>
+      </details>
+      <details>
+        <summary>What if my professor doesn't share PDFs?</summary>
+        <p class="answer">
+          Drop in your lecture slides. Or your scanned notes (Carrel
+          runs OCR via Apple Vision). Or a YouTube link to the lecture
+          (audio support coming Q3). The point is the deadline, not the
+          format.
+        </p>
+      </details>
+      <details>
+        <summary>Why macOS only?</summary>
+        <p class="answer">
+          Because we ship deeply on one platform before stretching
+          across three. Android is in development for September;
+          Windows is on the year-2 roadmap. If you don't have a Mac,
+          leave us your email and we'll let you know when your
+          platform ships, no marketing list, just one email.
+        </p>
+      </details>
+      <details>
+        <summary>What does the founder do if this doesn't work?</summary>
+        <p class="answer">
+          Refund any active subscription, open-source the engine, and
+          put a forwarding link on this page to whichever tool
+          succeeded us. We mean it. The line is in our terms of
+          service.
+        </p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── footer ─────────────────────────── -->
+<footer>
+  <div class="footer-cols">
+    <div class="footer-col">
+      <h4>Product</h4>
+      <a href="#download">Download for macOS</a>
+      <a href="#download">Pricing</a>
+      <a href="#">What's new</a>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <a href="mailto:hello@carrel.app">Email the founder</a>
+      <a href="#">Changelog</a>
+      <a href="#">GitHub</a>
+    </div>
+    <div class="footer-col">
+      <h4>Legal</h4>
+      <a href="#">Privacy</a>
+      <a href="#">Terms of service</a>
+      <a href="#">Refund policy</a>
+    </div>
+  </div>
+  <p class="footer-line">
+    Built solo. © 2026 Carrel.
+  </p>
+</footer>
+
+<!-- ─────────────────────────── sticky CTA ─────────────────────────── -->
+<div class="sticky-cta" id="sticky-cta" role="complementary" aria-label="Sticky download bar">
+  <div class="sticky-cta-text">
+    <span class="sticky-cta-cube" aria-hidden></span>
+    <span>Friday is closer than you think.</span>
+  </div>
+  <div class="sticky-cta-actions">
+    <a href="#download" class="btn btn-primary">Get Carrel Free</a>
+    <button class="dismiss" aria-label="Dismiss" id="sticky-dismiss">✕</button>
+  </div>
+</div>
+
+<script>
+/*
+ * Scroll-reveal: tag elements after the hero with [data-reveal], then
+ * flip them to .is-visible the first time they enter the viewport. The
+ * tag list is intentional rather than blanket-everything — we want
+ * eyebrows + headlines + content blocks revealing, not whole sections
+ * snapping in (which would feel laggy when the section is taller than
+ * the viewport).
+ */
+(function () {
+  const reduced =
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Pause autoplay videos when the user prefers reduced motion. The
+  // looping demo / hero clips are visual flavour, not content — pausing
+  // them on the first frame respects the preference without losing
+  // the at-a-glance signal of what the app does.
+  document.querySelectorAll("video[autoplay]").forEach(function (video) {
+    if (!reduced) return;
+    video.removeAttribute("autoplay");
+    video.removeAttribute("loop");
+    try { video.pause(); } catch (_) {}
+  });
+
+  // Tag the revealable elements. We hand-pick the children rather than
+  // tagging entire sections so a single section's heading can fade in
+  // before its long body — feels more like reading than like a slide
+  // arriving.
+  const tagSelectors = [
+    "section:not(.hero) .eyebrow",
+    "section:not(.hero) .headline",
+    "section:not(.hero) .subhead",
+    ".pillar-pull",
+    ".pillar-img",
+    ".demo-formats",
+    ".grounding-grid > *",
+    ".compare table",
+    ".compare-caption",
+    ".price-card",
+    ".pricing-fineprint",
+    ".companion-frame",
+    ".faq-list > *",
+    ".footer-cols > *",
+  ];
+  const targets = document.querySelectorAll(tagSelectors.join(","));
+  targets.forEach(function (el) { el.setAttribute("data-reveal", ""); });
+
+  if (reduced || !("IntersectionObserver" in window)) {
+    // No animation budget. Reveal everything immediately so the page
+    // never sits in its pre-state if the observer can't run.
+    targets.forEach(function (el) { el.classList.add("is-visible"); });
+  } else {
+    const io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-visible");
+        io.unobserve(entry.target);
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+    targets.forEach(function (el) { io.observe(el); });
+  }
+})();
+
+(function () {
+  // Sticky CTA: appears once the visitor passes 60% of the page,
+  // dismissable, dismissal persists for 7 days.
+  const STICKY_KEY = "carrel.sticky-dismissed";
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const bar = document.getElementById("sticky-cta");
+  const dismiss = document.getElementById("sticky-dismiss");
+
+  function recentlyDismissed() {
+    try {
+      const ts = parseInt(localStorage.getItem(STICKY_KEY) || "0", 10);
+      return Number.isFinite(ts) && Date.now() - ts < SEVEN_DAYS_MS;
+    } catch { return false; }
+  }
+  function show() { bar.classList.add("visible"); }
+  function hide() { bar.classList.remove("visible"); }
+
+  if (recentlyDismissed()) {
+    bar.style.display = "none";
+  } else {
+    let shown = false;
+    window.addEventListener("scroll", function () {
+      if (shown) return;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const ratio = window.scrollY / Math.max(docHeight, 1);
+      if (ratio > 0.6) {
+        shown = true;
+        show();
+      }
+    }, { passive: true });
+    dismiss.addEventListener("click", function () {
+      try { localStorage.setItem(STICKY_KEY, String(Date.now())); } catch {}
+      hide();
+      setTimeout(function () { bar.style.display = "none"; }, 260);
+    });
+  }
+})();
+</script>
+</body>
+</html>
