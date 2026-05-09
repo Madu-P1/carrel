@@ -34,7 +34,11 @@ def fetch_mastery_snapshot(conn: sqlite3.Connection, limit: int = 8) -> List[Dic
                 "id": row["id"],
                 "name": clean_concept_label(row["name"]),
                 "mastery": mastery,
-                "band": "Struggling" if mastery < 45 else "Developing" if mastery < 75 else "Strong",
+                "band": "Struggling"
+                if mastery < 45
+                else "Developing"
+                if mastery < 75
+                else "Strong",
                 "due_cards": due_counts.get(row["id"], 0),
                 "description": row["description"],
                 "document_name": row["document_name"],
@@ -86,9 +90,9 @@ def build_momentum_engine(conn: sqlite3.Connection, fetch_recent_events) -> Dict
             low_confidence[event["concept_id"]] = low_confidence.get(event["concept_id"], 0) + 1
         payload = event.get("payload") or []
         if isinstance(payload, dict) and event["concept_id"]:
-            confusion_counts[event["concept_id"]] = confusion_counts.get(event["concept_id"], 0) + int(
-                payload.get("misconception_count", 0)
-            )
+            confusion_counts[event["concept_id"]] = confusion_counts.get(
+                event["concept_id"], 0
+            ) + int(payload.get("misconception_count", 0))
 
     best_concept = None
     best_score = -1.0
@@ -114,17 +118,22 @@ def build_momentum_engine(conn: sqlite3.Connection, fetch_recent_events) -> Dict
             "signals": [],
         }
 
-    notes_exist = conn.execute(
-        "SELECT COUNT(*) AS total FROM notes WHERE concept_id = ?",
-        (best_concept["id"],),
-    ).fetchone()["total"] > 0
+    notes_exist = (
+        conn.execute(
+            "SELECT COUNT(*) AS total FROM notes WHERE concept_id = ?",
+            (best_concept["id"],),
+        ).fetchone()["total"]
+        > 0
+    )
     due_count = due_counts.get(best_concept["id"], 0)
     confusion = confusion_counts.get(best_concept["id"], 0)
     low_conf = low_confidence.get(best_concept["id"], 0)
     related_id = related_concept_id(conn, best_concept["id"])
     related_name = None
     if related_id:
-        related_row = conn.execute("SELECT name FROM concepts WHERE id = ?", (related_id,)).fetchone()
+        related_row = conn.execute(
+            "SELECT name FROM concepts WHERE id = ?", (related_id,)
+        ).fetchone()
         related_name = clean_concept_label(related_row["name"]) if related_row else None
 
     focus_name = clean_concept_label(best_concept["name"])
@@ -132,31 +141,61 @@ def build_momentum_engine(conn: sqlite3.Connection, fetch_recent_events) -> Dict
     if switches >= 4:
         headline = f"Run a 7-minute focus sprint on {focus_name}"
         reason = "You have been switching topics often. A short, single-topic sprint will improve retention more than opening another document."
-        primary_action = {"label": "Start focus mode", "type": "focus", "concept_id": best_concept["id"]}
+        primary_action = {
+            "label": "Start focus mode",
+            "type": "focus",
+            "concept_id": best_concept["id"],
+        }
     elif confusion or low_conf:
         headline = f"Use scaffolded help on {focus_name}"
         reason = "Low confidence and repeated uncertainty suggest you need a guided explanation with direct source evidence before testing again."
-        primary_action = {"label": "Ask grounded tutor", "type": "tutor", "concept_id": best_concept["id"]}
+        primary_action = {
+            "label": "Ask grounded tutor",
+            "type": "tutor",
+            "concept_id": best_concept["id"],
+        }
     elif due_count >= 4:
         headline = f"Clear the due cards for {focus_name}"
         reason = "You already have enough knowledge here to reinforce it quickly. A short card sprint will lock it in."
-        primary_action = {"label": "Do review sprint", "type": "review", "concept_id": best_concept["id"]}
+        primary_action = {
+            "label": "Do review sprint",
+            "type": "review",
+            "concept_id": best_concept["id"],
+        }
     elif not notes_exist:
         headline = f"Turn {focus_name} into a 3-bullet note"
         reason = "You have source material and partial understanding, but no compressed note yet. Writing one now raises future quiz performance."
-        primary_action = {"label": "Capture smart note", "type": "note", "concept_id": best_concept["id"]}
+        primary_action = {
+            "label": "Capture smart note",
+            "type": "note",
+            "concept_id": best_concept["id"],
+        }
     else:
         headline = f"Compare {focus_name} with {related_name or 'a nearby concept'}"
         reason = "Your next leverage comes from contrast. Comparing adjacent concepts tends to surface the misconceptions that simple rereading misses."
-        primary_action = {"label": "Open compare mode", "type": "compare", "concept_id": best_concept["id"], "related_concept_id": related_id}
+        primary_action = {
+            "label": "Open compare mode",
+            "type": "compare",
+            "concept_id": best_concept["id"],
+            "related_concept_id": related_id,
+        }
 
     actions = [primary_action]
     if related_id and primary_action["type"] != "compare":
-        actions.append({"label": f"Compare with {related_name}", "type": "compare", "concept_id": best_concept["id"], "related_concept_id": related_id})
+        actions.append(
+            {
+                "label": f"Compare with {related_name}",
+                "type": "compare",
+                "concept_id": best_concept["id"],
+                "related_concept_id": related_id,
+            }
+        )
     if not notes_exist and primary_action["type"] != "note":
         actions.append({"label": "Create note", "type": "note", "concept_id": best_concept["id"]})
     if due_count and primary_action["type"] != "review":
-        actions.append({"label": f"{due_count} cards due", "type": "review", "concept_id": best_concept["id"]})
+        actions.append(
+            {"label": f"{due_count} cards due", "type": "review", "concept_id": best_concept["id"]}
+        )
 
     signals = [
         f"Mastery {round(float(best_concept['mastery']) * 100)}%",
@@ -393,7 +432,10 @@ def fetch_workspace_state_v2(
             "related_concepts": related_concepts,
         }
     elif surface == "session":
-        active_session = next((item for item in sessions if item["status"] == "active"), sessions[0] if sessions else None)
+        active_session = next(
+            (item for item in sessions if item["status"] == "active"),
+            sessions[0] if sessions else None,
+        )
         center_payload = {
             "session": active_session,
             "recent_exchanges": recent_exchanges,

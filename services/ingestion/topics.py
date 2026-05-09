@@ -79,7 +79,12 @@ def _segment_chunk_for_study(chunk: Dict[str, object]) -> List[Dict[str, object]
         title_lines.append(_strip_bullet_prefix(line))
         index += 1
         next_line = lines[index] if index < len(lines) else ""
-        if len(title_lines) >= 3 or len(" ".join(title_lines)) >= 140 or _is_bullet_like(next_line) or _is_formula_like_text(next_line):
+        if (
+            len(title_lines) >= 3
+            or len(" ".join(title_lines)) >= 140
+            or _is_bullet_like(next_line)
+            or _is_formula_like_text(next_line)
+        ):
             break
 
     active_topic = section or "Core Ideas"
@@ -87,7 +92,9 @@ def _segment_chunk_for_study(chunk: Dict[str, object]) -> List[Dict[str, object]
     if title_lines:
         title_text = _normalize_structural_label(" ".join(title_lines))
         title_role = classify_span_role(title_text, kind="heading", topic_hint=section)
-        append_span(title_text, title_role, title_text if title_role in {"title", "heading"} else section)
+        append_span(
+            title_text, title_role, title_text if title_role in {"title", "heading"} else section
+        )
         if title_role in {"title", "heading"}:
             active_topic = title_text
         title_is_outline = title_role == "outline"
@@ -114,7 +121,11 @@ def _segment_chunk_for_study(chunk: Dict[str, object]) -> List[Dict[str, object]
             flush_buffer()
             continue
         kind = "bullet_list" if _is_bullet_like(raw_line) else "paragraph"
-        role = "outline" if title_is_outline else classify_span_role(line, kind=kind, topic_hint=active_topic)
+        role = (
+            "outline"
+            if title_is_outline
+            else classify_span_role(line, kind=kind, topic_hint=active_topic)
+        )
         if role in {"noise", "footer"}:
             flush_buffer()
             continue
@@ -134,7 +145,9 @@ def _segment_chunk_for_study(chunk: Dict[str, object]) -> List[Dict[str, object]
     return spans
 
 
-def _build_semantic_topics(chunk_rows: List[Dict[str, object]], title: str) -> List[Dict[str, object]]:
+def _build_semantic_topics(
+    chunk_rows: List[Dict[str, object]], title: str
+) -> List[Dict[str, object]]:
     spans: List[Dict[str, object]] = []
     for chunk in chunk_rows:
         spans.extend(_segment_chunk_for_study(chunk))
@@ -159,25 +172,41 @@ def _is_useful_section_concept(label: str) -> bool:
         return False
     if any(lowered.startswith(prefix.strip()) for prefix in BAD_LABEL_PREFIXES):
         return False
-    if lowered.startswith(("historical returns", "computing historical returns", "realized returns for")):
+    if lowered.startswith(
+        ("historical returns", "computing historical returns", "realized returns for")
+    ):
         return False
-    if lowered.startswith(("returns of individual", "volatility versus excess", "average annual return")):
+    if lowered.startswith(
+        ("returns of individual", "volatility versus excess", "average annual return")
+    ):
         return False
     if " problem" in lowered or " solution" in lowered:
         return False
     return True
 
 
-def build_concept_payloads_from_chunks(chunk_rows: List[Dict[str, object]], filename: str, limit: int = 5) -> List[Dict[str, object]]:
+def build_concept_payloads_from_chunks(
+    chunk_rows: List[Dict[str, object]], filename: str, limit: int = 5
+) -> List[Dict[str, object]]:
     topic_entries = _build_semantic_topics(chunk_rows, filename)
     candidates: Dict[str, Dict[str, object]] = {}
-    slide_heavy = (sum(1 for chunk in chunk_rows if chunk.get("page_num") is not None) / max(len(chunk_rows), 1)) >= 0.4
+    slide_heavy = (
+        sum(1 for chunk in chunk_rows if chunk.get("page_num") is not None)
+        / max(len(chunk_rows), 1)
+    ) >= 0.4
 
-    def register_candidate(name: str, topic_label: str, evidence_spans: List[Dict[str, object]], base_score: float = 0.0) -> None:
+    def register_candidate(
+        name: str,
+        topic_label: str,
+        evidence_spans: List[Dict[str, object]],
+        base_score: float = 0.0,
+    ) -> None:
         normalized_name = _normalize_candidate_phrase(name)
         if not is_valid_concept_label(normalized_name):
             return
-        evidence = _best_evidence_sentences(evidence_spans, normalized_name, topic_label=topic_label, limit=2)
+        evidence = _best_evidence_sentences(
+            evidence_spans, normalized_name, topic_label=topic_label, limit=2
+        )
         if not evidence:
             return
         summary = evidence[0][0]
@@ -225,9 +254,19 @@ def build_concept_payloads_from_chunks(chunk_rows: List[Dict[str, object]], file
             if normalized_topic
             else []
         )
-        if is_valid_concept_label(normalized_topic) and (not slide_heavy or _is_useful_section_concept(normalized_topic)) and (
-            len([token for token in tokenize(normalized_topic) if token not in CONNECTOR_TOKENS]) >= 2
-            or any(normalized_topic.lower() in sentence.lower() for sentence, _chunk_id in topic_evidence)
+        if (
+            is_valid_concept_label(normalized_topic)
+            and (not slide_heavy or _is_useful_section_concept(normalized_topic))
+            and (
+                len(
+                    [token for token in tokenize(normalized_topic) if token not in CONNECTOR_TOKENS]
+                )
+                >= 2
+                or any(
+                    normalized_topic.lower() in sentence.lower()
+                    for sentence, _chunk_id in topic_evidence
+                )
+            )
         ):
             register_candidate(normalized_topic, topic_label, body_spans, base_score=2.5)
         for span in body_spans:
@@ -242,7 +281,10 @@ def build_concept_payloads_from_chunks(chunk_rows: List[Dict[str, object]], file
                 if candidate_name:
                     register_candidate(candidate_name, topic_label, body_spans, base_score=1.5)
 
-    ordered = sorted(candidates.values(), key=lambda item: (-float(item.get("_score", 0)), str(item.get("name") or "").lower()))
+    ordered = sorted(
+        candidates.values(),
+        key=lambda item: (-float(item.get("_score", 0)), str(item.get("name") or "").lower()),
+    )
     for index, item in enumerate(ordered[:limit]):
         item["difficulty_label"] = "Medium" if index < 3 else "Easy"
         item.pop("_score", None)

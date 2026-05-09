@@ -28,7 +28,9 @@ def run_textutil_conversion(path: Path) -> str | None:
 def parse_doc(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
     converted = run_textutil_conversion(path)
     if converted is None:
-        raise HTTPException(status_code=400, detail="Legacy .doc files require macOS textutil conversion.")
+        raise HTTPException(
+            status_code=400, detail="Legacy .doc files require macOS textutil conversion."
+        )
     return build_asset(
         path,
         detected_type=suffix,
@@ -54,7 +56,9 @@ def parse_doc(path: Path, *, suffix: str, mime_type: str, context: ParserContext
 def parse_ppt(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
     converted = run_textutil_conversion(path)
     if converted is None:
-        raise HTTPException(status_code=400, detail="Legacy .ppt files are not yet supported without conversion.")
+        raise HTTPException(
+            status_code=400, detail="Legacy .ppt files are not yet supported without conversion."
+        )
     return build_asset(
         path,
         detected_type=suffix,
@@ -70,7 +74,9 @@ def parse_ppt(path: Path, *, suffix: str, mime_type: str, context: ParserContext
             )
         ],
         context=context,
-        warnings=["Converted legacy .ppt through textutil; slide boundaries and notes may be lossy."],
+        warnings=[
+            "Converted legacy .ppt through textutil; slide boundaries and notes may be lossy."
+        ],
         extraction_modes=["textutil"],
         metadata={"page_count": None},
         confidence=0.58,
@@ -78,4 +84,7 @@ def parse_ppt(path: Path, *, suffix: str, mime_type: str, context: ParserContext
 
 
 def parse_xls(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
-    raise HTTPException(status_code=400, detail="Legacy .xls spreadsheets are not yet supported directly. Save as .xlsx or .csv.")
+    raise HTTPException(
+        status_code=400,
+        detail="Legacy .xls spreadsheets are not yet supported directly. Save as .xlsx or .csv.",
+    )

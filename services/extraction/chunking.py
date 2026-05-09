@@ -17,12 +17,18 @@ class ChunkBuilder:
         def flush() -> None:
             if not bucket:
                 return
-            content = "\n\n".join(item.normalized_text for item in bucket if item.normalized_text).strip()
+            content = "\n\n".join(
+                item.normalized_text for item in bucket if item.normalized_text
+            ).strip()
             if not content:
                 bucket.clear()
                 return
-            section = next((item.span.section for item in bucket if item.span.section), current_section)
-            page_num = next((item.span.page for item in bucket if item.span.page is not None), current_page)
+            section = next(
+                (item.span.section for item in bucket if item.span.section), current_section
+            )
+            page_num = next(
+                (item.span.page for item in bucket if item.span.page is not None), current_page
+            )
             provenance = {
                 "parser": parser,
                 "source_spans": [asdict(item.span) for item in bucket],
@@ -49,14 +55,24 @@ class ChunkBuilder:
             if element.kind in {"title", "heading", "slide", "sheet"}:
                 flush()
                 current_section = text[:180]
-            if element.span.page is not None and current_page is not None and element.span.page != current_page:
+            if (
+                element.span.page is not None
+                and current_page is not None
+                and element.span.page != current_page
+            ):
                 flush()
-            if element.span.sheet and current_sheet is not None and element.span.sheet != current_sheet:
+            if (
+                element.span.sheet
+                and current_sheet is not None
+                and element.span.sheet != current_sheet
+            ):
                 flush()
             current_page = element.span.page if element.span.page is not None else current_page
             current_sheet = element.span.sheet or current_sheet
             if bucket:
-                preview = "\n\n".join(item.normalized_text for item in bucket if item.normalized_text)
+                preview = "\n\n".join(
+                    item.normalized_text for item in bucket if item.normalized_text
+                )
                 if len(preview) + len(text) + 2 > 1200:
                     flush()
             bucket.append(element)

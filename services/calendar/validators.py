@@ -70,8 +70,8 @@ class ValidationResult:
     """
 
     ok: bool
-    reason: str = ""           # short stable code for analytics / tests
-    detail: str = ""           # human-readable explanation
+    reason: str = ""  # short stable code for analytics / tests
+    detail: str = ""  # human-readable explanation
 
 
 class FeedURLRejected(Exception):
@@ -110,10 +110,7 @@ def validate_feed_url(url: str) -> ValidationResult:
         return ValidationResult(
             ok=False,
             reason="bad_scheme",
-            detail=(
-                f"Only http and https URLs are accepted. "
-                f"Got '{parsed.scheme or '(none)'}'."
-            ),
+            detail=(f"Only http and https URLs are accepted. Got '{parsed.scheme or '(none)'}'."),
         )
 
     host = (parsed.hostname or "").strip().lower()
@@ -173,8 +170,7 @@ def validate_feed_url(url: str) -> ValidationResult:
                 ok=False,
                 reason="private_ip",
                 detail=(
-                    "URL resolves to a non-public IP. "
-                    "Calendar feeds must be publicly reachable."
+                    "URL resolves to a non-public IP. Calendar feeds must be publicly reachable."
                 ),
             )
 

@@ -92,9 +92,13 @@ def update_mastery_state(
     transfer_score = _clamp(float(state["transfer_score"] or 0.1) + impact["transfer"])
     misconception_risk = _clamp(float(state["misconception_risk"] or 0.0) + impact["risk"])
     expected_confidence = round(recall_score * 100, 2)
-    actual_confidence = float(learner_confidence if learner_confidence is not None else expected_confidence)
+    actual_confidence = float(
+        learner_confidence if learner_confidence is not None else expected_confidence
+    )
     confidence_alignment = _clamp(1 - abs(actual_confidence - expected_confidence) / 100)
-    next_due_at = (datetime.now(timezone.utc) + timedelta(minutes=int(impact["minutes"]))).isoformat()
+    next_due_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=int(impact["minutes"]))
+    ).isoformat()
 
     conn.execute(
         """
@@ -138,5 +142,7 @@ def compute_session_mastery_delta(conn: sqlite3.Connection, session_id: str) -> 
     ).fetchall()
     if not rows:
         return 0.0
-    total = sum(((float(row["recall_score"] or 0) + float(row["transfer_score"] or 0)) / 2) for row in rows)
+    total = sum(
+        ((float(row["recall_score"] or 0) + float(row["transfer_score"] or 0)) / 2) for row in rows
+    )
     return round(total / len(rows), 3)

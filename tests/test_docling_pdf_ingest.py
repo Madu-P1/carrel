@@ -4,6 +4,7 @@ Slow: each parse spins up rapidocr + the table-structure model, ~15-30s
 per PDF on M-series. Skipped automatically when Docling isn't installed
 so contributors who don't run the new ingest path don't pay the cost.
 """
+
 from __future__ import annotations
 
 import unittest
@@ -58,8 +59,12 @@ class DoclingPdfIngestTests(unittest.TestCase):
         # If reading order leaks across columns, Meiosis would land before
         # Mitosis — that's the citation-chip-lands-in-wrong-column bug from
         # the parent algorithm spec. This test pins it.
-        mitosis_idx = next(i for i, n in enumerate(body_nodes) if n.verbatim_text.startswith("Mitosis"))
-        meiosis_idx = next(i for i, n in enumerate(body_nodes) if n.verbatim_text.startswith("Meiosis"))
+        mitosis_idx = next(
+            i for i, n in enumerate(body_nodes) if n.verbatim_text.startswith("Mitosis")
+        )
+        meiosis_idx = next(
+            i for i, n in enumerate(body_nodes) if n.verbatim_text.startswith("Meiosis")
+        )
         self.assertLess(mitosis_idx, meiosis_idx)
 
     def test_pages_are_one_indexed(self) -> None:

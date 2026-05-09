@@ -79,7 +79,9 @@ class RetrievalVectorTests(unittest.TestCase):
             (doc_id, f"{doc_id}.txt", subject_name),
         )
 
-    def _insert_chunk(self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core") -> int:
+    def _insert_chunk(
+        self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core"
+    ) -> int:
         cursor = conn.execute(
             """
             INSERT INTO chunks (id, doc_id, content, section, chunk_index, token_count)
@@ -112,10 +114,16 @@ class RetrievalVectorTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                rowid = self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division depends on spindle fibers.")
-                index_chunk(conn, rowid, embedder.embed_query("cell division depends on spindle fibers"))
+                rowid = self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division depends on spindle fibers."
+                )
+                index_chunk(
+                    conn, rowid, embedder.embed_query("cell division depends on spindle fibers")
+                )
                 conn.commit()
-                hits = search_vector(conn, "cell division depends on spindle fibers", embedder=embedder)
+                hits = search_vector(
+                    conn, "cell division depends on spindle fibers", embedder=embedder
+                )
 
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in hits])
 
@@ -136,7 +144,9 @@ class RetrievalVectorTests(unittest.TestCase):
                     rowid = self._insert_chunk(conn, chunk_id, doc_id, content)
                     index_chunk(conn, rowid, embedder.embed_query(content))
                 conn.commit()
-                hits = search_vector(conn, "Cell division depends on spindle fibers.", embedder=embedder)
+                hits = search_vector(
+                    conn, "Cell division depends on spindle fibers.", embedder=embedder
+                )
 
         self.assertEqual("chunk-a", hits[0].chunk_id)
 
@@ -149,13 +159,25 @@ class RetrievalVectorTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
                 self._insert_document(conn, "doc-b", "Finance")
-                rowid_a = self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division drives growth.")
-                rowid_b = self._insert_chunk(conn, "chunk-b", "doc-b", "Cell division is a phrase used in this finance joke.")
+                rowid_a = self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division drives growth."
+                )
+                rowid_b = self._insert_chunk(
+                    conn, "chunk-b", "doc-b", "Cell division is a phrase used in this finance joke."
+                )
                 index_chunk(conn, rowid_a, embedder.embed_query("Cell division drives growth."))
-                index_chunk(conn, rowid_b, embedder.embed_query("Cell division is a phrase used in this finance joke."))
+                index_chunk(
+                    conn,
+                    rowid_b,
+                    embedder.embed_query("Cell division is a phrase used in this finance joke."),
+                )
                 conn.commit()
-                doc_hits = search_vector(conn, "Cell division drives growth.", embedder=embedder, doc_ids=["doc-a"])
-                subject_hits = search_vector(conn, "Cell division drives growth.", embedder=embedder, subject_name="Biology")
+                doc_hits = search_vector(
+                    conn, "Cell division drives growth.", embedder=embedder, doc_ids=["doc-a"]
+                )
+                subject_hits = search_vector(
+                    conn, "Cell division drives growth.", embedder=embedder, subject_name="Biology"
+                )
 
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in doc_hits])
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in subject_hits])
@@ -202,15 +224,23 @@ class RetrievalVectorTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
                 for index in range(5):
-                    self._insert_chunk(conn, f"chunk-{index}", "doc-a", f"Cell division fact {index}")
+                    self._insert_chunk(
+                        conn, f"chunk-{index}", "doc-a", f"Cell division fact {index}"
+                    )
                 conn.commit()
-                partial = backfill_missing_embeddings(conn, embedder=embedder, batch_size=2, max_batches=1)
-                partial_total = conn.execute("SELECT COUNT(*) AS total FROM chunks_vec").fetchone()["total"]
+                partial = backfill_missing_embeddings(
+                    conn, embedder=embedder, batch_size=2, max_batches=1
+                )
+                partial_total = conn.execute("SELECT COUNT(*) AS total FROM chunks_vec").fetchone()[
+                    "total"
+                ]
                 partial_flag = conn.execute(
                     "SELECT value FROM app_settings WHERE key = 'chunks_vec_backfill_pending'"
                 ).fetchone()["value"]
                 resumed = backfill_missing_embeddings(conn, embedder=embedder, batch_size=2)
-                final_total = conn.execute("SELECT COUNT(*) AS total FROM chunks_vec").fetchone()["total"]
+                final_total = conn.execute("SELECT COUNT(*) AS total FROM chunks_vec").fetchone()[
+                    "total"
+                ]
                 final_flag = conn.execute(
                     "SELECT value FROM app_settings WHERE key = 'chunks_vec_backfill_pending'"
                 ).fetchone()["value"]
@@ -237,7 +267,11 @@ class RetrievalVectorTests(unittest.TestCase):
                     ("chunk-bio-2", "bio", "Chromosomes package DNA for division."),
                     ("chunk-fin-1", "finance", "Beta measures market risk."),
                     ("chunk-fin-2", "finance", "Discounted cash flow estimates intrinsic value."),
-                    ("chunk-fin-3", "finance", "The efficient market hypothesis discusses information."),
+                    (
+                        "chunk-fin-3",
+                        "finance",
+                        "The efficient market hypothesis discusses information.",
+                    ),
                 ]
                 for chunk_id, doc_id, content in chunks:
                     self._insert_chunk(conn, chunk_id, doc_id, content)

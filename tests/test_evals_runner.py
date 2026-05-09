@@ -37,7 +37,10 @@ class EvalsRunnerTests(unittest.TestCase):
 
     def test_smoke_mode_runs_without_claude_key_or_router(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            with mock.patch("evals.run_evals.get_default_router", side_effect=AssertionError("router should not load")):
+            with mock.patch(
+                "evals.run_evals.get_default_router",
+                side_effect=AssertionError("router should not load"),
+            ):
                 report = run_evals.run_suite("smoke", "smoke", report_dir=Path(temp_dir))
 
         self.assertEqual(0, report["summary"]["blocking_errors"])
@@ -56,7 +59,9 @@ class EvalsRunnerTests(unittest.TestCase):
                 "claims": [
                     {
                         "text": "Mitosis creates identical daughter cells.",
-                        "citations": [{"chunk_index": 1, "quote": "genetically identical daughter cells"}],
+                        "citations": [
+                            {"chunk_index": 1, "quote": "genetically identical daughter cells"}
+                        ],
                     }
                 ],
                 "unsupported_spans": [],
@@ -132,7 +137,9 @@ class EvalsRunnerTests(unittest.TestCase):
             fallback_answer = GroundedAnswer(
                 summary="",
                 claims=(),
-                unsupported_spans=("No source chunks matched the question: What does the corpus say about gravity?",),
+                unsupported_spans=(
+                    "No source chunks matched the question: What does the corpus say about gravity?",
+                ),
                 misconceptions=(),
                 next_steps=(),
                 model="",
@@ -148,7 +155,9 @@ class EvalsRunnerTests(unittest.TestCase):
                 citation_repair_count=0,
             )
             with run_evals.main.get_db() as conn:
-                with mock.patch("evals.run_evals.grounded_tutor_response", return_value=fallback_answer):
+                with mock.patch(
+                    "evals.run_evals.grounded_tutor_response", return_value=fallback_answer
+                ):
                     metrics = run_evals.run_case(
                         cases["negative-gravity-001"],
                         conn,

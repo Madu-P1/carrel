@@ -104,18 +104,14 @@ def get_plan() -> PlanResponse:
     window_end = (now + timedelta(days=PLAN_WINDOW_FUTURE_DAYS)).isoformat().replace("+00:00", "Z")
 
     with db.get_db() as conn:
-        events = repository.list_events_in_window(
-            conn, start=window_start, end=window_end
-        )
+        events = repository.list_events_in_window(conn, start=window_start, end=window_end)
         # Refresh the suggestion set after expiring past-due ones.
         # Cheap (a single rule today) and keeps the read path
         # idempotent.
         coach.refresh_active_suggestions(conn)
         suggestions = repository.list_active_suggestions(conn)
         feeds = repository.list_feeds(conn)
-        stale_feeds = repository.list_stale_feeds(
-            conn, threshold_minutes=STALE_THRESHOLD_MINUTES
-        )
+        stale_feeds = repository.list_stale_feeds(conn, threshold_minutes=STALE_THRESHOLD_MINUTES)
 
     # Fire-and-forget. Does not delay the response.
     for stale in stale_feeds:
@@ -132,9 +128,7 @@ def get_plan() -> PlanResponse:
 @router.post("/api/plan/suggestions/{suggestion_id}/accept")
 def accept_suggestion(suggestion_id: str) -> Dict[str, str]:
     with db.get_db() as conn:
-        result = repository.update_suggestion_status(
-            conn, suggestion_id, status="accepted"
-        )
+        result = repository.update_suggestion_status(conn, suggestion_id, status="accepted")
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found.")
     return {"status": "accepted"}
@@ -147,9 +141,7 @@ def dismiss_suggestion(suggestion_id: str) -> Dict[str, str]:
     the final state here.
     """
     with db.get_db() as conn:
-        result = repository.update_suggestion_status(
-            conn, suggestion_id, status="dismissed"
-        )
+        result = repository.update_suggestion_status(conn, suggestion_id, status="dismissed")
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found.")
     return {"status": "dismissed"}
@@ -163,9 +155,7 @@ def restore_suggestion(suggestion_id: str) -> Dict[str, str]:
     UX concern. Backend just allows the transition.
     """
     with db.get_db() as conn:
-        result = repository.update_suggestion_status(
-            conn, suggestion_id, status="pending"
-        )
+        result = repository.update_suggestion_status(conn, suggestion_id, status="pending")
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found.")
     return {"status": "pending"}

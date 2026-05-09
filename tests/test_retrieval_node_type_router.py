@@ -1,4 +1,5 @@
 """Pure unit tests for the query-keyword -> node_types router."""
+
 from __future__ import annotations
 
 import unittest

@@ -156,19 +156,22 @@ def _ensure_schema_migrations_table(conn: sqlite3.Connection) -> None:
     )
 
 
-def _backfill_legacy_migration_rows(conn: sqlite3.Connection, migrations: list[MigrationFile]) -> None:
+def _backfill_legacy_migration_rows(
+    conn: sqlite3.Connection, migrations: list[MigrationFile]
+) -> None:
     if not table_exists(conn, "schema_migrations"):
         return
     columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(schema_migrations)").fetchall()
+        row["name"] for row in conn.execute("PRAGMA table_info(schema_migrations)").fetchall()
     }
     if "version" in columns:
         return
 
     existing_names = [
         row["name"]
-        for row in conn.execute("SELECT name FROM schema_migrations ORDER BY applied_at ASC").fetchall()
+        for row in conn.execute(
+            "SELECT name FROM schema_migrations ORDER BY applied_at ASC"
+        ).fetchall()
     ]
     conn.execute("ALTER TABLE schema_migrations RENAME TO schema_migrations_legacy")
     _ensure_schema_migrations_table(conn)
@@ -270,7 +273,9 @@ def _has_initial_schema_baseline(conn: sqlite3.Connection) -> bool:
     )
 
 
-def _mark_legacy_baseline_if_needed(conn: sqlite3.Connection, migrations: list[MigrationFile]) -> None:
+def _mark_legacy_baseline_if_needed(
+    conn: sqlite3.Connection, migrations: list[MigrationFile]
+) -> None:
     by_version = {migration.version: migration for migration in migrations}
     applied_versions = {
         int(row["version"])

@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Dict, List
 
 
-def build_question_record(concept: Dict[str, object], concepts: List[Dict[str, object]], filename: str) -> Dict[str, object]:
+def build_question_record(
+    concept: Dict[str, object], concepts: List[Dict[str, object]], filename: str
+) -> Dict[str, object]:
     del filename
     question = f"Which statement best explains {concept['name']}?"
     answer = str(concept["summary"]).strip()

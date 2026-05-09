@@ -4,8 +4,20 @@ import re
 from pathlib import Path
 from typing import Dict, List
 
-from .concept_candidates import clean_candidate_label, compute_token_counts, select_concept_phrases, supporting_sentences
-from .text_utils import _valid_learning_sentence, canonicalize, clean_learning_text, split_sentences, strip_inline_noise, tokenize
+from .concept_candidates import (
+    clean_candidate_label,
+    compute_token_counts,
+    select_concept_phrases,
+    supporting_sentences,
+)
+from .text_utils import (
+    _valid_learning_sentence,
+    canonicalize,
+    clean_learning_text,
+    split_sentences,
+    strip_inline_noise,
+    tokenize,
+)
 
 
 def chunk_text(text: str, chunk_size: int = 1200) -> List[str]:
@@ -90,11 +102,21 @@ def summarize_document(text: str, max_sentences: int = 3) -> str:
         if not _valid_learning_sentence(sentence):
             continue
         score = sum(token_counts.get(token, 0) for token in tokenize(sentence))
-        if any(marker in sentence.lower() for marker in (" is ", " are ", " uses ", " converts ", " causes ")):
+        if any(
+            marker in sentence.lower()
+            for marker in (" is ", " are ", " uses ", " converts ", " causes ")
+        ):
             score += 2
         scored.append((score, sentence))
-    top = [sentence for _score, sentence in sorted(scored, key=lambda item: (-item[0], len(item[1])))[:max_sentences]]
-    summary = " ".join(strip_inline_noise(sentence) for sentence in top if strip_inline_noise(sentence))
+    top = [
+        sentence
+        for _score, sentence in sorted(scored, key=lambda item: (-item[0], len(item[1])))[
+            :max_sentences
+        ]
+    ]
+    summary = " ".join(
+        strip_inline_noise(sentence) for sentence in top if strip_inline_noise(sentence)
+    )
     return summary or "This document was uploaded successfully."
 
 
@@ -106,7 +128,10 @@ def build_concept_payloads(text: str, filename: str, limit: int = 5) -> List[Dic
         {
             "id": f"manual-chunk-{index}",
             "content": chunk,
-            "section": clean_candidate_label(Path(filename).stem.replace("-", " ").replace("_", " ")) or "Core Ideas",
+            "section": clean_candidate_label(
+                Path(filename).stem.replace("-", " ").replace("_", " ")
+            )
+            or "Core Ideas",
             "page_num": None,
             "chunk_index": index,
         }

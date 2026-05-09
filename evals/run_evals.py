@@ -138,7 +138,9 @@ def _load_fixture_manifest() -> dict[str, FixtureDefinition]:
 
 def _parse_case(payload: dict[str, Any]) -> EvalCase:
     fixture_filenames = [str(item) for item in payload.get("fixture_filenames", [])]
-    expected_doc_filenames = [str(item) for item in payload.get("expected_doc_filenames", fixture_filenames)]
+    expected_doc_filenames = [
+        str(item) for item in payload.get("expected_doc_filenames", fixture_filenames)
+    ]
     return EvalCase(
         case_id=str(payload.get("id", "")),
         kind=str(payload.get("kind", "")),
@@ -146,7 +148,9 @@ def _parse_case(payload: dict[str, Any]) -> EvalCase:
         fixture_filenames=fixture_filenames,
         expected_doc_filenames=expected_doc_filenames,
         expected_topics=[str(item) for item in payload.get("expected_topics", [])],
-        expected_quote_substrings=[str(item) for item in payload.get("expected_quote_substrings", [])],
+        expected_quote_substrings=[
+            str(item) for item in payload.get("expected_quote_substrings", [])
+        ],
         scope=dict(payload.get("scope", {}) or {}),
         notes=str(payload.get("notes", "")),
     )
@@ -155,7 +159,9 @@ def _parse_case(payload: dict[str, Any]) -> EvalCase:
 def _load_cases(suite: str) -> list[EvalCase]:
     case_path = CASES_DIR / f"{suite}.jsonl"
     cases: list[EvalCase] = []
-    for line_number, raw_line in enumerate(case_path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        case_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw_line.strip()
         if not line:
             continue
@@ -220,7 +226,11 @@ def _resolve_fixture_doc_ids(
     filename_to_doc_id: dict[str, str],
     filenames: Sequence[str],
 ) -> list[str]:
-    return [filename_to_doc_id[str(filename)] for filename in filenames if str(filename) in filename_to_doc_id]
+    return [
+        filename_to_doc_id[str(filename)]
+        for filename in filenames
+        if str(filename) in filename_to_doc_id
+    ]
 
 
 _WHITESPACE = re.compile(r"\s+")
@@ -254,7 +264,10 @@ def _resolve_expected_chunks(
     expected: set[str] = set()
     for row in rows:
         content = str(row["content"] or "")
-        if any(_normalized_substring_match(fragment, content) for fragment in case.expected_quote_substrings):
+        if any(
+            _normalized_substring_match(fragment, content)
+            for fragment in case.expected_quote_substrings
+        ):
             expected.add(str(row["id"]))
     return expected
 
@@ -296,7 +309,9 @@ def run_case(
     if len(fixture_doc_ids) != len(case.fixture_filenames):
         load_errors.append("one or more fixture_filenames did not resolve to ingested documents")
     if len(expected_doc_ids) != len(case.expected_doc_filenames):
-        load_errors.append("one or more expected_doc_filenames did not resolve to ingested documents")
+        load_errors.append(
+            "one or more expected_doc_filenames did not resolve to ingested documents"
+        )
     if case.expected_quote_substrings and not expected_chunks:
         load_errors.append("expected_quote_substrings did not resolve to any ingested chunk")
 
@@ -332,11 +347,7 @@ def run_case(
         subject_name=scope_subject,
         router=router,
     )
-    cited_chunk_ids = {
-        citation.chunk_id
-        for claim in answer.claims
-        for citation in claim.citations
-    }
+    cited_chunk_ids = {citation.chunk_id for claim in answer.claims for citation in claim.citations}
     overlap = cited_chunk_ids & expected_chunks
     citation_precision = len(overlap) / max(len(cited_chunk_ids), 1)
     citation_recall = len(overlap) / max(len(expected_chunks), 1)
@@ -350,7 +361,9 @@ def run_case(
                 "SELECT content FROM chunks WHERE id = ?",
                 (citation.chunk_id,),
             ).fetchone()
-            if chunk_row and _normalized_substring_match(citation.quote, str(chunk_row["content"] or "")):
+            if chunk_row and _normalized_substring_match(
+                citation.quote, str(chunk_row["content"] or "")
+            ):
                 quote_valid_count += 1
 
     metrics.update(
@@ -366,8 +379,10 @@ def run_case(
             "citation_attempt_count": answer.citation_attempt_count,
             "citation_drop_count": answer.citation_drop_count,
             "citation_repair_count": answer.citation_repair_count,
-            "citation_drop_rate": answer.citation_drop_count / max(answer.citation_attempt_count, 1),
-            "citation_repair_rate": answer.citation_repair_count / max(answer.citation_attempt_count, 1),
+            "citation_drop_rate": answer.citation_drop_count
+            / max(answer.citation_attempt_count, 1),
+            "citation_repair_rate": answer.citation_repair_count
+            / max(answer.citation_attempt_count, 1),
             "claim_count": len(answer.claims),
             "unsupported_count": len(answer.unsupported_spans),
             "latency_ms": answer.latency_ms,
@@ -408,26 +423,44 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
         "warnings": [],
     }
     if mode == "full":
-        citation_precision_values = [float(result.get("citation_precision", 0.0)) for result in results]
+        citation_precision_values = [
+            float(result.get("citation_precision", 0.0)) for result in results
+        ]
         citation_recall_values = [float(result.get("citation_recall", 0.0)) for result in results]
-        citation_attempt_count = sum(int(result.get("citation_attempt_count", 0)) for result in results)
+        citation_attempt_count = sum(
+            int(result.get("citation_attempt_count", 0)) for result in results
+        )
         citation_drop_count = sum(int(result.get("citation_drop_count", 0)) for result in results)
-        citation_repair_count = sum(int(result.get("citation_repair_count", 0)) for result in results)
+        citation_repair_count = sum(
+            int(result.get("citation_repair_count", 0)) for result in results
+        )
         quote_valid_count = sum(int(result.get("quote_valid_count", 0)) for result in results)
         quote_total = sum(int(result.get("quote_total", 0)) for result in results)
         fallback_count = sum(1 for result in results if result.get("fallback"))
         scope_fallback_count = sum(1 for result in results if result.get("scope_fallback"))
-        latencies = [float(result.get("latency_ms", 0.0)) for result in results if result.get("latency_ms") is not None]
-        models = sorted({str(result.get("model") or "") for result in results if result.get("model")})
+        latencies = [
+            float(result.get("latency_ms", 0.0))
+            for result in results
+            if result.get("latency_ms") is not None
+        ]
+        models = sorted(
+            {str(result.get("model") or "") for result in results if result.get("model")}
+        )
         summary.update(
             {
                 "citation_precision": _mean(citation_precision_values),
                 "citation_recall": _mean(citation_recall_values),
-                "quote_validity": round(quote_valid_count / quote_total, 4) if quote_total else None,
+                "quote_validity": round(quote_valid_count / quote_total, 4)
+                if quote_total
+                else None,
                 "quote_valid_count": quote_valid_count,
                 "quote_total": quote_total,
-                "citation_drop_rate": round(citation_drop_count / max(citation_attempt_count, 1), 4),
-                "citation_repair_rate": round(citation_repair_count / max(citation_attempt_count, 1), 4),
+                "citation_drop_rate": round(
+                    citation_drop_count / max(citation_attempt_count, 1), 4
+                ),
+                "citation_repair_rate": round(
+                    citation_repair_count / max(citation_attempt_count, 1), 4
+                ),
                 "citation_attempt_count": citation_attempt_count,
                 "citation_drop_count": citation_drop_count,
                 "citation_repair_count": citation_repair_count,
@@ -510,7 +543,7 @@ def _markdown_summary(
         lines.append(
             f"- `{item['case_id']}`: groundedness={item.get('groundedness_at_k', 0)}"
             + (
-                f", citation_precision={item.get('citation_precision', 0.0):.2f}, quote_validity={((item.get('quote_validity', 1.0) if item.get('quote_validity') is not None else 1.0)):.2f}, citation_drop_rate={item.get('citation_drop_rate', 0.0):.2f}"
+                f", citation_precision={item.get('citation_precision', 0.0):.2f}, quote_validity={(item.get('quote_validity', 1.0) if item.get('quote_validity') is not None else 1.0):.2f}, citation_drop_rate={item.get('citation_drop_rate', 0.0):.2f}"
                 if mode == "full"
                 else ""
             )
@@ -576,7 +609,9 @@ def run_suite(
             for case in cases:
                 validation_errors = _validate_case_shape(case, fixtures)
                 case_result = run_case(case, conn, mode, filename_to_doc_id, router=active_router)
-                case_result["load_errors"] = validation_errors + list(case_result.get("load_errors", []))
+                case_result["load_errors"] = validation_errors + list(
+                    case_result.get("load_errors", [])
+                )
                 results.append(case_result)
 
     summary = _aggregate(results, mode=mode)

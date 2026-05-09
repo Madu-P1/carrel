@@ -19,7 +19,12 @@ def infer_relationship(a_name: str, b_name: str, text: str) -> Optional[str]:
             lowered = sentence.lower()
             if "compare" in lowered or "contrast" in lowered or "different" in lowered:
                 return "contrasts with"
-            if "because" in lowered or "therefore" in lowered or "allows" in lowered or "uses" in lowered:
+            if (
+                "because" in lowered
+                or "therefore" in lowered
+                or "allows" in lowered
+                or "uses" in lowered
+            ):
                 return "supports"
             if "part of" in lowered or "includes" in lowered:
                 return "includes"
@@ -40,10 +45,18 @@ def _extract_concept_depth(
     claim_count = 0
     for sentence in relevant[:4]:
         lowered = sentence.lower()
-        if any(kw in lowered for kw in (" is ", " are ", " causes ", " converts ", " produces ", " uses ")):
+        if any(
+            kw in lowered
+            for kw in (" is ", " are ", " causes ", " converts ", " produces ", " uses ")
+        ):
             conn.execute(
                 "INSERT INTO claims (id, concept_id, source_chunk_id, claim_text, claim_type, confidence) VALUES (?, ?, ?, ?, 'fact', 0.6)",
-                (str(uuid.uuid4()), concept_id, chunk_ids[0] if chunk_ids else None, sentence[:500]),
+                (
+                    str(uuid.uuid4()),
+                    concept_id,
+                    chunk_ids[0] if chunk_ids else None,
+                    sentence[:500],
+                ),
             )
             claim_count += 1
             if claim_count >= 2:
@@ -55,7 +68,12 @@ def _extract_concept_depth(
         if any(kw in lowered for kw in ("example", "for instance", "such as", "e.g.", "illustrat")):
             conn.execute(
                 "INSERT INTO concept_examples (id, concept_id, source_chunk_id, example_text, example_type, confidence) VALUES (?, ?, ?, ?, 'worked_example', 0.5)",
-                (str(uuid.uuid4()), concept_id, chunk_ids[0] if chunk_ids else None, sentence[:500]),
+                (
+                    str(uuid.uuid4()),
+                    concept_id,
+                    chunk_ids[0] if chunk_ids else None,
+                    sentence[:500],
+                ),
             )
             example_count += 1
             if example_count >= 2:
@@ -64,7 +82,17 @@ def _extract_concept_depth(
     misc_count = 0
     for sentence in relevant:
         lowered = sentence.lower()
-        if any(kw in lowered for kw in ("not the same", "common mistake", "misconception", "often confused", "do not confuse", "incorrectly")):
+        if any(
+            kw in lowered
+            for kw in (
+                "not the same",
+                "common mistake",
+                "misconception",
+                "often confused",
+                "do not confuse",
+                "incorrectly",
+            )
+        ):
             conn.execute(
                 "INSERT INTO misconceptions (id, concept_id, source_chunk_id, label, description, repair_strategy, confidence) VALUES (?, ?, ?, ?, ?, ?, 0.5)",
                 (

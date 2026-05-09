@@ -53,7 +53,9 @@ def tutor_exchange(payload: TutorExchangeCreateRequest) -> Dict[str, Any]:
 
 
 @router.post("/api/tutor/exchanges/{exchange_id}/evaluate")
-def evaluate_tutor_exchange(exchange_id: str, payload: TutorExchangeEvaluateRequest) -> Dict[str, Any]:
+def evaluate_tutor_exchange(
+    exchange_id: str, payload: TutorExchangeEvaluateRequest
+) -> Dict[str, Any]:
     with db.get_db() as conn:
         response = adaptive_tutor_service.evaluate_exchange(
             conn,
@@ -72,7 +74,11 @@ def get_notes(
     limit: int = 8,
 ) -> Dict[str, List[Dict[str, Any]]]:
     with db.get_db() as conn:
-        return {"notes": tutor_service.fetch_notes(conn, doc_id=doc_id, concept_id=concept_id, limit=limit)}
+        return {
+            "notes": tutor_service.fetch_notes(
+                conn, doc_id=doc_id, concept_id=concept_id, limit=limit
+            )
+        }
 
 
 @router.post("/api/notes")
@@ -91,7 +97,9 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
             payload.session_id,
         )
         if payload.evidence_reference_ids:
-            provenance_service.attach_evidence_to_note(conn, note["id"], payload.evidence_reference_ids)
+            provenance_service.attach_evidence_to_note(
+                conn, note["id"], payload.evidence_reference_ids
+            )
         mastery_state = None
         concept_id = payload.concept_id or note.get("concept_id")
         if concept_id:
@@ -119,7 +127,11 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
                 "evidence_count": len(payload.evidence_reference_ids or []),
             },
         )
-        return {"note": note, "workspace": fetch_workspace_state(conn), "mastery_state": mastery_state}
+        return {
+            "note": note,
+            "workspace": fetch_workspace_state(conn),
+            "mastery_state": mastery_state,
+        }
 
 
 @router.post("/api/notes/transform")

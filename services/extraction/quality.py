@@ -19,11 +19,15 @@ PROMPT_START_TOKENS = {
 
 
 def is_bullet_like(value: str) -> bool:
-    return bool(re.match(r"^\s*(?:[•\-\u2022\u2013\u2014]+|\(?\d+\)?[.)]|\d+\.\d+)\s+", str(value or "")))
+    return bool(
+        re.match(r"^\s*(?:[•\-\u2022\u2013\u2014]+|\(?\d+\)?[.)]|\d+\.\d+)\s+", str(value or ""))
+    )
 
 
 def strip_bullet_prefix(value: str) -> str:
-    return normalize_space(re.sub(r"^\s*(?:[•\-\u2022\u2013\u2014]+|\(?\d+\)?[.)]?|\d+\.\d+)\s+", "", str(value or "")))
+    return normalize_space(
+        re.sub(r"^\s*(?:[•\-\u2022\u2013\u2014]+|\(?\d+\)?[.)]?|\d+\.\d+)\s+", "", str(value or ""))
+    )
 
 
 def is_footer_or_noise(value: str) -> bool:
@@ -43,9 +47,29 @@ def is_outline_text(value: str, topic_hint: Optional[str] = None) -> bool:
     text = normalize_space(str(value or ""))
     lowered = text.lower()
     topic = str(topic_hint or "").lower()
-    if any(phrase in lowered for phrase in ("learning objectives", "chapter outline", "table of contents", "contents", "overview", "agenda")):
+    if any(
+        phrase in lowered
+        for phrase in (
+            "learning objectives",
+            "chapter outline",
+            "table of contents",
+            "contents",
+            "overview",
+            "agenda",
+        )
+    ):
         return True
-    if any(phrase in topic for phrase in ("learning objectives", "chapter outline", "table of contents", "contents", "overview", "agenda")):
+    if any(
+        phrase in topic
+        for phrase in (
+            "learning objectives",
+            "chapter outline",
+            "table of contents",
+            "contents",
+            "overview",
+            "agenda",
+        )
+    ):
         return True
     if re.match(r"^\d+(?:\.\d+)+(?:\s+|:)", text) and len(text.split()) <= 14:
         return True
@@ -56,7 +80,9 @@ def is_formula_text(value: str) -> bool:
     text = normalize_space(str(value or ""))
     alpha = sum(char.isalpha() for char in text)
     digits_or_symbols = sum(char.isdigit() or char in "=+-*/^%()[]{}" for char in text)
-    if digits_or_symbols >= max(alpha, 1) and any(token in text.lower() for token in ("=", "var", "cov", "beta", "capm", "std")):
+    if digits_or_symbols >= max(alpha, 1) and any(
+        token in text.lower() for token in ("=", "var", "cov", "beta", "capm", "std")
+    ):
         return True
     return bool(re.search(r"\b[a-z]\s*=\s*", text, flags=re.IGNORECASE))
 
@@ -102,7 +128,9 @@ def classify_span_role(
         return "outline"
     if footer_or_noise_text(text):
         lowered = text.lower()
-        if any(term in lowered for term in ("copyright", "all rights reserved", "pearson education")):
+        if any(
+            term in lowered for term in ("copyright", "all rights reserved", "pearson education")
+        ):
             return "footer"
         return "noise"
     if kind in {"title", "slide"}:
@@ -116,5 +144,7 @@ def classify_span_role(
     return "body"
 
 
-def classify_pdf_role(text: str, *, kind: str = "paragraph", topic_hint: Optional[str] = None) -> str:
+def classify_pdf_role(
+    text: str, *, kind: str = "paragraph", topic_hint: Optional[str] = None
+) -> str:
     return classify_span_role(text, kind=kind, topic_hint=topic_hint)

@@ -23,7 +23,13 @@ except ImportError:
 
 
 def parse_docx(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
-    if DocxDocument is None or CT_P is None or CT_Tbl is None or DocxParagraph is None or DocxTable is None:
+    if (
+        DocxDocument is None
+        or CT_P is None
+        or CT_Tbl is None
+        or DocxParagraph is None
+        or DocxTable is None
+    ):
         raise HTTPException(status_code=400, detail="DOCX support requires python-docx")
     doc = DocxDocument(str(path))
     file_id = file_sha(path)[:16]
@@ -111,7 +117,9 @@ def parse_docx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
                         )
                     )
             table_text = "\n".join(table_lines)
-            span = make_span(path, file_id, section=current_heading, element_id=f"docx-table-{table_index}")
+            span = make_span(
+                path, file_id, section=current_heading, element_id=f"docx-table-{table_index}"
+            )
             elements.append(
                 ExtractedElement(
                     id=span.element_id or f"docx-table-{table_index}",
@@ -119,7 +127,11 @@ def parse_docx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
                     text=table_text,
                     normalized_text=table_text,
                     span=span,
-                    metadata={"table_index": table_index, "row_count": len(rows), "column_count": len(header)},
+                    metadata={
+                        "table_index": table_index,
+                        "row_count": len(rows),
+                        "column_count": len(header),
+                    },
                 )
             )
 

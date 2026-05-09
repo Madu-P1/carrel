@@ -79,8 +79,7 @@ class AnchorsServiceTests(unittest.TestCase):
             index_names = {
                 row["name"]
                 for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='index' "
-                    "AND tbl_name='anchors'"
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='anchors'"
                 ).fetchall()
             }
         expected = {
@@ -99,9 +98,7 @@ class AnchorsServiceTests(unittest.TestCase):
 
     def test_migration_registered_in_schema_migrations(self) -> None:
         with main.get_db() as conn:
-            row = conn.execute(
-                "SELECT name FROM schema_migrations WHERE version = 8"
-            ).fetchone()
+            row = conn.execute("SELECT name FROM schema_migrations WHERE version = 8").fetchone()
         self.assertIsNotNone(row)
         # db.py stores the filename verbatim (without normalization).
         self.assertEqual(row["name"], "0008_anchors.sql")
@@ -202,9 +199,7 @@ class AnchorsServiceTests(unittest.TestCase):
             )
             a = anchors_service.transition_state(conn, a.id, "saved")
             self.assertEqual(a.promotion_state, "saved")
-            a = anchors_service.transition_state(
-                conn, a.id, "carded", srs_card_id=card_id
-            )
+            a = anchors_service.transition_state(conn, a.id, "carded", srs_card_id=card_id)
             self.assertEqual(a.promotion_state, "carded")
             self.assertEqual(a.srs_card_id, card_id)
             a = anchors_service.transition_state(conn, a.id, "mastered")
@@ -250,12 +245,8 @@ class AnchorsServiceTests(unittest.TestCase):
                 conn, document_id=self.doc_id, quote_text="p2", origin="highlight", page_num=2
             )
             conn.commit()
-            p1 = anchors_service.list_anchors_for_document(
-                conn, self.doc_id, page_num=1
-            )
-            p2 = anchors_service.list_anchors_for_document(
-                conn, self.doc_id, page_num=2
-            )
+            p1 = anchors_service.list_anchors_for_document(conn, self.doc_id, page_num=1)
+            p2 = anchors_service.list_anchors_for_document(conn, self.doc_id, page_num=2)
         self.assertEqual(len(p1), 2)
         self.assertEqual(len(p2), 1)
         self.assertTrue(all(a.page_num == 1 for a in p1))

@@ -106,9 +106,7 @@ class LearningOSBackendTests(unittest.TestCase):
 
     def first_card_id(self) -> str:
         with main.get_db() as conn:
-            row = conn.execute(
-                "SELECT id FROM srs_cards ORDER BY rowid ASC LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT id FROM srs_cards ORDER BY rowid ASC LIMIT 1").fetchone()
         self.assertIsNotNone(row)
         return row["id"]
 
@@ -222,7 +220,9 @@ class LearningOSBackendTests(unittest.TestCase):
         )
 
         with main.get_db() as conn:
-            cached_detail = document_service.fetch_document_detail(conn, doc_id, include_chunks=False)
+            cached_detail = document_service.fetch_document_detail(
+                conn, doc_id, include_chunks=False
+            )
 
         self.assertEqual(
             [item["name"] for item in detail["concept_options"]],

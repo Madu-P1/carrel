@@ -94,4 +94,3 @@ def build_artifact_prompt(
             json.dumps(payload, ensure_ascii=False, indent=2),
         ]
     ).strip()
-

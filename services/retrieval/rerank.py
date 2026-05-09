@@ -28,6 +28,7 @@ can swap to BAAI/bge-reranker-base, jina-reranker-v2, or the spec's
 v2-m3 (once fastembed adds it / via manual ONNX export) without a
 code change.
 """
+
 from __future__ import annotations
 
 import math

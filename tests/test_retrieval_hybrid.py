@@ -57,7 +57,9 @@ class RetrievalHybridTests(unittest.TestCase):
             (doc_id, f"{doc_id}.txt", subject_name),
         )
 
-    def _insert_chunk(self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core") -> int:
+    def _insert_chunk(
+        self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core"
+    ) -> int:
         cursor = conn.execute(
             """
             INSERT INTO chunks (id, doc_id, content, section, chunk_index, token_count)
@@ -137,8 +139,12 @@ class RetrievalHybridTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                rowid = self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division includes mitosis.")
-                index_chunk(conn, rowid, self.embedder.embed_query("cell division includes mitosis"))
+                rowid = self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division includes mitosis."
+                )
+                index_chunk(
+                    conn, rowid, self.embedder.embed_query("cell division includes mitosis")
+                )
                 conn.commit()
                 hits = search_hybrid(
                     conn,
@@ -159,10 +165,18 @@ class RetrievalHybridTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 self._insert_document(conn, "bio", "Biology")
                 self._insert_document(conn, "fin", "Finance")
-                bio_rowid = self._insert_chunk(conn, "chunk-bio", "bio", "Cell division drives growth.")
-                fin_rowid = self._insert_chunk(conn, "chunk-fin", "fin", "Cell division is a finance joke.")
-                index_chunk(conn, bio_rowid, self.embedder.embed_query("cell division drives growth"))
-                index_chunk(conn, fin_rowid, self.embedder.embed_query("cell division drives growth"))
+                bio_rowid = self._insert_chunk(
+                    conn, "chunk-bio", "bio", "Cell division drives growth."
+                )
+                fin_rowid = self._insert_chunk(
+                    conn, "chunk-fin", "fin", "Cell division is a finance joke."
+                )
+                index_chunk(
+                    conn, bio_rowid, self.embedder.embed_query("cell division drives growth")
+                )
+                index_chunk(
+                    conn, fin_rowid, self.embedder.embed_query("cell division drives growth")
+                )
                 conn.commit()
                 doc_hits = search_hybrid(
                     conn,
@@ -197,7 +211,9 @@ class RetrievalHybridTests(unittest.TestCase):
                     index_chunk(
                         conn,
                         rowid,
-                        self.embedder.embed_query(f"cell division fact {index} explains mitosis and meiosis"),
+                        self.embedder.embed_query(
+                            f"cell division fact {index} explains mitosis and meiosis"
+                        ),
                     )
                 conn.commit()
                 hits = search_hybrid(
@@ -217,11 +233,17 @@ class RetrievalHybridTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                rowid = self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division includes mitosis.")
-                index_chunk(conn, rowid, self.embedder.embed_query("cell division includes mitosis"))
+                rowid = self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division includes mitosis."
+                )
+                index_chunk(
+                    conn, rowid, self.embedder.embed_query("cell division includes mitosis")
+                )
                 conn.execute("DELETE FROM chunks_fts")
                 conn.commit()
-                hits = search_hybrid(conn, "cell division includes mitosis", embedder=self.embedder, limit=3)
+                hits = search_hybrid(
+                    conn, "cell division includes mitosis", embedder=self.embedder, limit=3
+                )
 
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in hits])
         self.assertEqual([("vec",)], [hit.sources for hit in hits])
@@ -236,7 +258,9 @@ class RetrievalHybridTests(unittest.TestCase):
                 self._insert_document(conn, "doc-a", "Biology")
                 self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division includes mitosis.")
                 conn.commit()
-                hits = search_hybrid(conn, "cell division includes mitosis", embedder=self.embedder, limit=3)
+                hits = search_hybrid(
+                    conn, "cell division includes mitosis", embedder=self.embedder, limit=3
+                )
 
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in hits])
         self.assertEqual([("fts",)], [hit.sources for hit in hits])

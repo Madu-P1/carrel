@@ -7,6 +7,7 @@ _ROUTER = get_default_router()
 DEFAULT_MODEL = _ROUTER.balanced_model
 LAST_CALL_RESULT: Optional[ClaudeCallResult] = None
 
+
 def ai_enabled() -> bool:
     return _ROUTER.ai_enabled()
 
@@ -89,7 +90,9 @@ def generate_summary(text: str, fallback: Callable[[], str]) -> str:
     return response or fallback()
 
 
-def extract_concepts(text: str, doc_title: str, fallback: Callable[[], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def extract_concepts(
+    text: str, doc_title: str, fallback: Callable[[], List[Dict[str, Any]]]
+) -> List[Dict[str, Any]]:
     payload = _request_json(
         "extract_concepts",
         system="You extract key study concepts and return strict JSON only.",
@@ -120,8 +123,14 @@ def extract_concepts(text: str, doc_title: str, fallback: Callable[[], List[Dict
                 "description": str(item.get("description") or item["name"]).strip(),
                 "summary": str(item.get("description") or item["name"]).strip(),
                 "mastery": round(mastery, 2),
-                "difficulty_label": "Hard" if mastery >= 0.7 else "Medium" if mastery >= 0.45 else "Easy",
-                "related_terms": [str(term).strip() for term in item.get("related_terms", []) if str(term).strip()],
+                "difficulty_label": "Hard"
+                if mastery >= 0.7
+                else "Medium"
+                if mastery >= 0.45
+                else "Easy",
+                "related_terms": [
+                    str(term).strip() for term in item.get("related_terms", []) if str(term).strip()
+                ],
             }
         )
     return concepts or fallback()
@@ -203,7 +212,9 @@ def generate_questions(
                 "concept": str(item.get("concept") or "").strip(),
                 "question": str(item["question"]).strip(),
                 "answer": str(item["answer"]).strip(),
-                "distractors": [str(choice).strip() for choice in distractors if str(choice).strip()][:3],
+                "distractors": [
+                    str(choice).strip() for choice in distractors if str(choice).strip()
+                ][:3],
                 "explanation": str(item.get("explanation") or "").strip(),
                 "difficulty_value": max(0.05, min(1.0, difficulty_value)),
             }
@@ -339,6 +350,7 @@ def compare_documents(
 
 # ── Artifact generation ────────────────────────────────────────────────────────
 
+
 def generate_artifact(
     artifact_kind: str,
     context: str,
@@ -351,7 +363,11 @@ def generate_artifact(
     fallback: Optional[Callable[[], str]] = None,
 ) -> str:
     """Generate a Markdown artifact powered by Claude."""
-    length_hint = {"short": "300-500 words", "medium": "600-1200 words", "long": "1400-2500 words"}.get(output_length, "600-1200 words")
+    length_hint = {
+        "short": "300-500 words",
+        "medium": "600-1200 words",
+        "long": "1400-2500 words",
+    }.get(output_length, "600-1200 words")
     token_limit = {"short": 1200, "medium": 2400, "long": 4000}.get(output_length, 2400)
 
     system = (
@@ -382,6 +398,7 @@ def generate_artifact(
 
 # ── Enhanced tutor response (with citations, scaffolds, misconceptions) ───────
 
+
 def tutor_response_v2(
     question: str,
     chunks: List[Dict[str, Any]],
@@ -396,7 +413,7 @@ def tutor_response_v2(
         f"[chunk_id={ch.get('id', i)}, source={ch.get('filename', 'Unknown')}, page={ch.get('page_num', '?')}]\n{ch.get('content', '')}"
         for i, ch in enumerate(chunks[:8])
     )
-    sel_block = f"\nThe learner selected this text: \"{selected_text}\"\n" if selected_text else ""
+    sel_block = f'\nThe learner selected this text: "{selected_text}"\n' if selected_text else ""
     mode_hint = {
         "easier": "Use simpler language, shorter sentences, and concrete analogies.",
         "deeper": "Go deeper into mechanisms and edge cases. Be thorough.",
@@ -429,6 +446,7 @@ def tutor_response_v2(
 
 # ── Synthesis: AI-powered cross-source analysis ───────────────────────────────
 
+
 def synthesize_sources(
     synthesis_type: str,
     source_chunks: Dict[str, List[Dict[str, Any]]],
@@ -441,7 +459,10 @@ def synthesize_sources(
         "agreement": "Find all points of agreement across sources. Return JSON with: shared_concepts (array of {name, source_count}), themes (array of strings), source_count (int).",
         "gaps": "Find concepts that appear in some sources but not others. Return JSON with: gaps (array of {concept_name, present_in (array), missing_in (array)}).",
         "terminology": "Find terms that mean similar things but use different names. Return JSON with: alignments (array of {term_a, term_b, source_a, source_b, overlap_reason}).",
-    }.get(synthesis_type, "Compare all sources and return JSON with contradictions, agreements, gaps, themes.")
+    }.get(
+        synthesis_type,
+        "Compare all sources and return JSON with contradictions, agreements, gaps, themes.",
+    )
 
     source_text = ""
     for source_name, chunks in list(source_chunks.items())[:4]:
@@ -466,6 +487,7 @@ def synthesize_sources(
 
 
 # ── Evaluate learner response ─────────────────────────────────────────────────
+
 
 def evaluate_response(
     exchange_context: str,

@@ -69,7 +69,11 @@ def resolve_evidence(
         "section": row["section"],
         "page_num": row["page_num"],
         "quote_text": quote_text,
-        "confidence": 0.92 if location_kind in {"bbox", "text_offset"} else 0.72 if row["chunk_id"] else 0.5,
+        "confidence": 0.92
+        if location_kind in {"bbox", "text_offset"}
+        else 0.72
+        if row["chunk_id"]
+        else 0.5,
         "location_kind": location_kind,
         "bbox": bbox,
         "text_offset_start": text_offset_start if isinstance(text_offset_start, int) else None,

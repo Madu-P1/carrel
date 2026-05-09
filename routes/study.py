@@ -46,7 +46,11 @@ def generate_quiz(payload: QuizGenerateRequest) -> Dict[str, List[Dict[str, obje
         if payload.concepts:
             questions = [item for item in questions if item["concept"] in payload.concepts]
         if payload.difficulty:
-            questions = [item for item in questions if item["difficulty"].lower() == payload.difficulty.lower()]
+            questions = [
+                item
+                for item in questions
+                if item["difficulty"].lower() == payload.difficulty.lower()
+            ]
         return {"questions": questions[: payload.count]}
 
 

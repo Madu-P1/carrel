@@ -199,7 +199,9 @@ class OllamaRequestToolCallTests(unittest.TestCase):
         self.assertIn("grounded answer", system_msg["content"].lower())
 
     def test_request_tool_call_rejects_invalid_schema(self) -> None:
-        client = OllamaClient(http_client=_mock_transport(lambda r: httpx.Response(200, json=_ok_payload(""))))
+        client = OllamaClient(
+            http_client=_mock_transport(lambda r: httpx.Response(200, json=_ok_payload("")))
+        )
         result = client.request_tool_call(
             request_kind="tutor.grounded_answer",
             system="",

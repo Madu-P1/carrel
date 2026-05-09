@@ -12,6 +12,7 @@ order and char-offset accounting, not Docling's vision pipeline.
 
 reportlab is a test-only dependency (see requirements-dev.txt).
 """
+
 from __future__ import annotations
 
 from pathlib import Path

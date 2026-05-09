@@ -12,6 +12,7 @@ class BulkDeleteCardsRequest(BaseModel):
     """Used by POST /api/srs/cards/bulk-delete. The frontend posts up to a
     few hundred ids at a time from the Manage Cards view. Keep it a plain
     list — SQLite can comfortably handle this size in one DELETE."""
+
     ids: List[str] = Field(default_factory=list)
 
 
@@ -21,6 +22,7 @@ class CardCreateRequest(BaseModel):
     and surface in the "All" filter via LEFT JOIN. card_type defaults to
     "custom" so we can distinguish user-authored cards from those that
     the ingestion pipeline produced."""
+
     front: str = Field(..., min_length=1, max_length=4000)
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
@@ -32,6 +34,7 @@ class CardAiDraftRequest(BaseModel):
     the New Card dialog sends a topic (required) and optional long-form
     context (pasted notes, a textbook excerpt). count is clamped server-side
     to 3-10 regardless of what the client sends."""
+
     topic: str = Field(..., min_length=1, max_length=400)
     context: Optional[str] = Field(default=None, max_length=8000)
     count: int = Field(default=5, ge=1, le=20)
@@ -102,7 +105,9 @@ class TutorQueryRequest(BaseModel):
     subject_name: Optional[str] = Field(default=None, max_length=160)
     selected_text: Optional[str] = Field(default=None, max_length=8000)
     confidence: Optional[float] = Field(default=None, ge=0, le=100)
-    response_mode: Literal["standard", "concise", "exam", "socratic", "easier", "deeper"] = "standard"
+    response_mode: Literal["standard", "concise", "exam", "socratic", "easier", "deeper"] = (
+        "standard"
+    )
 
 
 class TutorCitationItem(BaseModel):
@@ -352,6 +357,7 @@ class SynthesisRunRequest(BaseModel):
 # Calendar feeds + plan (Phase 1 of the coach feature)
 # ----------------------------------------------------------------------
 
+
 class CalendarFeedCreateRequest(BaseModel):
     """Body for POST /api/calendar/feeds.
 
@@ -359,6 +365,7 @@ class CalendarFeedCreateRequest(BaseModel):
     by the WeekTimeGrid to color-code events from this feed; if absent,
     the frontend falls back to a deterministic per-feed default.
     """
+
     label: str = Field(..., min_length=1, max_length=120)
     url: str = Field(..., min_length=1, max_length=4096)
     color: Optional[str] = Field(default=None, max_length=32)
@@ -369,9 +376,10 @@ class CalendarFeedRow(BaseModel):
     masked form (`https://host/***`). Raw URL only echoes back on the
     initial POST response so the user can copy/verify.
     """
+
     id: str
     label: str
-    url: str                          # masked by route handler
+    url: str  # masked by route handler
     color: Optional[str] = None
     is_enabled: bool
     last_synced_at: Optional[str] = None
@@ -384,6 +392,7 @@ class CalendarFeedCreatedResponse(BaseModel):
     """Initial POST response. raw_url_echo is retained for compatibility
     but carries the masked display URL, never the secret raw feed URL.
     """
+
     feed: CalendarFeedRow
     raw_url_echo: str
 
@@ -424,6 +433,7 @@ class PlanResponse(BaseModel):
     refreshes for stale feeds, frontend renders a subtle "syncing"
     affordance until the next request returns it as false.
     """
+
     events: List[CalendarEventRow]
     suggestions: List[StudySuggestionRow]
     feeds: List[CalendarFeedRow]

@@ -100,9 +100,19 @@ class EinsteinTutorBackendTests(unittest.TestCase):
 
         self.assertEqual("Biology", detail_a["document"]["subject_name"])
         self.assertTrue(all(concept["doc_id"] == doc_a for concept in detail_a["concepts"]))
-        self.assertTrue(all(concept["document_name"] == "cell-division-a.txt" for concept in detail_a["concepts"]))
+        self.assertTrue(
+            all(
+                concept["document_name"] == "cell-division-a.txt"
+                for concept in detail_a["concepts"]
+            )
+        )
         self.assertTrue(all(concept["doc_id"] == doc_b for concept in detail_b["concepts"]))
-        self.assertTrue(all(concept["document_name"] == "cell-division-b.txt" for concept in detail_b["concepts"]))
+        self.assertTrue(
+            all(
+                concept["document_name"] == "cell-division-b.txt"
+                for concept in detail_b["concepts"]
+            )
+        )
 
     def test_subject_grouping_can_be_updated_without_losing_traceability(self) -> None:
         doc_a = self.ingest(
@@ -257,9 +267,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM concept_edges WHERE doc_id = ?", (doc_a,)
             ).fetchone()[0]
             # Doc B is untouched.
-            after_b = conn.execute(
-                "SELECT id FROM concepts WHERE doc_id = ?", (doc_b,)
-            ).fetchall()
+            after_b = conn.execute("SELECT id FROM concepts WHERE doc_id = ?", (doc_b,)).fetchall()
             after_b_edges = conn.execute(
                 "SELECT source_id, target_id FROM concept_edges WHERE doc_id = ?",
                 (doc_b,),
@@ -298,7 +306,10 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertEqual([], orphan_edges, "no orphan edges after delete")
 
     def test_upload_route_persists_subject_metadata(self) -> None:
-        upload = UploadFile(filename="study-notes.txt", file=io.BytesIO(b"Cell membranes regulate transport. Diffusion moves particles."))
+        upload = UploadFile(
+            filename="study-notes.txt",
+            file=io.BytesIO(b"Cell membranes regulate transport. Diffusion moves particles."),
+        )
         result = asyncio.run(upload_document(file=upload, subject_name="Biology Unit 2"))
 
         with main.get_db() as conn:
@@ -454,7 +465,9 @@ class EinsteinTutorBackendTests(unittest.TestCase):
 
         document = DocxDocument()
         document.add_heading("Cell Membrane Transport", level=1)
-        document.add_paragraph("Facilitated diffusion uses membrane proteins to move molecules down a gradient.")
+        document.add_paragraph(
+            "Facilitated diffusion uses membrane proteins to move molecules down a gradient."
+        )
         table = document.add_table(rows=2, cols=2)
         table.cell(0, 0).text = "Process"
         table.cell(0, 1).text = "Energy"
@@ -475,9 +488,13 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertEqual("docx", result["file_type"])
         self.assertEqual("python-docx-structured", diagnostics["quality"]["parser"])
         self.assertGreaterEqual(detail["counts"]["chunks"], 1)
-        self.assertTrue(any("Facilitated diffusion" in chunk["content"] for chunk in detail["chunks"]))
+        self.assertTrue(
+            any("Facilitated diffusion" in chunk["content"] for chunk in detail["chunks"])
+        )
         self.assertTrue(any("ATP" in chunk["content"] for chunk in detail["chunks"]))
-        self.assertTrue(any(chunk["provenance_json"].get("source_spans") for chunk in detail["chunks"]))
+        self.assertTrue(
+            any(chunk["provenance_json"].get("source_spans") for chunk in detail["chunks"])
+        )
 
     def test_flashcard_draft_uses_grounded_source_scope_without_manual_content(self) -> None:
         doc_id = self.ingest(
@@ -496,7 +513,9 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         )
 
         self.assertTrue(result["cards"])
-        self.assertTrue(any("ATP" in card["a"] or "transport" in card["q"].lower() for card in result["cards"]))
+        self.assertTrue(
+            any("ATP" in card["a"] or "transport" in card["q"].lower() for card in result["cards"])
+        )
         rendered = " ".join(f"{card['q']} {card['a']}" for card in result["cards"]).lower()
         self.assertNotIn("what does the source say", rendered)
         self.assertNotIn("which evidence best supports", rendered)
@@ -537,14 +556,52 @@ class EinsteinTutorBackendTests(unittest.TestCase):
                 (doc_id, "Berk_DeMarzo_cf5_ppt_10.pdf", "Finance", "pdf"),
             )
             chunks = [
-                (doc_id, "Chapter Outline\n10.1 Risk and Return: Insights from 96 Years of Investor History\n10.2 Common Measures of Risk and Return\n© 2024 Pearson Education, Ltd. All Rights Reserved", "Page 2", 2, 0),
-                (doc_id, "Learning Objectives\n• Define a probability distribution, the mean, the variance, the standard deviation, and the volatility.\n• Compute the realized or total return for an investment.", "Page 3", 3, 1),
-                (doc_id, "Expected Return\n• Expected return is the probability-weighted average of the possible returns on an investment.", "Page 12", 12, 2),
-                (doc_id, "Variance and Standard Deviation (1 of 2)\n• Variance measures how far returns tend to spread around the mean.\n• Standard deviation is the square root of variance and is a common measure of volatility.", "Page 14", 14, 3),
-                (doc_id, "Beta\n• Beta measures the systematic risk of a security relative to the market portfolio.", "Page 24", 24, 4),
-                (doc_id, "Capital Asset Pricing Model\nE[R_i] = r_f + β_i(E[R_Mkt] − r_f)\n• The CAPM states that expected return equals the risk-free rate plus a beta-based risk premium.", "Page 28", 28, 5),
+                (
+                    doc_id,
+                    "Chapter Outline\n10.1 Risk and Return: Insights from 96 Years of Investor History\n10.2 Common Measures of Risk and Return\n© 2024 Pearson Education, Ltd. All Rights Reserved",
+                    "Page 2",
+                    2,
+                    0,
+                ),
+                (
+                    doc_id,
+                    "Learning Objectives\n• Define a probability distribution, the mean, the variance, the standard deviation, and the volatility.\n• Compute the realized or total return for an investment.",
+                    "Page 3",
+                    3,
+                    1,
+                ),
+                (
+                    doc_id,
+                    "Expected Return\n• Expected return is the probability-weighted average of the possible returns on an investment.",
+                    "Page 12",
+                    12,
+                    2,
+                ),
+                (
+                    doc_id,
+                    "Variance and Standard Deviation (1 of 2)\n• Variance measures how far returns tend to spread around the mean.\n• Standard deviation is the square root of variance and is a common measure of volatility.",
+                    "Page 14",
+                    14,
+                    3,
+                ),
+                (
+                    doc_id,
+                    "Beta\n• Beta measures the systematic risk of a security relative to the market portfolio.",
+                    "Page 24",
+                    24,
+                    4,
+                ),
+                (
+                    doc_id,
+                    "Capital Asset Pricing Model\nE[R_i] = r_f + β_i(E[R_Mkt] − r_f)\n• The CAPM states that expected return equals the risk-free rate plus a beta-based risk premium.",
+                    "Page 28",
+                    28,
+                    5,
+                ),
             ]
-            for index, (chunk_doc_id, content, section, page_num, chunk_index) in enumerate(chunks, start=1):
+            for index, (chunk_doc_id, content, section, page_num, chunk_index) in enumerate(
+                chunks, start=1
+            ):
                 conn.execute(
                     """
                     INSERT INTO chunks (id, doc_id, content, section, page_num, chunk_index, token_count, provenance_json)
@@ -631,14 +688,28 @@ class EinsteinTutorBackendTests(unittest.TestCase):
                 INSERT INTO concepts (id, doc_id, name, description, mastery, source_chunks)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (concept_a, doc_id, "All Right Reservedlearning Objective", "desc", 0.3, '["chunk-clean"]'),
+                (
+                    concept_a,
+                    doc_id,
+                    "All Right Reservedlearning Objective",
+                    "desc",
+                    0.3,
+                    '["chunk-clean"]',
+                ),
             )
             conn.execute(
                 """
                 INSERT INTO concepts (id, doc_id, name, description, mastery, source_chunks)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (concept_b, doc_id, "All Right Reserveddividend Versus", "desc", 0.4, '["chunk-clean"]'),
+                (
+                    concept_b,
+                    doc_id,
+                    "All Right Reserveddividend Versus",
+                    "desc",
+                    0.4,
+                    '["chunk-clean"]',
+                ),
             )
             conn.execute(
                 """
@@ -705,8 +776,7 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertTrue(all(concept["source_chunk_ids"] for concept in concepts))
 
         serialized_questions = " ".join(
-            f"{row['question']} {row['distractors']}".lower()
-            for row in question_rows
+            f"{row['question']} {row['distractors']}".lower() for row in question_rows
         )
         self.assertNotIn("unrelated to the main argument", serialized_questions)
         self.assertNotIn("only matters when compared", serialized_questions)

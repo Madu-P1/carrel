@@ -37,7 +37,9 @@ def build_asset(
     extraction_modes = list(extraction_modes or ["native"])
     fallback_chain = list(fallback_chain or [])
     raw_text = "\n\n".join(item.text for item in elements if item.text).strip()
-    cleaned_text = "\n\n".join(item.normalized_text for item in elements if item.normalized_text).strip()
+    cleaned_text = "\n\n".join(
+        item.normalized_text for item in elements if item.normalized_text
+    ).strip()
     preview_text = cleaned_text[:1200]
     chunks = context.chunk_builder.build(elements, parser=parser_name)
     metrics = {

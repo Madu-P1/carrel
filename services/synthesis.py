@@ -1,4 +1,5 @@
 """Cross-source synthesis — compare sources, detect contradictions, identify gaps."""
+
 import sqlite3
 from typing import Any, Dict, List
 
@@ -41,12 +42,17 @@ def _doc_meta(conn: sqlite3.Connection, doc_id: str) -> Dict[str, Any]:
         "SELECT id, filename, subject_name, status FROM documents WHERE id = ?",
         (doc_id,),
     ).fetchone()
-    return dict(row) if row else {"id": doc_id, "filename": "Unknown", "subject_name": None, "status": None}
+    return (
+        dict(row)
+        if row
+        else {"id": doc_id, "filename": "Unknown", "subject_name": None, "status": None}
+    )
 
 
 # ---------------------------------------------------------------------------
 # Contradiction detection
 # ---------------------------------------------------------------------------
+
 
 def detect_contradictions(
     conn: sqlite3.Connection,
@@ -57,7 +63,9 @@ def detect_contradictions(
         return []
 
     contradictions = []
-    docs = [{"meta": _doc_meta(conn, sid), "concepts": _doc_concepts(conn, sid)} for sid in source_ids]
+    docs = [
+        {"meta": _doc_meta(conn, sid), "concepts": _doc_concepts(conn, sid)} for sid in source_ids
+    ]
 
     for i in range(len(docs)):
         for j in range(i + 1, len(docs)):
@@ -69,15 +77,17 @@ def detect_contradictions(
                 b_desc = b_concepts[name].get("description") or ""
                 overlap = _token_overlap(a_desc, b_desc)
                 if overlap < 0.25 and a_desc and b_desc:
-                    contradictions.append({
-                        "concept": name,
-                        "source_a": docs[i]["meta"]["filename"],
-                        "source_b": docs[j]["meta"]["filename"],
-                        "source_a_excerpt": a_desc[:160],
-                        "source_b_excerpt": b_desc[:160],
-                        "overlap_score": round(overlap, 2),
-                        "severity": "high" if overlap < 0.10 else "medium",
-                    })
+                    contradictions.append(
+                        {
+                            "concept": name,
+                            "source_a": docs[i]["meta"]["filename"],
+                            "source_b": docs[j]["meta"]["filename"],
+                            "source_a_excerpt": a_desc[:160],
+                            "source_b_excerpt": b_desc[:160],
+                            "overlap_score": round(overlap, 2),
+                            "severity": "high" if overlap < 0.10 else "medium",
+                        }
+                    )
 
     return sorted(contradictions, key=lambda x: x["overlap_score"])[:8]
 
@@ -85,6 +95,7 @@ def detect_contradictions(
 # ---------------------------------------------------------------------------
 # Agreement summary
 # ---------------------------------------------------------------------------
+
 
 def summarize_agreement(
     conn: sqlite3.Connection,
@@ -124,7 +135,9 @@ def summarize_agreement(
             for token in tokenize(chunk["content"]):
                 all_tokens[token] = all_tokens.get(token, 0) + 1
 
-    themes = [t for t, c in sorted(all_tokens.items(), key=lambda x: -x[1]) if c >= len(source_ids)][:8]
+    themes = [
+        t for t, c in sorted(all_tokens.items(), key=lambda x: -x[1]) if c >= len(source_ids)
+    ][:8]
 
     return {
         "shared_concepts": shared[:8],
@@ -136,6 +149,7 @@ def summarize_agreement(
 # ---------------------------------------------------------------------------
 # Gap analysis
 # ---------------------------------------------------------------------------
+
 
 def identify_gaps(
     conn: sqlite3.Connection,
@@ -156,12 +170,14 @@ def identify_gaps(
         missing = [sid for sid in source_ids if sid not in doc_set]
         if missing:
             meta_present = _doc_meta(conn, next(iter(doc_set)))
-            gaps.append({
-                "concept": name,
-                "present_in": meta_present["filename"],
-                "missing_from_count": len(missing),
-                "gap_severity": "high" if len(missing) >= len(source_ids) - 1 else "low",
-            })
+            gaps.append(
+                {
+                    "concept": name,
+                    "present_in": meta_present["filename"],
+                    "missing_from_count": len(missing),
+                    "gap_severity": "high" if len(missing) >= len(source_ids) - 1 else "low",
+                }
+            )
 
     return sorted(gaps, key=lambda x: -x["missing_from_count"])[:10]
 
@@ -169,6 +185,7 @@ def identify_gaps(
 # ---------------------------------------------------------------------------
 # Terminology alignment
 # ---------------------------------------------------------------------------
+
 
 def align_terminology(
     conn: sqlite3.Connection,
@@ -187,7 +204,7 @@ def align_terminology(
     mismatches = []
     seen: set = set()
     for i, a in enumerate(all_concepts):
-        for b in all_concepts[i + 1:]:
+        for b in all_concepts[i + 1 :]:
             if a["source_id"] == b["source_id"]:
                 continue
             key = tuple(sorted([a["id"], b["id"]]))
@@ -199,14 +216,16 @@ def align_terminology(
             overlap = _token_overlap(a_desc, b_desc)
             name_overlap = _token_overlap(a["name"], b["name"])
             if overlap >= 0.45 and name_overlap < 0.3:
-                mismatches.append({
-                    "name_a": a["name"],
-                    "name_b": b["name"],
-                    "source_a": a["source"],
-                    "source_b": b["source"],
-                    "description_overlap": round(overlap, 2),
-                    "note": f'"{a["name"]}" and "{b["name"]}" may refer to the same idea.',
-                })
+                mismatches.append(
+                    {
+                        "name_a": a["name"],
+                        "name_b": b["name"],
+                        "source_a": a["source"],
+                        "source_b": b["source"],
+                        "description_overlap": round(overlap, 2),
+                        "note": f'"{a["name"]}" and "{b["name"]}" may refer to the same idea.',
+                    }
+                )
 
     return mismatches[:6]
 
@@ -214,6 +233,7 @@ def align_terminology(
 # ---------------------------------------------------------------------------
 # Full synthesis dispatch
 # ---------------------------------------------------------------------------
+
 
 def run_synthesis(
     conn: sqlite3.Connection,

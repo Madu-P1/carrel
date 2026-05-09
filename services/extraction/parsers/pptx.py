@@ -26,7 +26,13 @@ def parse_pptx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         if getattr(slide.shapes, "title", None) is not None and slide.shapes.title is not None:
             slide_title = normalize_space(slide.shapes.title.text)
             if slide_title:
-                span = make_span(path, file_id, slide=slide_index, section=slide_title, element_id=f"slide-{slide_index}-title")
+                span = make_span(
+                    path,
+                    file_id,
+                    slide=slide_index,
+                    section=slide_title,
+                    element_id=f"slide-{slide_index}-title",
+                )
                 elements.append(
                     ExtractedElement(
                         id=span.element_id or f"slide-{slide_index}-title",
@@ -53,12 +59,16 @@ def parse_pptx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
                     )
                     elements.append(
                         ExtractedElement(
-                            id=span.element_id or f"pptx-{slide_index}-{shape_index}-{paragraph_index}",
+                            id=span.element_id
+                            or f"pptx-{slide_index}-{shape_index}-{paragraph_index}",
                             kind="bullet_list" if paragraph.level > 0 else "paragraph",
                             text=text,
                             normalized_text=text,
                             span=span,
-                            metadata={"slide_number": slide_index, "paragraph_level": paragraph.level},
+                            metadata={
+                                "slide_number": slide_index,
+                                "paragraph_level": paragraph.level,
+                            },
                         )
                     )
             if getattr(shape, "has_table", False):
@@ -96,7 +106,13 @@ def parse_pptx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
                         note_lines.append(note_text)
             if note_lines:
                 joined = "\n".join(note_lines)
-                span = make_span(path, file_id, slide=slide_index, section=slide_title or f"Slide {slide_index}", element_id=f"pptx-notes-{slide_index}")
+                span = make_span(
+                    path,
+                    file_id,
+                    slide=slide_index,
+                    section=slide_title or f"Slide {slide_index}",
+                    element_id=f"pptx-notes-{slide_index}",
+                )
                 elements.append(
                     ExtractedElement(
                         id=span.element_id or f"pptx-notes-{slide_index}",

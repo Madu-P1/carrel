@@ -58,7 +58,9 @@ class LocalAPITokenTests(unittest.TestCase):
         )
 
         self.assertEqual(200, response.status_code)
-        self.assertEqual("http://127.0.0.1:5173", response.headers.get("access-control-allow-origin"))
+        self.assertEqual(
+            "http://127.0.0.1:5173", response.headers.get("access-control-allow-origin")
+        )
 
     def test_mutating_request_rejects_missing_token(self) -> None:
         response = self.client.post("/api/goal", json={"goal": "Study finance"})

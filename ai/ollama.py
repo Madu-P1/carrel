@@ -72,7 +72,9 @@ class OllamaClient:
         self._logger = get_logger("ai.ollama")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.fast_model = fast_model or os.getenv("OLLAMA_MODEL_FAST") or DEFAULT_FAST_MODEL
-        self.balanced_model = balanced_model or os.getenv("OLLAMA_MODEL_BALANCED") or DEFAULT_BALANCED_MODEL
+        self.balanced_model = (
+            balanced_model or os.getenv("OLLAMA_MODEL_BALANCED") or DEFAULT_BALANCED_MODEL
+        )
         self.deep_model = deep_model or os.getenv("OLLAMA_MODEL_DEEP") or DEFAULT_DEEP_MODEL
         self.timeout_seconds = float(
             timeout_seconds
@@ -189,7 +191,9 @@ class OllamaClient:
             "Your entire response MUST be a single JSON object matching the required schema. "
             "Do not include explanations, markdown, or text outside the JSON object."
         )
-        system_with_tool = (preamble + "\n\n" + system_with_tool).strip() if system_with_tool else preamble
+        system_with_tool = (
+            (preamble + "\n\n" + system_with_tool).strip() if system_with_tool else preamble
+        )
 
         return self._chat(
             request_kind=request_kind,

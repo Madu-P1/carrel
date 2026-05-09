@@ -75,7 +75,9 @@ def build_evidence_reference(
 
     evidence_id = str(uuid.uuid4())
     snapshot_hash = source_snapshot_hash(conn, source_id)
-    evidence_confidence = confidence if confidence is not None else min(0.95, 0.45 + (citation.get("score", 0) / 30))
+    evidence_confidence = (
+        confidence if confidence is not None else min(0.95, 0.45 + (citation.get("score", 0) / 30))
+    )
     conn.execute(
         """
         INSERT INTO evidence_references (
@@ -198,6 +200,7 @@ def fetch_recent_evidence(conn: sqlite3.Connection, limit: int = 8) -> List[Dict
 # Evidence linkage for cards, quizzes, and artifacts  (Phase 1a)
 # ---------------------------------------------------------------------------
 
+
 def link_evidence_to_card(
     conn: sqlite3.Connection,
     card_id: str,
@@ -253,6 +256,7 @@ def link_session_artifact(
 # Fetch evidence by entity
 # ---------------------------------------------------------------------------
 
+
 def fetch_card_evidence(conn: sqlite3.Connection, card_id: str) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
@@ -304,7 +308,9 @@ def fetch_artifact_evidence(conn: sqlite3.Connection, artifact_id: str) -> List[
     return [_row_to_evidence_payload(row) for row in rows]
 
 
-def fetch_evidence_for_concept(conn: sqlite3.Connection, concept_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+def fetch_evidence_for_concept(
+    conn: sqlite3.Connection, concept_id: str, limit: int = 10
+) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT er.id, er.source_id, er.chunk_id, er.concept_id, er.anchor_text, er.anchor_start,
@@ -321,7 +327,9 @@ def fetch_evidence_for_concept(conn: sqlite3.Connection, concept_id: str, limit:
     return [_row_to_evidence_payload(row) for row in rows]
 
 
-def fetch_evidence_for_source(conn: sqlite3.Connection, source_id: str, limit: int = 12) -> List[Dict[str, Any]]:
+def fetch_evidence_for_source(
+    conn: sqlite3.Connection, source_id: str, limit: int = 12
+) -> List[Dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT er.id, er.source_id, er.chunk_id, er.concept_id, er.anchor_text, er.anchor_start,

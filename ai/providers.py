@@ -205,9 +205,7 @@ def select_provider(kind: str | None = None) -> AIProvider:
     will stay supported until the deferred-rename pass migrates the
     rest of the system identifiers (DB filename, bundle ID).
     """
-    env_value = os.getenv("CARREL_AI_PROVIDER") or os.getenv(
-        "EINSTEIN_AI_PROVIDER", "auto"
-    )
+    env_value = os.getenv("CARREL_AI_PROVIDER") or os.getenv("EINSTEIN_AI_PROVIDER", "auto")
     raw = (kind or env_value).strip().lower()
     if raw == "off":
         return NullProvider()

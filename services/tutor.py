@@ -14,7 +14,10 @@ from typing import Any, Dict, List, Optional, Sequence
 from fastapi import HTTPException
 
 from ai.providers import AIProvider, get_default_provider
-from ai.router import ClaudeCallResult, ClaudeRouter  # retained for tests that inject a router directly
+from ai.router import (
+    ClaudeCallResult,
+    ClaudeRouter,
+)  # retained for tests that inject a router directly
 from app_logging import get_logger, log_event
 from services.documents import clean_concept_label
 from services.ingestion import normalize_subject_name
@@ -247,7 +250,17 @@ def upsert_note_record(
             INSERT INTO notes (id, doc_id, concept_id, title, content, source_snippet, note_type, goal_id, session_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (note_id, doc_id, concept_id, clean_title, content, source_snippet, note_type, goal_id, session_id),
+            (
+                note_id,
+                doc_id,
+                concept_id,
+                clean_title,
+                content,
+                source_snippet,
+                note_type,
+                goal_id,
+                session_id,
+            ),
         )
     conn.commit()
     row = conn.execute(
@@ -322,7 +335,12 @@ def _slice_original_span(content: str, normalized: NormalizedText, start: int, s
     return content[start_index:end_index].strip()
 
 
-def _fuzzy_quote_match(raw_quote: str, content: str, normalized_quote: NormalizedText, normalized_content: NormalizedText) -> QuoteMatch | None:
+def _fuzzy_quote_match(
+    raw_quote: str,
+    content: str,
+    normalized_quote: NormalizedText,
+    normalized_content: NormalizedText,
+) -> QuoteMatch | None:
     if not normalized_quote.text or not normalized_content.text:
         return None
     matcher = SequenceMatcher(None, normalized_quote.text, normalized_content.text, autojunk=False)
@@ -355,7 +373,9 @@ def _validated_citation_quote(raw_quote: str, content: str) -> QuoteMatch | None
 
     exact_position = normalized_content.text.find(normalized_quote.text)
     if exact_position >= 0:
-        actual = _slice_original_span(content, normalized_content, exact_position, len(normalized_quote.text))
+        actual = _slice_original_span(
+            content, normalized_content, exact_position, len(normalized_quote.text)
+        )
         if actual:
             return QuoteMatch(quote=actual, repaired=actual != quote)
 
@@ -795,23 +815,37 @@ def grounded_citations(
     return [_citation_payload(context) for context in contexts]
 
 
-def detect_misconceptions(question: str, confidence: Optional[float], citations: List[Dict[str, Any]]) -> List[str]:
+def detect_misconceptions(
+    question: str, confidence: Optional[float], citations: List[Dict[str, Any]]
+) -> List[str]:
     lowered = question.lower()
     flags: List[str] = []
     if confidence is not None and confidence < 45:
-        flags.append("Low confidence suggests this topic may still feel unstable even if the wording sounds familiar.")
+        flags.append(
+            "Low confidence suggests this topic may still feel unstable even if the wording sounds familiar."
+        )
     if any(token in lowered for token in ["always", "never", "just", "only", "same as"]):
-        flags.append("Absolute language can hide important exceptions or flatten two related concepts into one.")
+        flags.append(
+            "Absolute language can hide important exceptions or flatten two related concepts into one."
+        )
     if citations and len({citation["document_name"] for citation in citations}) > 1:
-        flags.append("You may be blending evidence from multiple sources. Compare the cited sections before committing to one definition.")
+        flags.append(
+            "You may be blending evidence from multiple sources. Compare the cited sections before committing to one definition."
+        )
     return flags
 
 
-def scaffold_steps(question: str, citations: List[Dict[str, Any]], concept_name: Optional[str]) -> List[str]:
-    first_citation = citations[0]["snippet"] if citations else "Read the most relevant source sentence once."
+def scaffold_steps(
+    question: str, citations: List[Dict[str, Any]], concept_name: Optional[str]
+) -> List[str]:
+    first_citation = (
+        citations[0]["snippet"] if citations else "Read the most relevant source sentence once."
+    )
     steps = [
         f"Start with one source clue: {first_citation}",
-        f"Restate {concept_name or 'the idea'} in your own words without looking." if concept_name else "Restate the idea in your own words without looking.",
+        f"Restate {concept_name or 'the idea'} in your own words without looking."
+        if concept_name
+        else "Restate the idea in your own words without looking.",
         "Answer one contrast question: how is this different from the most similar idea in your notes?",
     ]
     if "why" in question.lower():
@@ -824,9 +858,7 @@ def scaffold_steps(question: str, citations: List[Dict[str, Any]], concept_name:
 # refuse the answer with error_code "weak_coverage" and return the nearest
 # passages. The frontend renders a dedicated refusal card with recovery
 # actions. Tunable via env if a classroom wants a looser threshold.
-_WEAK_COVERAGE_MIN_CONTEXTS = int(
-    os.getenv("EINSTEIN_WEAK_COVERAGE_MIN_CONTEXTS", "3")
-)
+_WEAK_COVERAGE_MIN_CONTEXTS = int(os.getenv("EINSTEIN_WEAK_COVERAGE_MIN_CONTEXTS", "3"))
 
 
 def grounded_tutor_response(
@@ -847,7 +879,9 @@ def grounded_tutor_response(
     # satisfies the AIProvider protocol structurally.
     router = router or get_default_provider()
     concept = _resolve_concept_context(conn, concept_id)
-    resolved_doc_ids = doc_ids or ([str(concept["doc_id"])] if concept and concept.get("doc_id") else None)
+    resolved_doc_ids = doc_ids or (
+        [str(concept["doc_id"])] if concept and concept.get("doc_id") else None
+    )
     resolved_concept_name = concept_name or (
         clean_concept_label(str(concept["name"])) if concept and concept.get("name") else None
     )
@@ -967,7 +1001,9 @@ def grounded_tutor_envelope(
     concept_id = _payload_concept_id(payload)
     doc_ids = _payload_doc_ids(payload)
     concept = _resolve_concept_context(conn, concept_id)
-    concept_name = clean_concept_label(str(concept["name"])) if concept and concept.get("name") else None
+    concept_name = (
+        clean_concept_label(str(concept["name"])) if concept and concept.get("name") else None
+    )
     confidence = getattr(payload, "confidence", None)
     if confidence is None:
         confidence = getattr(payload, "learner_confidence", None)
@@ -991,30 +1027,34 @@ def grounded_tutor_envelope(
                 continue
             seen_chunk_ids.add(citation.chunk_id)
             chunk_ids.append(citation.chunk_id)
-    flat_contexts = _hydrate_chunk_context(
-        [
-            ScoredHit(
-                chunk_id=context_row["id"],
-                doc_id=context_row["doc_id"],
-                section=context_row["section"],
-                snippet=str(context_row["content"] or "")[:240],
-                score=1.0,
-                components={},
-                sources=(),
-            )
-            for context_row in conn.execute(
-                f"""
+    flat_contexts = (
+        _hydrate_chunk_context(
+            [
+                ScoredHit(
+                    chunk_id=context_row["id"],
+                    doc_id=context_row["doc_id"],
+                    section=context_row["section"],
+                    snippet=str(context_row["content"] or "")[:240],
+                    score=1.0,
+                    components={},
+                    sources=(),
+                )
+                for context_row in conn.execute(
+                    f"""
                 SELECT c.id, c.doc_id, c.section, c.content
                 FROM chunks c
                 WHERE c.id IN ({",".join("?" * len(chunk_ids))})
                 """
-                if chunk_ids
-                else "SELECT NULL AS id, NULL AS doc_id, NULL AS section, NULL AS content WHERE 0",
-                chunk_ids,
-            ).fetchall()
-        ],
-        conn,
-    ) if chunk_ids else []
+                    if chunk_ids
+                    else "SELECT NULL AS id, NULL AS doc_id, NULL AS section, NULL AS content WHERE 0",
+                    chunk_ids,
+                ).fetchall()
+            ],
+            conn,
+        )
+        if chunk_ids
+        else []
+    )
 
     citations = _flatten_claim_citations(grounded.claims, flat_contexts)
     claims = _serialize_claims(grounded.claims, flat_contexts)
@@ -1027,7 +1067,9 @@ def grounded_tutor_envelope(
     log_study_event(
         conn,
         "tutor_query",
-        doc_id=doc_ids[0] if doc_ids else (str(concept["doc_id"]) if concept and concept.get("doc_id") else None),
+        doc_id=doc_ids[0]
+        if doc_ids
+        else (str(concept["doc_id"]) if concept and concept.get("doc_id") else None),
         concept_id=concept_id,
         confidence=confidence,
         payload={
@@ -1064,7 +1106,9 @@ def grounded_tutor_envelope(
     }
 
 
-def compare_concepts_record(conn: sqlite3.Connection, left_id: str, right_id: str) -> Dict[str, Any]:
+def compare_concepts_record(
+    conn: sqlite3.Connection, left_id: str, right_id: str
+) -> Dict[str, Any]:
     rows = conn.execute(
         """
         SELECT c.id, c.doc_id, c.name, c.description, d.filename AS document_name, d.subject_name
@@ -1080,7 +1124,11 @@ def compare_concepts_record(conn: sqlite3.Connection, left_id: str, right_id: st
     left_raw = items[left_id]
     right_raw = items[right_id]
     left = {**left_raw, "raw_name": left_raw["name"], "name": clean_concept_label(left_raw["name"])}
-    right = {**right_raw, "raw_name": right_raw["name"], "name": clean_concept_label(right_raw["name"])}
+    right = {
+        **right_raw,
+        "raw_name": right_raw["name"],
+        "name": clean_concept_label(right_raw["name"]),
+    }
     left_tokens = set(tokenize(left_raw["description"]))
     right_tokens = set(tokenize(right_raw["description"]))
     overlap = sorted(left_tokens & right_tokens)[:4]
@@ -1095,7 +1143,8 @@ def compare_concepts_record(conn: sqlite3.Connection, left_id: str, right_id: st
     fallback = {
         "left": left,
         "right": right,
-        "similarities": overlap or ["Both concepts appear in the same learning context and should be studied together."],
+        "similarities": overlap
+        or ["Both concepts appear in the same learning context and should be studied together."],
         "differences": [
             f"{left['name']}: {', '.join(left_only) if left_only else left['description']}",
             f"{right['name']}: {', '.join(right_only) if right_only else right['description']}",

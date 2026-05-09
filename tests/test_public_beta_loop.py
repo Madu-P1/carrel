@@ -69,7 +69,9 @@ class PublicBetaLoopTests(unittest.TestCase):
                 "SELECT id FROM chunks WHERE doc_id = ? ORDER BY chunk_index ASC LIMIT 1",
                 (doc_id,),
             ).fetchone()["id"]
-            resolved = evidence_resolution.resolve_evidence(conn, document_id=doc_id, chunk_id=chunk_id)
+            resolved = evidence_resolution.resolve_evidence(
+                conn, document_id=doc_id, chunk_id=chunk_id
+            )
 
         self.assertIsNotNone(resolved)
         assert resolved is not None
@@ -81,8 +83,13 @@ class PublicBetaLoopTests(unittest.TestCase):
         from services import jobs
 
         source = Path(self.temp_dir.name) / "job-source.txt"
-        source.write_text("Yield rises when bond prices fall. Duration estimates price sensitivity.", encoding="utf-8")
-        job = jobs.enqueue_import(source_path=source, filename="job-source.txt", subject_name="Finance")
+        source.write_text(
+            "Yield rises when bond prices fall. Duration estimates price sensitivity.",
+            encoding="utf-8",
+        )
+        job = jobs.enqueue_import(
+            source_path=source, filename="job-source.txt", subject_name="Finance"
+        )
 
         deadline = time.time() + 10
         latest = job

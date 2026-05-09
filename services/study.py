@@ -8,7 +8,9 @@ from services.documents import clean_concept_label
 
 
 def _name_replacements(conn: sqlite3.Connection) -> List[tuple[str, str]]:
-    rows = conn.execute("SELECT name FROM concepts ORDER BY LENGTH(name) DESC, rowid ASC").fetchall()
+    rows = conn.execute(
+        "SELECT name FROM concepts ORDER BY LENGTH(name) DESC, rowid ASC"
+    ).fetchall()
     pairs = []
     seen = set()
     for row in rows:
@@ -47,7 +49,11 @@ def fetch_questions(conn: sqlite3.Connection, limit: int = 10) -> List[Dict[str,
     for row in rows:
         item = dict(row)
         item["difficulty"] = (
-            "Hard" if item["difficulty"] >= 0.7 else "Medium" if item["difficulty"] >= 0.45 else "Easy"
+            "Hard"
+            if item["difficulty"] >= 0.7
+            else "Medium"
+            if item["difficulty"] >= 0.45
+            else "Easy"
         )
         item["options"] = [item["answer"], *json.loads(item["distractors"] or "[]")]
         item["raw_concept"] = item["concept"]

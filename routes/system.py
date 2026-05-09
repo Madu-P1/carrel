@@ -52,10 +52,10 @@ def _provider_payload() -> Dict[str, Any]:
         # EINSTEIN_AI_PROVIDER so existing .env files keep working. Mirrors
         # the resolution order in `ai/providers.py::select_provider`.
         "preference": (
-            os.getenv("CARREL_AI_PROVIDER")
-            or os.getenv("EINSTEIN_AI_PROVIDER", "auto")
-            or "auto"
-        ).strip().lower(),
+            os.getenv("CARREL_AI_PROVIDER") or os.getenv("EINSTEIN_AI_PROVIDER", "auto") or "auto"
+        )
+        .strip()
+        .lower(),
     }
 
 

@@ -56,20 +56,20 @@ class ParsedEvent:
     """One occurrence of one event, ready for repository upsert."""
 
     uid: str
-    occurrence_key: str             # uid + recurrence_id for dedup
-    recurrence_id: Optional[str]    # None on master / non-recurring
+    occurrence_key: str  # uid + recurrence_id for dedup
+    recurrence_id: Optional[str]  # None on master / non-recurring
     summary: str
-    start_at: str                   # ISO 8601 UTC
-    end_at: str                     # ISO 8601 UTC
-    timezone: Optional[str]         # source TZID
+    start_at: str  # ISO 8601 UTC
+    end_at: str  # ISO 8601 UTC
+    timezone: Optional[str]  # source TZID
     all_day: bool
     location: Optional[str]
     categories: Optional[str]
-    status: str                     # confirmed | cancelled | tentative
-    rrule: Optional[str]            # only set on master (un-expanded) rows; None on expansions
+    status: str  # confirmed | cancelled | tentative
+    rrule: Optional[str]  # only set on master (un-expanded) rows; None on expansions
     source_updated_at: Optional[str]
     source_hash: str
-    raw: dict                        # full source for replay/debugging
+    raw: dict  # full source for replay/debugging
 
 
 class ICalParseError(Exception):
@@ -102,8 +102,7 @@ def parse_ics(body: bytes, *, now: Optional[datetime] = None) -> List[ParsedEven
         raise ICalParseError(
             reason="missing_dependency",
             detail=(
-                "iCal parser dependencies are not installed. "
-                "Run `pip install -r requirements.txt`."
+                "iCal parser dependencies are not installed. Run `pip install -r requirements.txt`."
             ),
         ) from exc
 
@@ -136,9 +135,7 @@ def parse_ics(body: bytes, *, now: Optional[datetime] = None) -> List[ParsedEven
         # honors RECURRENCE-ID overrides — the three things you have
         # to get right per RFC 5545 §3.8.5. We use the `between` API
         # so the result is already bounded to our window.
-        occurrences = recurring_ical_events.of(filtered_cal).between(
-            window_start, window_end
-        )
+        occurrences = recurring_ical_events.of(filtered_cal).between(window_start, window_end)
     except Exception as exc:
         raise ICalParseError(
             reason="expansion_failed",
@@ -242,7 +239,9 @@ def _event_from_component(component) -> ParsedEvent:
         # without a time.
         start_iso = datetime.combine(start_dt, datetime.min.time(), tzinfo=timezone.utc).isoformat()
         if end_dt is None:
-            end_iso = datetime.combine(start_dt + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).isoformat()
+            end_iso = datetime.combine(
+                start_dt + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
+            ).isoformat()
         elif isinstance(end_dt, date) and not isinstance(end_dt, datetime):
             end_iso = datetime.combine(end_dt, datetime.min.time(), tzinfo=timezone.utc).isoformat()
         else:
@@ -272,7 +271,11 @@ def _event_from_component(component) -> ParsedEvent:
     if rrule_raw is not None and recurrence_id is None:
         # Keep the master's RRULE for replay/debugging. Expansions
         # don't carry it; only the master row does.
-        rrule = rrule_raw.to_ical().decode("utf-8", errors="replace") if hasattr(rrule_raw, "to_ical") else str(rrule_raw)
+        rrule = (
+            rrule_raw.to_ical().decode("utf-8", errors="replace")
+            if hasattr(rrule_raw, "to_ical")
+            else str(rrule_raw)
+        )
 
     last_modified = component.get("LAST-MODIFIED")
     source_updated_at: Optional[str] = None
@@ -288,9 +291,7 @@ def _event_from_component(component) -> ParsedEvent:
         "tzid": tzid,
         "status": status,
     }
-    source_hash = hashlib.sha256(
-        json.dumps(raw_dict, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    source_hash = hashlib.sha256(json.dumps(raw_dict, sort_keys=True).encode("utf-8")).hexdigest()
 
     return ParsedEvent(
         uid=uid,

@@ -133,9 +133,7 @@ def insert_typed_nodes(
 def delete_typed_nodes(conn: sqlite3.Connection, doc_id: str) -> None:
     conn.execute("DELETE FROM nodes WHERE doc_id = ?", (doc_id,))
     if node_embeddings_table_exists(conn):
-        conn.execute(
-            "DELETE FROM node_embeddings WHERE node_id NOT IN (SELECT id FROM nodes)"
-        )
+        conn.execute("DELETE FROM node_embeddings WHERE node_id NOT IN (SELECT id FROM nodes)")
 
 
 def embed_and_index_nodes(

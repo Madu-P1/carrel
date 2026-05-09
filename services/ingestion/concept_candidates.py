@@ -17,7 +17,15 @@ from .constants import (
     PROMPT_START_TOKENS,
     STOPWORDS,
 )
-from .text_utils import _is_heading_like_line, _valid_learning_sentence, canonicalize, clean_learning_text, phrase_case, split_sentences, tokenize
+from .text_utils import (
+    _is_heading_like_line,
+    _valid_learning_sentence,
+    canonicalize,
+    clean_learning_text,
+    phrase_case,
+    split_sentences,
+    tokenize,
+)
 
 
 def supporting_sentences(text: str, term: str, limit: int = 3) -> List[str]:
@@ -85,7 +93,12 @@ def is_valid_concept_label(candidate: str) -> bool:
         return False
     if len(lexical_tokens) > 5:
         return False
-    if tokens[0] in PROMPT_START_TOKENS or tokens[0] in CONNECTOR_TOKENS or tokens[0] in STOPWORDS or tokens[0] in COMMON_VERBS:
+    if (
+        tokens[0] in PROMPT_START_TOKENS
+        or tokens[0] in CONNECTOR_TOKENS
+        or tokens[0] in STOPWORDS
+        or tokens[0] in COMMON_VERBS
+    ):
         return False
     if connector_count > 1:
         return False
@@ -93,7 +106,9 @@ def is_valid_concept_label(candidate: str) -> bool:
         first_word = words[0] if words else ""
         if len(lexical_tokens[0]) < 4 and first_word.upper() not in DISPLAY_ACRONYMS:
             return False
-    short_words = [word for word in words if len(word) <= 2 and word.upper() not in DISPLAY_ACRONYMS]
+    short_words = [
+        word for word in words if len(word) <= 2 and word.upper() not in DISPLAY_ACRONYMS
+    ]
     if short_words:
         return False
     if any(token.endswith("ing") and len(token) > 5 for token in lexical_tokens):
@@ -103,9 +118,17 @@ def is_valid_concept_label(candidate: str) -> bool:
         for token in tokens
     ):
         return False
-    if tokens[-1] in STOPWORDS or tokens[-1] in BOUNDARY_WORDS or tokens[-1] in COMMON_VERBS or tokens[-1] in CONNECTOR_TOKENS:
+    if (
+        tokens[-1] in STOPWORDS
+        or tokens[-1] in BOUNDARY_WORDS
+        or tokens[-1] in COMMON_VERBS
+        or tokens[-1] in CONNECTOR_TOKENS
+    ):
         return False
-    if all(token in STOPWORDS or token in GENERIC_TERMS or token in CONNECTOR_TOKENS for token in tokens):
+    if all(
+        token in STOPWORDS or token in GENERIC_TERMS or token in CONNECTOR_TOKENS
+        for token in tokens
+    ):
         return False
     if lowered in {"study concept", "core idea", "core ideas", "key process", "key relationship"}:
         return False
@@ -121,7 +144,9 @@ def leading_subject_phrase(sentence: str) -> Optional[str]:
     if not words:
         return None
     normalized = [canonicalize(word.replace("-", "")) for word in words]
-    verb_index = next((index for index, token in enumerate(normalized) if token in COMMON_VERBS), None)
+    verb_index = next(
+        (index for index, token in enumerate(normalized) if token in COMMON_VERBS), None
+    )
     if verb_index is None or verb_index > 5:
         return None
     subject_words = words[:verb_index]
@@ -166,7 +191,9 @@ def build_phrase_candidates(sentence: str, token_counts: Dict[str, int]) -> Dict
         score = sum(token_counts.get(token, 0) for token in phrase_tokens) + bonus
         candidates[phrase] = max(candidates.get(phrase, 0), score)
 
-    verb_index = next((index for index, token in enumerate(normalized) if token in COMMON_VERBS), None)
+    verb_index = next(
+        (index for index, token in enumerate(normalized) if token in COMMON_VERBS), None
+    )
     if verb_index is not None:
         subject = [word for word in words[:verb_index] if canonicalize(word) not in STOPWORDS]
         if subject:
@@ -254,7 +281,9 @@ def select_concept_phrases(text: str, filename: str, limit: int = 5) -> List[str
     if is_valid_concept_label(stem) and supporting_sentences(cleaned_text, stem, limit=1):
         phrase_scores[stem] = phrase_scores.get(stem, 0.0) + 1.2
 
-    ranked = sorted(phrase_scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0].lower()))
+    ranked = sorted(
+        phrase_scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0].lower())
+    )
     selected: List[str] = []
     selected_token_sets: List[set[str]] = []
 
@@ -265,12 +294,17 @@ def select_concept_phrases(text: str, filename: str, limit: int = 5) -> List[str
             return
         if len(supporting_sentences(cleaned_text, cleaned, limit=1)) == 0:
             return
-        if any(len(tokens & existing) / max(len(tokens | existing), 1) >= 0.6 for existing in selected_token_sets):
+        if any(
+            len(tokens & existing) / max(len(tokens | existing), 1) >= 0.6
+            for existing in selected_token_sets
+        ):
             return
         selected.append(cleaned)
         selected_token_sets.append(tokens)
 
-    for candidate, _score in sorted(heading_scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0].lower())):
+    for candidate, _score in sorted(
+        heading_scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0].lower())
+    ):
         maybe_add(candidate)
         if len(selected) == limit:
             break

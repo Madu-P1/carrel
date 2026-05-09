@@ -4,6 +4,7 @@ Only exercises the SQL layer — no Docling required. Verifies that
 migration 0016 lands the right shape, that the helpers respect it, and
 that the FTS triggers stay in sync on insert / update / delete.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -170,7 +171,10 @@ class TypedNodesPersistenceTests(unittest.TestCase):
         ids = insert_typed_nodes(self._conn, self._doc_id, nodes)
         embedded = embed_and_index_nodes(self._conn, nodes, ids, embedder=_DeterministicEmbedder())
         self.assertEqual(embedded, 1)  # only the body row
-        rowids = {row["node_id"] for row in self._conn.execute("SELECT node_id FROM node_embeddings").fetchall()}
+        rowids = {
+            row["node_id"]
+            for row in self._conn.execute("SELECT node_id FROM node_embeddings").fetchall()
+        }
         self.assertEqual(rowids, {ids[2]})
 
     def test_inserting_invalid_node_type_is_rejected_by_check_constraint(self) -> None:

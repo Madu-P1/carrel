@@ -330,8 +330,14 @@ class ManageCardsRouteTests(unittest.TestCase):
             text=None,
             json_payload={
                 "cards": [
-                    {"front": "What is NPV?", "back": "Present value of future cash flows minus the initial investment."},
-                    {"front": "Why does NPV matter?", "back": "It tells you whether a project creates or destroys shareholder value."},
+                    {
+                        "front": "What is NPV?",
+                        "back": "Present value of future cash flows minus the initial investment.",
+                    },
+                    {
+                        "front": "Why does NPV matter?",
+                        "back": "It tells you whether a project creates or destroys shareholder value.",
+                    },
                     {"front": "", "back": "This one gets dropped (empty front)"},
                     {"front": "Orphan front only"},  # malformed — dropped
                     {"front": "Long" + "x" * 5000, "back": "a"},  # oversize — dropped

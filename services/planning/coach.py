@@ -66,12 +66,13 @@ class CandidateSuggestion:
     Once `synthesize` decides which to keep, these get persisted via
     `repository.insert_suggestion`.
     """
-    kind: str                    # 'study_block' | 'review_block' | 'catchup'
-    start_at: str                # ISO 8601 UTC
-    end_at: str                  # ISO 8601 UTC
-    reason_code: str             # must match schema CHECK
-    reason_text: str             # user-facing, follows Ship 7 voice rules
-    score: float                 # higher = more important
+
+    kind: str  # 'study_block' | 'review_block' | 'catchup'
+    start_at: str  # ISO 8601 UTC
+    end_at: str  # ISO 8601 UTC
+    reason_code: str  # must match schema CHECK
+    reason_text: str  # user-facing, follows Ship 7 voice rules
+    score: float  # higher = more important
     due_at: Optional[str] = None
     doc_id: Optional[str] = None
     source_event_id: Optional[str] = None
@@ -80,6 +81,7 @@ class CandidateSuggestion:
 @dataclass
 class FreeBlock:
     """A gap in the user's schedule, in UTC ISO 8601."""
+
     start_at: str
     end_at: str
     minutes: int
@@ -159,6 +161,7 @@ def refresh_active_suggestions(
 # ---------------------------------------------------------------------
 # Rules
 # ---------------------------------------------------------------------
+
 
 def _rule_free_block_overdue_srs(
     conn: sqlite3.Connection, *, user_id: str

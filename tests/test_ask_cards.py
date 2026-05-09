@@ -6,6 +6,7 @@ validation, filter propagation, response shape, and rerank kill-switch
 behavior. The reranker isn't invoked here — `use_reranker=false` is
 passed explicitly so the test suite never downloads the model.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -54,7 +55,9 @@ class _DeterministicEmbedder:
         return self._vec(text)
 
 
-def _node(order: int, *, node_type: str = "body", text: str = "", heading_path: str = "Topic") -> TypedNode:
+def _node(
+    order: int, *, node_type: str = "body", text: str = "", heading_path: str = "Topic"
+) -> TypedNode:
     return TypedNode(
         node_type=node_type,
         heading_path=heading_path,
@@ -81,8 +84,11 @@ class AskCardsRouteTests(unittest.TestCase):
         (base_dir / "schema.sql").write_text("-- test\n", encoding="utf-8")
 
         self._original = (
-            main.BASE_DIR, main.DATA_DIR, main.UPLOAD_DIR,
-            main.DB_PATH, main.SCHEMA_PATH,
+            main.BASE_DIR,
+            main.DATA_DIR,
+            main.UPLOAD_DIR,
+            main.DB_PATH,
+            main.SCHEMA_PATH,
         )
         main.BASE_DIR = base_dir
         main.DATA_DIR = data_dir
@@ -103,18 +109,22 @@ class AskCardsRouteTests(unittest.TestCase):
                 "VALUES ('doc-chem', 'combustion.md', 'md', 'ready', 'manual_text', 'Chemistry')"
             )
             bio_nodes = [
-                _node(0, node_type="heading", text="Photosynthesis",
-                      heading_path="Photosynthesis"),
-                _node(1, node_type="body",
-                      text="Plants use chlorophyll to capture light energy",
-                      heading_path="Photosynthesis"),
+                _node(0, node_type="heading", text="Photosynthesis", heading_path="Photosynthesis"),
+                _node(
+                    1,
+                    node_type="body",
+                    text="Plants use chlorophyll to capture light energy",
+                    heading_path="Photosynthesis",
+                ),
             ]
             chem_nodes = [
-                _node(0, node_type="heading", text="Combustion",
-                      heading_path="Combustion"),
-                _node(1, node_type="body",
-                      text="Methane reacts with oxygen producing carbon dioxide and water",
-                      heading_path="Combustion"),
+                _node(0, node_type="heading", text="Combustion", heading_path="Combustion"),
+                _node(
+                    1,
+                    node_type="body",
+                    text="Methane reacts with oxygen producing carbon dioxide and water",
+                    heading_path="Combustion",
+                ),
             ]
             embedder = _DeterministicEmbedder()
             bio_ids = insert_typed_nodes(conn, "doc-bio", bio_nodes)
@@ -130,9 +140,7 @@ class AskCardsRouteTests(unittest.TestCase):
         self._original_default = emb_module._default
         emb_module._default = _DeterministicEmbedder()
 
-        self.client = TestClient(
-            main.app, headers={HEADER_NAME: get_local_api_token()}
-        )
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
 
     def tearDown(self) -> None:
         import services.retrieval.embeddings as emb_module
@@ -154,31 +162,23 @@ class AskCardsRouteTests(unittest.TestCase):
 
     def test_query_too_long_returns_400(self) -> None:
         long_q = "a" * 600
-        response = self.client.get(
-            f"/api/ask/cards?q={long_q}&use_reranker=false"
-        )
+        response = self.client.get(f"/api/ask/cards?q={long_q}&use_reranker=false")
         self.assertEqual(response.status_code, 400)
         self.assertIn("500 characters", response.json()["detail"])
 
     def test_limit_out_of_range_returns_400(self) -> None:
-        response = self.client.get(
-            "/api/ask/cards?q=hello&limit=99&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=hello&limit=99&use_reranker=false")
         self.assertEqual(response.status_code, 400)
         self.assertIn("limit", response.json()["detail"].lower())
 
     def test_limit_zero_returns_400(self) -> None:
-        response = self.client.get(
-            "/api/ask/cards?q=hello&limit=0&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=hello&limit=0&use_reranker=false")
         self.assertEqual(response.status_code, 400)
 
     # ---------------------------------------------------------------- 200s
 
     def test_basic_query_returns_card_envelope(self) -> None:
-        response = self.client.get(
-            "/api/ask/cards?q=chlorophyll&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=chlorophyll&use_reranker=false")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["query"], "chlorophyll")
@@ -189,17 +189,25 @@ class AskCardsRouteTests(unittest.TestCase):
         self.assertTrue(body["cards"], "expected at least one card hit")
 
     def test_card_carries_full_metadata_for_citation_chip(self) -> None:
-        response = self.client.get(
-            "/api/ask/cards?q=chlorophyll&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=chlorophyll&use_reranker=false")
         cards = response.json()["cards"]
         top = cards[0]
         # Every field the citation chip + reader pane will need.
         for key in (
-            "node_id", "doc_id", "filename", "subject_name",
-            "node_type", "heading_path", "page",
-            "char_start", "char_end", "verbatim_text",
-            "snippet", "score", "rerank_score", "sources",
+            "node_id",
+            "doc_id",
+            "filename",
+            "subject_name",
+            "node_type",
+            "heading_path",
+            "page",
+            "char_start",
+            "char_end",
+            "verbatim_text",
+            "snippet",
+            "score",
+            "rerank_score",
+            "sources",
         ):
             self.assertIn(key, top, f"card missing {key}")
         self.assertEqual(top["doc_id"], "doc-bio")
@@ -213,9 +221,7 @@ class AskCardsRouteTests(unittest.TestCase):
         # whatever rows survive the filter. The contract this test pins
         # is: when doc_id is set, ONLY that doc's rows come back. (BM25
         # exclusivity is covered by tests/test_retrieval_nodes_fts.py.)
-        response = self.client.get(
-            "/api/ask/cards?q=Methane&doc_id=doc-bio&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=Methane&doc_id=doc-bio&use_reranker=false")
         self.assertEqual(response.status_code, 200)
         cards = response.json()["cards"]
         for card in cards:
@@ -235,9 +241,7 @@ class AskCardsRouteTests(unittest.TestCase):
         with main.get_db() as conn:
             conn.execute("DELETE FROM nodes")
             conn.commit()
-        response = self.client.get(
-            "/api/ask/cards?q=chlorophyll&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=chlorophyll&use_reranker=false")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["cards"], [])
@@ -251,9 +255,7 @@ class AskCardsRouteTests(unittest.TestCase):
         prior = os.environ.get("RETRIEVAL_USE_RERANKER")
         os.environ["RETRIEVAL_USE_RERANKER"] = "true"
         try:
-            response = self.client.get(
-                "/api/ask/cards?q=chlorophyll&use_reranker=false"
-            )
+            response = self.client.get("/api/ask/cards?q=chlorophyll&use_reranker=false")
             self.assertEqual(response.status_code, 200)
             self.assertFalse(response.json()["rerank_used"])
         finally:
@@ -263,9 +265,7 @@ class AskCardsRouteTests(unittest.TestCase):
                 os.environ["RETRIEVAL_USE_RERANKER"] = prior
 
     def test_query_whitespace_is_stripped_before_validation(self) -> None:
-        response = self.client.get(
-            "/api/ask/cards?q=%20%20%20&use_reranker=false"
-        )
+        response = self.client.get("/api/ask/cards?q=%20%20%20&use_reranker=false")
         self.assertEqual(response.status_code, 400)
 
 

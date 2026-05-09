@@ -27,7 +27,13 @@ def parse_text(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         elif len(text.split()) <= 12 and text == text.title():
             current_heading = text
             kind = "heading"
-        span = make_span(path, file_id, section=current_heading, paragraph_id=f"p{index}", element_id=f"text-{index}")
+        span = make_span(
+            path,
+            file_id,
+            section=current_heading,
+            paragraph_id=f"p{index}",
+            element_id=f"text-{index}",
+        )
         elements.append(
             ExtractedElement(
                 id=f"text-{index}",

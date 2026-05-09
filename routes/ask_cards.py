@@ -27,6 +27,7 @@ Behaviour gates
 Limits mirror /api/search so a misbehaving client can't run the
 embedder on a 100 KB paste or pull a 10 K result set.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -81,9 +82,7 @@ def ask_cards(
         # Snapshot library size so the UI can render an honest empty
         # state ("no typed nodes indexed yet — run docling ingest first")
         # instead of a generic "no results."
-        total_nodes = conn.execute(
-            "SELECT COUNT(*) AS n FROM nodes"
-        ).fetchone()["n"]
+        total_nodes = conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()["n"]
 
         hits = search_typed_hybrid(
             conn,
@@ -138,9 +137,7 @@ def ask_cards(
                     # fire — UI uses presence to decide whether to show
                     # a confidence badge.
                     "rerank_score": (
-                        round(hit.rerank_score, 5)
-                        if hit.rerank_score is not None
-                        else None
+                        round(hit.rerank_score, 5) if hit.rerank_score is not None else None
                     ),
                     # `sources` lets the UI surface "matched on both
                     # keyword and meaning" with a tighter accent.

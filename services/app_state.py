@@ -138,4 +138,3 @@ def fetch_workspace_state(conn: sqlite3.Connection) -> Dict[str, Any]:
         fetch_recent_events=fetch_recent_events,
         fetch_subject_groups=fetch_subject_groups,
     )
-

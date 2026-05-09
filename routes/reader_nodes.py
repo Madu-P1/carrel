@@ -15,6 +15,7 @@ document via the DOM Range API. Char offsets are returned for future
 use — once a canonical-text reader pane lands in PR 4.3+, the reader
 can scroll directly to (char_start, char_end) without a text search.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict

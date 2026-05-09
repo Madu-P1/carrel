@@ -319,7 +319,9 @@ def run_duplicate_cleanup(dry_run: bool = False) -> Dict[str, Any]:
 @router.get("/api/documents/{doc_id}/status")
 def document_status(doc_id: str) -> Dict[str, object]:
     with db.get_db() as conn:
-        row = conn.execute("SELECT id AS doc_id, status FROM documents WHERE id = ?", (doc_id,)).fetchone()
+        row = conn.execute(
+            "SELECT id AS doc_id, status FROM documents WHERE id = ?", (doc_id,)
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Document not found")
         return dict(row)

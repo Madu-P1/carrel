@@ -4,6 +4,7 @@ Uses a deterministic embedder (no fastembed dependency) so the tests
 are fast and reproducible. Skips wholesale when sqlite-vec isn't
 loaded at runtime — the migration is gated the same way.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -75,7 +76,11 @@ def _node(order: int, *, node_type: str = "body", text: str = "") -> TypedNode:
 class NodesVectorSearchTests(unittest.TestCase):
     def setUp(self) -> None:
         self._original = (
-            db.BASE_DIR, db.DATA_DIR, db.UPLOAD_DIR, db.DB_PATH, db.SCHEMA_PATH,
+            db.BASE_DIR,
+            db.DATA_DIR,
+            db.UPLOAD_DIR,
+            db.DB_PATH,
+            db.SCHEMA_PATH,
         )
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
@@ -85,8 +90,11 @@ class NodesVectorSearchTests(unittest.TestCase):
         (root / "schema.sql").write_text("-- test\n", encoding="utf-8")
         shutil.copytree(MIGRATIONS_SOURCE, root / "migrations", dirs_exist_ok=True)
         db.configure_paths(
-            base_dir=root, data_dir=data_dir, upload_dir=upload_dir,
-            db_path=data_dir / "test.db", schema_path=root / "schema.sql",
+            base_dir=root,
+            data_dir=data_dir,
+            upload_dir=upload_dir,
+            db_path=data_dir / "test.db",
+            schema_path=root / "schema.sql",
         )
         self._conn = db.get_db()
         db.apply_migrations(self._conn)
@@ -97,8 +105,10 @@ class NodesVectorSearchTests(unittest.TestCase):
         self._conn.close()
         self._tmp.cleanup()
         db.configure_paths(
-            base_dir=self._original[0], data_dir=self._original[1],
-            upload_dir=self._original[2], db_path=self._original[3],
+            base_dir=self._original[0],
+            data_dir=self._original[1],
+            upload_dir=self._original[2],
+            db_path=self._original[3],
             schema_path=self._original[4],
         )
 
@@ -108,12 +118,9 @@ class NodesVectorSearchTests(unittest.TestCase):
             "VALUES ('doc-1', 'a.md', 'md', 'ready', 'manual_text', 'Topic')"
         )
         nodes = [
-            _node(0, node_type="body",
-                  text="photosynthesis happens in chloroplasts"),
-            _node(1, node_type="body",
-                  text="rivers carve canyons over geological timescales"),
-            _node(2, node_type="footer",
-                  text="page 14 of textbook"),
+            _node(0, node_type="body", text="photosynthesis happens in chloroplasts"),
+            _node(1, node_type="body", text="rivers carve canyons over geological timescales"),
+            _node(2, node_type="footer", text="page 14 of textbook"),
         ]
         ids = insert_typed_nodes(self._conn, "doc-1", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
@@ -124,7 +131,8 @@ class NodesVectorSearchTests(unittest.TestCase):
 
     def test_query_returns_typed_metadata(self) -> None:
         hits = search_node_vectors(
-            self._conn, "photosynthesis chloroplasts",
+            self._conn,
+            "photosynthesis chloroplasts",
             embedder=self._embedder,
         )
         self.assertTrue(hits)
@@ -135,16 +143,15 @@ class NodesVectorSearchTests(unittest.TestCase):
         self.assertEqual(top.page, 1)
 
     def test_returns_empty_for_blank_query(self) -> None:
-        self.assertEqual(
-            search_node_vectors(self._conn, "  ", embedder=self._embedder), []
-        )
+        self.assertEqual(search_node_vectors(self._conn, "  ", embedder=self._embedder), [])
 
     def test_node_type_filter_excludes_footers(self) -> None:
         # Footers were never embedded (the persistence helper excludes
         # them) but the filter is still in the SQL. Pass an explicit
         # allowlist that includes only body — footer must not appear.
         hits = search_node_vectors(
-            self._conn, "page",
+            self._conn,
+            "page",
             embedder=self._embedder,
             node_types=["body"],
         )
@@ -153,7 +160,8 @@ class NodesVectorSearchTests(unittest.TestCase):
 
     def test_doc_id_filter_scopes_to_specified_document(self) -> None:
         hits = search_node_vectors(
-            self._conn, "photosynthesis",
+            self._conn,
+            "photosynthesis",
             embedder=self._embedder,
             doc_ids=["doc-1"],
         )
@@ -163,7 +171,8 @@ class NodesVectorSearchTests(unittest.TestCase):
     def test_empty_node_type_allowlist_returns_no_hits(self) -> None:
         self.assertEqual(
             search_node_vectors(
-                self._conn, "photosynthesis",
+                self._conn,
+                "photosynthesis",
                 embedder=self._embedder,
                 node_types=[],
             ),

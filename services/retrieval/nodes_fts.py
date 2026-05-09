@@ -6,6 +6,7 @@ node_type) so retrieved hits can drive citation chips directly. The
 `heading_path` column is indexed alongside `verbatim_text` so a query
 like "photosystem II" matches body text AND headings that scope it.
 """
+
 from __future__ import annotations
 
 import re

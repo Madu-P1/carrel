@@ -1,4 +1,5 @@
 """Evidence API routes — fetch evidence references for the evidence rail."""
+
 from fastapi import Query
 from typing import List, Optional
 
@@ -19,9 +20,13 @@ def register_evidence_routes(app) -> None:
     ):
         with get_db() as conn:
             if concept_id:
-                evidence = provenance_service.fetch_evidence_for_concept(conn, concept_id, limit=limit)
+                evidence = provenance_service.fetch_evidence_for_concept(
+                    conn, concept_id, limit=limit
+                )
             elif source_id:
-                evidence = provenance_service.fetch_evidence_for_source(conn, source_id, limit=limit)
+                evidence = provenance_service.fetch_evidence_for_source(
+                    conn, source_id, limit=limit
+                )
             else:
                 evidence = provenance_service.fetch_recent_evidence(conn, limit=limit)
             return {"evidence": evidence}
@@ -46,12 +51,20 @@ def register_evidence_routes(app) -> None:
     @app.get("/api/evidence/concept/{concept_id}")
     def get_evidence_for_concept(concept_id: str, limit: int = Query(10)):
         with get_db() as conn:
-            return {"evidence": provenance_service.fetch_evidence_for_concept(conn, concept_id, limit=limit)}
+            return {
+                "evidence": provenance_service.fetch_evidence_for_concept(
+                    conn, concept_id, limit=limit
+                )
+            }
 
     @app.get("/api/evidence/source/{source_id}")
     def get_evidence_for_source(source_id: str, limit: int = Query(12)):
         with get_db() as conn:
-            return {"evidence": provenance_service.fetch_evidence_for_source(conn, source_id, limit=limit)}
+            return {
+                "evidence": provenance_service.fetch_evidence_for_source(
+                    conn, source_id, limit=limit
+                )
+            }
 
     @app.get("/api/evidence/artifact/{artifact_id}")
     def get_evidence_for_artifact(artifact_id: str):

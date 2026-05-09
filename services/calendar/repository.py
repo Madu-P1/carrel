@@ -26,6 +26,7 @@ from services.calendar.validators import mask_url
 # Domain dataclasses
 # ---------------------------------------------------------------------
 
+
 @dataclass
 class FeedRow:
     id: str
@@ -120,6 +121,7 @@ def url_hash(url: str) -> str:
 # Feeds
 # ---------------------------------------------------------------------
 
+
 def insert_feed(
     conn: sqlite3.Connection,
     *,
@@ -145,15 +147,11 @@ def insert_feed(
     )
     conn.commit()
     return _feed_from_row(
-        conn.execute(
-            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
-        ).fetchone()
+        conn.execute("SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)).fetchone()
     )
 
 
-def list_feeds(
-    conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER
-) -> List[FeedRow]:
+def list_feeds(conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER) -> List[FeedRow]:
     migrate_plaintext_feed_urls(conn)
     rows = conn.execute(
         """
@@ -168,9 +166,7 @@ def list_feeds(
 
 def get_feed(conn: sqlite3.Connection, feed_id: str) -> Optional[FeedRow]:
     migrate_plaintext_feed_urls(conn)
-    row = conn.execute(
-        "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)).fetchone()
     return _feed_from_row(row) if row else None
 
 
@@ -187,9 +183,7 @@ def list_stale_feeds(
       - GET /api/plan SWR path (only mark stale feeds for background sync)
     """
     migrate_plaintext_feed_urls(conn)
-    cutoff = (
-        datetime.now(timezone.utc).timestamp() - threshold_minutes * 60
-    )
+    cutoff = datetime.now(timezone.utc).timestamp() - threshold_minutes * 60
     cutoff_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat().replace("+00:00", "Z")
     # SQLite quirk: ASC sorts NULLs first by default. We rely on that
     # behavior here (never-synced feeds get top priority) instead of
@@ -266,9 +260,7 @@ def delete_feed(conn: sqlite3.Connection, feed_id: str) -> bool:
     return cur.rowcount > 0
 
 
-def update_feed_label(
-    conn: sqlite3.Connection, feed_id: str, label: str
-) -> Optional[FeedRow]:
+def update_feed_label(conn: sqlite3.Connection, feed_id: str, label: str) -> Optional[FeedRow]:
     conn.execute(
         "UPDATE calendar_feeds SET label = ?, updated_at = ? WHERE id = ?",
         (label, _now_iso(), feed_id),
@@ -296,7 +288,9 @@ def _feed_from_row(row) -> FeedRow:
     )
 
 
-def resolve_feed_url(feed: FeedRow, secret_store: CalendarSecretStore | None = None) -> Optional[str]:
+def resolve_feed_url(
+    feed: FeedRow, secret_store: CalendarSecretStore | None = None
+) -> Optional[str]:
     if feed.keychain_ref:
         return (secret_store or default_secret_store()).get_url(feed.keychain_ref)
     return feed.url if feed.url.startswith(("http://", "https://")) else None
@@ -307,10 +301,7 @@ def migrate_plaintext_feed_urls(
     *,
     secret_store: CalendarSecretStore | None = None,
 ) -> int:
-    columns = {
-        row["name"]
-        for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()
-    }
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()}
     if "keychain_ref" not in columns:
         return 0
 
@@ -343,6 +334,7 @@ def migrate_plaintext_feed_urls(
 # ---------------------------------------------------------------------
 # Sync runs
 # ---------------------------------------------------------------------
+
 
 def begin_sync_run(conn: sqlite3.Connection, feed_id: str) -> str:
     """Insert a 'running' sync_runs row and return its id."""
@@ -389,6 +381,7 @@ def complete_sync_run(
 # ---------------------------------------------------------------------
 # Events
 # ---------------------------------------------------------------------
+
 
 def upsert_events(
     conn: sqlite3.Connection,
@@ -463,10 +456,25 @@ def upsert_events(
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    _new_id(), user_id, feed_id, ev.uid, ev.occurrence_key,
-                    ev.recurrence_id, ev.rrule, ev.summary, ev.start_at, ev.end_at,
-                    ev.timezone, 1 if ev.all_day else 0, ev.location, ev.categories,
-                    ev.status, ev.source_updated_at, ev.source_hash, now, now,
+                    _new_id(),
+                    user_id,
+                    feed_id,
+                    ev.uid,
+                    ev.occurrence_key,
+                    ev.recurrence_id,
+                    ev.rrule,
+                    ev.summary,
+                    ev.start_at,
+                    ev.end_at,
+                    ev.timezone,
+                    1 if ev.all_day else 0,
+                    ev.location,
+                    ev.categories,
+                    ev.status,
+                    ev.source_updated_at,
+                    ev.source_hash,
+                    now,
+                    now,
                 ),
             )
         upserted += 1
@@ -538,6 +546,7 @@ def _event_from_row(row) -> EventRow:
 # Suggestions
 # ---------------------------------------------------------------------
 
+
 def insert_suggestion(
     conn: sqlite3.Connection,
     *,
@@ -562,8 +571,17 @@ def insert_suggestion(
         ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            sug_id, user_id, kind, start_at, end_at, due_at,
-            doc_id, source_event_id, reason_code, reason_text, score,
+            sug_id,
+            user_id,
+            kind,
+            start_at,
+            end_at,
+            due_at,
+            doc_id,
+            source_event_id,
+            reason_code,
+            reason_text,
+            score,
             _now_iso(),
         ),
     )

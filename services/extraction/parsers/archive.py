@@ -21,7 +21,9 @@ def parse_zip(path: Path, *, suffix: str, mime_type: str, context: ParserContext
             raise HTTPException(status_code=400, detail="Archive is too large to inspect safely.")
         total_bytes = sum(info.file_size for info in infos)
         if total_bytes > 40 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Archive exceeds the safe extraction limit (40 MB).")
+            raise HTTPException(
+                status_code=400, detail="Archive exceeds the safe extraction limit (40 MB)."
+            )
         member_count = 0
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)
@@ -32,7 +34,10 @@ def parse_zip(path: Path, *, suffix: str, mime_type: str, context: ParserContext
                 if member_path.name.startswith(".") or "__MACOSX" in member_path.parts:
                     continue
                 child_suffix = member_path.suffix.lower()
-                if child_suffix not in SUPPORTED_SUFFIXES - ARCHIVE_SUFFIXES - AUDIO_SUFFIXES - VIDEO_SUFFIXES:
+                if (
+                    child_suffix
+                    not in SUPPORTED_SUFFIXES - ARCHIVE_SUFFIXES - AUDIO_SUFFIXES - VIDEO_SUFFIXES
+                ):
                     continue
                 if member_count >= 12:
                     warnings.append("Archive inspection stopped after 12 supported child files.")
@@ -42,7 +47,9 @@ def parse_zip(path: Path, *, suffix: str, mime_type: str, context: ParserContext
                 child_asset = extractor(extracted_path)
                 member_count += 1
                 child_label = f"{member_path.name} ({child_asset.detected_type})"
-                span = make_span(path, file_id, section=child_label, element_id=f"zip-{member_count}")
+                span = make_span(
+                    path, file_id, section=child_label, element_id=f"zip-{member_count}"
+                )
                 elements.append(
                     ExtractedElement(
                         id=span.element_id or f"zip-{member_count}",

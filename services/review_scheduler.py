@@ -10,7 +10,9 @@ from services.documents import clean_concept_label
 
 
 def _name_replacements(conn: sqlite3.Connection) -> List[tuple[str, str]]:
-    rows = conn.execute("SELECT name FROM concepts ORDER BY LENGTH(name) DESC, rowid ASC").fetchall()
+    rows = conn.execute(
+        "SELECT name FROM concepts ORDER BY LENGTH(name) DESC, rowid ASC"
+    ).fetchall()
     pairs: List[tuple[str, str]] = []
     seen = set()
     for row in rows:
@@ -95,7 +97,9 @@ def fetch_due_queue(
         recent_outcome = dict(review_row) if review_row else None
         if recent_outcome and recent_outcome["outcome"] == "missed" and not include_missed:
             continue
-        mastery_state = mastery_engine.ensure_mastery_state(conn, row["concept_id"], goal_id=goal_id, session_id=session_id)
+        mastery_state = mastery_engine.ensure_mastery_state(
+            conn, row["concept_id"], goal_id=goal_id, session_id=session_id
+        )
         item["mastery_state"] = mastery_state
         item["recent_review"] = recent_outcome
         item["missed_recently"] = bool(recent_outcome and recent_outcome["outcome"] == "missed")
@@ -116,7 +120,9 @@ def record_review_event(
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     if item_kind not in {"flashcard", "quiz"}:
-        raise HTTPException(status_code=400, detail="Review currently supports flashcard and quiz items.")
+        raise HTTPException(
+            status_code=400, detail="Review currently supports flashcard and quiz items."
+        )
 
     if item_kind == "flashcard":
         item_row = conn.execute(

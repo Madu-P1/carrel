@@ -1,4 +1,5 @@
 """Artifact Studio — generates durable learning artifacts from source material."""
+
 import json
 import re
 import sqlite3
@@ -40,6 +41,7 @@ UPLOAD_DIR = Path(__file__).resolve().parents[1] / "data" / "uploads"
 # ---------------------------------------------------------------------------
 # Fallback generators (no Claude required)
 # ---------------------------------------------------------------------------
+
 
 def _chunk_text_for_scope(
     conn: sqlite3.Connection,
@@ -89,7 +91,9 @@ def _chunk_text_for_scope(
     return [dict(r) for r in rows]
 
 
-def _fresh_chunks_for_sources(conn: sqlite3.Connection, source_ids: Optional[List[str]]) -> List[Dict[str, Any]]:
+def _fresh_chunks_for_sources(
+    conn: sqlite3.Connection, source_ids: Optional[List[str]]
+) -> List[Dict[str, Any]]:
     if not source_ids:
         return []
     placeholders = ",".join("?" * len(source_ids))
@@ -252,9 +256,15 @@ def retrieve_grounding_chunks(
 
     ordered = sorted(
         ranked or [{**chunk, "_score": 0} for chunk in candidates],
-        key=lambda item: (-float(item.get("_score", 0)), item.get("filename", ""), item.get("chunk_index", 0)),
+        key=lambda item: (
+            -float(item.get("_score", 0)),
+            item.get("filename", ""),
+            item.get("chunk_index", 0),
+        ),
     )
-    return [{key: value for key, value in chunk.items() if key != "_score"} for chunk in ordered[:limit]]
+    return [
+        {key: value for key, value in chunk.items() if key != "_score"} for chunk in ordered[:limit]
+    ]
 
 
 def render_grounding_text(chunks: List[Dict[str, Any]]) -> str:
@@ -281,7 +291,11 @@ def _clean_section_label(value: Optional[str]) -> Optional[str]:
     if not label:
         return None
     lowered = label.lower()
-    if lowered.startswith("section ") or lowered.startswith("page ") or lowered.startswith("slide "):
+    if (
+        lowered.startswith("section ")
+        or lowered.startswith("page ")
+        or lowered.startswith("slide ")
+    ):
         return None
     if len(label.split()) > 12:
         return None
@@ -333,10 +347,15 @@ def _concept_importance(concept: Dict[str, Any], chunks: List[Dict[str, Any]]) -
     return score
 
 
-def _select_focus_concepts(concepts: List[Dict[str, Any]], chunks: List[Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
+def _select_focus_concepts(
+    concepts: List[Dict[str, Any]], chunks: List[Dict[str, Any]], limit: int = 8
+) -> List[Dict[str, Any]]:
     ordered = sorted(
         concepts,
-        key=lambda concept: (-_concept_importance(concept, chunks), str(concept.get("name") or "").lower()),
+        key=lambda concept: (
+            -_concept_importance(concept, chunks),
+            str(concept.get("name") or "").lower(),
+        ),
     )
     selected_by_description: Dict[str, Dict[str, Any]] = {}
     seen_names = set()
@@ -348,7 +367,9 @@ def _select_focus_concepts(concepts: List[Dict[str, Any]], chunks: List[Dict[str
         if first_token in NOISY_CONCEPT_PREFIXES or " by " in label:
             continue
         seen_names.add(label)
-        concept["study_description"] = _clean_description(str(concept.get("description") or concept.get("name") or ""))
+        concept["study_description"] = _clean_description(
+            str(concept.get("description") or concept.get("name") or "")
+        )
         concept["topic"] = _dominant_topic(concept, chunks)
         description_key = (concept.get("study_description") or concept.get("name") or "").lower()
         current = selected_by_description.get(description_key)
@@ -357,15 +378,22 @@ def _select_focus_concepts(concepts: List[Dict[str, Any]], chunks: List[Dict[str
             continue
         current_score = _concept_importance(current, chunks)
         candidate_score = _concept_importance(concept, chunks)
-        current_matches_topic = str(current.get("name") or "").lower() == str(current.get("topic") or "").lower()
-        candidate_matches_topic = str(concept.get("name") or "").lower() == str(concept.get("topic") or "").lower()
+        current_matches_topic = (
+            str(current.get("name") or "").lower() == str(current.get("topic") or "").lower()
+        )
+        candidate_matches_topic = (
+            str(concept.get("name") or "").lower() == str(concept.get("topic") or "").lower()
+        )
         if candidate_matches_topic and not current_matches_topic:
             selected_by_description[description_key] = concept
         elif candidate_score > current_score:
             selected_by_description[description_key] = concept
     selected = sorted(
         selected_by_description.values(),
-        key=lambda concept: (-_concept_importance(concept, chunks), str(concept.get("name") or "").lower()),
+        key=lambda concept: (
+            -_concept_importance(concept, chunks),
+            str(concept.get("name") or "").lower(),
+        ),
     )
     return selected[:limit]
 
@@ -381,7 +409,9 @@ def _build_topic_map(concepts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "title": title,
                 "concept_ids": [item["id"] for item in items],
                 "concept_names": [item["name"] for item in items],
-                "summary": " ".join(item.get("study_description", "") for item in items[:2]).strip(),
+                "summary": " ".join(
+                    item.get("study_description", "") for item in items[:2]
+                ).strip(),
             }
         )
     return topic_map
@@ -419,7 +449,12 @@ def _flashcard_items(concepts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "back": f"{concept['name']}: {summary} In contrast, {other['name']}: {other.get('study_description') or other.get('name')}.",
                     "topic": concept.get("topic"),
                     "confidence": 0.7,
-                    "supporting_chunk_ids": list(dict.fromkeys((concept.get("source_chunk_ids") or []) + (other.get("source_chunk_ids") or []))),
+                    "supporting_chunk_ids": list(
+                        dict.fromkeys(
+                            (concept.get("source_chunk_ids") or [])
+                            + (other.get("source_chunk_ids") or [])
+                        )
+                    ),
                 }
             )
         else:
@@ -441,11 +476,17 @@ def _quiz_items(concepts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for concept in concepts:
         correct = concept.get("study_description") or concept.get("name") or ""
         same_topic = [
-            other for other in concepts
+            other
+            for other in concepts
             if other["id"] != concept["id"] and other.get("topic") == concept.get("topic")
         ]
         pool = same_topic or [other for other in concepts if other["id"] != concept["id"]]
-        distractors = [other.get("study_description") or other.get("name") for other in pool if (other.get("study_description") or other.get("name")) and (other.get("study_description") or other.get("name")) != correct][:3]
+        distractors = [
+            other.get("study_description") or other.get("name")
+            for other in pool
+            if (other.get("study_description") or other.get("name"))
+            and (other.get("study_description") or other.get("name")) != correct
+        ][:3]
         if len(distractors) < 2:
             continue
         items.append(
@@ -484,13 +525,27 @@ def _mock_exam_items(topic_map: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Per-kind fallback generators
 # ---------------------------------------------------------------------------
 
-def _generate_study_guide(concepts: List[Dict], chunks: List[Dict], depth: str, topic_map: Optional[List[Dict[str, Any]]] = None) -> str:
+
+def _generate_study_guide(
+    concepts: List[Dict],
+    chunks: List[Dict],
+    depth: str,
+    topic_map: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     lines = ["# Study Guide\n"]
-    for topic in topic_map or [{"title": "Core Ideas", "concept_names": [concept["name"] for concept in concepts[:8]]}]:
+    for topic in topic_map or [
+        {"title": "Core Ideas", "concept_names": [concept["name"] for concept in concepts[:8]]}
+    ]:
         lines.append(f"## {topic['title']}")
-        matching = [concept for concept in concepts if concept["name"] in set(topic.get("concept_names") or [])]
+        matching = [
+            concept
+            for concept in concepts
+            if concept["name"] in set(topic.get("concept_names") or [])
+        ]
         for concept in matching[:4]:
-            lines.append(f"- **{concept['name']}**: {concept.get('study_description') or concept.get('description') or ''}")
+            lines.append(
+                f"- **{concept['name']}**: {concept.get('study_description') or concept.get('description') or ''}"
+            )
         lines.append("")
     if depth in ("standard", "rigorous") and chunks:
         lines.append("## Key Takeaways")
@@ -502,14 +557,20 @@ def _generate_study_guide(concepts: List[Dict], chunks: List[Dict], depth: str, 
     return "\n".join(lines)
 
 
-def _generate_briefing(concepts: List[Dict], chunks: List[Dict], topic_map: Optional[List[Dict[str, Any]]] = None) -> str:
+def _generate_briefing(
+    concepts: List[Dict], chunks: List[Dict], topic_map: Optional[List[Dict[str, Any]]] = None
+) -> str:
     lines = ["# Briefing\n", "## What You Need to Know\n"]
     for idx, concept in enumerate(concepts[:5], 1):
-        lines.append(f"{idx}. **{concept['name']}** — {concept.get('study_description') or concept.get('description', '')}")
+        lines.append(
+            f"{idx}. **{concept['name']}** — {concept.get('study_description') or concept.get('description', '')}"
+        )
     if topic_map:
         lines.append("\n## Major Topics\n")
         for topic in topic_map[:4]:
-            lines.append(f"- **{topic['title']}**: {topic.get('summary') or ', '.join(topic.get('concept_names', [])[:3])}")
+            lines.append(
+                f"- **{topic['title']}**: {topic.get('summary') or ', '.join(topic.get('concept_names', [])[:3])}"
+            )
     return "\n".join(lines)
 
 
@@ -517,7 +578,11 @@ def _generate_faq(concepts: List[Dict], chunks: List[Dict]) -> str:
     lines = ["# FAQ\n"]
     for concept in concepts[:6]:
         name = concept["name"]
-        desc = concept.get("study_description") or concept.get("description") or f"{name} is part of the uploaded material."
+        desc = (
+            concept.get("study_description")
+            or concept.get("description")
+            or f"{name} is part of the uploaded material."
+        )
         lines.append(f"**Q: What is {name}?**")
         lines.append(f"A: {desc}\n")
         lines.append(f"**Q: Why does {name} matter?**")
@@ -525,7 +590,9 @@ def _generate_faq(concepts: List[Dict], chunks: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def _generate_flashcard_set(concepts: List[Dict], chunks: List[Dict], deck_items: Optional[List[Dict[str, Any]]] = None) -> str:
+def _generate_flashcard_set(
+    concepts: List[Dict], chunks: List[Dict], deck_items: Optional[List[Dict[str, Any]]] = None
+) -> str:
     cards = []
     for item in (deck_items or _flashcard_items(concepts))[:12]:
         front = item.get("front") or item.get("q") or ""
@@ -566,7 +633,9 @@ def _generate_summary(concepts: List[Dict], chunks: List[Dict]) -> str:
         lines.append("")
     lines.append("## Core Concepts")
     for concept in concepts[:6]:
-        lines.append(f"- **{concept['name']}**: {(concept.get('study_description') or concept.get('description', ''))[:140]}")
+        lines.append(
+            f"- **{concept['name']}**: {(concept.get('study_description') or concept.get('description', ''))[:140]}"
+        )
     return "\n".join(lines)
 
 
@@ -595,7 +664,9 @@ def _generate_mock_exam(topic_map: List[Dict[str, Any]]) -> str:
 
 
 _KIND_TO_GENERATOR = {
-    "study_guide": lambda c, ch, **kw: _generate_study_guide(c, ch, kw.get("depth", "standard"), kw.get("topic_map")),
+    "study_guide": lambda c, ch, **kw: _generate_study_guide(
+        c, ch, kw.get("depth", "standard"), kw.get("topic_map")
+    ),
     "briefing": lambda c, ch, **kw: _generate_briefing(c, ch, kw.get("topic_map")),
     "faq": lambda c, ch, **kw: _generate_faq(c, ch),
     "flashcards": lambda c, ch, **kw: _generate_flashcard_set(c, ch, kw.get("deck_items")),
@@ -669,6 +740,7 @@ def _hidden_artifact_payload(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def generate_artifact(
     conn: sqlite3.Connection,
     *,
@@ -709,7 +781,9 @@ def generate_artifact(
         if part
     ).strip()
     if artifact_kind == "flashcards" and source_ids and not concept_ids:
-        chunks = _fresh_chunks_for_sources(conn, source_ids) or _chunk_text_for_scope(conn, source_ids, concept_ids, limit=96)
+        chunks = _fresh_chunks_for_sources(conn, source_ids) or _chunk_text_for_scope(
+            conn, source_ids, concept_ids, limit=96
+        )
     else:
         chunks = retrieve_grounding_chunks(
             conn,
@@ -722,7 +796,12 @@ def generate_artifact(
     topic_map = _build_topic_map(focus_concepts)
     deck_items = None
     if artifact_kind == "flashcards":
-        deck_title = str(custom_prompt or goal_text or (chunks[0].get("filename") if chunks else "") or artifact_kind).strip()
+        deck_title = str(
+            custom_prompt
+            or goal_text
+            or (chunks[0].get("filename") if chunks else "")
+            or artifact_kind
+        ).strip()
         deck_items = build_flashcard_deck(chunks, title=deck_title, count=12)
     markdown = _KIND_TO_GENERATOR[artifact_kind](
         focus_concepts,
@@ -787,10 +866,22 @@ def generate_artifact(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
         """,
         (
-            artifact_id, artifact_kind, goal_id, session_id,
-            source_scope_json, concept_scope_json,
-            audience, difficulty, depth, style, output_length, evidence_strictness,
-            prompt_text, markdown, json.dumps(hidden_payload, ensure_ascii=False), snapshot_hash,
+            artifact_id,
+            artifact_kind,
+            goal_id,
+            session_id,
+            source_scope_json,
+            concept_scope_json,
+            audience,
+            difficulty,
+            depth,
+            style,
+            output_length,
+            evidence_strictness,
+            prompt_text,
+            markdown,
+            json.dumps(hidden_payload, ensure_ascii=False),
+            snapshot_hash,
         ),
     )
     # --- Link evidence references to artifact (Phase 1c) ---
@@ -804,8 +895,13 @@ def generate_artifact(
         try:
             ev = provenance_service.build_evidence_reference(
                 conn,
-                {"document_id": doc_id, "chunk_id": chunk_id, "snippet": snippet,
-                 "page_num": ch.get("page_num"), "section": ch.get("section")},
+                {
+                    "document_id": doc_id,
+                    "chunk_id": chunk_id,
+                    "snippet": snippet,
+                    "page_num": ch.get("page_num"),
+                    "section": ch.get("section"),
+                },
                 confidence=0.65,
             )
             evidence_ids.append(ev["id"])

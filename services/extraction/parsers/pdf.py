@@ -7,7 +7,14 @@ from typing import Any, Dict, Optional
 from PyPDF2 import PdfReader
 
 from ..native_bridge import NativeBridge
-from ..quality import classify_pdf_role, is_bullet_like, is_footer_or_noise, is_formula_text, is_outline_text, strip_bullet_prefix
+from ..quality import (
+    classify_pdf_role,
+    is_bullet_like,
+    is_footer_or_noise,
+    is_formula_text,
+    is_outline_text,
+    strip_bullet_prefix,
+)
 from ..types import ExtractedElement
 from ..utils import file_sha, normalize_space, strip_slide_prefix
 from .common import ParserContext, build_asset, make_span
@@ -22,7 +29,9 @@ def _pdf_page_elements(
     confidence: float,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> list[ExtractedElement]:
-    lines = [normalize_space(line) for line in str(text or "").splitlines() if normalize_space(line)]
+    lines = [
+        normalize_space(line) for line in str(text or "").splitlines() if normalize_space(line)
+    ]
     if not lines:
         return []
 
@@ -43,7 +52,12 @@ def _pdf_page_elements(
         title_lines.append(strip_bullet_prefix(line))
         index += 1
         next_line = lines[index] if index < len(lines) else ""
-        if len(title_lines) >= 3 or len(" ".join(title_lines)) >= 140 or is_bullet_like(next_line) or is_formula_text(next_line):
+        if (
+            len(title_lines) >= 3
+            or len(" ".join(title_lines)) >= 140
+            or is_bullet_like(next_line)
+            or is_formula_text(next_line)
+        ):
             break
 
     title_is_outline = False
@@ -60,7 +74,13 @@ def _pdf_page_elements(
                 kind="title" if page_num == 1 and title_role == "title" else "heading",
                 text=title_text,
                 normalized_text=normalized_title,
-                span=make_span(path, file_id, page=page_num, section=current_topic, element_id=f"pdf-{page_num or 0}-title"),
+                span=make_span(
+                    path,
+                    file_id,
+                    page=page_num,
+                    section=current_topic,
+                    element_id=f"pdf-{page_num or 0}-title",
+                ),
                 role=title_role,
                 confidence=confidence,
                 metadata=page_meta,
@@ -78,7 +98,13 @@ def _pdf_page_elements(
             return counter
         text_value = " ".join(buffer).strip()
         normalized = text_value if buffer_role not in {"outline", "footer", "noise"} else ""
-        kind = "formula" if buffer_role == "formula" else "bullet_list" if is_bullet_like(buffer[0]) else "paragraph"
+        kind = (
+            "formula"
+            if buffer_role == "formula"
+            else "bullet_list"
+            if is_bullet_like(buffer[0])
+            else "paragraph"
+        )
         counter += 1
         elements.append(
             ExtractedElement(
@@ -86,7 +112,13 @@ def _pdf_page_elements(
                 kind=kind,
                 text=text_value,
                 normalized_text=normalized,
-                span=make_span(path, file_id, page=page_num, section=current_topic, element_id=f"pdf-{page_num or 0}-{counter}"),
+                span=make_span(
+                    path,
+                    file_id,
+                    page=page_num,
+                    section=current_topic,
+                    element_id=f"pdf-{page_num or 0}-{counter}",
+                ),
                 role=buffer_role,
                 confidence=confidence,
                 metadata=page_meta,
@@ -102,11 +134,21 @@ def _pdf_page_elements(
         if not line:
             counter = flush_buffer(counter)
             continue
-        role = "outline" if title_is_outline else classify_pdf_role(line, kind="paragraph", topic_hint=current_topic)
+        role = (
+            "outline"
+            if title_is_outline
+            else classify_pdf_role(line, kind="paragraph", topic_hint=current_topic)
+        )
         if role in {"footer", "noise"}:
             counter = flush_buffer(counter)
             continue
-        if buffer and role == buffer_role and not is_bullet_like(raw_line) and buffer_role in {"body", "formula", "outline"} and (len(buffer[-1]) < 110 or not re.search(r"[.!?]$", buffer[-1])):
+        if (
+            buffer
+            and role == buffer_role
+            and not is_bullet_like(raw_line)
+            and buffer_role in {"body", "formula", "outline"}
+            and (len(buffer[-1]) < 110 or not re.search(r"[.!?]$", buffer[-1]))
+        ):
             buffer[-1] = f"{buffer[-1]} {line}".strip()
             continue
         counter = flush_buffer(counter)
@@ -176,7 +218,9 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
             )
         )
     if empty_pages:
-        warnings.append(f"{empty_pages} page(s) had no native text layer. Build the macOS helper for OCR fallback.")
+        warnings.append(
+            f"{empty_pages} page(s) had no native text layer. Build the macOS helper for OCR fallback."
+        )
     return build_asset(
         path,
         detected_type=suffix,

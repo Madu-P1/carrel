@@ -239,9 +239,7 @@ def _source_count(conn: sqlite3.Connection) -> int:
 
 
 def _last_studied_at(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute(
-        "SELECT MAX(created_at) AS ts FROM study_events"
-    ).fetchone()
+    row = conn.execute("SELECT MAX(created_at) AS ts FROM study_events").fetchone()
     return row["ts"] if row and row["ts"] else None
 
 

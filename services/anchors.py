@@ -44,9 +44,7 @@ AnchorPromotionState = Literal["weak", "saved", "carded", "mastered", "archived"
 _ALLOWED_ORIGINS: frozenset[str] = frozenset(
     ("highlight", "ai_answer_citation", "manual", "imported")
 )
-_ALLOWED_STATES: frozenset[str] = frozenset(
-    ("weak", "saved", "carded", "mastered", "archived")
-)
+_ALLOWED_STATES: frozenset[str] = frozenset(("weak", "saved", "carded", "mastered", "archived"))
 
 # Forward transitions we explicitly allow. Backward transitions (e.g. mastered
 # -> saved when a user wants to re-promote) go through archive + re-create.
@@ -109,29 +107,19 @@ def _row_to_anchor(row: sqlite3.Row) -> Anchor:
         page_num=int(row["page_num"]) if row["page_num"] is not None else None,
         bbox=bbox_parsed,
         text_offset_start=(
-            int(row["text_offset_start"])
-            if row["text_offset_start"] is not None
-            else None
+            int(row["text_offset_start"]) if row["text_offset_start"] is not None else None
         ),
         text_offset_end=(
-            int(row["text_offset_end"])
-            if row["text_offset_end"] is not None
-            else None
+            int(row["text_offset_end"]) if row["text_offset_end"] is not None else None
         ),
         quote_text=str(row["quote_text"]),
         user_question=row["user_question"],
         claim_text=row["claim_text"],
         origin=str(row["origin"]),  # type: ignore[return-value]
         promotion_state=str(row["promotion_state"]),  # type: ignore[return-value]
-        srs_card_id=(
-            str(row["srs_card_id"]) if row["srs_card_id"] is not None else None
-        ),
-        thread_id=(
-            str(row["thread_id"]) if row["thread_id"] is not None else None
-        ),
-        confidence=(
-            float(row["confidence"]) if row["confidence"] is not None else None
-        ),
+        srs_card_id=(str(row["srs_card_id"]) if row["srs_card_id"] is not None else None),
+        thread_id=(str(row["thread_id"]) if row["thread_id"] is not None else None),
+        confidence=(float(row["confidence"]) if row["confidence"] is not None else None),
         citations_out=[str(x) for x in citations_parsed],
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
@@ -179,9 +167,7 @@ def create_anchor(
     if origin not in _ALLOWED_ORIGINS:
         raise ValueError(f"origin {origin!r} not in {sorted(_ALLOWED_ORIGINS)!r}")
     if promotion_state not in _ALLOWED_STATES:
-        raise ValueError(
-            f"promotion_state {promotion_state!r} not in {sorted(_ALLOWED_STATES)!r}"
-        )
+        raise ValueError(f"promotion_state {promotion_state!r} not in {sorted(_ALLOWED_STATES)!r}")
     bbox_json: Optional[str] = None
     if bbox is not None:
         bbox_list = [float(x) for x in bbox]
@@ -189,9 +175,7 @@ def create_anchor(
             raise ValueError("bbox must have exactly 4 numeric elements [x,y,w,h]")
         bbox_json = json.dumps(bbox_list)
 
-    citations_json = json.dumps(
-        list(str(x) for x in (citations_out or ()))
-    )
+    citations_json = json.dumps(list(str(x) for x in (citations_out or ())))
     now = _now_iso()
     new_id = anchor_id or str(uuid.uuid4())
 
@@ -268,7 +252,7 @@ def list_anchors_for_document(
     rows = conn.execute(
         f"""
         SELECT * FROM anchors
-        WHERE {' AND '.join(where)}
+        WHERE {" AND ".join(where)}
         ORDER BY COALESCE(page_num, 0) ASC, created_at ASC
         LIMIT ? OFFSET ?
         """,

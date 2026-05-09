@@ -4,6 +4,7 @@ The fastembed-backed `FastembedReranker` is exercised with a stub
 TextCrossEncoder so the test suite never downloads the 1 GB model.
 A separate manual smoke (not run in CI) verifies the live path.
 """
+
 from __future__ import annotations
 
 import math

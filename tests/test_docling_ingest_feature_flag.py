@@ -10,6 +10,7 @@ existing chunks ingest path:
 The third case is slow (real Docling parse). It's skipped when Docling
 isn't installed.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,7 +32,11 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 class _OrchestratorTestBase(unittest.TestCase):
     def setUp(self) -> None:
         self._original = (
-            db.BASE_DIR, db.DATA_DIR, db.UPLOAD_DIR, db.DB_PATH, db.SCHEMA_PATH,
+            db.BASE_DIR,
+            db.DATA_DIR,
+            db.UPLOAD_DIR,
+            db.DB_PATH,
+            db.SCHEMA_PATH,
         )
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
@@ -41,8 +46,11 @@ class _OrchestratorTestBase(unittest.TestCase):
         (root / "schema.sql").write_text("-- test\n", encoding="utf-8")
         shutil.copytree(MIGRATIONS_SOURCE, root / "migrations", dirs_exist_ok=True)
         db.configure_paths(
-            base_dir=root, data_dir=data_dir, upload_dir=upload_dir,
-            db_path=data_dir / "test.db", schema_path=root / "schema.sql",
+            base_dir=root,
+            data_dir=data_dir,
+            upload_dir=upload_dir,
+            db_path=data_dir / "test.db",
+            schema_path=root / "schema.sql",
         )
         self._conn = db.get_db()
         db.apply_migrations(self._conn)
@@ -52,8 +60,10 @@ class _OrchestratorTestBase(unittest.TestCase):
         self._conn.close()
         self._tmp.cleanup()
         db.configure_paths(
-            base_dir=self._original[0], data_dir=self._original[1],
-            upload_dir=self._original[2], db_path=self._original[3],
+            base_dir=self._original[0],
+            data_dir=self._original[1],
+            upload_dir=self._original[2],
+            db_path=self._original[3],
             schema_path=self._original[4],
         )
 
@@ -86,12 +96,16 @@ class FlagOffSkipsTypedNodeIngestTests(_OrchestratorTestBase):
 
 
 class FlagOnButDoclingMissingTests(_OrchestratorTestBase):
-    @mock.patch.dict("os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False)
+    @mock.patch.dict(
+        "os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False
+    )
     def test_flag_on_with_docling_unavailable_writes_no_nodes_and_logs_warning(self) -> None:
         # Force is_available() False even when Docling is installed in the venv,
         # so the test exercises the "absent" branch deterministically.
         with mock.patch.object(docling_parser, "is_available", return_value=False):
-            with self.assertLogs("einstein.ingestion.orchestrator", level=logging.WARNING) as captured:
+            with self.assertLogs(
+                "einstein.ingestion.orchestrator", level=logging.WARNING
+            ) as captured:
                 ingest_document_record(
                     conn=self._conn,
                     filename="some.pdf",
@@ -106,7 +120,9 @@ class FlagOnButDoclingMissingTests(_OrchestratorTestBase):
             f"expected docling_unavailable in {captured.output}",
         )
 
-    @mock.patch.dict("os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False)
+    @mock.patch.dict(
+        "os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False
+    )
     def test_flag_on_with_no_storage_file_writes_no_nodes_and_logs_warning(self) -> None:
         # storage_name set but file missing on disk — orchestrator should
         # log + skip, not crash.
@@ -128,7 +144,9 @@ class FlagOnButDoclingMissingTests(_OrchestratorTestBase):
 
 @unittest.skipUnless(docling_parser.is_available(), "docling not installed")
 class FlagOnWithDoclingTests(_OrchestratorTestBase):
-    @mock.patch.dict("os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False)
+    @mock.patch.dict(
+        "os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "pdf"}, clear=False
+    )
     def test_flag_on_writes_nodes_alongside_chunks(self) -> None:
         filename, storage_name = self._stage_pdf_fixture("single_column.pdf")
         ingest_document_record(
@@ -142,7 +160,9 @@ class FlagOnWithDoclingTests(_OrchestratorTestBase):
         self.assertGreater(self._count_nodes(), 0)
         self.assertGreater(self._count_chunks(), 0)
 
-    @mock.patch.dict("os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "docx"}, clear=False)
+    @mock.patch.dict(
+        "os.environ", {"INGEST_USE_DOCLING": "true", "INGEST_DOCLING_FORMATS": "docx"}, clear=False
+    )
     def test_format_allowlist_gates_pdf_when_only_docx_enabled(self) -> None:
         # Hook must not run on a PDF when the allowlist excludes pdf.
         filename, storage_name = self._stage_pdf_fixture("single_column.pdf")

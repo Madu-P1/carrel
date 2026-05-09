@@ -38,7 +38,9 @@ def start_dialogue(conn: sqlite3.Connection, *, concept_id: Optional[str]) -> Di
         ),
     )
     conn.commit()
-    log_study_event(conn, "dialogue_started", concept_id=concept["id"], payload={"opening": opening})
+    log_study_event(
+        conn, "dialogue_started", concept_id=concept["id"], payload={"opening": opening}
+    )
     return {"session_id": session_id, "opening_prompt": opening}
 
 
@@ -61,7 +63,9 @@ def post_message(
         if concept_id:
             concept = conn.execute("SELECT id FROM concepts WHERE id = ?", (concept_id,)).fetchone()
         if not concept:
-            concept = conn.execute("SELECT id FROM concepts ORDER BY mastery ASC LIMIT 1").fetchone()
+            concept = conn.execute(
+                "SELECT id FROM concepts ORDER BY mastery ASC LIMIT 1"
+            ).fetchone()
         if not concept:
             raise ValueError("No concepts available for dialogue.")
         session_id = str(uuid.uuid4())

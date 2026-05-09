@@ -60,10 +60,12 @@ class DatabaseMigrationTests(unittest.TestCase):
                     row["name"] for row in conn.execute("PRAGMA table_info(concepts)").fetchall()
                 }
                 edge_columns = {
-                    row["name"] for row in conn.execute("PRAGMA table_info(concept_edges)").fetchall()
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(concept_edges)").fetchall()
                 }
                 calendar_feed_columns = {
-                    row["name"] for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(calendar_feeds)").fetchall()
                 }
                 tables = {
                     row["name"]
@@ -115,9 +117,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         # PR 1: typed-node tables + FTS triggers from migration 0016.
         self.assertIn("nodes", tables)
         self.assertIn("node_fts", tables)
-        self.assertTrue(
-            {"nodes_fts_insert", "nodes_fts_delete", "nodes_fts_update"} <= triggers
-        )
+        self.assertTrue({"nodes_fts_insert", "nodes_fts_delete", "nodes_fts_update"} <= triggers)
         if db.sqlite_vec_runtime_supported():
             self.assertIn("chunks_vec", tables)
             self.assertIn("node_embeddings", tables)
@@ -130,7 +130,9 @@ class DatabaseMigrationTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 db.apply_migrations(conn)
-                total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()["total"]
+                total = conn.execute("SELECT COUNT(*) AS total FROM schema_migrations").fetchone()[
+                    "total"
+                ]
 
         # +6 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,

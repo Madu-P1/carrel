@@ -6,7 +6,9 @@ from .answers import _clean_answer_text, _definition_front, _is_valid_answer_tex
 from .topics import build_concept_payloads_from_chunks
 
 
-def build_card_records(concept: Dict[str, object], concepts: List[Dict[str, object]]) -> List[Dict[str, object]]:
+def build_card_records(
+    concept: Dict[str, object], concepts: List[Dict[str, object]]
+) -> List[Dict[str, object]]:
     del concepts
     summary = _clean_answer_text(str(concept.get("summary") or concept.get("description") or ""))
     description = _clean_answer_text(str(concept.get("description") or summary))
@@ -26,7 +28,9 @@ def build_card_records(concept: Dict[str, object], concepts: List[Dict[str, obje
 
     comparison_target = concept.get("comparison_target")
     comparison_evidence = _clean_answer_text(str(concept.get("comparison_evidence") or ""))
-    if comparison_target and _is_valid_answer_text(comparison_evidence, str(concept.get("name") or "")):
+    if comparison_target and _is_valid_answer_text(
+        comparison_evidence, str(concept.get("name") or "")
+    ):
         cards.append(
             {
                 "card_type": "comparison",
@@ -37,7 +41,11 @@ def build_card_records(concept: Dict[str, object], concepts: List[Dict[str, obje
         )
         return cards
 
-    if description and description != summary and _is_valid_answer_text(description, str(concept.get("name") or "")):
+    if (
+        description
+        and description != summary
+        and _is_valid_answer_text(description, str(concept.get("name") or ""))
+    ):
         cards.append(
             {
                 "card_type": "application",
@@ -49,7 +57,9 @@ def build_card_records(concept: Dict[str, object], concepts: List[Dict[str, obje
     return cards
 
 
-def build_flashcard_deck(chunk_rows: List[Dict[str, object]], title: str, count: int = 8) -> List[Dict[str, object]]:
+def build_flashcard_deck(
+    chunk_rows: List[Dict[str, object]], title: str, count: int = 8
+) -> List[Dict[str, object]]:
     concepts = build_concept_payloads_from_chunks(chunk_rows, title, limit=max(count * 2, 8))
     cards: List[Dict[str, object]] = []
     seen_pairs = set()

@@ -61,7 +61,9 @@ class ClaudeRouterToolCallTests(unittest.TestCase):
         )
         self.assertTrue(result.cache_hit)
         create_kwargs = client.messages.create.call_args.kwargs
-        self.assertEqual({"type": "tool", "name": "submit_grounded_answer"}, create_kwargs["tool_choice"])
+        self.assertEqual(
+            {"type": "tool", "name": "submit_grounded_answer"}, create_kwargs["tool_choice"]
+        )
         self.assertEqual("submit_grounded_answer", create_kwargs["tools"][0]["name"])
 
 

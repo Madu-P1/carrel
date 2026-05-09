@@ -26,7 +26,13 @@ def parse_xlsx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         for sheet_name in wb_values.sheetnames:
             ws_values = wb_values[sheet_name]
             ws_formulas = wb_formulas[sheet_name]
-            span = make_span(path, file_id, sheet=sheet_name, section=sheet_name, element_id=f"sheet-{sheet_name}")
+            span = make_span(
+                path,
+                file_id,
+                sheet=sheet_name,
+                section=sheet_name,
+                element_id=f"sheet-{sheet_name}",
+            )
             elements.append(
                 ExtractedElement(
                     id=span.element_id or f"sheet-{sheet_name}",
@@ -38,7 +44,9 @@ def parse_xlsx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
             )
             merged_ranges = [str(item) for item in getattr(ws_formulas.merged_cells, "ranges", [])]
             if merged_ranges:
-                warnings.append(f"Sheet {sheet_name} contains merged ranges: {', '.join(merged_ranges[:4])}")
+                warnings.append(
+                    f"Sheet {sheet_name} contains merged ranges: {', '.join(merged_ranges[:4])}"
+                )
             for row_index in range(1, ws_values.max_row + 1):
                 display_values: list[str] = []
                 cell_meta: list[dict[str, object]] = []
@@ -46,7 +54,12 @@ def parse_xlsx(path: Path, *, suffix: str, mime_type: str, context: ParserContex
                     formula_cell = ws_formulas.cell(row=row_index, column=column_index)
                     display_cell = ws_values.cell(row=row_index, column=column_index)
                     display = display_cell.value
-                    formula = formula_cell.value if isinstance(formula_cell.value, str) and formula_cell.value.startswith("=") else None
+                    formula = (
+                        formula_cell.value
+                        if isinstance(formula_cell.value, str)
+                        and formula_cell.value.startswith("=")
+                        else None
+                    )
                     if display is None and formula is None:
                         continue
                     display_text = safe_text(display if display is not None else formula)

@@ -76,7 +76,7 @@ _EXPAND_NOTE_SYSTEM = (
     "serious learner.\n\n"
     "Non-negotiables:\n"
     "1. Never restate the user's input. If they write \"Bonds are issued by "
-    "government bodies,\" your summary is NOT that sentence. It explains what "
+    'government bodies," your summary is NOT that sentence. It explains what '
     "a bond IS (a debt security, fixed-income instrument), how it works (face "
     "value, coupon, maturity, yield), who else issues them (corporations, "
     "agencies, municipalities), and why it matters.\n"
@@ -92,14 +92,14 @@ _EXPAND_NOTE_SYSTEM = (
     "significant, interplay. Do not use em dashes. Do not hedge with "
     "essentially, basically, in essence.\n"
     "6. Review prompts must be COMPLETE QUESTIONS ending with a question mark. "
-    "Four words minimum. Test understanding, not name recall. Prefer \"How "
-    "does X change when Y increases?\" over \"What is X?\". NEVER emit a "
-    "plain heading like \"Bond Yields\" or a field identifier like "
-    "\"yield_and_bond_prices\" as a review prompt. Every prompt is a "
+    'Four words minimum. Test understanding, not name recall. Prefer "How '
+    'does X change when Y increases?" over "What is X?". NEVER emit a '
+    'plain heading like "Bond Yields" or a field identifier like '
+    '"yield_and_bond_prices" as a review prompt. Every prompt is a '
     "grammatical question.\n"
     "7. Organized notes are COMPLETE SENTENCES ending with a period. Not "
-    "headings. Not labels. Not outline points. \"Bonds pay fixed coupon "
-    "interest until maturity.\" is right. \"Bond Valuation\" is wrong.\n\n"
+    'headings. Not labels. Not outline points. "Bonds pay fixed coupon '
+    'interest until maturity." is right. "Bond Valuation" is wrong.\n\n'
     "Fill every field of the submit_expanded_note tool."
 )
 
@@ -248,7 +248,9 @@ def _build_deterministic_expansion(title: str, content: str) -> str:
     if concepts:
         lines.extend(["", "## Key Ideas"])
         for concept in concepts[:5]:
-            description = str(concept.get("description") or concept.get("summary") or concept["name"])
+            description = str(
+                concept.get("description") or concept.get("summary") or concept["name"]
+            )
             lines.append(f"- **{concept['name']}**: {concept_takeaway(description)}")
 
     if sentences:

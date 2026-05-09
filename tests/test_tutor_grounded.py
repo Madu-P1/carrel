@@ -119,7 +119,9 @@ class GroundedTutorTests(unittest.TestCase):
             (concept_id, doc_id, name, name),
         )
 
-    def _hit(self, chunk_id: str, doc_id: str, section: str, snippet: str, score: float = 0.02) -> ScoredHit:
+    def _hit(
+        self, chunk_id: str, doc_id: str, section: str, snippet: str, score: float = 0.02
+    ) -> ScoredHit:
         return ScoredHit(
             chunk_id=chunk_id,
             doc_id=doc_id,
@@ -130,7 +132,9 @@ class GroundedTutorTests(unittest.TestCase):
             sources=("fts",),
         )
 
-    def _tool_result(self, payload: dict[str, object], *, ok: bool = True, error_code: str | None = None) -> ClaudeCallResult:
+    def _tool_result(
+        self, payload: dict[str, object], *, ok: bool = True, error_code: str | None = None
+    ) -> ClaudeCallResult:
         return ClaudeCallResult(
             ok=ok,
             task="balanced",
@@ -155,11 +159,27 @@ class GroundedTutorTests(unittest.TestCase):
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
             self._insert_document(conn, "doc-b", "bio-b.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis", page_num=2)
-            self._insert_chunk(conn, "chunk-2", "doc-b", "Meiosis reduces chromosome number.", section="Meiosis", page_num=4)
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+                page_num=2,
+            )
+            self._insert_chunk(
+                conn,
+                "chunk-2",
+                "doc-b",
+                "Meiosis reduces chromosome number.",
+                section="Meiosis",
+                page_num=4,
+            )
             conn.commit()
             hits = [
-                self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."),
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                ),
                 self._hit("chunk-2", "doc-b", "Meiosis", "Meiosis reduces chromosome number."),
             ]
             router = StubRouter(
@@ -169,11 +189,21 @@ class GroundedTutorTests(unittest.TestCase):
                         "claims": [
                             {
                                 "text": "Mitosis separates duplicated chromosomes.",
-                                "citations": [{"chunk_index": 1, "quote": "Mitosis separates duplicated chromosomes."}],
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": "Mitosis separates duplicated chromosomes.",
+                                    }
+                                ],
                             },
                             {
                                 "text": "Meiosis reduces chromosome number.",
-                                "citations": [{"chunk_index": 2, "quote": "Meiosis reduces chromosome number."}],
+                                "citations": [
+                                    {
+                                        "chunk_index": 2,
+                                        "quote": "Meiosis reduces chromosome number.",
+                                    }
+                                ],
                             },
                         ],
                         "unsupported_spans": [],
@@ -200,9 +230,19 @@ class GroundedTutorTests(unittest.TestCase):
     def test_citation_index_out_of_range_moves_claim_to_unsupported(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis")
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                )
+            ]
             router = StubRouter(
                 self._tool_result(
                     {
@@ -219,18 +259,32 @@ class GroundedTutorTests(unittest.TestCase):
             )
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "What happens in mitosis?", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "What happens in mitosis?", router=router
+                    )
 
         self.assertTrue(response.ok)
         self.assertEqual(0, len(response.claims))
-        self.assertIn("This unsupported claim should move out of claims.", response.unsupported_spans)
+        self.assertIn(
+            "This unsupported claim should move out of claims.", response.unsupported_spans
+        )
 
     def test_mixed_valid_and_invalid_citations_keep_supported_claim(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis")
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                )
+            ]
             router = StubRouter(
                 self._tool_result(
                     {
@@ -239,7 +293,10 @@ class GroundedTutorTests(unittest.TestCase):
                             {
                                 "text": "Mitosis separates duplicated chromosomes.",
                                 "citations": [
-                                    {"chunk_index": 1, "quote": "Mitosis separates duplicated chromosomes."},
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": "Mitosis separates duplicated chromosomes.",
+                                    },
                                     {"chunk_index": 99, "quote": "Bad citation."},
                                 ],
                             }
@@ -250,7 +307,9 @@ class GroundedTutorTests(unittest.TestCase):
             )
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertEqual(1, len(response.claims))
         self.assertEqual(1, len(response.claims[0].citations))
@@ -263,11 +322,18 @@ class GroundedTutorTests(unittest.TestCase):
                 conn,
                 "chunk-1",
                 "doc-a",
-                'Mitosis creates “genetically identical” daughter cells during growth.',
+                "Mitosis creates “genetically identical” daughter cells during growth.",
                 section="Mitosis",
             )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis creates genetically identical daughter cells during growth.")]
+            hits = [
+                self._hit(
+                    "chunk-1",
+                    "doc-a",
+                    "Mitosis",
+                    "Mitosis creates genetically identical daughter cells during growth.",
+                )
+            ]
             router = StubRouter(
                 self._tool_result(
                     {
@@ -275,7 +341,12 @@ class GroundedTutorTests(unittest.TestCase):
                         "claims": [
                             {
                                 "text": "Mitosis creates genetically identical daughter cells.",
-                                "citations": [{"chunk_index": 1, "quote": 'Mitosis creates "genetically identical" daughter cells during growth.'}],
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": 'Mitosis creates "genetically identical" daughter cells during growth.',
+                                    }
+                                ],
                             }
                         ],
                         "unsupported_spans": [],
@@ -284,11 +355,13 @@ class GroundedTutorTests(unittest.TestCase):
             )
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertTrue(response.ok)
         self.assertEqual(
-            'Mitosis creates “genetically identical” daughter cells during growth.',
+            "Mitosis creates “genetically identical” daughter cells during growth.",
             response.claims[0].citations[0].quote,
         )
         self.assertEqual(1, response.citation_repair_count)
@@ -297,9 +370,19 @@ class GroundedTutorTests(unittest.TestCase):
     def test_unverifiable_quote_drops_citation_and_demotes_claim(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis")
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                )
+            ]
             router = StubRouter(
                 self._tool_result(
                     {
@@ -307,7 +390,12 @@ class GroundedTutorTests(unittest.TestCase):
                         "claims": [
                             {
                                 "text": "Mitosis creates daughter cells through a different mechanism.",
-                                "citations": [{"chunk_index": 1, "quote": "Mitosis produces two identical cells for tissue repair."}],
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": "Mitosis produces two identical cells for tissue repair.",
+                                    }
+                                ],
                             }
                         ],
                         "unsupported_spans": [],
@@ -316,24 +404,41 @@ class GroundedTutorTests(unittest.TestCase):
             )
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertTrue(response.ok)
         self.assertEqual(0, len(response.claims))
-        self.assertIn("Mitosis creates daughter cells through a different mechanism.", response.unsupported_spans)
+        self.assertIn(
+            "Mitosis creates daughter cells through a different mechanism.",
+            response.unsupported_spans,
+        )
         self.assertEqual(1, response.citation_drop_count)
         self.assertEqual(0, response.citation_repair_count)
 
     def test_claude_failure_returns_visible_passages_only_fallback(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis")
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                )
+            ]
             router = StubRouter(self._tool_result({}, ok=False, error_code="claude_call_failed"))
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertFalse(response.ok)
         self.assertEqual("claude_call_failed", response.error)
@@ -344,13 +449,19 @@ class GroundedTutorTests(unittest.TestCase):
     def test_grounded_tutor_off_skips_claude_and_returns_fallback(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.")
+            self._insert_chunk(
+                conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes."
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Core", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit("chunk-1", "doc-a", "Core", "Mitosis separates duplicated chromosomes.")
+            ]
             router = StubRouter()
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "off"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertFalse(response.ok)
         self.assertEqual("grounded_tutor_disabled", response.error)
@@ -359,13 +470,19 @@ class GroundedTutorTests(unittest.TestCase):
     def test_grounded_tutor_auto_without_ai_returns_fallback(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.")
+            self._insert_chunk(
+                conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes."
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Core", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit("chunk-1", "doc-a", "Core", "Mitosis separates duplicated chromosomes.")
+            ]
             router = StubRouter(enabled=False)
             with mock.patch("services.tutor.search_hybrid", return_value=hits):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "auto"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=router
+                    )
 
         self.assertFalse(response.ok)
         self.assertEqual([], router.calls)
@@ -376,7 +493,9 @@ class GroundedTutorTests(unittest.TestCase):
             router = StubRouter()
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_service.grounded_tutor_response(conn, "Question with no matching source.", router=router)
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Question with no matching source.", router=router
+                    )
 
         self.assertFalse(response.ok)
         self.assertEqual("empty_retrieval", response.error)
@@ -426,9 +545,7 @@ class GroundedTutorTests(unittest.TestCase):
                 )
             conn.commit()
             router = StubRouter(
-                result=self._tool_result(
-                    {"summary": "ok", "claims": [], "unsupported_spans": []}
-                )
+                result=self._tool_result({"summary": "ok", "claims": [], "unsupported_spans": []})
             )
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
@@ -461,9 +578,19 @@ class GroundedTutorTests(unittest.TestCase):
     def test_misconceptions_and_scaffolds_are_populated_on_grounded_answer(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis")
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+            )
             conn.commit()
-            hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+            hits = [
+                self._hit(
+                    "chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes."
+                )
+            ]
             router = StubRouter(
                 self._tool_result(
                     {
@@ -471,7 +598,12 @@ class GroundedTutorTests(unittest.TestCase):
                         "claims": [
                             {
                                 "text": "Mitosis separates duplicated chromosomes.",
-                                "citations": [{"chunk_index": 1, "quote": "Mitosis separates duplicated chromosomes."}],
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": "Mitosis separates duplicated chromosomes.",
+                                    }
+                                ],
                             }
                         ],
                         "unsupported_spans": [],
@@ -494,11 +626,20 @@ class GroundedTutorTests(unittest.TestCase):
     def test_route_envelope_preserves_legacy_fields_and_adds_grounded_shape(self) -> None:
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes.", section="Mitosis", page_num=3)
+            self._insert_chunk(
+                conn,
+                "chunk-1",
+                "doc-a",
+                "Mitosis separates duplicated chromosomes.",
+                section="Mitosis",
+                page_num=3,
+            )
             self._insert_concept(conn, "concept-a", "doc-a", "Cell Division")
             conn.commit()
 
-        hits = [self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")]
+        hits = [
+            self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")
+        ]
         router = StubRouter(
             self._tool_result(
                 {
@@ -506,7 +647,12 @@ class GroundedTutorTests(unittest.TestCase):
                     "claims": [
                         {
                             "text": "Mitosis separates duplicated chromosomes.",
-                            "citations": [{"chunk_index": 1, "quote": "Mitosis separates duplicated chromosomes."}],
+                            "citations": [
+                                {
+                                    "chunk_index": 1,
+                                    "quote": "Mitosis separates duplicated chromosomes.",
+                                }
+                            ],
                         }
                     ],
                     "unsupported_spans": [],

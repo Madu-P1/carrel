@@ -76,7 +76,10 @@ def classify_learner_response(answer: str, learner_response: str) -> str:
         return "misconception"
     if "for example" in lowered and overlap_ratio < 0.25:
         return "wrong_example"
-    if any(token in lowered for token in ["causes", "because", "leads to", "depends on"]) and overlap_ratio < 0.3:
+    if (
+        any(token in lowered for token in ["causes", "because", "leads to", "depends on"])
+        and overlap_ratio < 0.3
+    ):
         return "wrong_relation"
     if overlap_ratio >= 0.55 and len(cleaned.split()) >= 20:
         return "robust_and_transferable"
@@ -245,7 +248,9 @@ def evaluate_exchange(
             evidence_quality=0.8 if evidence else 0.45,
         )
         doc_row = conn.execute("SELECT doc_id FROM concepts WHERE id = ?", (concept_id,)).fetchone()
-        misconception_count = 1 if classification in {"misconception", "wrong_relation", "wrong_example"} else 0
+        misconception_count = (
+            1 if classification in {"misconception", "wrong_relation", "wrong_example"} else 0
+        )
         conn.execute(
             """
             INSERT INTO study_events (id, event_type, doc_id, concept_id, confidence, payload)

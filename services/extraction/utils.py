@@ -47,24 +47,31 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".heic", ".tiff", ".tif", ".bmp", ".g
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm"}
 ARCHIVE_SUFFIXES = {".zip"}
-SUPPORTED_SUFFIXES = TEXT_SUFFIXES | {
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".pptx",
-    ".ppt",
-    ".xlsx",
-    ".xls",
-    ".csv",
-    ".tsv",
-    ".html",
-    ".htm",
-    ".json",
-    ".jsonl",
-    ".xml",
-    ".epub",
-    ".rtf",
-} | IMAGE_SUFFIXES | AUDIO_SUFFIXES | VIDEO_SUFFIXES | ARCHIVE_SUFFIXES
+SUPPORTED_SUFFIXES = (
+    TEXT_SUFFIXES
+    | {
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".pptx",
+        ".ppt",
+        ".xlsx",
+        ".xls",
+        ".csv",
+        ".tsv",
+        ".html",
+        ".htm",
+        ".json",
+        ".jsonl",
+        ".xml",
+        ".epub",
+        ".rtf",
+    }
+    | IMAGE_SUFFIXES
+    | AUDIO_SUFFIXES
+    | VIDEO_SUFFIXES
+    | ARCHIVE_SUFFIXES
+)
 
 
 def normalize_space(value: str) -> str:

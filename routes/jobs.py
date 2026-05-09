@@ -58,11 +58,7 @@ async def stream_jobs(after_id: int = Query(default=0, ge=0)) -> StreamingRespon
             events = jobs_service.list_events(after_id=cursor, limit=100)
             for event in events:
                 cursor = max(cursor, int(event["id"]))
-                yield (
-                    f"id: {event['id']}\n"
-                    "event: job\n"
-                    f"data: {json.dumps(event)}\n\n"
-                )
+                yield (f"id: {event['id']}\nevent: job\ndata: {json.dumps(event)}\n\n")
             await asyncio.sleep(1)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

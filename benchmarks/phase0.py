@@ -260,9 +260,7 @@ def compare_to_baseline(
 
         status = "regressed" if has_regressed else "ok"
         regressed = regressed or has_regressed
-        print(
-            f"{key} | {baseline_value:.2f} | {current_value:.2f} | {delta_ratio:+.2%} | {status}"
-        )
+        print(f"{key} | {baseline_value:.2f} | {current_value:.2f} | {delta_ratio:+.2%} | {status}")
 
     if regressed and fail_on_regression:
         raise SystemExit(1)
@@ -270,8 +268,12 @@ def compare_to_baseline(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the Einstein Tutor Phase 0 benchmark harness.")
-    parser.add_argument("--output", type=Path, default=None, help="Write the current run to this JSON file.")
+    parser = argparse.ArgumentParser(
+        description="Run the Einstein Tutor Phase 0 benchmark harness."
+    )
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the current run to this JSON file."
+    )
     parser.add_argument(
         "--compare",
         type=Path,

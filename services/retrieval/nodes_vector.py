@@ -6,6 +6,7 @@ Mirrors `services.retrieval.vector.search_vector` but reads from
 `NodeHit` rows hydrated from `nodes` so callers can fuse with BM25
 candidates from `nodes_fts.py` without a second round-trip.
 """
+
 from __future__ import annotations
 
 import sqlite3

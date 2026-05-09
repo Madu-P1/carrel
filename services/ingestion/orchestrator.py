@@ -82,29 +82,35 @@ def ingest_document_record(
     normalized_subject = normalize_subject_name(subject_name)
     raw_text = asset.cleaned_text if asset else extracted_text
     learning_text = clean_learning_text(raw_text)
-    source_hash = (asset.content_hash if asset else stale_tracker.compute_source_hash(learning_text))[:32]
+    source_hash = (
+        asset.content_hash if asset else stale_tracker.compute_source_hash(learning_text)
+    )[:32]
     document_summary = summarize_document(learning_text)
-    parser_diagnostics = asset.diagnostics if asset else {
-        "filename": filename,
-        "detected_type": file_type,
-        "preview_text": learning_text[:1200],
-        "quality": {
-            "parser": "manual_text",
-            "extraction_modes": ["manual"],
-            "warnings": [],
-            "metrics": {
-                "page_count": page_count,
-                "char_count": len(learning_text),
-                "element_count": 1 if learning_text else 0,
-                "chunk_count": 0,
-                "warning_count": 0,
+    parser_diagnostics = (
+        asset.diagnostics
+        if asset
+        else {
+            "filename": filename,
+            "detected_type": file_type,
+            "preview_text": learning_text[:1200],
+            "quality": {
+                "parser": "manual_text",
+                "extraction_modes": ["manual"],
+                "warnings": [],
+                "metrics": {
+                    "page_count": page_count,
+                    "char_count": len(learning_text),
+                    "element_count": 1 if learning_text else 0,
+                    "chunk_count": 0,
+                    "warning_count": 0,
+                },
+                "confidence": 0.95 if learning_text else 0.2,
+                "fallback_chain": [],
             },
-            "confidence": 0.95 if learning_text else 0.2,
-            "fallback_chain": [],
-        },
-        "element_count": 1 if learning_text else 0,
-        "chunk_count": 0,
-    }
+            "element_count": 1 if learning_text else 0,
+            "chunk_count": 0,
+        }
+    )
     duplicate_row = conn.execute(
         "SELECT id FROM documents WHERE source_hash = ? LIMIT 1",
         (source_hash,),
@@ -149,7 +155,8 @@ def ingest_document_record(
     else:
         fallback_section = next(
             iter(select_concept_phrases(learning_text, filename, limit=1)),
-            clean_candidate_label(Path(filename).stem.replace("-", " ").replace("_", " ")) or "Core Ideas",
+            clean_candidate_label(Path(filename).stem.replace("-", " ").replace("_", " "))
+            or "Core Ideas",
         )
         chunk_payloads = [
             {
@@ -234,8 +241,11 @@ def ingest_document_record(
             ingest_path = _resolve_ingest_path(filename, storage_name)
             if ingest_path is None:
                 log_event(
-                    LOGGER, logging.WARNING, "docling_skipped_no_file",
-                    doc_id=doc_id, storage_name=storage_name,
+                    LOGGER,
+                    logging.WARNING,
+                    "docling_skipped_no_file",
+                    doc_id=doc_id,
+                    storage_name=storage_name,
                 )
             else:
                 try:
@@ -244,13 +254,19 @@ def ingest_document_record(
                     node_ids = insert_typed_nodes(conn, doc_id, nodes)
                     embed_and_index_nodes(conn, nodes, node_ids)
                     log_event(
-                        LOGGER, logging.INFO, "typed_nodes_indexed",
-                        doc_id=doc_id, node_count=len(nodes),
+                        LOGGER,
+                        logging.INFO,
+                        "typed_nodes_indexed",
+                        doc_id=doc_id,
+                        node_count=len(nodes),
                     )
                 except Exception as exc:
                     log_event(
-                        LOGGER, logging.ERROR, "docling_ingest_failed",
-                        doc_id=doc_id, error=str(exc),
+                        LOGGER,
+                        logging.ERROR,
+                        "docling_ingest_failed",
+                        doc_id=doc_id,
+                        error=str(exc),
                     )
 
     concept_payloads = build_concept_payloads_from_chunks(chunk_rows, filename)
@@ -360,7 +376,9 @@ def ingest_document_record(
         for relationship in [infer_relationship(left["name"], right["name"], learning_text)]
         if relationship
     ]
-    concept_id_by_name = {concept["name"]: concept_id for concept, concept_id in zip(concept_payloads, concept_ids)}
+    concept_id_by_name = {
+        concept["name"]: concept_id for concept, concept_id in zip(concept_payloads, concept_ids)
+    }
     for edge in fallback_edges:
         source_id = concept_id_by_name.get(edge["source_name"])
         target_id = concept_id_by_name.get(edge["target_name"])
@@ -383,7 +401,11 @@ def ingest_document_record(
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
-        ("ready" if learning_text else "warning", json.dumps(parser_diagnostics, ensure_ascii=False), doc_id),
+        (
+            "ready" if learning_text else "warning",
+            json.dumps(parser_diagnostics, ensure_ascii=False),
+            doc_id,
+        ),
     )
     conn.commit()
     return {

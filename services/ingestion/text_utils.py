@@ -3,7 +3,12 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional
 
-from .constants import DISPLAY_ACRONYMS, INLINE_NOISE_PATTERNS, NOISE_LINE_PATTERNS, PROMPT_START_TOKENS
+from .constants import (
+    DISPLAY_ACRONYMS,
+    INLINE_NOISE_PATTERNS,
+    NOISE_LINE_PATTERNS,
+    PROMPT_START_TOKENS,
+)
 
 
 def normalize_subject_name(subject_name: Optional[str]) -> str:
@@ -16,7 +21,9 @@ def canonicalize(term: str) -> str:
 
 
 def tokenize(text: str) -> List[str]:
-    return [canonicalize(token) for token in re.findall(r"[A-Za-z]{3,}", text) if canonicalize(token)]
+    return [
+        canonicalize(token) for token in re.findall(r"[A-Za-z]{3,}", text) if canonicalize(token)
+    ]
 
 
 def split_sentences(text: str) -> List[str]:
@@ -78,9 +85,7 @@ def _is_noise_line(line: str, repeated_counts: Dict[str, int]) -> bool:
     if alpha_count < 3 and len(line) < 24:
         return True
     weird_ratio = sum(
-        1
-        for char in line
-        if not (char.isalnum() or char.isspace() or char in "-_.,;:!?()/&%+")
+        1 for char in line if not (char.isalnum() or char.isspace() or char in "-_.,;:!?()/&%+")
     ) / max(len(line), 1)
     if weird_ratio > 0.18:
         return True

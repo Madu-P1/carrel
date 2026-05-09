@@ -44,14 +44,15 @@ class SyncOutcome:
     Captures enough for routes to render a status response (e.g. the
     "Sync now" button's toast: "Synced 14 events from Blackboard").
     """
+
     feed_id: str
-    status: str               # 'success' | 'not_modified' | 'error'
+    status: str  # 'success' | 'not_modified' | 'error'
     http_status: Optional[int]
     items_seen: int
     items_upserted: int
     items_deleted: int
-    error: Optional[str]      # already mask_url'd
-    final_url: str            # already masked
+    error: Optional[str]  # already mask_url'd
+    final_url: str  # already masked
 
 
 def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
@@ -231,9 +232,7 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
         )
 
     items_seen = len(parsed)
-    items_upserted, items_deleted = repository.upsert_events(
-        conn, feed_id, parsed
-    )
+    items_upserted, items_deleted = repository.upsert_events(conn, feed_id, parsed)
 
     repository.complete_sync_run(
         conn,

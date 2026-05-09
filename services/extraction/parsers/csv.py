@@ -26,7 +26,9 @@ def parse_csv(path: Path, *, suffix: str, mime_type: str, context: ParserContext
         for col_index, value in enumerate(values, start=1):
             if not value:
                 continue
-            header = headers[col_index - 1] if col_index - 1 < len(headers) else f"Column {col_index}"
+            header = (
+                headers[col_index - 1] if col_index - 1 < len(headers) else f"Column {col_index}"
+            )
             coord = f"R{row_index}C{col_index}"
             text = f"{header}: {value}"
             row_bits.append(text)
@@ -50,7 +52,14 @@ def parse_csv(path: Path, *, suffix: str, mime_type: str, context: ParserContext
             )
         if row_bits:
             joined = "\n".join(row_bits)
-            span = make_span(path, file_id, sheet="Sheet1", section="Sheet1", row_range=f"{row_index}:{row_index}", element_id=f"csv-row-{row_index}")
+            span = make_span(
+                path,
+                file_id,
+                sheet="Sheet1",
+                section="Sheet1",
+                row_range=f"{row_index}:{row_index}",
+                element_id=f"csv-row-{row_index}",
+            )
             elements.append(
                 ExtractedElement(
                     id=span.element_id or f"csv-row-{row_index}",

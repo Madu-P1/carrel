@@ -1,4 +1,5 @@
 """Export service — export artifacts to Markdown, plain text, and JSON formats."""
+
 import json
 import sqlite3
 import uuid
@@ -74,7 +75,9 @@ def export_artifact(
         }
         filepath.write_text(json.dumps(export_data, indent=2, ensure_ascii=False), encoding="utf-8")
     else:
-        raise ValueError(f"Unsupported export format: {export_format}. Use markdown, text, or json.")
+        raise ValueError(
+            f"Unsupported export format: {export_format}. Use markdown, text, or json."
+        )
 
     # Record export in artifact_exports
     conn.execute(
@@ -96,7 +99,9 @@ def export_artifact(
     }
 
 
-def list_exports(conn: sqlite3.Connection, artifact_id: Optional[str] = None, limit: int = 20) -> list:
+def list_exports(
+    conn: sqlite3.Connection, artifact_id: Optional[str] = None, limit: int = 20
+) -> list:
     """List recent exports, optionally filtered by artifact."""
     if artifact_id:
         rows = conn.execute(
@@ -145,7 +150,9 @@ def export_notes_bundle(
         lines = ["# Study Notes\n"]
         for note in rows:
             lines.append(f"## {note['title'] or 'Untitled'}")
-            lines.append(f"_Type: {(note['note_type'] or 'note').replace('_', ' ')} · {note['created_at']}_\n")
+            lines.append(
+                f"_Type: {(note['note_type'] or 'note').replace('_', ' ')} · {note['created_at']}_\n"
+            )
             lines.append(note["content"] or "")
             lines.append("\n---\n")
         filename = f"Notes_Bundle_{timestamp}.md"

@@ -63,7 +63,9 @@ class Phase0FoundationTests(unittest.TestCase):
             schema_path = root / "schema.sql"
             migrations_dir = root / "migrations"
             migrations_dir.mkdir(parents=True, exist_ok=True)
-            schema_path.write_text("CREATE TABLE IF NOT EXISTS base_table (id INTEGER);", encoding="utf-8")
+            schema_path.write_text(
+                "CREATE TABLE IF NOT EXISTS base_table (id INTEGER);", encoding="utf-8"
+            )
             migration_name = "20260420_test.sql"
             (migrations_dir / migration_name).write_text(
                 "CREATE TABLE IF NOT EXISTS phase_one_table (id INTEGER);",
@@ -107,7 +109,9 @@ class Phase0FoundationTests(unittest.TestCase):
             schema_path = root / "schema.sql"
             migrations_dir = root / "migrations"
             migrations_dir.mkdir(parents=True, exist_ok=True)
-            schema_path.write_text("CREATE TABLE IF NOT EXISTS base_table (id INTEGER);", encoding="utf-8")
+            schema_path.write_text(
+                "CREATE TABLE IF NOT EXISTS base_table (id INTEGER);", encoding="utf-8"
+            )
             migration_name = "20260420_test.sql"
             (migrations_dir / migration_name).write_text(
                 "CREATE TABLE IF NOT EXISTS phase_one_table (id INTEGER);",
@@ -137,7 +141,8 @@ class Phase0FoundationTests(unittest.TestCase):
                 conn.commit()
                 db.apply_migrations(conn)
                 columns = {
-                    row["name"] for row in conn.execute("PRAGMA table_info(schema_migrations)").fetchall()
+                    row["name"]
+                    for row in conn.execute("PRAGMA table_info(schema_migrations)").fetchall()
                 }
                 row = conn.execute(
                     "SELECT version, name FROM schema_migrations WHERE name = ?",

@@ -13,6 +13,7 @@ walker proceeds — joining text with "\\n\\n" — so they index into the
 same canonical document the rest of the pipeline consumes. PR 2 wires
 those offsets into the citation chips.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -96,7 +97,9 @@ def walk(doc: Any) -> list[TypedNode]:
         char_end = canonical_offset
 
         prov = getattr(element, "prov", None) or []
-        page = int(prov[0].page_no) if prov and getattr(prov[0], "page_no", None) is not None else None
+        page = (
+            int(prov[0].page_no) if prov and getattr(prov[0], "page_no", None) is not None else None
+        )
 
         nodes.append(
             TypedNode(

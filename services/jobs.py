@@ -287,10 +287,13 @@ def _run_import_job(job_id: str) -> None:
             job = _fetch_job(conn, job_id)
             if not job:
                 return
-            temp_name = str(conn.execute(
-                "SELECT temp_storage_name FROM ingestion_jobs WHERE id = ?",
-                (job_id,),
-            ).fetchone()["temp_storage_name"] or "")
+            temp_name = str(
+                conn.execute(
+                    "SELECT temp_storage_name FROM ingestion_jobs WHERE id = ?",
+                    (job_id,),
+                ).fetchone()["temp_storage_name"]
+                or ""
+            )
             temp_path = JOB_UPLOAD_DIR / temp_name
             if not temp_path.exists():
                 _update_job(

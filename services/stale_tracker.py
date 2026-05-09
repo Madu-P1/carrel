@@ -1,4 +1,5 @@
 """Stale dependency tracker — detect when source material changes and mark dependents as stale."""
+
 import hashlib
 import sqlite3
 import uuid
@@ -75,12 +76,15 @@ def mark_artifacts_stale(conn: sqlite3.Connection, source_id: str) -> int:
         FROM artifacts
         WHERE source_scope LIKE ? AND stale = 0
         """,
-        (f'%{source_id}%',),
+        (f"%{source_id}%",),
     ).fetchall()
 
     count = 0
     for row in rows:
-        conn.execute("UPDATE artifacts SET stale = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (row["id"],))
+        conn.execute(
+            "UPDATE artifacts SET stale = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (row["id"],),
+        )
         count += 1
 
     return count

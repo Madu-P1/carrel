@@ -5,6 +5,7 @@ through every option (default, doc_id filter, subject filter,
 node_type allowlist) to confirm the SQL composes correctly. No vec0
 or fastembed dependencies — pure FTS5.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -44,7 +45,11 @@ def _node(
 class NodesFtsSearchTests(unittest.TestCase):
     def setUp(self) -> None:
         self._original = (
-            db.BASE_DIR, db.DATA_DIR, db.UPLOAD_DIR, db.DB_PATH, db.SCHEMA_PATH,
+            db.BASE_DIR,
+            db.DATA_DIR,
+            db.UPLOAD_DIR,
+            db.DB_PATH,
+            db.SCHEMA_PATH,
         )
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
@@ -54,8 +59,11 @@ class NodesFtsSearchTests(unittest.TestCase):
         (root / "schema.sql").write_text("-- test\n", encoding="utf-8")
         shutil.copytree(MIGRATIONS_SOURCE, root / "migrations", dirs_exist_ok=True)
         db.configure_paths(
-            base_dir=root, data_dir=data_dir, upload_dir=upload_dir,
-            db_path=data_dir / "test.db", schema_path=root / "schema.sql",
+            base_dir=root,
+            data_dir=data_dir,
+            upload_dir=upload_dir,
+            db_path=data_dir / "test.db",
+            schema_path=root / "schema.sql",
         )
         self._conn = db.get_db()
         db.apply_migrations(self._conn)
@@ -65,8 +73,10 @@ class NodesFtsSearchTests(unittest.TestCase):
         self._conn.close()
         self._tmp.cleanup()
         db.configure_paths(
-            base_dir=self._original[0], data_dir=self._original[1],
-            upload_dir=self._original[2], db_path=self._original[3],
+            base_dir=self._original[0],
+            data_dir=self._original[1],
+            upload_dir=self._original[2],
+            db_path=self._original[3],
             schema_path=self._original[4],
         )
 
@@ -80,32 +90,56 @@ class NodesFtsSearchTests(unittest.TestCase):
             "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
             "VALUES ('doc-chem', 'chem.md', 'md', 'ready', 'manual_text', 'Chemistry')"
         )
-        insert_typed_nodes(self._conn, "doc-bio", [
-            _node(0, node_type="heading", text="Photosynthesis",
-                  heading_path="Photosynthesis"),
-            _node(1, node_type="body",
-                  text="Plants use chlorophyll to capture light energy from the sun.",
-                  heading_path="Photosynthesis"),
-            _node(2, node_type="list_item",
-                  text="Step one: water is split in the thylakoid membrane",
-                  heading_path="Photosynthesis"),
-            _node(3, node_type="caption",
-                  text="Figure 1: The Calvin cycle and ATP regeneration",
-                  heading_path="Photosynthesis"),
-            _node(4, node_type="footer",
-                  text="Page 12 of biology textbook",  # must NOT match a 'thylakoid' query
-                  heading_path=""),
-        ])
-        insert_typed_nodes(self._conn, "doc-chem", [
-            _node(0, node_type="heading", text="Combustion",
-                  heading_path="Combustion"),
-            _node(1, node_type="body",
-                  text="Methane reacts with oxygen to form carbon dioxide and water.",
-                  heading_path="Combustion"),
-            _node(2, node_type="equation",
-                  text="CH4 plus 2O2 yields CO2 plus 2H2O",
-                  heading_path="Combustion"),
-        ])
+        insert_typed_nodes(
+            self._conn,
+            "doc-bio",
+            [
+                _node(0, node_type="heading", text="Photosynthesis", heading_path="Photosynthesis"),
+                _node(
+                    1,
+                    node_type="body",
+                    text="Plants use chlorophyll to capture light energy from the sun.",
+                    heading_path="Photosynthesis",
+                ),
+                _node(
+                    2,
+                    node_type="list_item",
+                    text="Step one: water is split in the thylakoid membrane",
+                    heading_path="Photosynthesis",
+                ),
+                _node(
+                    3,
+                    node_type="caption",
+                    text="Figure 1: The Calvin cycle and ATP regeneration",
+                    heading_path="Photosynthesis",
+                ),
+                _node(
+                    4,
+                    node_type="footer",
+                    text="Page 12 of biology textbook",  # must NOT match a 'thylakoid' query
+                    heading_path="",
+                ),
+            ],
+        )
+        insert_typed_nodes(
+            self._conn,
+            "doc-chem",
+            [
+                _node(0, node_type="heading", text="Combustion", heading_path="Combustion"),
+                _node(
+                    1,
+                    node_type="body",
+                    text="Methane reacts with oxygen to form carbon dioxide and water.",
+                    heading_path="Combustion",
+                ),
+                _node(
+                    2,
+                    node_type="equation",
+                    text="CH4 plus 2O2 yields CO2 plus 2H2O",
+                    heading_path="Combustion",
+                ),
+            ],
+        )
         self._conn.commit()
 
     def test_returns_empty_for_blank_query(self) -> None:
@@ -163,7 +197,9 @@ class NodesFtsSearchTests(unittest.TestCase):
         # itself respects whatever node_types you pass. This pins the
         # contract: filtering is the router's job, not the search's.
         hits = search_node_fts(
-            self._conn, "biology", node_types=["footer"],
+            self._conn,
+            "biology",
+            node_types=["footer"],
         )
         self.assertTrue(hits)
         for hit in hits:

@@ -13,6 +13,7 @@ of `0.7 * rerank_normalized + 0.3 * rrf_normalized`. Both paths are
 exercised by the same entry point — callers pass `use_reranker=True`
 to opt in.
 """
+
 from __future__ import annotations
 
 import os

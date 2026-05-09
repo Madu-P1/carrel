@@ -57,11 +57,11 @@ class FetchResult:
     debugging without exposing the original token-bearing URL.
     """
 
-    status: int                 # HTTP status of the final response
-    body: Optional[bytes]       # None on 304, else the response body
+    status: int  # HTTP status of the final response
+    body: Optional[bytes]  # None on 304, else the response body
     etag: Optional[str]
     last_modified: Optional[str]
-    final_url: str              # already masked for safe logging
+    final_url: str  # already masked for safe logging
 
 
 class FeedFetchError(Exception):

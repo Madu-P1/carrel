@@ -9,14 +9,27 @@ from services.extraction.quality import (
     outline_like_text as _is_outline_like_text,
 )
 
-from .concept_candidates import clean_candidate_label, is_valid_concept_label, leading_subject_phrase
+from .concept_candidates import (
+    clean_candidate_label,
+    is_valid_concept_label,
+    leading_subject_phrase,
+)
 from .constants import CARD_DEFINITION_MARKERS, VISIBLE_SOURCE_LEAK_PATTERNS
-from .text_utils import _is_heading_like_line, _normalize_space, clean_learning_text, split_sentences, strip_inline_noise, tokenize
+from .text_utils import (
+    _is_heading_like_line,
+    _normalize_space,
+    clean_learning_text,
+    split_sentences,
+    strip_inline_noise,
+    tokenize,
+)
 
 
 def _normalize_structural_label(value: str) -> str:
     cleaned = strip_inline_noise(str(value or ""))
-    cleaned = re.sub(r"\.(?:txt|pdf|docx|pptx|xlsx|csv|tsv|md|html?)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\.(?:txt|pdf|docx|pptx|xlsx|csv|tsv|md|html?)\b", " ", cleaned, flags=re.IGNORECASE
+    )
     cleaned = re.sub(r"^\d+(?:\.\d+)+(?:\s*[:.-]?\s*)", "", cleaned)
     cleaned = re.sub(r"\(\d+\s+of\s+\d+\)", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,:;-_")
@@ -39,7 +52,9 @@ def _normalize_candidate_phrase(value: str) -> str:
 
 def _has_visible_source_leakage(text: str) -> bool:
     lowered = str(text or "").lower()
-    return any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in VISIBLE_SOURCE_LEAK_PATTERNS)
+    return any(
+        re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in VISIBLE_SOURCE_LEAK_PATTERNS
+    )
 
 
 def _definition_front(concept_name: str) -> str:
@@ -64,11 +79,17 @@ def _is_valid_answer_text(answer: str, concept_name: str) -> bool:
     if not cleaned:
         return False
     lowered = cleaned.lower()
-    if lowered.startswith(("let ", "let’s ", "let's ", "next, ", "first, ", "the rest ", "all stocks tend ")):
+    if lowered.startswith(
+        ("let ", "let’s ", "let's ", "next, ", "first, ", "the rest ", "all stocks tend ")
+    ):
         return False
     if _has_visible_source_leakage(cleaned):
         return False
-    if _is_footer_or_noise_text(cleaned) or _is_outline_like_text(cleaned) or _is_formula_like_text(cleaned):
+    if (
+        _is_footer_or_noise_text(cleaned)
+        or _is_outline_like_text(cleaned)
+        or _is_formula_like_text(cleaned)
+    ):
         return False
     digit_or_symbol = sum(char.isdigit() or char in "=+-*/^%()[]{}÷±×" for char in cleaned)
     if digit_or_symbol / max(len(cleaned), 1) > 0.18:

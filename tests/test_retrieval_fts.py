@@ -53,7 +53,9 @@ class RetrievalFTSTests(unittest.TestCase):
             (doc_id, f"{doc_id}.txt", subject_name),
         )
 
-    def _insert_chunk(self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core") -> None:
+    def _insert_chunk(
+        self, conn, chunk_id: str, doc_id: str, content: str, section: str = "Core"
+    ) -> None:
         conn.execute(
             """
             INSERT INTO chunks (id, doc_id, content, section, chunk_index, token_count)
@@ -86,9 +88,21 @@ class RetrievalFTSTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division depends on chromosome replication and spindle fibers.")
-                self._insert_chunk(conn, "chunk-b", "doc-a", "Mitochondria support aerobic respiration.")
-                self._insert_chunk(conn, "chunk-c", "doc-a", "Photosynthesis converts light energy into chemical energy.")
+                self._insert_chunk(
+                    conn,
+                    "chunk-a",
+                    "doc-a",
+                    "Cell division depends on chromosome replication and spindle fibers.",
+                )
+                self._insert_chunk(
+                    conn, "chunk-b", "doc-a", "Mitochondria support aerobic respiration."
+                )
+                self._insert_chunk(
+                    conn,
+                    "chunk-c",
+                    "doc-a",
+                    "Photosynthesis converts light energy into chemical energy.",
+                )
                 conn.commit()
                 hits = search_keyword(conn, "chromosome replication")
 
@@ -102,7 +116,9 @@ class RetrievalFTSTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell signaling uses receptor proteins.")
+                self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell signaling uses receptor proteins."
+                )
                 conn.commit()
                 hits = search_keyword(conn, "receptor proteins")
 
@@ -115,7 +131,9 @@ class RetrievalFTSTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell signaling uses receptor proteins.")
+                self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell signaling uses receptor proteins."
+                )
                 conn.commit()
                 conn.execute(
                     "UPDATE chunks SET content = ?, token_count = ? WHERE id = ?",
@@ -166,8 +184,12 @@ class RetrievalFTSTests(unittest.TestCase):
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
                 self._insert_document(conn, "doc-b", "Finance")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Beta measures market risk in a portfolio.")
-                self._insert_chunk(conn, "chunk-b", "doc-b", "Beta also appears in finance lecture notes.")
+                self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Beta measures market risk in a portfolio."
+                )
+                self._insert_chunk(
+                    conn, "chunk-b", "doc-b", "Beta also appears in finance lecture notes."
+                )
                 conn.commit()
                 hits = search_keyword(conn, "beta", subject_name="Biology")
 
@@ -190,7 +212,9 @@ class RetrievalFTSTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division requires spindle fibers.")
+                self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division requires spindle fibers."
+                )
                 conn.commit()
                 hits = search_keyword(conn, 'cell*"division (spindle')
 
@@ -203,9 +227,13 @@ class RetrievalFTSTests(unittest.TestCase):
             with db.get_db() as conn:
                 db.apply_migrations(conn)
                 self._insert_document(conn, "doc-a", "Biology")
-                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division requires spindle fibers.")
+                self._insert_chunk(
+                    conn, "chunk-a", "doc-a", "Cell division requires spindle fibers."
+                )
                 self._insert_chunk(conn, "chunk-b", "doc-a", "Cell membranes regulate transport.")
-                self._insert_chunk(conn, "chunk-c", "doc-a", "Division of labor appears in sociology.")
+                self._insert_chunk(
+                    conn, "chunk-c", "doc-a", "Division of labor appears in sociology."
+                )
                 conn.commit()
                 hits = search_keyword(conn, "cell division")
 

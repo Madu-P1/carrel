@@ -14,6 +14,7 @@ The wrapper exists for two reasons:
    PR ships with Docling's default OCR (rapidocr / easyocr) so the path
    is end-to-end exercised.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

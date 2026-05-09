@@ -1,4 +1,5 @@
 """Integration tests for the reader-node lookup endpoint (PR 4.2)."""
+
 from __future__ import annotations
 
 import shutil
@@ -41,8 +42,11 @@ class ReaderNodeRouteTests(unittest.TestCase):
         (base_dir / "schema.sql").write_text("-- test\n", encoding="utf-8")
 
         self._original = (
-            main.BASE_DIR, main.DATA_DIR, main.UPLOAD_DIR,
-            main.DB_PATH, main.SCHEMA_PATH,
+            main.BASE_DIR,
+            main.DATA_DIR,
+            main.UPLOAD_DIR,
+            main.DB_PATH,
+            main.SCHEMA_PATH,
         )
         main.BASE_DIR = base_dir
         main.DATA_DIR = data_dir
@@ -56,9 +60,13 @@ class ReaderNodeRouteTests(unittest.TestCase):
                 "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
                 "VALUES ('doc-bio', 'photosynthesis.md', 'md', 'ready', 'manual_text', 'Biology')"
             )
-            ids = insert_typed_nodes(conn, "doc-bio", [
-                _node(0, text="Plants use chlorophyll to capture light energy"),
-            ])
+            ids = insert_typed_nodes(
+                conn,
+                "doc-bio",
+                [
+                    _node(0, text="Plants use chlorophyll to capture light energy"),
+                ],
+            )
             conn.commit()
             self._node_id = ids[0]
 

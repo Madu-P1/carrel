@@ -339,7 +339,9 @@ def _selector_score(concept: Dict[str, Any], goal: str) -> float:
         score += sum(6 for token in goal_tokens if token in concept_text)
     if len(clean_name) < 4:
         score -= 25
-    if any(re.search(pattern, raw_name, flags=re.IGNORECASE) for pattern in SELECTOR_NOISE_PATTERNS):
+    if any(
+        re.search(pattern, raw_name, flags=re.IGNORECASE) for pattern in SELECTOR_NOISE_PATTERNS
+    ):
         score -= 20
     return score
 
@@ -374,7 +376,10 @@ def _fallback_concept_options(
     concepts: List[Dict[str, Any]],
     goal: str,
 ) -> List[Dict[str, Any]]:
-    ordered = sorted(concepts, key=lambda item: (-_selector_score(item, goal), str(item.get("name") or "").lower()))
+    ordered = sorted(
+        concepts,
+        key=lambda item: (-_selector_score(item, goal), str(item.get("name") or "").lower()),
+    )
     if len(ordered) > SELECTOR_LIMIT:
         ordered = ordered[:SELECTOR_LIMIT]
     curated: List[Dict[str, Any]] = []
@@ -438,11 +443,17 @@ def build_concept_options(
     signature = _concept_selector_signature(document_row, concepts, goal)
     cache_key = _selector_cache_key(document_row["id"])
     cached = load_messages(_get_setting(conn, cache_key, ""))
-    if isinstance(cached, dict) and cached.get("signature") == signature and isinstance(cached.get("options"), list):
+    if (
+        isinstance(cached, dict)
+        and cached.get("signature") == signature
+        and isinstance(cached.get("options"), list)
+    ):
         cached_options = cached["options"]
     else:
         cached_options = _fallback_concept_options(concepts, goal)
-        _set_setting(conn, cache_key, json.dumps({"signature": signature, "options": cached_options}))
+        _set_setting(
+            conn, cache_key, json.dumps({"signature": signature, "options": cached_options})
+        )
 
     by_id = {concept["id"]: concept for concept in concepts}
     selected: List[Dict[str, Any]] = []
@@ -456,7 +467,8 @@ def build_concept_options(
             {
                 **concept,
                 "raw_name": concept.get("name"),
-                "name": item.get("display_name") or clean_concept_label(str(concept.get("name") or "")),
+                "name": item.get("display_name")
+                or clean_concept_label(str(concept.get("name") or "")),
                 "selector_reason": item.get("reason") or _selector_reason(concept, goal),
                 "selector_rank": rank,
             }
@@ -517,7 +529,9 @@ def fetch_documents(conn: sqlite3.Connection) -> List[Dict[str, object]]:
         except Exception:
             item["parser_diagnostics"] = {}
         item["confidence"] = _document_confidence(item["parser_diagnostics"])
-        detail = fetch_document_detail(conn, item["id"], include_chunks=False, include_selector_options=False)
+        detail = fetch_document_detail(
+            conn, item["id"], include_chunks=False, include_selector_options=False
+        )
         item["summary"] = detail["summary"]
         item["concept_count"] = detail["counts"]["concepts"]
         item["question_count"] = detail["counts"]["questions"]
@@ -564,7 +578,9 @@ def fetch_document_detail(
     summary = summarize_document(combined_text) if combined_text else "No extracted content yet."
     document_item = dict(document_row)
     try:
-        document_item["parser_diagnostics"] = json.loads(document_item.get("parser_diagnostics") or "{}")
+        document_item["parser_diagnostics"] = json.loads(
+            document_item.get("parser_diagnostics") or "{}"
+        )
     except Exception:
         document_item["parser_diagnostics"] = {}
     document_item["confidence"] = _document_confidence(document_item["parser_diagnostics"])
@@ -588,7 +604,11 @@ def fetch_document_detail(
         for row in question_rows:
             item = dict(row)
             item["difficulty"] = (
-                "Hard" if item["difficulty"] >= 0.7 else "Medium" if item["difficulty"] >= 0.45 else "Easy"
+                "Hard"
+                if item["difficulty"] >= 0.7
+                else "Medium"
+                if item["difficulty"] >= 0.45
+                else "Easy"
             )
             item["raw_concept"] = item["concept"]
             item["concept"] = clean_concept_label(item["concept"])
@@ -777,7 +797,9 @@ def list_subject_summaries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     return summaries
 
 
-def set_document_subject(conn: sqlite3.Connection, doc_id: str, subject_name: str) -> Dict[str, Any]:
+def set_document_subject(
+    conn: sqlite3.Connection, doc_id: str, subject_name: str
+) -> Dict[str, Any]:
     normalized_subject = normalize_subject_name(subject_name)
     updated = conn.execute(
         "UPDATE documents SET subject_name = ? WHERE id = ?",
@@ -801,7 +823,9 @@ def set_document_subject(conn: sqlite3.Connection, doc_id: str, subject_name: st
     except Exception:
         item["parser_diagnostics"] = {}
     item["confidence"] = _document_confidence(item["parser_diagnostics"])
-    detail = fetch_document_detail(conn, doc_id, include_chunks=False, include_selector_options=False)
+    detail = fetch_document_detail(
+        conn, doc_id, include_chunks=False, include_selector_options=False
+    )
     item["summary"] = detail["summary"]
     item["concept_count"] = detail["counts"]["concepts"]
     item["question_count"] = detail["counts"]["questions"]

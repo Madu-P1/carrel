@@ -4,6 +4,7 @@ These tests use minimal duck-typed stand-ins for Docling's NodeItem so
 they run in seconds without invoking the Docling pipeline. The walker
 contract is documented at the top of services/ingestion/typed_walker.py.
 """
+
 from __future__ import annotations
 
 import unittest
@@ -108,7 +109,7 @@ class TypedWalkerTests(unittest.TestCase):
         # against — important for PR 2 citation grounding.
         canonical = a + "\n\n" + b
         for node in nodes:
-            self.assertEqual(canonical[node.char_start:node.char_end], node.verbatim_text)
+            self.assertEqual(canonical[node.char_start : node.char_end], node.verbatim_text)
 
     def test_page_pulled_from_first_provenance_entry(self) -> None:
         nodes = walk(

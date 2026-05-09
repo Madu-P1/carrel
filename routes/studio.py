@@ -31,7 +31,9 @@ def studio_generate(payload: StudioGenerateRequest) -> Dict[str, Any]:
             grounding_mode=payload.grounding_mode,
             show_citations=payload.show_citations,
         )
-        log_study_event(conn, "artifact_generated", payload={"artifact_kind": payload.artifact_kind})
+        log_study_event(
+            conn, "artifact_generated", payload={"artifact_kind": payload.artifact_kind}
+        )
         return {"artifact": artifact}
 
 

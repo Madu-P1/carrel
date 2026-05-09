@@ -20,7 +20,9 @@ except ImportError:
 
 def parse_epub(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
     if epub_lib is None or BeautifulSoup is None or ebooklib is None:
-        raise HTTPException(status_code=400, detail="EPUB support requires ebooklib and beautifulsoup4")
+        raise HTTPException(
+            status_code=400, detail="EPUB support requires ebooklib and beautifulsoup4"
+        )
     file_id = file_sha(path)[:16]
     book = epub_lib.read_epub(str(path), options={"ignore_ncx": True})
     elements: list[ExtractedElement] = []
@@ -33,7 +35,9 @@ def parse_epub(path: Path, *, suffix: str, mime_type: str, context: ParserContex
         if not text:
             continue
         chapter_index += 1
-        span = make_span(path, file_id, section=f"Chapter {chapter_index}", element_id=f"epub-{chapter_index}")
+        span = make_span(
+            path, file_id, section=f"Chapter {chapter_index}", element_id=f"epub-{chapter_index}"
+        )
         elements.append(
             ExtractedElement(
                 id=span.element_id or f"epub-{chapter_index}",

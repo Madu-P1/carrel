@@ -6,6 +6,7 @@ Exercises `search_typed_hybrid` against a seeded mini corpus. Verifies:
 - Explicit node_types override the router.
 - The `RETRIEVAL_USE_NODES` flag reads correctly.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -57,7 +58,9 @@ class _DeterministicEmbedder:
         return self._vec(text)
 
 
-def _node(order: int, *, node_type: str = "body", text: str = "", heading_path: str = "Topic") -> TypedNode:
+def _node(
+    order: int, *, node_type: str = "body", text: str = "", heading_path: str = "Topic"
+) -> TypedNode:
     return TypedNode(
         node_type=node_type,
         heading_path=heading_path,
@@ -119,7 +122,11 @@ class RetrievalUseRerankerFlagTests(unittest.TestCase):
 class TypedHybridSearchTests(unittest.TestCase):
     def setUp(self) -> None:
         self._original = (
-            db.BASE_DIR, db.DATA_DIR, db.UPLOAD_DIR, db.DB_PATH, db.SCHEMA_PATH,
+            db.BASE_DIR,
+            db.DATA_DIR,
+            db.UPLOAD_DIR,
+            db.DB_PATH,
+            db.SCHEMA_PATH,
         )
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
@@ -129,8 +136,11 @@ class TypedHybridSearchTests(unittest.TestCase):
         (root / "schema.sql").write_text("-- test\n", encoding="utf-8")
         shutil.copytree(MIGRATIONS_SOURCE, root / "migrations", dirs_exist_ok=True)
         db.configure_paths(
-            base_dir=root, data_dir=data_dir, upload_dir=upload_dir,
-            db_path=data_dir / "test.db", schema_path=root / "schema.sql",
+            base_dir=root,
+            data_dir=data_dir,
+            upload_dir=upload_dir,
+            db_path=data_dir / "test.db",
+            schema_path=root / "schema.sql",
         )
         self._conn = db.get_db()
         db.apply_migrations(self._conn)
@@ -141,8 +151,10 @@ class TypedHybridSearchTests(unittest.TestCase):
         self._conn.close()
         self._tmp.cleanup()
         db.configure_paths(
-            base_dir=self._original[0], data_dir=self._original[1],
-            upload_dir=self._original[2], db_path=self._original[3],
+            base_dir=self._original[0],
+            data_dir=self._original[1],
+            upload_dir=self._original[2],
+            db_path=self._original[3],
             schema_path=self._original[4],
         )
 
@@ -153,14 +165,10 @@ class TypedHybridSearchTests(unittest.TestCase):
         )
         nodes = [
             _node(0, node_type="heading", text="Photosynthesis"),
-            _node(1, node_type="body",
-                  text="Plants use chlorophyll to capture light energy"),
-            _node(2, node_type="caption",
-                  text="Figure 1: The Calvin cycle and ATP regeneration"),
-            _node(3, node_type="table_cell",
-                  text="Light intensity 200 lux"),
-            _node(4, node_type="body",
-                  text="Cell division separates chromosomes during mitosis"),
+            _node(1, node_type="body", text="Plants use chlorophyll to capture light energy"),
+            _node(2, node_type="caption", text="Figure 1: The Calvin cycle and ATP regeneration"),
+            _node(3, node_type="table_cell", text="Light intensity 200 lux"),
+            _node(4, node_type="body", text="Cell division separates chromosomes during mitosis"),
         ]
         ids = insert_typed_nodes(self._conn, "doc-1", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
@@ -171,7 +179,9 @@ class TypedHybridSearchTests(unittest.TestCase):
 
     def test_returns_RetrievedNode_with_full_metadata(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
         )
         self.assertTrue(hits)
         top = hits[0]
@@ -184,7 +194,9 @@ class TypedHybridSearchTests(unittest.TestCase):
 
     def test_score_is_sum_of_components(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
         )
         for hit in hits:
             self.assertAlmostEqual(
@@ -195,7 +207,9 @@ class TypedHybridSearchTests(unittest.TestCase):
 
     def test_components_record_each_source(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
         )
         # The matched body row appears in both BM25 and vector candidates,
         # so its components dict should record both sources.
@@ -209,14 +223,18 @@ class TypedHybridSearchTests(unittest.TestCase):
         # router returns the prose backbone only. The seeded `caption`
         # and `table_cell` rows must not surface.
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
         )
         for hit in hits:
             self.assertIn(hit.node_type, {"heading", "body", "list_item"})
 
     def test_table_keyword_pulls_in_table_cells(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "table light intensity", embedder=self._embedder,
+            self._conn,
+            "table light intensity",
+            embedder=self._embedder,
         )
         node_types = {hit.node_type for hit in hits}
         self.assertIn("table_cell", node_types)
@@ -225,7 +243,8 @@ class TypedHybridSearchTests(unittest.TestCase):
         # Even though the query lacks "figure", we can force captions
         # by passing an explicit allowlist.
         hits = search_typed_hybrid(
-            self._conn, "Calvin",
+            self._conn,
+            "Calvin",
             embedder=self._embedder,
             node_types=["caption"],
         )
@@ -235,7 +254,8 @@ class TypedHybridSearchTests(unittest.TestCase):
 
     def test_doc_id_filter_propagates_through_both_lists(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll",
+            self._conn,
+            "chlorophyll",
             embedder=self._embedder,
             doc_ids=["doc-1"],
         )
@@ -244,7 +264,8 @@ class TypedHybridSearchTests(unittest.TestCase):
 
     def test_results_are_score_descending(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "Plants chlorophyll cell division",
+            self._conn,
+            "Plants chlorophyll cell division",
             embedder=self._embedder,
             limit=10,
         )
@@ -271,7 +292,9 @@ class RerankIntegrationTests(TypedHybridSearchTests):
 
     def test_use_reranker_off_returns_pure_rrf_score(self) -> None:
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
         )
         for hit in hits:
             self.assertIsNone(hit.rerank_score)
@@ -279,7 +302,10 @@ class RerankIntegrationTests(TypedHybridSearchTests):
 
     def test_use_reranker_on_populates_rerank_score(self) -> None:
         hits_no_rerank = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder, limit=5,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
         )
         candidate_texts = {h.verbatim_text for h in hits_no_rerank}
         # Force the reranker to flip ordering: pick a non-top RRF hit
@@ -287,9 +313,12 @@ class RerankIntegrationTests(TypedHybridSearchTests):
         chosen = sorted(hits_no_rerank, key=lambda h: h.score)[0].verbatim_text
         stub = _StubReranker({chosen: 0.95})
         hits = search_typed_hybrid(
-            self._conn, "chlorophyll",
-            embedder=self._embedder, limit=5,
-            use_reranker=True, reranker=stub,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
+            use_reranker=True,
+            reranker=stub,
         )
         # Stub was called once with all candidates.
         self.assertEqual(len(stub.calls), 1)
@@ -305,18 +334,27 @@ class RerankIntegrationTests(TypedHybridSearchTests):
     def test_blended_score_pulls_top_to_reranker_choice(self) -> None:
         # Run baseline without rerank to see who the RRF top hit is.
         baseline = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder, limit=5,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
         )
         self.assertTrue(baseline)
         baseline_top = baseline[0].verbatim_text
         # Pick the lowest-RRF candidate and give it 1.0 from the reranker.
         target = baseline[-1].verbatim_text
         self.assertNotEqual(target, baseline_top)
-        stub = _StubReranker({text: (1.0 if text == target else 0.0) for text in [b.verbatim_text for b in baseline]})
+        stub = _StubReranker(
+            {text: (1.0 if text == target else 0.0) for text in [b.verbatim_text for b in baseline]}
+        )
         rescored = search_typed_hybrid(
-            self._conn, "chlorophyll",
-            embedder=self._embedder, limit=5,
-            use_reranker=True, reranker=stub, rerank_blend=0.7,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
+            use_reranker=True,
+            reranker=stub,
+            rerank_blend=0.7,
         )
         # 0.7 weight on rerank, 0.3 on RRF — the stubbed-1.0 doc must
         # come out on top even though it had the lowest RRF score.
@@ -325,29 +363,42 @@ class RerankIntegrationTests(TypedHybridSearchTests):
     def test_rerank_blend_zero_collapses_to_pure_rrf(self) -> None:
         # rerank_blend=0 means we keep the RRF ordering even with rerank on.
         baseline = search_typed_hybrid(
-            self._conn, "chlorophyll", embedder=self._embedder, limit=5,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
         )
         stub = _StubReranker({h.verbatim_text: (1.0 - i * 0.1) for i, h in enumerate(baseline)})
         rescored = search_typed_hybrid(
-            self._conn, "chlorophyll",
-            embedder=self._embedder, limit=5,
-            use_reranker=True, reranker=stub, rerank_blend=0.0,
+            self._conn,
+            "chlorophyll",
+            embedder=self._embedder,
+            limit=5,
+            use_reranker=True,
+            reranker=stub,
+            rerank_blend=0.0,
         )
         # Same top hit as the baseline.
         self.assertEqual(rescored[0].verbatim_text, baseline[0].verbatim_text)
 
     def test_rerank_top_caps_how_many_candidates_get_reranked(self) -> None:
         baseline = search_typed_hybrid(
-            self._conn, "chlorophyll Plants Calvin",
-            embedder=self._embedder, limit=10,
+            self._conn,
+            "chlorophyll Plants Calvin",
+            embedder=self._embedder,
+            limit=10,
         )
         if len(baseline) < 2:
             self.skipTest("seeded corpus too small to assert rerank_top truncation")
         stub = _StubReranker({})
         search_typed_hybrid(
-            self._conn, "chlorophyll Plants Calvin",
-            embedder=self._embedder, limit=10,
-            use_reranker=True, reranker=stub, rerank_top=1,
+            self._conn,
+            "chlorophyll Plants Calvin",
+            embedder=self._embedder,
+            limit=10,
+            use_reranker=True,
+            reranker=stub,
+            rerank_top=1,
         )
         called_docs = stub.calls[0][1]
         self.assertEqual(len(called_docs), 1)
@@ -358,10 +409,18 @@ class ApplyRerankUnitTests(unittest.TestCase):
 
     def _node(self, node_id: int, text: str, rrf: float) -> RetrievedNode:
         return RetrievedNode(
-            node_id=node_id, doc_id="doc-1", node_type="body",
-            heading_path="", page=None, char_start=0, char_end=len(text),
-            verbatim_text=text, snippet=text, score=rrf,
-            components={"fts": rrf}, sources=("fts",),
+            node_id=node_id,
+            doc_id="doc-1",
+            node_type="body",
+            heading_path="",
+            page=None,
+            char_start=0,
+            char_end=len(text),
+            verbatim_text=text,
+            snippet=text,
+            score=rrf,
+            components={"fts": rrf},
+            sources=("fts",),
         )
 
     def test_blend_formula_matches_spec(self) -> None:
@@ -381,7 +440,7 @@ class ApplyRerankUnitTests(unittest.TestCase):
 
     def test_blend_with_disagreement_uses_weighted_sum(self) -> None:
         a = self._node(1, "alpha", rrf=10.0)  # RRF top
-        b = self._node(2, "beta", rrf=0.0)    # RRF bottom
+        b = self._node(2, "beta", rrf=0.0)  # RRF bottom
         # Reranker disagrees: beta=1.0, alpha=0.0
         stub = _StubReranker({"alpha": 0.0, "beta": 1.0})
         rescored = _apply_rerank([a, b], "q", stub, blend=0.7)

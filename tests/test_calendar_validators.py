@@ -19,15 +19,11 @@ from services.calendar.validators import (
 
 class MaskUrlTests(unittest.TestCase):
     def test_masks_path_keeps_scheme_and_host(self) -> None:
-        masked = mask_url(
-            "https://calendar.google.com/calendar/ical/abc123/basic.ics"
-        )
+        masked = mask_url("https://calendar.google.com/calendar/ical/abc123/basic.ics")
         self.assertEqual(masked, "https://calendar.google.com/***")
 
     def test_masks_query_string_too(self) -> None:
-        masked = mask_url(
-            "https://learn.escp.eu/cal?token=secret&user=42"
-        )
+        masked = mask_url("https://learn.escp.eu/cal?token=secret&user=42")
         self.assertEqual(masked, "https://learn.escp.eu/***")
 
     def test_idempotent_on_already_masked(self) -> None:
@@ -112,6 +108,7 @@ class ValidateFeedUrlTests(unittest.TestCase):
 
     def test_dns_failure_surfaces(self) -> None:
         import socket as _socket
+
         with mock.patch(
             "services.calendar.validators.socket.getaddrinfo",
             side_effect=_socket.gaierror("nodename nor servname"),
@@ -127,7 +124,7 @@ class ValidateFeedUrlTests(unittest.TestCase):
             "services.calendar.validators.socket.getaddrinfo",
             return_value=[
                 (0, 0, 0, "", ("142.250.190.78", 0)),  # public
-                (0, 0, 0, "", ("10.0.0.5", 0)),         # private
+                (0, 0, 0, "", ("10.0.0.5", 0)),  # private
             ],
         ):
             result = validate_feed_url("https://hostile.example/cal")

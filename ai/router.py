@@ -147,7 +147,9 @@ class ClaudeRouter:
             return self.deep_model
         return self.balanced_model
 
-    def _system_payload(self, system: str, *, cache_system_prompt: bool) -> str | list[dict[str, Any]]:
+    def _system_payload(
+        self, system: str, *, cache_system_prompt: bool
+    ) -> str | list[dict[str, Any]]:
         cleaned = system.strip()
         if not cache_system_prompt or not cleaned:
             return cleaned
@@ -406,7 +408,9 @@ class ClaudeRouter:
             text=text,
             json_payload=payload if isinstance(payload, dict) else None,
             error_code=None if isinstance(payload, dict) else "no_tool_call",
-            error_message=None if isinstance(payload, dict) else "Claude did not return a tool_use block.",
+            error_message=None
+            if isinstance(payload, dict)
+            else "Claude did not return a tool_use block.",
             latency_ms=round((time.perf_counter() - start) * 1000, 2),
             input_tokens=self._usage_metric(usage, "input_tokens"),
             output_tokens=self._usage_metric(usage, "output_tokens"),

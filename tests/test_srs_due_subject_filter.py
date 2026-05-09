@@ -4,6 +4,7 @@ Verifies the WHERE clause threading: a subject filter only returns
 cards joined to a document whose `subject_name` matches; doc_id
 filters on `concepts.doc_id`. Both AND together.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -30,12 +31,18 @@ class SrsDueSubjectFilterTests(unittest.TestCase):
         shutil.copytree(MIGRATIONS_SOURCE, base_dir / "migrations", dirs_exist_ok=True)
         (base_dir / "schema.sql").write_text("-- test\n", encoding="utf-8")
         self._original = (
-            db.BASE_DIR, db.DATA_DIR, db.UPLOAD_DIR,
-            db.DB_PATH, db.SCHEMA_PATH,
+            db.BASE_DIR,
+            db.DATA_DIR,
+            db.UPLOAD_DIR,
+            db.DB_PATH,
+            db.SCHEMA_PATH,
         )
         db.configure_paths(
-            base_dir=base_dir, data_dir=data_dir, upload_dir=upload_dir,
-            db_path=data_dir / "test.db", schema_path=base_dir / "schema.sql",
+            base_dir=base_dir,
+            data_dir=data_dir,
+            upload_dir=upload_dir,
+            db_path=data_dir / "test.db",
+            schema_path=base_dir / "schema.sql",
         )
         self._conn = db.get_db()
         db.apply_migrations(self._conn)
@@ -45,8 +52,10 @@ class SrsDueSubjectFilterTests(unittest.TestCase):
         self._conn.close()
         self._tmp.cleanup()
         db.configure_paths(
-            base_dir=self._original[0], data_dir=self._original[1],
-            upload_dir=self._original[2], db_path=self._original[3],
+            base_dir=self._original[0],
+            data_dir=self._original[1],
+            upload_dir=self._original[2],
+            db_path=self._original[3],
             schema_path=self._original[4],
         )
 

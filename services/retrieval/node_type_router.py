@@ -12,6 +12,7 @@ table cells. The mapping is keyword-driven and deliberately conservative
 from `node_embeddings`. Including them in the BM25 filter would still
 let them surface from `node_fts`, so the filter clamps them out here.
 """
+
 from __future__ import annotations
 
 import re
