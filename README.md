@@ -6,13 +6,23 @@ Local-first, source-grounded AI study and research workspace for macOS. Drop in 
 
 > **Renamed from Einstein Tutor.** Some internal identifiers (the macOS app bundle `EinsteinDesktop.app`, `com.madu.EinsteinDesktop` bundle ID, and the `data/einstein_tutor.db` SQLite file) are still on the old names because renaming them is a system-level / data-migration concern. See `docs/notes/2026-04-29-carrel-rename.md` for the full deferral list.
 
-**Trying Carrel for the first time?** One line:
+**Trying Carrel for the first time?** One paste with your Anthropic key:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
+  ANTHROPIC_API_KEY=sk-ant-api03-your-key-here bash
 ```
 
-That installs `uv` (which brings standalone Python 3.12), creates a venv, installs deps, fetches `bun`, sets up `.env`, then builds and launches. Full walkthrough + troubleshooting: [`docs/install-beta.md`](docs/install-beta.md).
+Or local-Ollama instead of Claude:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
+  EINSTEIN_AI_PROVIDER=ollama bash
+```
+
+Either form clones the repo, installs `uv` (which brings standalone Python 3.12), creates a venv, installs deps, fetches `pnpm` + Node, writes the credential to `.env`, builds, and launches the app. ~5-10 minutes the first run.
+
+Without the env var, install runs fine but stops short of launching and tells you to edit `.env` and run `./script/build_and_run.sh` yourself. Full walkthrough + troubleshooting: [`docs/install-beta.md`](docs/install-beta.md).
 
 Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN.md).
 

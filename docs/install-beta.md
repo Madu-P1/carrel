@@ -17,20 +17,48 @@
 - Bun — `curl -fsSL https://bun.sh/install | bash` (or `pnpm`/`npm`, the build script picks whichever is on `PATH`)
 - An Anthropic API key, OR a local `ollama serve` running. Carrel needs an LLM somewhere; without one the tutor will refuse every question.
 
-## Install — the fast path
+## Install — the one-paste path (recommended)
 
-One command. Paste it into Terminal:
+Bring your Anthropic API key (get one at
+https://console.anthropic.com/settings/keys), then paste this into
+Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
+  ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE bash
+```
+
+Note the env var goes on `bash`, not on `curl` — pipelines run `curl`
+and `bash` in separate processes, so the env var prefix only applies
+to whichever side it's attached to. Wrong syntax (`ANTHROPIC_API_KEY=...
+curl ...`) silently falls through to the deferred-launch path because
+`bash` never sees the variable.
+
+Want to use local Ollama instead of Claude? Same pattern:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
+  EINSTEIN_AI_PROVIDER=ollama bash
+```
+
+Make sure `ollama serve` is running with a model pulled
+(`ollama pull llama3.1:8b`) before launching, or the tutor will refuse
+every question.
+
+## Install — the interactive path (if you'd rather be prompted)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
 ```
 
-The installer clones the repo into `./carrel/`, installs `uv` (which
-manages standalone Python so you don't need Homebrew), builds the venv,
-installs all dependencies, fetches `bun`, prompts for an Anthropic API
-key (or routes you to Ollama if you skip), then builds and launches.
+Without an env var, the installer runs every step except the launch.
+At the end it prints "Install complete (launch deferred)" and tells
+you to edit `.env` to set your provider, then run
+`./script/build_and_run.sh` from the repo. Use this form if you want
+to inspect `.env` before the app starts.
 
-If you already cloned, `cd` into the repo first and run `./install.sh`.
+If you already cloned, `cd` into the repo first and run `./install.sh`
+(env-var prefix works the same way, or it'll prompt interactively).
 The script detects which mode you're in and acts accordingly.
 
 ## Install — the manual path (if you want to see every step)

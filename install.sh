@@ -216,12 +216,54 @@ if [[ ! -f ".env" ]]; then
   ok "Wrote .env from .env.example"
 fi
 
-current_key="$(grep -E '^ANTHROPIC_API_KEY=' .env | cut -d= -f2- || true)"
-needs_provider_setup=false
-if [[ -z "$current_key" ]]; then
-  current_provider="$(grep -E '^EINSTEIN_AI_PROVIDER=' .env | cut -d= -f2- || true)"
-  if [[ "$current_provider" != "ollama" && "$current_provider" != "off" ]]; then
-    needs_provider_setup=true
+# Pre-fill from the inherited environment so the one-paste form works:
+#
+#   curl -fsSL .../install.sh | ANTHROPIC_API_KEY=sk-ant-... bash
+#
+# When the env var is set, we write it straight to .env and skip the
+# interactive prompt + the SKIP_LAUNCH defer. The friend ends up at a
+# running app with no manual editing.
+#
+# Only act on env-vars that were explicitly passed in by the caller —
+# if neither is set, fall through to the existing prompt-or-skip logic
+# so a re-run preserves whatever is already in .env.
+ENV_API_KEY="${ANTHROPIC_API_KEY:-}"
+ENV_AI_PROVIDER="${EINSTEIN_AI_PROVIDER:-}"
+
+if [[ -n "$ENV_API_KEY" ]]; then
+  python3 - "$ENV_API_KEY" <<'PY'
+import sys, re
+key = sys.argv[1]
+path = ".env"
+with open(path) as f: text = f.read()
+text = re.sub(r"^ANTHROPIC_API_KEY=.*$",
+              f"ANTHROPIC_API_KEY={key}",
+              text, count=1, flags=re.MULTILINE)
+with open(path, "w") as f: f.write(text)
+PY
+  ok "ANTHROPIC_API_KEY taken from environment, written to .env"
+  needs_provider_setup=false
+elif [[ "$ENV_AI_PROVIDER" == "ollama" ]]; then
+  python3 - <<'PY'
+import re
+path = ".env"
+with open(path) as f: text = f.read()
+text = re.sub(r"^EINSTEIN_AI_PROVIDER=.*$",
+              "EINSTEIN_AI_PROVIDER=ollama",
+              text, count=1, flags=re.MULTILINE)
+with open(path, "w") as f: f.write(text)
+PY
+  ok "EINSTEIN_AI_PROVIDER=ollama taken from environment, written to .env"
+  warn "Make sure 'ollama serve' is running before launching, or the tutor will refuse every question."
+  needs_provider_setup=false
+else
+  current_key="$(grep -E '^ANTHROPIC_API_KEY=' .env | cut -d= -f2- || true)"
+  needs_provider_setup=false
+  if [[ -z "$current_key" ]]; then
+    current_provider="$(grep -E '^EINSTEIN_AI_PROVIDER=' .env | cut -d= -f2- || true)"
+    if [[ "$current_provider" != "ollama" && "$current_provider" != "off" ]]; then
+      needs_provider_setup=true
+    fi
   fi
 fi
 
