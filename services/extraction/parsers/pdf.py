@@ -158,6 +158,113 @@ def _pdf_page_elements(
     return elements
 
 
+# A scanned PDF whose only native text layer is a per-page watermark
+# ("Reproduced with permission..." stamps from ProQuest, library scans,
+# etc.) leaks through both the macOS NativeBridge and PyPDF2 with a
+# suspiciously low usable-text-per-page density. The user-visible
+# symptom: 18-page paper renders as a single 170-char chunk in the
+# Reader and produces zero useful concepts in the Atlas.
+#
+# When usable text is below this threshold per page we treat the
+# extraction as scanned-only and retry with Docling, which has built-in
+# RapidOCR. Threshold tuned against the Daft & Lengel 1986 paper (a
+# real first-user case): bridge yielded ~9 chars/page of body text;
+# Docling-OCR yielded 145 typed nodes from the same file.
+_SCANNED_PDF_USABLE_CHARS_PER_PAGE = 30
+
+
+def _usable_chars(elements: list[ExtractedElement]) -> int:
+    """Sum the lengths of element text after the parser's own
+    footer/noise/outline filtering. Watermark and copyright stamps are
+    classified as `footer` and excluded from `normalized_text`, so we
+    measure the body content the chunker will actually see."""
+    return sum(len(element.normalized_text or "") for element in elements)
+
+
+def _looks_like_scanned_pdf(elements: list[ExtractedElement], page_count: int | None) -> bool:
+    """Density heuristic: real academic / business PDFs carry hundreds
+    of body chars per page. When the bridge or PyPDF2 returns a tiny
+    fraction of that across many pages, it almost always means the text
+    layer is just per-page metadata and the body is image-only."""
+    if not page_count or page_count < 2:
+        return False
+    return _usable_chars(elements) / page_count < _SCANNED_PDF_USABLE_CHARS_PER_PAGE
+
+
+def _docling_ocr_fallback(path: Path, file_id: str) -> tuple[list[ExtractedElement], int | None]:
+    """Best-effort OCR re-extract via Docling. Returns (elements, pages)
+    on success and ([], None) when Docling is missing, throws, or
+    produces nothing usable. Caller decides whether to use the result.
+
+    Lazy-import keeps services.extraction free of a hard Docling
+    dependency — Docling is ~1-2 GB and the typed-nodes path was the
+    first place it landed. Reusing the same wrapper here means the
+    ~1-2 GB cost is only paid once, by users who installed Docling
+    deliberately."""
+    try:
+        from services.ingestion import docling_parser, typed_walker
+    except Exception:
+        return [], None
+    if not docling_parser.is_available():
+        return [], None
+    try:
+        doc = docling_parser.parse_document(path)
+        nodes = typed_walker.walk(doc)
+    except Exception:
+        return [], None
+    if not nodes:
+        return [], None
+
+    elements: list[ExtractedElement] = []
+    page_numbers: set[int] = set()
+    counter = 0
+    for node in nodes:
+        text = (node.verbatim_text or "").strip()
+        if not text:
+            continue
+        page = node.page if node.page else None
+        if page is not None:
+            page_numbers.add(int(page))
+        section = node.heading_path or (f"Page {page}" if page else path.stem)
+        # Map the typed-walker node_type onto the ExtractedElement.kind
+        # vocabulary used by the chunk builder. Anything that is not a
+        # heading, list_item, caption, footnote, equation, header, or
+        # footer becomes a paragraph — same default the bridge path
+        # uses for body text.
+        kind_map = {
+            "heading": "heading",
+            "list_item": "bullet_list",
+            "caption": "caption",
+            "footnote": "footnote",
+            "equation": "formula",
+            "header": "heading",
+            "footer": "paragraph",
+        }
+        kind = kind_map.get(node.node_type, "paragraph")
+        counter += 1
+        element_id = f"docling-ocr-{counter}"
+        elements.append(
+            ExtractedElement(
+                id=element_id,
+                kind=kind,
+                text=text,
+                normalized_text=text,
+                span=make_span(
+                    path,
+                    file_id,
+                    page=page,
+                    section=section,
+                    element_id=element_id,
+                ),
+                role="body",
+                confidence=0.72,
+                metadata={"used_ocr": True, "source": "docling-rapidocr"},
+            )
+        )
+    page_count = max(page_numbers) if page_numbers else None
+    return elements, page_count
+
+
 def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext):
     file_id = file_sha(path)[:16]
     bridge = NativeBridge.run(path)
@@ -185,6 +292,39 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
                     metadata=metadata,
                 )
             )
+        bridge_page_count = bridge.get("page_count")
+        if _looks_like_scanned_pdf(elements, bridge_page_count):
+            ocr_elements, ocr_page_count = _docling_ocr_fallback(path, file_id)
+            ocr_chars = _usable_chars(ocr_elements)
+            bridge_chars = _usable_chars(elements)
+            if ocr_elements and ocr_chars > bridge_chars * 4:
+                # Docling beat the bridge by a wide margin — replace.
+                # The 4x guard avoids triggering the swap on a marginal
+                # win where Docling hallucinated a couple of lines.
+                return build_asset(
+                    path,
+                    detected_type=suffix,
+                    mime_type=mime_type,
+                    parser_name="apple-pdfkit-vision+docling-rapidocr",
+                    elements=ocr_elements,
+                    context=context,
+                    warnings=warnings
+                    + [
+                        f"Native text layer was watermark-only "
+                        f"({bridge_chars} chars across {bridge_page_count} pages). "
+                        f"Re-extracted via Docling OCR — recovered {ocr_chars} chars."
+                    ],
+                    extraction_modes=["ocr_fallback"],
+                    metadata={"page_count": ocr_page_count or bridge_page_count},
+                    confidence=0.72,
+                )
+            warnings.append(
+                f"PDF appears to be a scanned document. Only {bridge_chars} chars "
+                f"of usable body text recovered from {bridge_page_count} pages, "
+                "and Docling OCR was not available or produced no improvement. "
+                "The Reader and Concept Atlas will be sparse — re-upload an OCR'd "
+                "version if you have one."
+            )
         return build_asset(
             path,
             detected_type=suffix,
@@ -194,7 +334,7 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
             context=context,
             warnings=warnings,
             extraction_modes=extraction_modes,
-            metadata={"page_count": bridge.get("page_count")},
+            metadata={"page_count": bridge_page_count},
             confidence=float(bridge.get("confidence") or 0.86),
         )
 
@@ -217,9 +357,37 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
                 metadata={"used_ocr": False, "native_char_count": len(text), "ocr_char_count": 0},
             )
         )
+    pdf_page_count = len(reader.pages)
     if empty_pages:
         warnings.append(
             f"{empty_pages} page(s) had no native text layer. Build the macOS helper for OCR fallback."
+        )
+    if _looks_like_scanned_pdf(elements, pdf_page_count):
+        ocr_elements, ocr_page_count = _docling_ocr_fallback(path, file_id)
+        ocr_chars = _usable_chars(ocr_elements)
+        pypdf_chars = _usable_chars(elements)
+        if ocr_elements and ocr_chars > pypdf_chars * 4:
+            return build_asset(
+                path,
+                detected_type=suffix,
+                mime_type=mime_type,
+                parser_name="pypdf2+docling-rapidocr",
+                elements=ocr_elements,
+                context=context,
+                warnings=warnings
+                + [
+                    f"PyPDF2 found only {pypdf_chars} chars across "
+                    f"{pdf_page_count} pages. Re-extracted via Docling OCR — "
+                    f"recovered {ocr_chars} chars."
+                ],
+                extraction_modes=["ocr_fallback"],
+                metadata={"page_count": ocr_page_count or pdf_page_count},
+                confidence=0.72,
+            )
+        warnings.append(
+            f"PDF appears to be a scanned document. Only {pypdf_chars} chars "
+            f"of usable body text recovered from {pdf_page_count} pages, "
+            "and Docling OCR was not available or produced no improvement."
         )
     return build_asset(
         path,
@@ -230,6 +398,6 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
         context=context,
         warnings=warnings,
         extraction_modes=["native_text"],
-        metadata={"page_count": len(reader.pages)},
+        metadata={"page_count": pdf_page_count},
         confidence=0.74 if empty_pages else 0.88,
     )
