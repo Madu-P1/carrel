@@ -14,23 +14,27 @@ never returned by GET responses.
 
 from __future__ import annotations
 
-import asyncio
-import logging
+import hashlib
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import db
 from api_models import (
     CalendarFeedCreatedResponse,
     CalendarFeedCreateRequest,
+    CalendarIcsUploadResponse,
     CalendarFeedRow,
+    LocalCalendarSyncRequest,
+    LocalCalendarSyncResponse,
     SyncFeedResponse,
 )
 from app_logging import get_logger
-from services.calendar import repository, sync_service
+from services.calendar import local_sync, repository, sync_service
+from services.calendar.ical_parser import ICalParseError, parse_ics
 from services.calendar.validators import (
+    MAX_RESPONSE_BYTES,
     mask_url,
     validate_feed_url,
 )
@@ -134,6 +138,93 @@ def create_feed(payload: CalendarFeedCreateRequest) -> CalendarFeedCreatedRespon
     )
 
 
+@router.post("/api/calendar/ics-upload", response_model=CalendarIcsUploadResponse)
+async def upload_ics_file(
+    label: str = Form(...),
+    color: Optional[str] = Form(default=None),
+    file: UploadFile = File(...),
+) -> CalendarIcsUploadResponse:
+    """Import an Apple Calendar `.ics` export as a local calendar source.
+
+    We parse the file and upsert events immediately, but we do not keep
+    the uploaded bytes, local path, or filename. The feed row stores a
+    stable content hash for duplicate detection plus a non-secret display
+    label.
+    """
+    clean_label = (label or "").strip()
+    clean_color = (color or "").strip() or None
+    filename = (file.filename or "").lower()
+    if not clean_label:
+        raise HTTPException(status_code=400, detail="Label is required.")
+    if not filename.endswith(".ics"):
+        raise HTTPException(
+            status_code=400,
+            detail="Choose an .ics file exported from Apple Calendar.",
+        )
+
+    body = await file.read(MAX_RESPONSE_BYTES + 1)
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise HTTPException(status_code=413, detail="Calendar file is too large.")
+    if b"BEGIN:VCALENDAR" not in body[:4096].upper():
+        raise HTTPException(
+            status_code=400,
+            detail="This does not look like an iCalendar (.ics) file.",
+        )
+
+    try:
+        parsed = parse_ics(body)
+    except ICalParseError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{exc.reason}: {exc.detail}",
+        ) from exc
+
+    content_hash = hashlib.sha256(body).hexdigest()
+    with db.get_db() as conn:
+        try:
+            feed = repository.insert_uploaded_ics_feed(
+                conn,
+                label=clean_label,
+                content_hash=content_hash,
+                color=clean_color,
+            )
+        except Exception as exc:
+            if "UNIQUE" in str(exc).upper():
+                raise HTTPException(
+                    status_code=409,
+                    detail="This .ics file has already been imported.",
+                ) from exc
+            raise
+
+        run_id = repository.begin_sync_run(conn, feed.id)
+        items_upserted, items_deleted = repository.upsert_events(conn, feed.id, parsed)
+        repository.complete_sync_run(
+            conn,
+            run_id,
+            status="success",
+            items_seen=len(parsed),
+            items_upserted=items_upserted,
+            items_deleted=items_deleted,
+        )
+        repository.update_feed_after_sync(
+            conn,
+            feed.id,
+            succeeded=True,
+            etag=None,
+            last_modified=None,
+            error_message=None,
+        )
+        feed = repository.get_feed(conn, feed.id)
+
+    return CalendarIcsUploadResponse(
+        feed=_row_to_response(feed),
+        raw_url_echo="Uploaded .ics file",
+        items_seen=len(parsed),
+        items_upserted=items_upserted,
+        items_deleted=items_deleted,
+    )
+
+
 @router.get("/api/calendar/feeds", response_model=List[CalendarFeedRow])
 def list_feeds() -> List[CalendarFeedRow]:
     with db.get_db() as conn:
@@ -181,6 +272,40 @@ def sync_feed(feed_id: str) -> SyncFeedResponse:
         items_deleted=outcome.items_deleted,
         status=outcome.status,
         error=outcome.error,
+    )
+
+
+@router.post("/api/calendar/local/sync", response_model=LocalCalendarSyncResponse)
+def sync_local_calendar(payload: LocalCalendarSyncRequest) -> LocalCalendarSyncResponse:
+    """Receive an Apple Calendar (EventKit) sync from the macOS shell.
+
+    The macOS bridge calls this on launch and again on every
+    EKEventStoreChanged notification. The body carries one EKCalendar's
+    events; this handler upserts them through the same code path that
+    HTTP feeds use, so downstream consumers (planner, coach, dashboard)
+    don't care which kind of feed produced an event.
+    """
+    with db.get_db() as conn:
+        feed, items_seen, items_upserted, items_deleted = local_sync.sync_local_calendar(
+            conn, payload
+        )
+    LOGGER.info(
+        "local_calendar_synced",
+        extra={
+            "context": {
+                "feed_id": feed.id,
+                "calendar_identifier": payload.calendar_identifier,
+                "items_seen": items_seen,
+                "items_upserted": items_upserted,
+                "items_deleted": items_deleted,
+            }
+        },
+    )
+    return LocalCalendarSyncResponse(
+        feed_id=feed.id,
+        items_seen=items_seen,
+        items_upserted=items_upserted,
+        items_deleted=items_deleted,
     )
 
 

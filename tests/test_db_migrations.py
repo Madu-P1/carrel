@@ -101,6 +101,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (10, "0010_jobs_onboarding.sql"),
                 (11, "0011_usage_events.sql"),
                 (12, "0012_calendar_feed_secret_refs.sql"),
+                (14, "0014_calendar_local_feed_kind.sql"),
                 (16, "0016_nodes_typed.sql"),
             ]
         )
@@ -113,6 +114,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertIn("chunks_fts", tables)
         self.assertIn("usage_events", tables)
         self.assertIn("keychain_ref", calendar_feed_columns)
+        self.assertIn("kind", calendar_feed_columns)
         self.assertTrue({"chunks_ai", "chunks_ad", "chunks_au"} <= triggers)
         # PR 1: typed-node tables + FTS triggers from migration 0016.
         self.assertIn("nodes", tables)
@@ -134,11 +136,12 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "total"
                 ]
 
-        # +6 for 0008_anchors, 0009_calendar_and_planning,
+        # +7 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
-        # 0012_calendar_feed_secret_refs, and 0016_nodes_typed —
-        # all unconditional (no runtime gate like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 6
+        # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
+        # and 0016_nodes_typed — all unconditional (no runtime gate
+        # like sqlite-vec).
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 7
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -172,6 +175,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0010_jobs_onboarding.sql",
                 "0011_usage_events.sql",
                 "0012_calendar_feed_secret_refs.sql",
+                "0014_calendar_local_feed_kind.sql",
                 "0016_nodes_typed.sql",
             ]
         )
