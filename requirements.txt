@@ -4,7 +4,7 @@ pydantic
 icalendar
 recurring-ical-events
 PyPDF2
-python-multipart
+python-multipart>=0.0.27  # CVE-2026-42561
 anthropic
 python-dotenv
 python-docx
