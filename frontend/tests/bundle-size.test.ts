@@ -85,8 +85,16 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    stable Ask route/focus contracts, onboarding state
  *                    controller, and compact shell status wiring. These
  *                    are app-shell reliability paths, not lazy feature
- *                    detail. */
-const ENTRY_JS_GZIP_BUDGET = 97 * 1024;
+ *                    detail.
+ *    97 KB → 100 KB: Ask-pipeline UI + Study card overhaul shipped:
+ *                    PR 4.1's AskCard / AskCardList / useAskCards;
+ *                    PR 4.2's useNodeDeepLink + reader.fetchNode;
+ *                    S-1's SrsSubjectScopePill + study scope state;
+ *                    S-2's FlipCard / RatingRow / StudyFocusOverlay.
+ *                    Live size at the bump: ~99.6 KB gz. Headroom
+ *                    (~400 bytes) is deliberately tight to keep the
+ *                    next addition honest about its weight. */
+const ENTRY_JS_GZIP_BUDGET = 100 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
