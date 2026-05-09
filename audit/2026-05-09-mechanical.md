@@ -126,8 +126,8 @@ Three of the five (`artifact_studio.py`, `tutor.py`, `concept_candidates.py`) si
 | `duration, easing, motion, prefersReducedMotion, transition, transitions, useAnimation` | `src/design-system/motion.ts` (and re-exports) |
 
 ### MED-7: 24 unused exported types
-- 22 are design-system primitive `*Props` types re-exported from index files (`BadgeProps`, `BoxProps`, etc.). These are intentional API surfaces for consumers — knip can't see the public-API intent. Add to knip ignore.
-- 4 are real candidates for removal: `DuplicateDocumentRow`, `ConceptGraphNode`, `ConceptGraphEdge`, `DashboardActionTarget` in `src/services/api/endpoints.ts`.
+- 22 are design-system primitive `*Props` types re-exported from index files (`BadgeProps`, `BoxProps`, etc.). These are intentional API surfaces for consumers — knip can't see the public-API intent. Add to knip ignore if knip ever lands in CI.
+- 4 looked like deletion candidates but **are not**: `DuplicateDocumentRow`, `ConceptGraphNode`, `ConceptGraphEdge`, `DashboardActionTarget` in `src/services/api/endpoints.ts` are each referenced inside other exported interfaces (e.g. `DuplicateGroup.canonical: DuplicateDocumentRow`, `ConceptGraphResponse.nodes: ConceptGraphNode[]`). Knip flags them because nothing imports them by name; that's fine — they're load-bearing internal types. **Correction noted post-execution.**
 - 2 are auto-generated from the schema (`webhooks`, `$defs`, `operations` in `types.gen.ts`) — leave as-is; regenerated on each `script/generate-api-types.sh` run.
 
 ---
