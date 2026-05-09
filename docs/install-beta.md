@@ -17,15 +17,32 @@
 - Bun — `curl -fsSL https://bun.sh/install | bash` (or `pnpm`/`npm`, the build script picks whichever is on `PATH`)
 - An Anthropic API key, OR a local `ollama serve` running. Carrel needs an LLM somewhere; without one the tutor will refuse every question.
 
-## Install
+## Install — the fast path
+
+One command. Paste it into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
+```
+
+The installer clones the repo into `./carrel/`, installs `uv` (which
+manages standalone Python so you don't need Homebrew), builds the venv,
+installs all dependencies, fetches `bun`, prompts for an Anthropic API
+key (or routes you to Ollama if you skip), then builds and launches.
+
+If you already cloned, `cd` into the repo first and run `./install.sh`.
+The script detects which mode you're in and acts accordingly.
+
+## Install — the manual path (if you want to see every step)
 
 ```bash
 git clone https://github.com/Madu-P1/carrel.git
 cd carrel
 
-python3.12 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
+# uv brings its own Python; no brew needed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv .venv --python 3.12
+uv pip install --python .venv/bin/python -r requirements.txt
 
 cp .env.example .env
 # Open .env and either:
