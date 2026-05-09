@@ -85,7 +85,18 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* `flex: 1 1 0` plus `min-height: 0` lets the nav take whatever
+   * vertical space remains between the pinned `.today` + `.footer`
+   * blocks and the brand header. `overflow-y: auto` keeps overflowing
+   * content inside its own slot so it doesn't paint over the today
+   * panel — the bug seen on first-user installs where, at viewport
+   * heights below ~700px, "TODAY" rendered on top of "Plan ⌘9"
+   * because the un-clipped nav content spilled into the today block's
+   * coordinates.
+   */
+  flex: 1 1 0;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .navSection {
@@ -211,6 +222,10 @@
   flex-direction: column;
   padding-top: var(--space-3);
   border-top: 1px solid var(--hairline);
+  /* Pin against the bottom-anchored footer. Without flex-shrink: 0 the
+   * today block yields space when nav contents exceed available height,
+   * which both shrinks it AND lets the nav paint over its slot. */
+  flex-shrink: 0;
 }
 
 .todayStats {
@@ -281,6 +296,8 @@
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-mono);
   color: var(--text-tertiary);
+  /* Same reason as `.today`: never yield vertical space to the nav. */
+  flex-shrink: 0;
 }
 
 .footerDot {
