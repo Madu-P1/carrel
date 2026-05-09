@@ -307,7 +307,6 @@ def _next_best_action(
     due_cards: int,
     source_count: int,
     sessions_today: int,
-    last_studied_at: str | None,
 ) -> Dict[str, Any]:
     """Pick ONE concrete thing the user should do right now.
 
@@ -399,7 +398,6 @@ def build_dashboard_payload(conn: sqlite3.Connection) -> Dict[str, Any]:
             due_cards=due,
             source_count=sources,
             sessions_today=sessions,
-            last_studied_at=last_at,
         ),
         "active_session": active,
         # Carrel's analogue of IAF's bullet-priority feedback loop. The

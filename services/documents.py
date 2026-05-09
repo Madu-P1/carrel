@@ -426,7 +426,10 @@ def _concept_selector_signature(
             for item in concepts
         ],
     }
-    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return hashlib.sha1(
+        json.dumps(payload, sort_keys=True).encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()
 
 
 def build_concept_options(

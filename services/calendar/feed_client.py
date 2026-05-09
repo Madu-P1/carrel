@@ -35,7 +35,6 @@ from services.calendar.validators import (
     ALLOWED_CONTENT_TYPE_PREFIXES,
     HTTP_TIMEOUT_SECONDS,
     MAX_RESPONSE_BYTES,
-    FeedURLRejected,
     mask_url,
     validate_content_type,
     validate_feed_url,

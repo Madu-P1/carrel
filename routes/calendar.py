@@ -18,7 +18,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import db
@@ -31,7 +31,6 @@ from api_models import (
 from app_logging import get_logger
 from services.calendar import repository, sync_service
 from services.calendar.validators import (
-    FeedURLRejected,
     mask_url,
     validate_feed_url,
 )
