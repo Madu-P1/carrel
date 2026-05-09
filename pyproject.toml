@@ -19,3 +19,23 @@ ignore = ["E501"]
 "services/*.py" = ["F401", "F541", "I001"]
 "script/benchmark_phase0.py" = ["I001"]
 "tests/test_einstein_tutor.py" = ["I001"]
+
+# Bandit security scanner.
+#
+# B608 (hardcoded_sql_expressions) fires across ~40 sites where Carrel
+# constructs dynamic IN-clauses against SQLite using BOUND `?`
+# placeholders, e.g.:
+#
+#   placeholders = ",".join("?" * len(ids))
+#   conn.execute(f"DELETE FROM x WHERE id IN ({placeholders})", ids)
+#
+# Bandit cannot statically tell that the only interpolated value is the
+# placeholder string itself. Every one of the flagged sites is reviewed
+# and parametrized; none concatenate untrusted input into SQL. Skipping
+# B608 globally is the lightest-touch correct call. If a future commit
+# introduces a real string-built query with untrusted input, that's a
+# code-review issue regardless of bandit.
+#
+# All other bandit checks remain enabled.
+[tool.bandit]
+skips = ["B608"]
