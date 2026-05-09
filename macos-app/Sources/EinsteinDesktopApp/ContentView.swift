@@ -99,21 +99,18 @@ private struct NativeWebAppFrame<Content: View>: View {
 
     @ViewBuilder
     private var glassFrameBackground: some View {
-        if #available(macOS 26.0, *) {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.clear)
-                .glassEffect(
-                    .regular.tint(Color.white.opacity(0.035)),
-                    in: .rect(cornerRadius: 28)
-                )
-        } else {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.regularMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-                }
-        }
+        // Pre-macOS-26 fallback used unconditionally. The macOS 26
+        // `glassEffect` Liquid-Glass path was removed because the
+        // symbols don't exist in older SDKs and the runtime
+        // `if #available` guard alone doesn't help the compiler.
+        // Re-introduce behind `#if compiler(>=...)` once we want to
+        // ship a deliberately-gated macOS 26 polish layer.
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .fill(.regularMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+            }
     }
 }
 
@@ -181,13 +178,10 @@ private struct GlassEffectGroup<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 18) {
-                content()
-            }
-        } else {
-            content()
-        }
+        // GlassEffectContainer is macOS 26+ only and not in older SDKs.
+        // Pass content through unmodified on every macOS version we
+        // currently target.
+        content()
     }
 }
 
@@ -196,24 +190,15 @@ private struct NativeStatusCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        if #available(macOS 26.0, *) {
-            content()
-                .padding(18)
-                .glassEffect(
-                    .regular.tint(Color(red: 0.49, green: 0.89, blue: 0.77).opacity(0.08)),
-                    in: .rect(cornerRadius: 22)
-                )
-                .glassEffectID("carrel-native-status", in: namespace)
-                .glassEffectTransition(.matchedGeometry)
-        } else {
-            content()
-                .padding(18)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                }
-        }
+        // ultraThinMaterial fallback on every macOS version. macOS 26
+        // glassEffect path removed for SDK compatibility.
+        content()
+            .padding(18)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            }
     }
 }
 
@@ -221,13 +206,10 @@ private struct NativeGlassButtonModifier: ViewModifier {
     let prominent: Bool
 
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            if prominent {
-                content.buttonStyle(.glassProminent)
-            } else {
-                content.buttonStyle(.glass)
-            }
-        } else if prominent {
+        // .bordered / .borderedProminent are universally available;
+        // .glass / .glassProminent are macOS 26+ only and were removed
+        // for SDK compatibility.
+        if prominent {
             content.buttonStyle(.borderedProminent)
         } else {
             content.buttonStyle(.bordered)
@@ -237,13 +219,9 @@ private struct NativeGlassButtonModifier: ViewModifier {
 
 private struct NativeGlassWindowModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-                .backgroundExtensionEffect()
-                .containerBackground(.windowBackground, for: .window)
-        } else {
-            content
-                .background(.windowBackground)
-        }
+        // backgroundExtensionEffect + .windowBackground container are
+        // macOS 26+ only and not in older SDKs. Use .windowBackground
+        // material universally.
+        content.background(.windowBackground)
     }
 }
