@@ -24,6 +24,28 @@ from .constants import BAD_LABEL_PREFIXES, CARD_DEFINITION_MARKERS, CONNECTOR_TO
 from .text_utils import _normalize_space, split_sentences, tokenize
 
 
+def _ensure_terminal_period(text: str) -> str:
+    """Ensure a sentence ends in `.`, `!`, `?`, or `:`.
+
+    Bullet-point source text frequently lacks terminal punctuation; when
+    two such bullets are joined with a space, downstream readers (the
+    Concept Atlas "takeaway" field, the Reader chunk preview) render
+    the result as one run-on sentence. Adding a period per sentence
+    before the join keeps the original evidence words intact while
+    preserving sentence boundaries for split_sentences and human
+    readers.
+
+    Idempotent: re-running the function on already-terminated text is a
+    no-op.
+    """
+    stripped = str(text or "").rstrip()
+    if not stripped:
+        return ""
+    if stripped[-1] in ".!?:;":
+        return stripped
+    return stripped + "."
+
+
 def _segment_chunk_for_study(chunk: Dict[str, object]) -> List[Dict[str, object]]:
     content = str(chunk.get("content") or "").replace("\r\n", "\n").replace("\r", "\n")
     content = content.replace("▪", "\n• ").replace("•", "\n• ").replace("\uf0b7", "\n• ")
@@ -209,8 +231,18 @@ def build_concept_payloads_from_chunks(
         )
         if not evidence:
             return
-        summary = evidence[0][0]
-        description = " ".join(sentence for sentence, _chunk_id in evidence[:2]).strip()
+        summary = _ensure_terminal_period(evidence[0][0])
+        # Each evidence string is its own sentence in the source — but
+        # bullet-point text frequently lacks a terminal period, so a
+        # naive " ".join produced run-on output like
+        #   "...what they do Meta analysis shows..."
+        # in the Concept Atlas takeaway field. Adding a period per
+        # sentence before joining gives readable prose without
+        # altering the underlying evidence semantics.
+        description = " ".join(
+            _ensure_terminal_period(sentence)
+            for sentence, _chunk_id in evidence[:2]
+        ).strip()
         if not _is_valid_answer_text(summary, normalized_name):
             return
         chunk_ids = list(dict.fromkeys(chunk_id for _sentence, chunk_id in evidence if chunk_id))
