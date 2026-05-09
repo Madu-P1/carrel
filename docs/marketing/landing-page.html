@@ -289,7 +289,14 @@ nav .nav-cta:hover {
   font-family: var(--mono);
   font-size: 12px;
   text-align: center;
-  padding: 24px;
+  padding: 0;
+  overflow: hidden;
+}
+.pillar-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 @media (max-width: 900px) {
   .pillar-grid { grid-template-columns: 1fr; gap: 40px; }
@@ -524,15 +531,38 @@ nav .nav-cta:hover {
   display: flex; flex-direction: column; gap: 32px;
   align-items: center;
 }
+
+/*
+ * Companion cube — the actual recording.
+ *
+ * `companion-states.mp4` is captured from the native macOS
+ * NativeCompanion floating panel running through its four states
+ * (idle → thinking → encouraging → sleeping) via the hidden
+ * Cmd+Shift+0 hotkey in useGlobalShortcuts.ts. 11.5s loop, 480p,
+ * ~303 KB. Replaces the earlier pure-CSS cube — using the real cube
+ * so the marketing surface matches what the user actually sees in
+ * the app.
+ */
 .companion-video {
-  width: 240px; height: 240px;
-  border-radius: 16px;
+  width: 280px;
+  height: 280px;
+  border-radius: 18px;
   overflow: hidden;
-  background: var(--color-bg-base);
+  background: var(--color-bg-elevated);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--color-border-subtle),
+    /* Faint accent halo — kept low so it doesn't compete with the
+       Encouraging-state highlight inside the video. */
+    0 0 60px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 .companion-video video {
-  width: 100%; height: 100%; object-fit: cover;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
+
 .companion-states {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -545,6 +575,16 @@ nav .nav-cta:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
+}
+.companion-state.is-active {
+  /* The cube's currently-shown face. Subtle accent border reads as
+     "the cube is HERE right now" without overwhelming the grid. */
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
 }
 .companion-state .name {
   font-family: var(--mono);
@@ -552,6 +592,9 @@ nav .nav-cta:hover {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-tour-accent);
+}
+.companion-state.is-active .name {
+  color: var(--color-accent);
 }
 .companion-state .quote {
   font-family: var(--serif);
@@ -576,10 +619,17 @@ nav .nav-cta:hover {
   font-family: var(--mono);
   font-size: 12px;
 }
+.companion-context img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 @media (max-width: 600px) {
   .companion-context { display: none; }
   .companion-states { grid-template-columns: 1fr; }
 }
+
 
 /* ─────────────────────────── faq ─────────────────────────── */
 .faq { background: var(--color-bg-elevated); }
@@ -951,7 +1001,12 @@ a[href]:focus-visible {
       </p>
     </div>
     <div class="pillar-img" aria-label="Plan view screenshot">
-      [ Plan view screenshot — WORKING TOWARD rail with 3 deadlines + coach study block on grid ]
+      <img
+        src="site/assets/plan-view.webp"
+        alt="Carrel Plan view: WORKING TOWARD rail with three deadlines lined up beside a coach-suggested 60-minute study block on the calendar grid"
+        loading="lazy"
+        onerror="this.style.display='none'; this.parentNode.style.padding='24px'; this.parentNode.textContent='[ Plan view screenshot — WORKING TOWARD rail with 3 deadlines + coach study block on grid ]';"
+      />
     </div>
   </div>
 </section>
@@ -961,8 +1016,13 @@ a[href]:focus-visible {
   <div class="wrap" style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px;">
     <span class="eyebrow">Ask</span>
     <h2 id="grounding-title" class="headline">Source-grounded by architecture, not by promise.</h2>
-    <div style="margin-top: 16px;" class="pillar-img" aria-label="Ask answer with citation chips">
-      [ Ask view screenshot — claim list, two citation chips, one unsupported span ]
+    <div style="margin-top: 16px; max-width: 920px; width: 100%;" class="pillar-img" aria-label="Ask answer with citation chips">
+      <img
+        src="site/assets/ask-view.webp"
+        alt="Carrel Ask view: a synthesised answer with a claim list, two clickable citation chips landing on source spans, and one quote flagged as unsupported"
+        loading="lazy"
+        onerror="this.style.display='none'; this.parentNode.style.padding='24px'; this.parentNode.textContent='[ Ask view screenshot — claim list, two citation chips, one unsupported span ]';"
+      />
     </div>
     <div class="three-col">
       <div class="three-col-item">
@@ -1125,31 +1185,36 @@ a[href]:focus-visible {
       your streak. It sleeps when you do. You can drag it anywhere on
       screen. It never steals focus from whatever you are working in.
     </p>
-    <div class="companion-video">
-      <video autoplay loop muted playsinline preload="auto"
+    <div class="companion-video" aria-label="Companion cube cycling through four states: idle, thinking, encouraging, sleeping">
+      <video autoplay loop muted playsinline preload="metadata"
              src="../pitch/companion-states.mp4"
-             aria-label="Companion cube cycling through four states"></video>
+             aria-hidden="true"></video>
     </div>
-    <div class="companion-states" aria-hidden>
-      <div class="companion-state">
+    <div class="companion-states" aria-label="Companion cube state captions">
+      <div class="companion-state" data-state="idle">
         <span class="name">Idle</span>
         <span class="quote">"I'm here when you're ready."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="thinking">
         <span class="name">Thinking</span>
         <span class="quote">"Carrel is reading the source."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="encouraging">
         <span class="name">Encouraging</span>
         <span class="quote">"You got the card. The streak is alive."</span>
       </div>
-      <div class="companion-state">
+      <div class="companion-state" data-state="sleeping">
         <span class="name">Sleeping</span>
         <span class="quote">"Your library is on disk. So am I. Goodnight."</span>
       </div>
     </div>
-    <div class="companion-context" aria-label="The cube parked in the corner of a real desktop">
-      [ companion-context.png — cube parked top-right, Notion in front ]
+    <div class="companion-context" aria-label="The cube parked in the corner of a real desktop, Notion in front">
+      <img
+        src="site/assets/companion-context.webp"
+        alt="The Carrel companion cube parked in the top-right of a desktop, with Notion open in front of it"
+        loading="lazy"
+        onerror="this.style.display='none'; this.parentNode.textContent='[ companion-context.png — cube parked top-right, Notion in front ]';"
+      />
     </div>
   </div>
 </section>
