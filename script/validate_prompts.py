@@ -73,7 +73,9 @@ def _validate_inputs(value: Any, prompt_id: str) -> set[str]:
         if key in keys:
             raise ValidationError(f"{prompt_id}: duplicate input key {key}")
         keys.add(key)
-        _require_non_empty_string(item.get("description"), f"inputs[{index}].description", prompt_id)
+        _require_non_empty_string(
+            item.get("description"), f"inputs[{index}].description", prompt_id
+        )
         if not isinstance(item.get("required"), bool):
             raise ValidationError(f"{prompt_id}: inputs[{index}].required must be boolean")
     return keys
@@ -97,7 +99,9 @@ def _validate_fixture(prompt: dict[str, Any], input_keys: set[str]) -> None:
         raise ValidationError(f"{prompt_id}: sample_fixture must be a JSON object")
     missing = sorted(input_keys - set(fixture))
     if missing:
-        raise ValidationError(f"{prompt_id}: sample_fixture missing input keys: {', '.join(missing)}")
+        raise ValidationError(
+            f"{prompt_id}: sample_fixture missing input keys: {', '.join(missing)}"
+        )
 
 
 def _validate_template(prompt: dict[str, Any], input_keys: set[str]) -> None:
@@ -109,14 +113,18 @@ def _validate_template(prompt: dict[str, Any], input_keys: set[str]) -> None:
     placeholders = set(PLACEHOLDER_RE.findall(str(template)))
     unknown = sorted(placeholders - input_keys)
     if unknown:
-        raise ValidationError(f"{prompt_id}: template has unknown placeholders: {', '.join(unknown)}")
+        raise ValidationError(
+            f"{prompt_id}: template has unknown placeholders: {', '.join(unknown)}"
+        )
     unused_required = sorted(
         str(item["key"])
         for item in prompt["inputs"]
         if item["required"] and str(item["key"]) not in placeholders
     )
     if unused_required:
-        raise ValidationError(f"{prompt_id}: required inputs not referenced by template: {', '.join(unused_required)}")
+        raise ValidationError(
+            f"{prompt_id}: required inputs not referenced by template: {', '.join(unused_required)}"
+        )
 
 
 def _validate_output_shape(prompt: dict[str, Any], input_keys: set[str]) -> None:
@@ -128,16 +136,24 @@ def _validate_output_shape(prompt: dict[str, Any], input_keys: set[str]) -> None
         raise ValidationError(f"{prompt_id}: expected_output_shape must be an object")
     sections = shape.get("sections")
     if not isinstance(sections, list) or not sections:
-        raise ValidationError(f"{prompt_id}: expected_output_shape.sections must be a non-empty list")
+        raise ValidationError(
+            f"{prompt_id}: expected_output_shape.sections must be a non-empty list"
+        )
     for index, section in enumerate(sections):
         if not isinstance(section, str) or not section.strip():
-            raise ValidationError(f"{prompt_id}: expected_output_shape.sections[{index}] must be a non-empty string")
+            raise ValidationError(
+                f"{prompt_id}: expected_output_shape.sections[{index}] must be a non-empty string"
+            )
     refs = shape.get("must_reference_inputs", [])
     if not isinstance(refs, list):
-        raise ValidationError(f"{prompt_id}: expected_output_shape.must_reference_inputs must be a list")
+        raise ValidationError(
+            f"{prompt_id}: expected_output_shape.must_reference_inputs must be a list"
+        )
     unknown_refs = sorted(str(ref) for ref in refs if ref not in input_keys)
     if unknown_refs:
-        raise ValidationError(f"{prompt_id}: expected_output_shape references unknown inputs: {', '.join(unknown_refs)}")
+        raise ValidationError(
+            f"{prompt_id}: expected_output_shape references unknown inputs: {', '.join(unknown_refs)}"
+        )
 
 
 def validate_catalog(catalog_path: Path = CATALOG_PATH) -> None:

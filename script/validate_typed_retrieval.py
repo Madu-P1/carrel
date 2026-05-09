@@ -21,6 +21,7 @@ Usage
     ./.venv/bin/python script/validate_typed_retrieval.py --questions q.json
     ./.venv/bin/python script/validate_typed_retrieval.py --no-rerank --max-docs 5
 """
+
 # Imports below the sys.path.insert call must NOT be sorted into the
 # stdlib block by ruff/isort — they only resolve once REPO_ROOT is on
 # the path. The per-line E402 noqa silences "import not at top of
@@ -104,9 +105,7 @@ def time_search(fn, *args, **kwargs) -> tuple[list, float]:
 
 
 def _filename_for(conn: sqlite3.Connection, doc_id: str) -> str:
-    row = conn.execute(
-        "SELECT filename FROM documents WHERE id = ?", (doc_id,)
-    ).fetchone()
+    row = conn.execute("SELECT filename FROM documents WHERE id = ?", (doc_id,)).fetchone()
     return row["filename"] if row else doc_id[:12]
 
 
@@ -134,25 +133,17 @@ def render_query_block(
             if hasattr(hit, "verbatim_text"):
                 snippet = _truncate(hit.verbatim_text)
                 tag = f" [{hit.node_type}]" if hasattr(hit, "node_type") else ""
-                heading = (
-                    f" · _{hit.heading_path}_"
-                    if getattr(hit, "heading_path", "")
-                    else ""
-                )
+                heading = f" · _{hit.heading_path}_" if getattr(hit, "heading_path", "") else ""
                 rerank = (
                     f" rerank={hit.rerank_score:.3f}"
                     if getattr(hit, "rerank_score", None) is not None
                     else ""
                 )
-                lines.append(
-                    f"{rank}. **{doc}**{heading}{tag} · score={score:.3f}{rerank}"
-                )
+                lines.append(f"{rank}. **{doc}**{heading}{tag} · score={score:.3f}{rerank}")
                 lines.append(f"   {snippet}")
             else:
                 snippet = _truncate(getattr(hit, "snippet", ""))
-                section = (
-                    f" · _{hit.section}_" if getattr(hit, "section", None) else ""
-                )
+                section = f" · _{hit.section}_" if getattr(hit, "section", None) else ""
                 lines.append(f"{rank}. **{doc}**{section} · score={score:.3f}")
                 lines.append(f"   {snippet}")
         lines.append("")
@@ -197,31 +188,44 @@ def serialize_hits(hits) -> list[dict]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--max-docs", type=int, default=None,
+        "--max-docs",
+        type=int,
+        default=None,
         help="Limit ingest to first N uploads (most recent first).",
     )
     parser.add_argument(
-        "--questions", type=Path, default=None,
+        "--questions",
+        type=Path,
+        default=None,
         help="JSON file with a list of query strings. Defaults to a generic prompt set.",
     )
     parser.add_argument(
-        "--output", type=Path, default=None,
+        "--output",
+        type=Path,
+        default=None,
         help="Write the markdown report to this path instead of stdout.",
     )
     parser.add_argument(
-        "--json", dest="json_path", type=Path, default=None,
+        "--json",
+        dest="json_path",
+        type=Path,
+        default=None,
         help="Also write a machine-readable JSON report.",
     )
     parser.add_argument(
-        "--skip-ingest", action="store_true",
+        "--skip-ingest",
+        action="store_true",
         help="Don't re-run the typed-node ingest; only run queries.",
     )
     parser.add_argument(
-        "--no-rerank", action="store_true",
+        "--no-rerank",
+        action="store_true",
         help="Skip the cross-encoder rerank path (saves the ~1 GB model download).",
     )
     parser.add_argument(
-        "--limit", type=int, default=3,
+        "--limit",
+        type=int,
+        default=3,
         help="Hits per path to display (default 3).",
     )
     args = parser.parse_args()
@@ -279,25 +283,28 @@ def main() -> int:
 
     for query in queries:
         print(f"\n# Query: {query}", flush=True)
-        chunks_hits, chunks_ms = time_search(
-            search_hybrid, conn, query, limit=args.limit
-        )
-        nodes_hits, nodes_ms = time_search(
-            search_typed_hybrid, conn, query, limit=args.limit
-        )
+        chunks_hits, chunks_ms = time_search(search_hybrid, conn, query, limit=args.limit)
+        nodes_hits, nodes_ms = time_search(search_typed_hybrid, conn, query, limit=args.limit)
         rerank_hits = None
         rerank_ms: Optional[float] = None
         if not args.no_rerank:
             rerank_hits, rerank_ms = time_search(
-                search_typed_hybrid, conn, query,
-                limit=args.limit, use_reranker=True,
+                search_typed_hybrid,
+                conn,
+                query,
+                limit=args.limit,
+                use_reranker=True,
             )
 
         block = render_query_block(
-            conn, query,
-            chunks_hits, chunks_ms,
-            nodes_hits, nodes_ms,
-            rerank_hits, rerank_ms,
+            conn,
+            query,
+            chunks_hits,
+            chunks_ms,
+            nodes_hits,
+            nodes_ms,
+            rerank_hits,
+            rerank_ms,
         )
         md_lines.append(block)
         print(block, flush=True)
@@ -308,7 +315,8 @@ def main() -> int:
                 "chunks": {"latency_ms": chunks_ms, "hits": serialize_hits(chunks_hits)},
                 "nodes": {"latency_ms": nodes_ms, "hits": serialize_hits(nodes_hits)},
                 "nodes_rerank": (
-                    None if rerank_hits is None
+                    None
+                    if rerank_hits is None
                     else {"latency_ms": rerank_ms, "hits": serialize_hits(rerank_hits)}
                 ),
             }
