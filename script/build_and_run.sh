@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Make sure standalone-installed tools are reachable. The pnpm and bun
+# installers add to ~/.zshrc, but build_and_run.sh is often invoked in
+# a session where the shell rc updates haven't taken effect yet — for
+# example, immediately after `./install.sh` exits without restarting
+# the terminal. Prepend each known install location if it exists; the
+# `command -v` checks downstream then resolve normally.
+#
+# Crucially, this ALSO makes Node visible. pnpm-standalone places its
+# bundled Node at ~/Library/pnpm/bin/node, and the build:macos script
+# invokes `node` directly. Without this prepend, the build fails at
+# "exec: node: not found" inside tsc's binstub.
+[[ -d "$HOME/Library/pnpm/bin" ]] && export PATH="$HOME/Library/pnpm/bin:$PATH"
+[[ -d "$HOME/.local/share/pnpm" ]] && export PATH="$HOME/.local/share/pnpm:$PATH"
+[[ -d "$HOME/.bun/bin" ]] && export PATH="$HOME/.bun/bin:$PATH"
+[[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
+
 MODE="run"
 APP_NAME="EinsteinDesktop"
 BUNDLE_ID="com.madu.EinsteinDesktop"
@@ -147,24 +163,14 @@ prepare_frontend_resources() {
   # packageManager and what CI uses, so prefer it. bun and npm stay as
   # fallbacks for devs who already have them set up.
   #
-  # The pnpm-standalone installer (used by ./install.sh) writes to
-  # ~/Library/pnpm/bin on macOS and only adds to ~/.zshrc, so a freshly
-  # installed pnpm may not be on PATH in non-login shells. Probe the
-  # standalone install location directly as a fallback before declaring
-  # "no JS runner found."
-  local pnpm_standalone="$HOME/Library/pnpm/bin/pnpm"
-  local bun_standalone="$HOME/.bun/bin/bun"
-
+  # The PATH prepend at the top of this script means standalone-installed
+  # pnpm and bun are reachable here even in non-restarted shells.
   if command -v pnpm >/dev/null 2>&1; then
     pnpm --dir "$ROOT_DIR/frontend" build:macos
-  elif [[ -x "$pnpm_standalone" ]]; then
-    "$pnpm_standalone" --dir "$ROOT_DIR/frontend" build:macos
   elif command -v corepack >/dev/null 2>&1; then
     corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
   elif command -v bun >/dev/null 2>&1; then
     ( cd "$ROOT_DIR/frontend" && bun run build:macos )
-  elif [[ -x "$bun_standalone" ]]; then
-    ( cd "$ROOT_DIR/frontend" && "$bun_standalone" run build:macos )
   elif command -v npm >/dev/null 2>&1; then
     ( cd "$ROOT_DIR/frontend" && npm run build:macos )
   else
