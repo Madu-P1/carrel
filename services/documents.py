@@ -277,6 +277,20 @@ def clean_concept_label(value: str) -> str:
     for word in cleaned.split():
         if not deduped_words or deduped_words[-1].lower() != word.lower():
             deduped_words.append(word)
+    # Phrase-level dedup. The adjacent-word loop above only catches
+    # "foo foo bar"; it cannot see "foo bar foo bar" as a duplicate
+    # phrase. The doubled-phrase shape leaks in when an LLM emits
+    # "X / X" or "X — X" (separator gets normalized to a space), so we
+    # check whether the second half of the token list mirrors the first
+    # and collapse if so. Only fold an even-length list whose halves
+    # match case-insensitively.
+    n = len(deduped_words)
+    if n >= 2 and n % 2 == 0:
+        half = n // 2
+        first = [w.lower() for w in deduped_words[:half]]
+        second = [w.lower() for w in deduped_words[half:]]
+        if first == second:
+            deduped_words = deduped_words[:half]
     cleaned = " ".join(deduped_words)
     return cleaned or "Study concept"
 

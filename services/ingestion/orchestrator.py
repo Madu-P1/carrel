@@ -270,10 +270,20 @@ def ingest_document_record(
                     )
 
     concept_payloads = build_concept_payloads_from_chunks(chunk_rows, filename)
+    # Local import to avoid the services.documents <-> services.ingestion
+    # circular import. clean_concept_label is the canonical place to fix
+    # doubled-phrase concept names; applying it here is the upstream
+    # fence so doubled names never reach concepts.name in the first
+    # place. (Other readers, like session_engine.py, also clean at
+    # read-time as a backstop.)
+    from services.documents import clean_concept_label
+
     concept_ids: List[str] = []
     for concept in concept_payloads:
         concept_id = str(uuid.uuid4())
         concept_ids.append(concept_id)
+        cleaned_name = clean_concept_label(str(concept.get("name") or ""))
+        concept["name"] = cleaned_name
         concept_chunk_ids = list(dict.fromkeys(concept.get("supporting_chunk_ids") or []))[:3]
         if not concept_chunk_ids:
             concept_chunk_ids = rank_supporting_chunk_ids(
@@ -290,7 +300,7 @@ def ingest_document_record(
             (
                 concept_id,
                 doc_id,
-                concept["name"],
+                cleaned_name,
                 concept["description"],
                 concept["mastery"],
                 json.dumps(concept_chunk_ids),
