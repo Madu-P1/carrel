@@ -613,16 +613,21 @@ function CompletionPanel({
   const deltaPct = Math.round(result.mastery_delta * 100);
   const deltaLabel =
     deltaPct === 0 ? "±0%" : deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`;
+  // Three-way tone, not two. Treating ±0% as "positive" produced a
+  // triumphant green chip on sessions where the user made no progress —
+  // a tone clash with the actual number. A neutral chip communicates
+  // "session done, no movement" honestly.
+  const deltaChipClass =
+    deltaPct > 0
+      ? styles.deltaChipPos
+      : deltaPct < 0
+        ? styles.deltaChipNeg
+        : styles.deltaChipNeutral;
   return (
     <section className={styles.completion} aria-label="Session complete">
       <header className={styles.completionHeader}>
         <span className={styles.eyebrow}>Session complete</span>
-        <span
-          className={[
-            styles.deltaChip,
-            deltaPct >= 0 ? styles.deltaChipPos : styles.deltaChipNeg,
-          ].join(" ")}
-        >
+        <span className={[styles.deltaChip, deltaChipClass].join(" ")}>
           Mastery {deltaLabel}
         </span>
       </header>

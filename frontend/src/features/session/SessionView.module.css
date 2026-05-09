@@ -366,6 +366,15 @@
   color: var(--state-err);
 }
 
+/* Neutral state for ±0% sessions — neither a win nor a regression. The
+ * green-positive chip combined with "Mastery ±0%" reads as a tone clash
+ * (triumphant styling, no actual progress); a tertiary-tinted chip
+ * communicates "session done, no movement" honestly. */
+.deltaChipNeutral {
+  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+  color: var(--text-secondary);
+}
+
 .completionLine {
   margin: 0;
   font-family: var(--font-sans);
