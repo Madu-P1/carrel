@@ -112,9 +112,7 @@ because Swift incremental builds are fast and Vite is fast.
 Modes the script accepts: `--debug` (lldb against the Swift
 binary), `--logs` (stream `log` filtered to the EinsteinDesktop
 process), `--telemetry` (subsystem-filtered log), `--verify`
-(post-launch sanity check), `--frontend legacy` (escape hatch to
-the pre-PR-E8 bundle still shipped at
-`macos-app/Resources/app.html.legacy`).
+(post-launch sanity check).
 
 For tighter feedback during dev, skip the WKWebView shell:
 
@@ -258,12 +256,9 @@ it. Without this, the rail is dead weight on most documents.
 
 - ESLint flat-config migration (the `ESLINTRC_USE_FLAT_CONFIG`
   warning fires on every lint run)
-- `app.html.legacy` removal (blocked on full end-to-end human
-  verification of the new bundle)
 - Command palette ⌘K registry (stubbed in `AppShell` but never
   built out)
-- Swift menu-dispatch tests should be XCTest, not the
-  `script/test_frontend_selector.sh` shell harness
+- Swift menu-dispatch tests should be XCTest; informal coverage today
 - macOS Keychain integration for feed URLs (Phase 2 work
   alongside Gmail OAuth tokens)
 

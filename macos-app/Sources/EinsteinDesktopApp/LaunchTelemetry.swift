@@ -9,22 +9,22 @@ enum LaunchTelemetry {
     )
     private static var launchUptimeNanoseconds: UInt64?
 
-    static func markLaunch(frontend: String) {
+    static func markLaunch() {
         let uptime = DispatchTime.now().uptimeNanoseconds
         launchUptimeNanoseconds = uptime
         emit(
-            "launch-start frontend=\(frontend) uptime_ms=\(format(milliseconds: Double(uptime) / 1_000_000))"
+            "launch-start uptime_ms=\(format(milliseconds: Double(uptime) / 1_000_000))"
         )
     }
 
-    static func markInteractive(frontend: String, route: String, performanceNowMilliseconds: Double?) {
+    static func markInteractive(route: String, performanceNowMilliseconds: Double?) {
         let now = DispatchTime.now().uptimeNanoseconds
         let startedAt = launchUptimeNanoseconds
 
         let deltaMilliseconds = startedAt.map { Double(now - $0) / 1_000_000 } ?? 0
         let performanceLabel = performanceNowMilliseconds.map(format(milliseconds:)) ?? "n/a"
         emit(
-            "app-interactive frontend=\(frontend) route=\(route) delta_ms=\(format(milliseconds: deltaMilliseconds)) perf_now_ms=\(performanceLabel)"
+            "app-interactive route=\(route) delta_ms=\(format(milliseconds: deltaMilliseconds)) perf_now_ms=\(performanceLabel)"
         )
     }
 

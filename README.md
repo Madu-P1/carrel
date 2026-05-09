@@ -14,7 +14,7 @@ Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN
 ./script/build_and_run.sh
 ```
 
-Builds the Swift shell + Vite frontend bundle, starts the FastAPI backend on `127.0.0.1:8000`, and launches `Einstein.app`. Use `--frontend legacy` for the pre-PR-E8 bundle.
+Builds the Swift shell + Vite frontend bundle, starts the FastAPI backend on `127.0.0.1:8000`, and launches `EinsteinDesktop.app`.
 
 ## Quick start — backend only
 

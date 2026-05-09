@@ -39,11 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         MainMenuBuilder.install()
-        LaunchTelemetry.markLaunch(frontend: FrontendSelector.resolved().rawValue)
+        LaunchTelemetry.markLaunch()
         backendSupervisor.start()
-        appLogger.info(
-            "Application finished launching (frontend=\(FrontendSelector.resolved().rawValue, privacy: .public))"
-        )
+        appLogger.info("Application finished launching")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

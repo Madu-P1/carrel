@@ -4,7 +4,7 @@ Local-first, source-grounded AI study and research workspace for macOS. Native S
 
 ## Stack
 
-- **Native shell:** Swift + SwiftPM, macOS 14+. `macos-app/Sources/EinsteinDesktopApp/`. WKWebView loads a bundled HTML app. Menu bar + env-var frontend selector (`EINSTEIN_FRONTEND=new|legacy`).
+- **Native shell:** Swift + SwiftPM, macOS 14+. `macos-app/Sources/EinsteinDesktopApp/`. WKWebView loads the bundled `app.new.html`. Menu bar.
 - **OCR sidecar:** `EinsteinIngestionBridge` executable using PDFKit + Vision for PDF text + OCR extraction.
 - **Frontend:** `frontend/` — Preact 10, TypeScript strict, Vite 6, CSS Modules + design tokens. Pinned via pnpm 9.12.0. Builds to `macos-app/Resources/app.new.html` via `frontend/scripts/build-macos.mjs`.
 - **Backend:** FastAPI + Pydantic. `main.py` is 71 LOC of wiring only. Real logic in `routes/*` and `services/*`. `services/ingestion/` and `services/extraction/` are packages, not monoliths.
@@ -18,7 +18,7 @@ Local-first, source-grounded AI study and research workspace for macOS. Native S
 |---|---|
 | `macos-app/Sources/EinsteinDesktopApp/` | Swift shell, menu, native bridge |
 | `macos-app/Sources/EinsteinIngestionBridge/` | PDF + OCR sidecar CLI |
-| `macos-app/Resources/` | Bundled HTML (`app.new.html` default, `app.html.legacy` escape hatch) |
+| `macos-app/Resources/` | Bundled HTML (`app.new.html`) + assets |
 | `frontend/src/app/` | Shell + routing (preact-iso) |
 | `frontend/src/design-system/` | Tokens, primitives, motion. See `DESIGN.md`. |
 | `frontend/src/features/{library,reader,ask,study}/` | Feature views |
@@ -44,8 +44,7 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend test
 corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./.venv/bin/python -m ruff check /Users/madu/Desktop/Codex/ai /Users/madu/Desktop/Codex/services /Users/madu/Desktop/Codex/evals /Users/madu/Desktop/Codex/tests /Users/madu/Desktop/Codex/main.py /Users/madu/Desktop/Codex/db.py /Users/madu/Desktop/Codex/routes /Users/madu/Desktop/Codex/api_models.py /Users/madu/Desktop/Codex/benchmarks
 ./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded tests.test_retrieval_hybrid tests.test_retrieval_vector tests.test_retrieval_fts tests.test_db_migrations tests.test_phase0_foundation tests.test_phase0_batch_b tests.test_einstein_tutor tests.test_learning_os tests.test_evals_runner -v
-./script/build_and_run.sh --verify --frontend new
-./script/build_and_run.sh --verify --frontend legacy
+./script/build_and_run.sh --verify
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
 ```
 
@@ -74,7 +73,6 @@ Zero runtime motion libraries. CSS + WAAPI only.
 - **No silent AI fallbacks.** Every Claude call returns `ClaudeCallResult` with visible ok/error/latency/tokens. Heuristic-only paths are gated behind explicit env vars and marked ok=False.
 - **Every cited quote must be verbatim.** `services/tutor.py::_resolve_grounded_answer` validates + auto-corrects quotes against chunk content. Fabricated quotes get dropped; unsupported claims move to `unsupported_spans`.
 - **Migrations are the schema source of truth.** Never `ALTER TABLE` at startup.
-- **Two frontends coexist until retirement.** The new Preact app is default. The legacy 310KB `app.html.legacy` stays as an escape hatch. No feature lands in both.
 - **Test-gated, additive PRs.** Every PR ships small, keeps verify green, is independently shippable. Multi-day features land as 3-5 sub-PRs with visible sequencing.
 - **No em dashes in prose. No AI-slop vocabulary.** See `DESIGN.md` voice notes (skill-imported).
 
@@ -90,8 +88,7 @@ Zero runtime motion libraries. CSS + WAAPI only.
 ## Open debts tracked
 
 - ESLint 9 still on `.eslintrc.cjs` legacy config path. Flat-config migration pending.
-- Swift-side menu dispatch test coverage is via `script/test_frontend_selector.sh` shell harness, not formal XCTest.
-- `app.html.legacy` removal blocked on end-to-end human verification of the new bundle's full flow.
+- Swift-side menu dispatch test coverage is informal; XCTest coverage pending.
 - Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
 - FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
 - **Toast primitive doesn't accept action buttons.** Suggestion dismiss has a `restoreSuggestion` API + endpoint ready (`POST /api/plan/suggestions/{id}/restore`) but no Undo button on the toast. Small primitive extension; documented in the Phase 2 plan in `docs/notes/2026-04-29-session-handoff.md`.
