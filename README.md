@@ -6,6 +6,8 @@ Local-first, source-grounded AI study and research workspace for macOS. Drop in 
 
 > **Renamed from Einstein Tutor.** Some internal identifiers (the macOS app bundle `EinsteinDesktop.app`, `com.madu.EinsteinDesktop` bundle ID, and the `data/einstein_tutor.db` SQLite file) are still on the old names because renaming them is a system-level / data-migration concern. See `docs/notes/2026-04-29-carrel-rename.md` for the full deferral list.
 
+**Trying Carrel for the first time?** See [`docs/install-beta.md`](docs/install-beta.md) — install in 5-10 min on macOS 14+.
+
 Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN.md).
 
 ## Quick start — macOS app
