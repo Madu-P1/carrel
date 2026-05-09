@@ -37,6 +37,12 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# pnpm-lock.yaml is the canonical lockfile (matches CI + packageManager
+# pnpm@9.12.0 in package.json). bun.lock is gitignored so devs who use
+# bun locally don't accidentally commit a divergent lockfile.
+frontend/bun.lock
+frontend/bun.lockb
+
 chatgpt-app/node_modules/
 
 factory-reset-audit-*/

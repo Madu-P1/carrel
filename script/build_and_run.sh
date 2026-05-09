@@ -143,18 +143,33 @@ PY
 }
 
 prepare_frontend_resources() {
-  # Pick whichever JS runner is on PATH. The build:macos npm-script is
-  # runner-agnostic (vite + node invocations only), so any of these work.
-  if command -v bun >/dev/null 2>&1; then
-    ( cd "$ROOT_DIR/frontend" && bun run build:macos )
-  elif command -v pnpm >/dev/null 2>&1; then
+  # Pick whichever JS runner is on PATH. pnpm is the project's declared
+  # packageManager and what CI uses, so prefer it. bun and npm stay as
+  # fallbacks for devs who already have them set up.
+  #
+  # The pnpm-standalone installer (used by ./install.sh) writes to
+  # ~/Library/pnpm/bin on macOS and only adds to ~/.zshrc, so a freshly
+  # installed pnpm may not be on PATH in non-login shells. Probe the
+  # standalone install location directly as a fallback before declaring
+  # "no JS runner found."
+  local pnpm_standalone="$HOME/Library/pnpm/bin/pnpm"
+  local bun_standalone="$HOME/.bun/bin/bun"
+
+  if command -v pnpm >/dev/null 2>&1; then
     pnpm --dir "$ROOT_DIR/frontend" build:macos
+  elif [[ -x "$pnpm_standalone" ]]; then
+    "$pnpm_standalone" --dir "$ROOT_DIR/frontend" build:macos
   elif command -v corepack >/dev/null 2>&1; then
     corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
+  elif command -v bun >/dev/null 2>&1; then
+    ( cd "$ROOT_DIR/frontend" && bun run build:macos )
+  elif [[ -x "$bun_standalone" ]]; then
+    ( cd "$ROOT_DIR/frontend" && "$bun_standalone" run build:macos )
   elif command -v npm >/dev/null 2>&1; then
     ( cd "$ROOT_DIR/frontend" && npm run build:macos )
   else
-    echo "No JS runner found (bun/pnpm/corepack/npm). Install one of them." >&2
+    echo "No JS runner found (pnpm/bun/corepack/npm)." >&2
+    echo "Run ./install.sh to provision pnpm, or install one manually." >&2
     exit 1
   fi
 }

@@ -154,22 +154,55 @@ ok "requirements.txt installed"
 # 5. Install bun (or fall back to existing JS runner)
 # ──────────────────────────────────────────────────────────────────
 
-step "Setting up the JS runtime"
+step "Setting up pnpm"
 
-if command -v bun >/dev/null 2>&1; then
-  ok "bun $(bun --version) already installed"
-elif command -v pnpm >/dev/null 2>&1; then
-  ok "pnpm $(pnpm --version) detected (build_and_run.sh will use it)"
+# Why pnpm and not bun: the project's package.json declares
+# `packageManager: pnpm@9.12.0` and CI runs pnpm, so pnpm is the
+# canonical choice. pnpm-standalone has a single-curl installer that
+# bundles its own Node, so a fresh Mac with no Homebrew works.
+#
+# If bun or npm are already on PATH we still respect them (build_and_run.sh
+# falls back through the chain), but the default install path is pnpm.
+
+if command -v pnpm >/dev/null 2>&1; then
+  ok "pnpm $(pnpm --version) already installed"
+elif command -v bun >/dev/null 2>&1; then
+  ok "bun $(bun --version) detected (build_and_run.sh will use it as fallback)"
 elif command -v npm >/dev/null 2>&1; then
-  ok "npm $(npm --version) detected (build_and_run.sh will use it)"
+  ok "npm $(npm --version) detected (build_and_run.sh will use it as fallback)"
 else
-  note "Installing bun"
-  curl -fsSL https://bun.sh/install | bash >/dev/null
-  export PATH="$HOME/.bun/bin:$PATH"
-  if ! command -v bun >/dev/null 2>&1; then
-    fail "bun installer succeeded but bun is not on PATH. Open a new terminal and re-run."
+  note "Installing pnpm (standalone, bundles Node)"
+  # Download to a temp file rather than piping curl to sh; some
+  # shells truncate the pipe on macOS Sonoma+.
+  installer="$(mktemp -t pnpm-install)"
+  curl -fsSL https://get.pnpm.io/install.sh -o "$installer"
+  bash "$installer" >/dev/null
+  rm -f "$installer"
+  # macOS standalone install puts pnpm under ~/Library/pnpm/bin.
+  # On Linux the same installer uses ~/.local/share/pnpm, which we add
+  # too as a belt-and-suspenders so this script keeps working if the
+  # default ever shifts.
+  export PNPM_HOME="$HOME/Library/pnpm"
+  export PATH="$PNPM_HOME/bin:$HOME/.local/share/pnpm:$PATH"
+  if ! command -v pnpm >/dev/null 2>&1; then
+    fail "pnpm installer succeeded but pnpm is not on PATH. Open a new terminal and re-run."
   fi
-  ok "bun $(bun --version) installed"
+  ok "pnpm $(pnpm --version) installed"
+fi
+
+# Make sure Node is on PATH. pnpm-standalone installs only pnpm itself;
+# the build script invokes `node` and `tsc` (which exec node) directly,
+# so pnpm-without-Node fails at first build. `pnpm env use --global lts`
+# pulls a Node into PNPM_HOME/bin where it's reachable for the rest of
+# this script and any future shell that has PNPM_HOME on PATH (set by
+# the pnpm installer's shell-rc edits).
+if ! command -v node >/dev/null 2>&1; then
+  note "Installing Node (LTS) via pnpm"
+  pnpm env use --global lts >/dev/null
+  if ! command -v node >/dev/null 2>&1; then
+    fail "pnpm env reported success but node is not on PATH."
+  fi
+  ok "node $(node --version) installed via pnpm"
 fi
 
 # ──────────────────────────────────────────────────────────────────
