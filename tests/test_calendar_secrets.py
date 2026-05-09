@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -137,6 +138,57 @@ class CalendarSecretTests(unittest.TestCase):
 
         self.assertEqual("error", outcome.status)
         self.assertIn("missing_secret", outcome.error or "")
+
+    def test_upload_apple_ics_imports_events_without_storing_filename(self) -> None:
+        body = (
+            "BEGIN:VCALENDAR\r\n"
+            "VERSION:2.0\r\n"
+            "PRODID:-//apple-calendar-export//\r\n"
+            "BEGIN:VEVENT\r\n"
+            "UID:apple-1@example\r\n"
+            "DTSTART:20260504T140000Z\r\n"
+            "DTEND:20260504T150000Z\r\n"
+            "SUMMARY:Corporate Finance\r\n"
+            "END:VEVENT\r\n"
+            "END:VCALENDAR\r\n"
+        ).encode("utf-8")
+
+        response = self.client.post(
+            "/api/calendar/ics-upload",
+            data={"label": "Apple Calendar", "color": "#4f8cff"},
+            files={"file": ("private-apple-export.ics", io.BytesIO(body), "text/calendar")},
+        )
+
+        self.assertEqual(200, response.status_code, response.text)
+        payload = response.json()
+        self.assertEqual(1, payload["items_seen"])
+        self.assertEqual("Uploaded .ics file", payload["feed"]["url"])
+        self.assertNotIn("private-apple-export", response.text)
+
+        with main.get_db() as conn:
+            feed_row = conn.execute(
+                "SELECT url, keychain_ref, url_hash FROM calendar_feeds WHERE id = ?",
+                (payload["feed"]["id"],),
+            ).fetchone()
+            event_count = conn.execute(
+                "SELECT COUNT(*) AS count FROM calendar_events WHERE feed_id = ?",
+                (payload["feed"]["id"],),
+            ).fetchone()["count"]
+
+        self.assertEqual("Uploaded .ics file", feed_row["url"])
+        self.assertIsNone(feed_row["keychain_ref"])
+        self.assertTrue(feed_row["url_hash"].startswith("uploaded-ics:"))
+        self.assertEqual(1, event_count)
+
+    def test_upload_rejects_non_ics_suffix(self) -> None:
+        response = self.client.post(
+            "/api/calendar/ics-upload",
+            data={"label": "Apple Calendar"},
+            files={"file": ("calendar.txt", io.BytesIO(b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"), "text/plain")},
+        )
+
+        self.assertEqual(400, response.status_code)
+        self.assertIn(".ics", response.text)
 
 
 if __name__ == "__main__":

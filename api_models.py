@@ -397,6 +397,57 @@ class CalendarFeedCreatedResponse(BaseModel):
     raw_url_echo: str
 
 
+class CalendarIcsUploadResponse(BaseModel):
+    """Response for local .ics uploads.
+
+    The uploaded file is parsed immediately and not retained on disk.
+    `raw_url_echo` is a display label for compatibility with the feed
+    dialog, never a local path or filename.
+    """
+
+    feed: CalendarFeedRow
+    raw_url_echo: str
+    items_seen: int
+    items_upserted: int
+    items_deleted: int
+
+
+class LocalCalendarEventInput(BaseModel):
+    """One EKEvent rendered for transport. Field bounds match what
+    EventKit can return plus generous slack — a 4 KB title would be
+    pathological but isn't impossible if a script writes one.
+    """
+
+    uid: str = Field(..., min_length=1, max_length=512)
+    summary: str = Field("", max_length=4096)
+    start_at: str = Field(..., min_length=1, max_length=64)
+    end_at: str = Field(..., min_length=1, max_length=64)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    all_day: bool = False
+    location: Optional[str] = Field(default=None, max_length=1024)
+    status: Literal["confirmed", "cancelled", "tentative"] = "confirmed"
+
+
+class LocalCalendarSyncRequest(BaseModel):
+    """POST /api/calendar/local/sync body — one EKCalendar's worth of
+    events. The macOS shell sends one of these per local calendar
+    after EventKit grants access, and on every EKEventStoreChanged
+    notification.
+    """
+
+    calendar_identifier: str = Field(..., min_length=1, max_length=256)
+    label: str = Field(..., min_length=1, max_length=120)
+    color: Optional[str] = Field(default=None, max_length=32)
+    events: List[LocalCalendarEventInput] = Field(default_factory=list, max_length=10_000)
+
+
+class LocalCalendarSyncResponse(BaseModel):
+    feed_id: str
+    items_seen: int
+    items_upserted: int
+    items_deleted: int
+
+
 class CalendarEventRow(BaseModel):
     id: str
     feed_id: str

@@ -42,6 +42,10 @@ class FeedRow:
     last_successful_sync_at: Optional[str]
     consecutive_failures: int
     last_error: Optional[str]
+    # 'url' = remote ICS feed fetched via HTTP. 'local' = Apple Calendar
+    # (EventKit) sourced from the macOS shell, which POSTs events to the
+    # backend; HTTP sync is skipped for these. See migration 0014.
+    kind: str = "url"
 
 
 @dataclass
@@ -151,7 +155,114 @@ def insert_feed(
     )
 
 
-def list_feeds(conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER) -> List[FeedRow]:
+def upsert_local_feed(
+    conn: sqlite3.Connection,
+    *,
+    calendar_identifier: str,
+    label: str,
+    color: Optional[str],
+    user_id: str = DEFAULT_USER,
+) -> FeedRow:
+    """Idempotently register an Apple Calendar (EventKit) feed.
+
+    Local feeds use a synthetic URL `eventkit://local/{calendarIdentifier}`
+    so the existing url_hash UNIQUE constraint dedupes naturally — re-syncing
+    the same EKCalendar always lands on the same row. The label and color
+    are refreshed on every sync so renames in Calendar.app flow through.
+
+    Local feeds set `kind='local'`; the HTTP sync path skips them entirely.
+    """
+    synthetic_url = f"eventkit://local/{calendar_identifier}"
+    now = _now_iso()
+    existing = conn.execute(
+        "SELECT id FROM calendar_feeds WHERE user_id = ? AND url_hash = ?",
+        (user_id, url_hash(synthetic_url)),
+    ).fetchone()
+    if existing:
+        feed_id = existing["id"]
+        conn.execute(
+            """
+            UPDATE calendar_feeds
+            SET label = ?, color = ?, updated_at = ?, is_enabled = 1
+            WHERE id = ?
+            """,
+            (label, color, now, feed_id),
+        )
+    else:
+        feed_id = _new_id()
+        conn.execute(
+            """
+            INSERT INTO calendar_feeds (
+                id, user_id, label, url, url_hash, color, keychain_ref,
+                is_enabled, consecutive_failures, kind, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, 0, 'local', ?, ?)
+            """,
+            (
+                feed_id,
+                user_id,
+                label,
+                synthetic_url,
+                url_hash(synthetic_url),
+                color,
+                now,
+                now,
+            ),
+        )
+    conn.commit()
+    return _feed_from_row(
+        conn.execute(
+            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
+        ).fetchone()
+    )
+
+
+def insert_uploaded_ics_feed(
+    conn: sqlite3.Connection,
+    *,
+    label: str,
+    content_hash: str,
+    color: Optional[str],
+    user_id: str = DEFAULT_USER,
+) -> FeedRow:
+    """Create a local feed row for an uploaded .ics file.
+
+    The raw uploaded file is parsed immediately and not retained. This
+    feed row stores only a non-secret display label plus a stable hash
+    so importing the exact same Apple Calendar export twice can be
+    detected by the existing UNIQUE(user_id, url_hash) boundary.
+    """
+    feed_id = _new_id()
+    now = _now_iso()
+    display_url = "Uploaded .ics file"
+    conn.execute(
+        """
+        INSERT INTO calendar_feeds (
+            id, user_id, label, url, url_hash, color, keychain_ref,
+            is_enabled, consecutive_failures, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, 0, ?, ?)
+        """,
+        (
+            feed_id,
+            user_id,
+            label,
+            display_url,
+            f"uploaded-ics:{content_hash}",
+            color,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return _feed_from_row(
+        conn.execute(
+            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
+        ).fetchone()
+    )
+
+
+def list_feeds(
+    conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER
+) -> List[FeedRow]:
     migrate_plaintext_feed_urls(conn)
     rows = conn.execute(
         """
@@ -285,6 +396,9 @@ def _feed_from_row(row) -> FeedRow:
         last_successful_sync_at=row["last_successful_sync_at"],
         consecutive_failures=row["consecutive_failures"],
         last_error=row["last_error"],
+        # Older DB snapshots predate the kind column (migration 0014);
+        # default to 'url' so reads never fail mid-migration.
+        kind=row["kind"] if "kind" in columns else "url",
     )
 
 
