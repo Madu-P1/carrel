@@ -146,6 +146,13 @@ export function ConceptGraphView() {
   const [graph, setGraph] = useState<ConceptGraphResponse | null>(null);
   const [graphError, setGraphError] = useState<unknown>(null);
   const [graphLoading, setGraphLoading] = useState(true);
+  // Distinct from `graphError` (API-fetch failure). `sceneError` covers
+  // the 3D-init failure mode: the dynamic `import("three")` /
+  // `import("3d-force-graph")` chunks fail to resolve under file:// in
+  // the packaged Electron app, or WebGLRenderer construction throws on
+  // a sandboxed-GPU box. Without this branch, the user sees a silent
+  // black canvas and we have no telemetry.
+  const [sceneError, setSceneError] = useState<unknown>(null);
   // `subjects` is fetched but not currently displayed in this view —
   // the filter pills derive their list from concepts present in the
   // graph (subjectsInGraph below) so we only show pills for subjects
@@ -191,6 +198,11 @@ export function ConceptGraphView() {
   useEffect(() => {
     setGraphLoading(true);
     setGraphError(null);
+    // Clear the previous filter's scene error so a retry has a chance
+    // to succeed if the WebGL context / chunk path was transiently
+    // bad. The init effect below sets it again if the failure
+    // recurs.
+    setSceneError(null);
     concepts
       .graph(filter !== "All" ? { subjectName: filter } : {})
       .then((response) => {
@@ -302,6 +314,7 @@ export function ConceptGraphView() {
     refreshGraphStylesRef.current = refreshStyles;
 
     (async () => {
+      try {
       const [{ default: ForceGraph3D }, three] = await Promise.all([
         import("3d-force-graph"),
         import("three"),
@@ -473,6 +486,22 @@ export function ConceptGraphView() {
         requestAnimationFrame(pulseLoop);
       };
       requestAnimationFrame(pulseLoop);
+      } catch (err) {
+        // Two failure modes converge here:
+        //   1. The dynamic chunks (`three`, `3d-force-graph`) failed to
+        //      resolve — most likely under file:// in the packaged
+        //      Electron build if `__carrelAssetBase` rewrite missed.
+        //   2. WebGLRenderer construction threw (sandboxed-GPU box,
+        //      lost context, missing extension).
+        // In either case the previous behaviour was a silent black
+        // canvas. Now we surface the exception in the same ErrorState
+        // surface we use for API-fetch failures so the user (and any
+        // bug report we collect) sees the real cause.
+        if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error("[ConceptGraphView] 3D scene init failed", err);
+        setSceneError(err);
+      }
     })();
 
     function handleNodeSelect(node: GraphNode | null) {
@@ -642,6 +671,11 @@ export function ConceptGraphView() {
           {graphError ? (
             <ErrorState
               error={graphError}
+              onRetry={() => setFilter((prev) => prev)}
+            />
+          ) : sceneError ? (
+            <ErrorState
+              error={sceneError}
               onRetry={() => setFilter((prev) => prev)}
             />
           ) : graphLoading && !graphData ? (
