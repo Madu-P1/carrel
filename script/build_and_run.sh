@@ -165,19 +165,42 @@ prepare_frontend_resources() {
   #
   # The PATH prepend at the top of this script means standalone-installed
   # pnpm and bun are reachable here even in non-restarted shells.
+  local runner=""
   if command -v pnpm >/dev/null 2>&1; then
-    pnpm --dir "$ROOT_DIR/frontend" build:macos
+    runner="pnpm"
   elif command -v corepack >/dev/null 2>&1; then
-    corepack pnpm --dir "$ROOT_DIR/frontend" build:macos
+    runner="corepack-pnpm"
   elif command -v bun >/dev/null 2>&1; then
-    ( cd "$ROOT_DIR/frontend" && bun run build:macos )
+    runner="bun"
   elif command -v npm >/dev/null 2>&1; then
-    ( cd "$ROOT_DIR/frontend" && npm run build:macos )
+    runner="npm"
   else
     echo "No JS runner found (pnpm/bun/corepack/npm)." >&2
     echo "Run ./install.sh to provision pnpm, or install one manually." >&2
     exit 1
   fi
+
+  # Self-heal: if node_modules is missing (fresh clone, deleted by mistake,
+  # SKIP_LAUNCH path of install.sh), populate it before the build. This
+  # catches the "tsc: command not found" failure mode that surfaces when
+  # the build script reaches for tsc inside a missing node_modules/.bin.
+  if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
+    echo "frontend/node_modules missing — running install (~30-60s on first run)..."
+    case "$runner" in
+      pnpm) pnpm --dir "$ROOT_DIR/frontend" install ;;
+      corepack-pnpm) corepack pnpm --dir "$ROOT_DIR/frontend" install ;;
+      bun) ( cd "$ROOT_DIR/frontend" && bun install ) ;;
+      npm) ( cd "$ROOT_DIR/frontend" && npm install ) ;;
+    esac
+  fi
+
+  # Build the macOS bundle.
+  case "$runner" in
+    pnpm) pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
+    corepack-pnpm) corepack pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
+    bun) ( cd "$ROOT_DIR/frontend" && bun run build:macos ) ;;
+    npm) ( cd "$ROOT_DIR/frontend" && npm run build:macos ) ;;
+  esac
 }
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
