@@ -11,7 +11,7 @@
     "launch:macos": "cd .. && ./script/build_and_run.sh",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .ts,.tsx --max-warnings 0",
+    "lint": "eslint . --max-warnings 0",
     "test": "NODE_OPTIONS=--max-old-space-size=4096 vitest run",
     "test:watch": "NODE_OPTIONS=--max-old-space-size=4096 vitest"
   },
@@ -24,6 +24,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@preact/preset-vite": "^2.10.5",
     "@testing-library/preact": "^3.2.4",
     "@types/node": "^22.19.18",
@@ -32,6 +33,7 @@
     "@typescript-eslint/parser": "^8.59.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.6.0",
     "jsdom": "^25.0.1",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.3",
