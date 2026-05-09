@@ -93,10 +93,22 @@ export function useSidebarSignals(): SidebarSignals {
 
     const heavyTimer = window.setInterval(refreshHeavy, POLL_INTERVAL_MS);
     const healthTimer = window.setInterval(refreshBackend, HEALTH_POLL_INTERVAL_MS);
+    // Event-driven invalidation. The 30s poll is fine for ambient
+    // updates but creates a visible stale-badge moment when the user
+    // completes a session and immediately lands on the review-queue
+    // page: badge says "7 due", page says "0 due", confidence in the
+    // app drops. SRS-mutating call-sites (sessions.complete in
+    // services/api/endpoints.ts) dispatch this event so the badge
+    // refreshes immediately.
+    const handleSrsChange = () => {
+      void refreshStatus();
+    };
+    window.addEventListener("carrel:srs-changed", handleSrsChange);
     return () => {
       cancelled = true;
       window.clearInterval(heavyTimer);
       window.clearInterval(healthTimer);
+      window.removeEventListener("carrel:srs-changed", handleSrsChange);
     };
   }, []);
 

@@ -691,11 +691,21 @@ export const sessions = {
       }
     }),
   /** Complete a session. Backend returns the mastery summary. */
-  complete: (id: string) =>
-    api<SessionCompletionResult>(
+  complete: async (id: string) => {
+    const result = await api<SessionCompletionResult>(
       `/api/sessions/${encodeURIComponent(id)}/complete`,
       { method: "POST" }
-    )
+    );
+    // Notify shell-level signals (sidebar badge, today panel) that
+    // SRS state just changed. Without this the sidebar's 30s poll
+    // shows a stale "N due" badge while the user is already on the
+    // "0 due" review queue page. The hook listens for the event and
+    // re-fetches /api/shell/status.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("carrel:srs-changed"));
+    }
+    return result;
+  }
 };
 
 /**
