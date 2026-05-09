@@ -6,7 +6,6 @@ import { Box, Button, Card, Divider, Icon, ScrollArea, Stack, Text, ToastHost } 
 import { WorkspaceSidebar, type SidebarNavItem } from "./WorkspaceSidebar";
 import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
 import { JobsTray } from "@/features/shell/JobsTray";
-import { FirstRunTour, openFirstRunTour } from "@/features/onboarding/FirstRunTour";
 import { focusAskInput } from "@/features/ask/focusRegistry";
 import type { PaletteAction } from "@/features/palette/actions";
 import { events } from "@/services/metrics/events";
@@ -360,9 +359,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         case "help.shortcuts":
           openShortcutsOverlay();
           break;
-        case "help.open":
-          openFirstRunTour();
-          break;
         case "app.preferences":
           openPalette();
           break;
@@ -461,14 +457,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         </div>
         <div className={styles.topbarActions}>
           <JobsTray />
-          <Button
-            aria-label="Replay first-run tour"
-            leadingIcon={<Icon name="sparkle" />}
-            onClick={() => openFirstRunTour()}
-            variant="ghost"
-          >
-            Tour
-          </Button>
           <Button
             aria-label="Toggle theme"
             leadingIcon={<Icon name="sparkle" />}
@@ -623,7 +611,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         }}
       />
       <ShortcutsOverlay />
-      <FirstRunTour />
       <ToastHost />
     </div>
   );

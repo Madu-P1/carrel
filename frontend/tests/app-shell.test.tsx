@@ -135,14 +135,6 @@ test("route changes carry directional page transition state", async () => {
   expect(screen.getByTestId("page-transition").className).toContain(shellStyles.pageTransitionBackward);
 });
 
-test("topbar tour button replays the first-run tour", async () => {
-  await renderAppReady();
-
-  fireEvent.click(screen.getByRole("button", { name: /Replay first-run tour/i }));
-
-  expect(await screen.findByRole("dialog", { name: /Bring in a source you trust/i })).toBeDefined();
-});
-
 test("jobs tray closes when clicking outside the dialog", async () => {
   await renderAppReady();
 

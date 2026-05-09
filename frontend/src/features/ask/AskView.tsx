@@ -9,7 +9,6 @@ import {
   type SrsSubjectSummary
 } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
-import { recordOnboardingStep } from "@/features/onboarding/FirstRunController";
 
 import { ColdLoadIndicator } from "./components/ColdLoadIndicator";
 import { AnswerSummary } from "./components/AnswerSummary";
@@ -180,11 +179,6 @@ export function AskView() {
       },
       "ask"
     );
-    recordOnboardingStep({
-      step: "asked_first_question",
-      firstDocId: current.kind === "document" ? current.docId : undefined,
-      firstQuestionSet: true
-    });
   }, []);
 
   const handleSubmit = async () => {
@@ -246,10 +240,6 @@ export function AskView() {
       },
       "reader"
     );
-    recordOnboardingStep({
-      step: "verified_first_citation",
-      firstDocId: citation.document_id
-    });
     navigateTo(
       `/reader/${encodeURIComponent(citation.document_id)}?chunk=${encodeURIComponent(citation.chunk_id)}`
     );
@@ -269,10 +259,6 @@ export function AskView() {
       },
       "reader",
     );
-    recordOnboardingStep({
-      step: "verified_first_citation",
-      firstDocId: card.doc_id,
-    });
     const params = new URLSearchParams();
     params.set("node", String(card.node_id));
     if (card.page !== null && card.page !== undefined) {

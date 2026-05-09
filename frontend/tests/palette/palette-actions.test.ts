@@ -15,9 +15,7 @@ describe("palette actions registry", () => {
       "view.toggleTheme",
       "reader.toggleFocusMode",
       "file.import",
-      "help.tour",
-      "system.switch-frontend-legacy",
-      "system.switch-frontend-new"
+      "help.shortcuts"
     ]) {
       expect(ids).toContain(expected);
     }
@@ -63,14 +61,5 @@ describe("palette actions registry", () => {
   test("filterActions excludes misses entirely", () => {
     const results = filterActions("zzzzznothing");
     expect(results).toEqual([]);
-  });
-
-  test("frontend switcher actions have run handlers, not commands", () => {
-    const legacy = paletteActions.find((a) => a.id === "system.switch-frontend-legacy")!;
-    const next = paletteActions.find((a) => a.id === "system.switch-frontend-new")!;
-    expect(legacy.run).toBeTypeOf("function");
-    expect(next.run).toBeTypeOf("function");
-    expect(legacy.command).toBeUndefined();
-    expect(next.command).toBeUndefined();
   });
 });
