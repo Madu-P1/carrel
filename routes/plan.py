@@ -18,7 +18,7 @@ hook on a short delay) will return the post-refresh state.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -159,6 +159,51 @@ def restore_suggestion(suggestion_id: str) -> Dict[str, str]:
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found.")
     return {"status": "pending"}
+
+
+@router.get("/api/plan/events/stream")
+async def stream_plan_events(after_id: Optional[str] = None):
+    """Server-Sent Events stream — emits when the plan should refresh.
+
+    The companion alarm + dashboard insertions hook subscribe via
+    `EventSource(...)`. Each `calendar-changed` event is the signal to
+    refetch downstream views.
+
+    Trigger: `study_events.event_type = 'local_calendar_synced'` rows
+    landing — emitted when a Calendar.app change reaches the backend.
+    1 s polling cadence against an indexed table.
+    """
+    import asyncio
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    async def event_stream():
+        cursor = after_id or ""
+        yield "event: hello\ndata: {}\n\n"
+        while True:
+            with db.get_db() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT id, event_type, payload, created_at
+                    FROM study_events
+                    WHERE event_type = 'local_calendar_synced'
+                      AND id > ?
+                    ORDER BY id ASC
+                    LIMIT 50
+                    """,
+                    (cursor,),
+                ).fetchall()
+            for row in rows:
+                cursor = row["id"]
+                yield (
+                    f"id: {row['id']}\n"
+                    "event: calendar-changed\n"
+                    f"data: {json.dumps({'created_at': row['created_at']})}\n\n"
+                )
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 def register_plan_routes(app) -> None:

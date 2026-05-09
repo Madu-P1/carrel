@@ -77,6 +77,39 @@ def run_one_feed(conn: sqlite3.Connection, feed_id: str) -> SyncOutcome:
             final_url="",
         )
 
+    # Non-HTTP feeds (kind='local' EventKit feeds, uploaded .ics files
+    # whose stored URL is the "Uploaded .ics file" placeholder) have
+    # nothing to fetch via HTTP. Return cleanly instead of marking them
+    # failed — the previous behavior surfaced a misleading "Sync error"
+    # pill in the UI for feeds that are working fine, just not via the
+    # HTTP code path. Their freshness is maintained by other means
+    # (the EventKit bridge POSTs on calendar changes; the .ics import
+    # is a one-shot snapshot at upload time).
+    is_http_url = feed.url.startswith(("http://", "https://"))
+    if feed.kind != "url" or not is_http_url:
+        # Clear any stale last_error from prior runs (before this
+        # short-circuit existed, these feeds got marked failed). This
+        # is what makes the "Sync error" pill go away in the UI.
+        if feed.last_error:
+            repository.update_feed_after_sync(
+                conn,
+                feed_id,
+                succeeded=True,
+                etag=feed.etag,
+                last_modified=feed.last_modified,
+                error_message=None,
+            )
+        return SyncOutcome(
+            feed_id=feed_id,
+            status="not_modified",
+            http_status=None,
+            items_seen=0,
+            items_upserted=0,
+            items_deleted=0,
+            error=None,
+            final_url=feed.url,
+        )
+
     raw_url = repository.resolve_feed_url(feed)
     masked = feed.url
     if raw_url is None:

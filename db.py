@@ -295,6 +295,7 @@ def _mark_legacy_baseline_if_needed(
         4: _has_columns(conn, "concepts", ["doc_id"]),
         5: _has_columns(conn, "concept_edges", ["doc_id"]),
         12: _has_columns(conn, "calendar_feeds", ["keychain_ref"]),
+        14: _has_columns(conn, "calendar_feeds", ["kind"]),
     }
 
     for version, satisfied in checks.items():
