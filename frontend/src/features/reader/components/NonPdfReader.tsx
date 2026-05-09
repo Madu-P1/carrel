@@ -27,9 +27,19 @@ export function NonPdfReader({ chunks, docId }: NonPdfReaderProps) {
       return;
     }
 
-    Array.from(articleRef.current.querySelectorAll<HTMLElement>("[data-chunk-id]"))
-      .find((node) => node.dataset.chunkId === highlightedChunkId)
-      ?.scrollIntoView({ block: "center" });
+    const target = Array.from(
+      articleRef.current.querySelectorAll<HTMLElement>("[data-chunk-id]")
+    ).find((node) => node.dataset.chunkId === highlightedChunkId);
+    if (!target) return;
+    // JSDOM has no scrollIntoView; the effect can also fire after the test
+    // tree has been torn down. Either way, falling through is fine.
+    try {
+      if (typeof target.scrollIntoView === "function") {
+        target.scrollIntoView({ block: "center" });
+      }
+    } catch {
+      /* no-op */
+    }
   }, [highlightedChunkId]);
 
   let lastSection = "";
