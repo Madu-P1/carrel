@@ -184,7 +184,13 @@ class CalendarSecretTests(unittest.TestCase):
         response = self.client.post(
             "/api/calendar/ics-upload",
             data={"label": "Apple Calendar"},
-            files={"file": ("calendar.txt", io.BytesIO(b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"), "text/plain")},
+            files={
+                "file": (
+                    "calendar.txt",
+                    io.BytesIO(b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"),
+                    "text/plain",
+                )
+            },
         )
 
         self.assertEqual(400, response.status_code)

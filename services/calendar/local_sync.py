@@ -100,9 +100,7 @@ def sync_local_calendar(
 
     sync_run_id = begin_sync_run(conn, feed.id)
     try:
-        items_upserted, items_deleted = upsert_events(
-            conn, feed.id, parsed, user_id=user_id
-        )
+        items_upserted, items_deleted = upsert_events(conn, feed.id, parsed, user_id=user_id)
         complete_sync_run(
             conn,
             sync_run_id,

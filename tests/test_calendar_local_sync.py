@@ -76,9 +76,7 @@ class LocalCalendarSyncTests(unittest.TestCase):
         }
 
     def test_first_sync_creates_local_feed_and_inserts_event(self) -> None:
-        response = self.client.post(
-            "/api/calendar/local/sync", json=self._payload()
-        )
+        response = self.client.post("/api/calendar/local/sync", json=self._payload())
         self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
         self.assertEqual(body["items_seen"], 1)
@@ -103,24 +101,26 @@ class LocalCalendarSyncTests(unittest.TestCase):
     def test_event_removal_tombstones_via_diff(self) -> None:
         """Re-syncing without a previously-seen UID should mark it deleted."""
         # First sync: 2 events.
-        two = self._payload(events=[
-            {
-                "uid": "evt-A",
-                "summary": "A",
-                "start_at": "2026-05-05T09:00:00Z",
-                "end_at": "2026-05-05T10:00:00Z",
-                "all_day": False,
-                "status": "confirmed",
-            },
-            {
-                "uid": "evt-B",
-                "summary": "B",
-                "start_at": "2026-05-05T11:00:00Z",
-                "end_at": "2026-05-05T12:00:00Z",
-                "all_day": False,
-                "status": "confirmed",
-            },
-        ])
+        two = self._payload(
+            events=[
+                {
+                    "uid": "evt-A",
+                    "summary": "A",
+                    "start_at": "2026-05-05T09:00:00Z",
+                    "end_at": "2026-05-05T10:00:00Z",
+                    "all_day": False,
+                    "status": "confirmed",
+                },
+                {
+                    "uid": "evt-B",
+                    "summary": "B",
+                    "start_at": "2026-05-05T11:00:00Z",
+                    "end_at": "2026-05-05T12:00:00Z",
+                    "all_day": False,
+                    "status": "confirmed",
+                },
+            ]
+        )
         first = self.client.post("/api/calendar/local/sync", json=two).json()
         self.assertEqual(first["items_upserted"], 2)
 

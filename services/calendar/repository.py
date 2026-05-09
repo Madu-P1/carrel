@@ -210,9 +210,7 @@ def upsert_local_feed(
         )
     conn.commit()
     return _feed_from_row(
-        conn.execute(
-            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
-        ).fetchone()
+        conn.execute("SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)).fetchone()
     )
 
 
@@ -254,15 +252,11 @@ def insert_uploaded_ics_feed(
     )
     conn.commit()
     return _feed_from_row(
-        conn.execute(
-            "SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)
-        ).fetchone()
+        conn.execute("SELECT * FROM calendar_feeds WHERE id = ?", (feed_id,)).fetchone()
     )
 
 
-def list_feeds(
-    conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER
-) -> List[FeedRow]:
+def list_feeds(conn: sqlite3.Connection, *, user_id: str = DEFAULT_USER) -> List[FeedRow]:
     migrate_plaintext_feed_urls(conn)
     rows = conn.execute(
         """
