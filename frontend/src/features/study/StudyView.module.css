@@ -14,9 +14,10 @@
 .cardArea {
   /* Lift the FlipCard out of the surrounding Stack so its 3D context
      (perspective on .scene) doesn't get clipped by an ancestor's
-     overflow. The min-height matches FlipCard's own min-height so
-     the layout doesn't jump on flip. */
-  min-height: 360px;
+     overflow. The FlipCard's .scene now drives height directly via
+     `clamp(360px, 60vh, 70vh)` (PR 2 sizing-model rework), so we no
+     longer set our own min-height here — letting the child grow
+     means a long answer scrolls inside the face instead of clipping. */
   position: relative;
   /* Slide-in animation when currentIndex changes. The FlipCard is
      keyed on currentIndex in StudyView so it remounts each card. */
@@ -41,57 +42,12 @@
 }
 
 /*
- * Card content layout. Both faces use the same column structure so
- * the front and back share visual weight — the user reads the
- * question and the answer in the same spot.
+ * Note: the per-face chrome (.cardFace / .cardEyebrow / .cardQuestion /
+ * .cardAnswer / .cardHint) used to live here. PR 2 of flashcards-focus
+ * extracted it into `components/FlashcardFace.tsx` + its own CSS module
+ * so the type scale is co-located with the component that owns it,
+ * and the answer/question can iterate without touching this file.
  */
-.cardFace {
-  background: var(--color-bg-elevated);
-  padding: var(--space-7) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  height: 100%;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-4);
-}
-
-.cardEyebrow {
-  font-family: var(--font-mono);
-  font-size: var(--text-3);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-  /* Truncate long "Concept · Filename.pdf" so the card width stays
-     stable across cards. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cardQuestion {
-  /* The visual centerpiece. Serif display matches the AskCard
-     verbatim quote so question + answer feel like the same family. */
-  font-family: var(--font-serif);
-  font-size: var(--text-h1, 28px);
-  line-height: var(--leading-display, 1.2);
-  margin: 0;
-  flex: 1 1 auto;
-}
-
-.cardAnswer {
-  font-size: var(--text-body, 16px);
-  line-height: var(--leading-comfortable, 1.6);
-  margin: 0;
-  flex: 1 1 auto;
-}
-
-.cardHint {
-  font-family: var(--font-mono);
-  font-size: var(--text-3);
-  color: var(--color-text-tertiary);
-  letter-spacing: var(--tracking-tight);
-}
 
 .sessionFooter {
   display: flex;

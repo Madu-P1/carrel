@@ -10,10 +10,26 @@
   cursor: pointer;
   outline: none;
   width: 100%;
-  /* The min-height keeps the card a consistent size regardless of
-     which face has more text. Tuned for an average card; adapts
-     gracefully when content overflows. */
-  min-height: 360px;
+  /*
+   * Sizing model (PR 2 of flashcards-focus, 2026-05-10).
+   *
+   * The previous `min-height: 360px` was a silent-clip trap: the
+   * absolutely-positioned faces sat at `inset: 0` inside `.inner`,
+   * which had no real height of its own — only the same min-height.
+   * A 1500-char answer would render its tall content into a 360px
+   * face with `overflow: hidden` and just disappear with no scrollbar.
+   *
+   * Fix: give the perspective parent a real, viewport-relative height
+   * via `clamp()`. The faces inherit it (`inset: 0`) and own their
+   * own scroll affordance (overflow-y: auto on .face in
+   * FlashcardFace.module.css). Each face stays a discrete paint
+   * layer, so `backface-visibility: hidden` continues to work mid-
+   * flip — the rotateY happens on .inner, not on the scrolled face.
+   *
+   * 360px floor keeps short cards from looking lonely; 70vh ceiling
+   * keeps a long answer from filling the whole window in focus mode.
+   */
+  height: clamp(360px, 60vh, 70vh);
   display: block;
 }
 
@@ -28,7 +44,9 @@
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 360px;
+  /* No own min-height — .scene drives height now (see comment above).
+     Keeping height: 100% here lets .inner fill the clamped scene so
+     the absolutely-positioned faces have a real box to inset into. */
   transform-style: preserve-3d;
   transition: transform var(--dur-medium) var(--ease-soft);
   will-change: transform;
