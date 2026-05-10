@@ -284,6 +284,20 @@ body.drop-ready .face {
     transition-duration: 60ms !important;
     animation: none !important;
   }
+  /* Override the higher-specificity body-class spin rules.
+   * The base `.drift { animation: none !important }` above gets out-
+   * specificityed by `body.alarm .drift { animation: cubeDragSpin ... }`
+   * (two classes vs one), so the chaos spin still fires under
+   * reduced-motion. Match the offending selectors to suppress them.
+   * The alarm pulse fallback below (body.alarm .face / .aura) keeps
+   * the urgent signal visible without movement.
+   */
+  body.dragging .drift,
+  body.alarm .cube3d,
+  body.alarm .drift,
+  body.drop-ready .drift {
+    animation: none !important;
+  }
   /* Re-enable a gentle pulse on alarm so the signal is still visible. */
   body.alarm .face {
     animation: cubeAlarmPulseRM 1.4s ease-in-out infinite !important;
