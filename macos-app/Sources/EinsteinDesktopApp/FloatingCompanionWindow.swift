@@ -120,7 +120,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
 
     /// Push a state into the cube. Allowed names match the JS side's
     /// STATES table: idle | focused | thinking | citeChecking |
-    /// encouraging | stumped | break | sleeping | streak.
+    /// encouraging | stumped | break | sleeping.
     /// Unknown names are silently dropped (the WKWebView's setState
     /// no-ops on unknowns too — defense in depth).
     func setState(_ name: String) {
@@ -138,14 +138,6 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         alarmActive = active
         whenLoaded { [weak self] in
             self?.evaluate("window.companion?.setAlarm(\(active ? "true" : "false"))")
-        }
-    }
-
-    /// Update the streak day count surfaced in the pill.
-    func setStreakDays(_ days: Int) {
-        let clamped = max(0, days)
-        whenLoaded { [weak self] in
-            self?.evaluate("window.companion?.setStreakDays(\(clamped))")
         }
     }
 
@@ -167,7 +159,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
     /// pins the contract.
     static let allowedStates: Set<String> = [
         "idle", "focused", "thinking", "citeChecking",
-        "encouraging", "stumped", "break", "sleeping", "streak",
+        "encouraging", "stumped", "break", "sleeping",
     ]
 
     private func replayPending() {

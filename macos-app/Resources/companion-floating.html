@@ -41,7 +41,6 @@
   --spin-drag: 0.45s;
   --spin-drop-ready: 1.8s;
   --spin-shake: 0.6s;
-  --spin-streak: 1.6s;
   --drift-idle: 60s;
 
   /* ---- easing ---------------------------------------------------------- */
@@ -263,22 +262,6 @@ body.drop-ready .face {
 }
 .cell.teal-dim { background: rgba(94, 234, 212, 0.04); border-color: rgba(94, 234, 212, 0.08); }
 
-/* Streak indicator — bottom row of the front face. Slow pulse on >3
- * days so the user feels the momentum visually without the cube
- * shouting. */
-.cell.streak-day {
-  background: var(--color-teal);
-  border-color: transparent;
-  box-shadow: 0 0 10px var(--color-teal-50);
-}
-.cell.streak-pulse {
-  animation: streakPulse 2.4s ease-in-out infinite;
-}
-@keyframes streakPulse {
-  0%, 100% { box-shadow: 0 0 8px var(--color-teal-30); }
-  50%      { box-shadow: 0 0 16px var(--color-teal-50); }
-}
-
 .cell.ambient { animation: cubeAmbientPulse 1.6s var(--ease-soft); }
 @keyframes cubeAmbientPulse {
   0%   { background: var(--color-cell-dim); }
@@ -354,8 +337,8 @@ body.drop-ready .face {
 /* Screen-reader-only utility. The cube is a 3D CSS scene with no
  * inherent semantics for VoiceOver — every cell is a div, every face
  * is a div, the rotation conveys nothing to assistive tech. The
- * .sr-only spans inside .stage carry the actual state label and
- * streak count so VoiceOver users hear something meaningful. (T1.5.) */
+ * .sr-only span inside .stage carries the current state label so
+ * VoiceOver users hear something meaningful. (T1.5.) */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -375,21 +358,18 @@ body.drop-ready .face {
   ARIA scaffolding (T1.5).
   The .stage is the live region; aria-live="polite" tells VoiceOver
   to announce text changes inside it without interrupting the user.
-  aria-atomic="true" forces the entire region to re-read on change so
-  "Idle, 7 day streak" reads as a single statement rather than two
-  separate updates. The role="status" gives VoiceOver a meaningful
-  type ("status announcement") rather than a generic group.
+  aria-atomic="true" forces the entire region to re-read on change.
+  The role="status" gives VoiceOver a meaningful type ("status
+  announcement") rather than a generic group.
 
-  Inside, two .sr-only spans carry the actual semantics:
-  - #companion-state-label:  state and alarm
-  - #companion-streak-label: streak count (only populated when > 0)
+  Inside, the .sr-only span carries the current state semantics
+  (#companion-state-label: state name OR alarm string when active).
   The cube divs themselves are aria-hidden because their visual
   language doesn't translate (a CSS rotation conveys nothing to
   assistive tech).
 -->
 <div class="stage" role="status" aria-live="polite" aria-atomic="true" aria-label="Carrel companion">
   <span class="sr-only" id="companion-state-label">Idle.</span>
-  <span class="sr-only" id="companion-streak-label"></span>
   <div class="aura" id="aura" aria-hidden="true"></div>
   <div class="anchor" id="anchor" aria-hidden="true">
     <div class="cube3d" id="cube3d">
@@ -459,8 +439,6 @@ const TIMING = {
   sleepGlimmerHoldMs: 1400,
   sleepGlimmerNextMin: 8000,
   sleepGlimmerNextRandom: 4000,
-  streakSpinSettleMs: 700,
-  streakSpinReleaseMs: 1700,
   shakeRecoveryMs: 700,
   auraReleaseMs: 2400,
   behaviorWarmupMs: 450,
@@ -491,7 +469,6 @@ const STATES = {
   stumped:      { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 0.98, opacity: 1,    behavior: 'cardAgain',    shakeOnEntry: true },
   break:        { rotateX: -14, rotateY:  168, activeFace: 'back',   scale: 0.96, opacity: 0.95, behavior: 'breakDrain' },
   sleeping:     { rotateX:  78, rotateY:  -18, activeFace: 'bottom', scale: 0.92, opacity: 0.7,  behavior: 'sleepGlimmer', drift: true },
-  streak:       { rotateX: -14, rotateY:  -18, activeFace: 'front',  scale: 1.08, opacity: 1,    behavior: 'streakSpin',   auraOnEntry: true },
 };
 
 const faces = {};
@@ -513,7 +490,6 @@ const drift = document.getElementById('drift');
 const aura = document.getElementById('aura');
 
 let currentState = 'idle';
-let streakDays = 0;
 
 /* Bounded timer registry. setT() wraps setTimeout so fired timers
  * remove themselves from the registry — the array can't grow without
@@ -549,22 +525,6 @@ function applyAllPatterns(activeFace) {
   });
   Object.values(faces).forEach((f) => f.classList.remove('active-face'));
   if (faces[activeFace]) faces[activeFace].classList.add('active-face');
-  /* Re-apply streak overlay after pattern reset. The bottom row of
-   * the front face shows up to 3 brights; >3 days adds a slow pulse. */
-  applyStreakOverlay();
-}
-
-function applyStreakOverlay() {
-  const cells = faces.front.children;
-  const positions = [6, 7, 8];
-  const brightCount = Math.max(0, Math.min(3, streakDays));
-  positions.forEach((idx, i) => {
-    cells[idx].classList.remove('streak-day', 'streak-pulse');
-    if (i < brightCount) {
-      cells[idx].classList.add('streak-day');
-      if (streakDays > 3) cells[idx].classList.add('streak-pulse');
-    }
-  });
 }
 
 function startAmbient(activeFace) {
@@ -583,23 +543,14 @@ function startAmbient(activeFace) {
 
 const BEHAVIORS = {
   idleTwinkle() {
-    /* Bottom row 6/7/8 hosts the streak indicator. When streak is
-     * active we MUST skip those positions or the twinkle clobbers
-     * the streak signal every few seconds. (Adversarial-review P1.) */
+    /* Front face has 9 cells (0..8). Twinkle skips index 4 (the
+     * always-bright center, per FACE_DEFAULTS). Pre-T2.5 this list
+     * also carved out 6/7/8 for the streak overlay; streak is gone,
+     * so all 8 non-center positions are fair game again. */
     const ALL_POS = [0, 1, 2, 3, 5, 6, 7, 8];
     function tick() {
       if (currentState !== 'idle') return;
-      const positions = streakDays > 0
-        ? ALL_POS.filter((p) => p < 6 || p >= 6 + Math.min(3, streakDays))
-        : ALL_POS;
-      if (positions.length === 0) {
-        // Streak fills the entire row 6/7/8 with no other cells to
-        // twinkle — extremely unlikely (would require a 9-cell front
-        // face fully claimed). Schedule the next tick and bail.
-        setT(tick, TIMING.idleTwinkleNextMin + Math.random() * TIMING.idleTwinkleNextRandom);
-        return;
-      }
-      const pos = positions[Math.floor(Math.random() * positions.length)];
+      const pos = ALL_POS[Math.floor(Math.random() * ALL_POS.length)];
       const cell = faces.front.children[pos];
       const orig = cell.className;
       cell.className = 'cell teal-bright';
@@ -706,24 +657,6 @@ const BEHAVIORS = {
     }
     setT(glimmer, TIMING.sleepGlimmerStartMs);
   },
-  streakSpin() {
-    const cells = faces.front.children;
-    const order = [0, 1, 2, 5, 8, 7, 6, 3, 4];
-    order.forEach((idx, n) => {
-      setT(() => { cells[idx].className = 'cell teal-bright'; }, n * 70);
-    });
-    setT(() => {
-      if (currentState !== 'streak') return;
-      const cfg = STATES.streak;
-      cube3d.style.transition = `transform ${getComputedStyle(document.documentElement).getPropertyValue('--spin-streak') || '1.6s'} cubic-bezier(0.65, 0, 0.35, 1)`;
-      cube3d.style.transform = `rotateX(${cfg.rotateX}deg) rotateY(${cfg.rotateY + 360}deg)`;
-      setT(() => {
-        if (currentState !== 'streak') return;
-        cube3d.style.transition = `transform var(--dur-long) var(--ease-soft)`;
-        cube3d.style.transform = `rotateX(${cfg.rotateX}deg) rotateY(${cfg.rotateY}deg)`;
-      }, TIMING.streakSpinReleaseMs);
-    }, TIMING.streakSpinSettleMs);
-  },
 };
 
 /* Human-readable labels for VoiceOver. Mirror keys with STATES.
@@ -740,14 +673,12 @@ const STATE_LABELS = {
   stumped: 'Card needs review',
   break: 'On break',
   sleeping: 'Sleeping. No recent activity.',
-  streak: 'Streak day reached',
 };
 
 function announceCompanion() {
-  /* Recompose the live-region label from current state + alarm. The
-   * alarm is the highest-priority signal so it leads. The streak
-   * sits in its own sr-only span so VoiceOver hears it after the
-   * primary state. (T1.5.) */
+  /* Recompose the live-region label from current state + alarm.
+   * Alarm is the highest-priority signal so it leads; otherwise the
+   * label is the current state from STATE_LABELS. (T1.5.) */
   const label = document.getElementById('companion-state-label');
   if (!label) return;
   if (alarmActive) {
@@ -755,18 +686,6 @@ function announceCompanion() {
     return;
   }
   label.textContent = (STATE_LABELS[currentState] || currentState) + '.';
-}
-
-function announceStreak() {
-  const label = document.getElementById('companion-streak-label');
-  if (!label) return;
-  if (streakDays > 0) {
-    label.textContent = streakDays === 1
-      ? '1 day streak.'
-      : streakDays + ' day streak.';
-  } else {
-    label.textContent = '';
-  }
 }
 
 function applyState(name) {
@@ -820,16 +739,6 @@ let alarmActive = false;
 window.companion = {
   setState(name) { applyState(name); },
   getState() { return currentState; },
-  /** Set the daily-streak count. Up to 3 cells on the bottom row of
-   *  the front face light up; >3 days adds a slow pulse so the
-   *  user feels the momentum. (Was a no-op pre-audit.) */
-  setStreakDays(n) {
-    const num = Number(n);
-    streakDays = Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
-    applyStreakOverlay();
-    announceStreak();
-  },
-  getStreakDays() { return streakDays; },
   /** Toggle drop-target visual state. Swift's DropAcceptingWebView
    *  calls this on dragEntered / dragExited / performDragOperation. */
   setDropping(active) {

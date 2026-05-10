@@ -3,12 +3,12 @@
  * floating cube companion.
  *
  * Why a bus and not direct calls to `window.nativeCompanion`:
- *   1. Transient states (encouraging, stumped, streak) need to fade
- *      back to the right "ground" state automatically. The ground is
+ *   1. Transient states (encouraging, stumped) need to fade back to
+ *      the right "ground" state automatically. The ground is
  *      `focused` while a session is running, `idle` otherwise. Each
  *      caller shouldn't have to know that.
  *   2. Overlapping events shouldn't whiplash the cube — a card-again
- *      that lands during a streak celebration shouldn't kill the
+ *      that lands during a brief celebration shouldn't kill the
  *      celebration. The bus debounces with a "transient lock" timer.
  *   3. Idle / wake from inactivity is global, not feature-local. The
  *      bus owns the inactivity timer once, on app boot.
@@ -25,12 +25,10 @@ type CompanionState =
   | "encouraging"
   | "stumped"
   | "break"
-  | "sleeping"
-  | "streak";
+  | "sleeping";
 
 interface NativeCompanion {
   setState: (state: CompanionState) => void;
-  setStreakDays?: (days: number) => void;
   setAlarm?: (active: boolean) => void;
 }
 
@@ -151,15 +149,6 @@ export const companion = {
   },
   breakEnd(): void {
     snapToGround();
-  },
-
-  /** Daily streak extended. Held for 3s, then back to ground. */
-  streakHit(days?: number): void {
-    if (sleeping) wakeFromSleep();
-    if (typeof days === "number" && bridge()?.setStreakDays) {
-      bridge()!.setStreakDays!(days);
-    }
-    holdTransient("streak", 3000);
   },
 
   /** Scheduled study session is now. Cube spins chaotically until

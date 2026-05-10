@@ -183,7 +183,7 @@ enum NativeBridge {
       if (!window.nativeCompanion) {
         const COMPANION_STATES = new Set([
           "idle", "focused", "thinking", "citeChecking",
-          "encouraging", "stumped", "break", "sleeping", "streak",
+          "encouraging", "stumped", "break", "sleeping",
         ]);
         window.nativeCompanion = {
           setState(state) {
@@ -192,15 +192,6 @@ enum NativeBridge {
               postMessage("nativeCompanion", { action: "setState", state });
             } catch (error) {
               console.error("Companion bridge setState failed", error);
-            }
-          },
-          setStreakDays(days) {
-            const n = Math.max(0, Math.floor(Number(days)));
-            if (!Number.isFinite(n)) return;
-            try {
-              postMessage("nativeCompanion", { action: "setStreakDays", days: n });
-            } catch (error) {
-              console.error("Companion bridge setStreakDays failed", error);
             }
           },
           setAlarm(active) {
