@@ -201,6 +201,18 @@ enum NativeBridge {
               console.error("Companion bridge setAlarm failed", error);
             }
           },
+          /* T2.3 — caller-driven ambient pulse on a named face. The
+             face vocabulary mirrors window.companion.pulseFace on
+             the floating-panel side. Unknown names are dropped at
+             the cube; we don't gatekeep here. */
+          pulseFace(face) {
+            if (typeof face !== "string") return;
+            try {
+              postMessage("nativeCompanion", { action: "pulseFace", face });
+            } catch (error) {
+              console.error("Companion bridge pulseFace failed", error);
+            }
+          },
         };
       }
 

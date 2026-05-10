@@ -27,9 +27,23 @@ type CompanionState =
   | "break"
   | "sleeping";
 
+/** Faces of the cube, used by `pulseFace` (T2.3). The face → domain
+ *  mapping is convention, not enforced:
+ *    left   → library / SRS background activity
+ *    right  → AI background activity in another tab
+ *    back   → periodic sync (calendar, telemetry)
+ *    top    → session progress milestone
+ *    bottom → low-priority background work
+ *    front  → reserved (active idle face; do not pulse) */
+type CompanionFace = "front" | "back" | "left" | "right" | "top" | "bottom";
+
 interface NativeCompanion {
   setState: (state: CompanionState) => void;
   setAlarm?: (active: boolean) => void;
+  /** Animate a single random cell on the named face once. Optional
+   *  on the bridge so older Carrel installs (pre-T2.3) don't break
+   *  if the bus calls it. (T2.3.) */
+  pulseFace?: (face: CompanionFace) => void;
 }
 
 function bridge(): NativeCompanion | null {
@@ -167,6 +181,24 @@ export const companion = {
   },
   isAlarming(): boolean {
     return alarmActive;
+  },
+
+  /**
+   * Signal a real background event by pulsing a single cell on the
+   * named face. The cube's face → domain mapping is intentional
+   * (see `CompanionFace`); pick the face that best represents the
+   * signal's domain. (T2.3.)
+   *
+   * Per-domain examples to inspire wiring:
+   *   - companionBus.signal("left")  on "library document indexed"
+   *   - companionBus.signal("right") on "AI request started elsewhere"
+   *   - companionBus.signal("back")  on "calendar sync ran"
+   *   - companionBus.signal("top")   on "session crossed 25% / 50% / 75%"
+   *
+   * No-op when the bridge isn't installed (older builds, web preview).
+   */
+  signal(face: CompanionFace): void {
+    bridge()?.pulseFace?.(face);
   },
 
   /**

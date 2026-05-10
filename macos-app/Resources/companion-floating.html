@@ -467,10 +467,10 @@ const TIMING = {
   idleTwinkleHoldMs: 700,
   idleTwinkleNextMin: 2200,
   idleTwinkleNextRandom: 1800,
-  ambientStartMs: 2000,
+  /* T2.3 — ambientCellMs is the per-pulse hold time used by
+   * pulseFace(). The pre-T2.3 ambient*Start/Next* entries scheduled
+   * the now-removed random recurring ambient and are gone. */
   ambientCellMs: 1700,
-  ambientNextMin: 3500,
-  ambientNextRandom: 2500,
   focusPulseHoldMs: 320,
   focusPulseNextMs: 1600,
   focusPulseStaggerMs: 220,
@@ -509,9 +509,9 @@ const CELL_CLASS      = { '.': '', o: 'outlined',      f: 'filled',      b: 'bri
 const CELL_CLASS_TEAL = { '.': '', o: 'teal-outlined', f: 'teal-filled', b: 'teal-bright', d: 'teal-dim' };
 
 const STATES = {
-  idle:         { rotateX: -14, rotateY:  -18, activeFace: 'front',  scale: 1,    opacity: 1,    behavior: 'idleTwinkle',  ambient: true,  drift: true },
-  focused:      { rotateX: -78, rotateY:  -18, activeFace: 'top',    scale: 1.05, opacity: 1,    behavior: 'focusColumn',  ambient: true },
-  thinking:     { rotateX: -14, rotateY:  -78, activeFace: 'right',  scale: 1,    opacity: 1,    behavior: 'thinkSweep',   ambient: true },
+  idle:         { rotateX: -14, rotateY:  -18, activeFace: 'front',  scale: 1,    opacity: 1,    behavior: 'idleTwinkle',  drift: true },
+  focused:      { rotateX: -78, rotateY:  -18, activeFace: 'top',    scale: 1.05, opacity: 1,    behavior: 'focusColumn'  },
+  thinking:     { rotateX: -14, rotateY:  -78, activeFace: 'right',  scale: 1,    opacity: 1,    behavior: 'thinkSweep'   },
   citeChecking: { rotateX:  -8, rotateY:  -98, activeFace: 'right',  scale: 1,    opacity: 1,    behavior: 'citeScan' },
   encouraging:  { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 1.04, opacity: 1,    behavior: 'cardGood',     auraOnEntry: true },
   stumped:      { rotateX: -14, rotateY:   80, activeFace: 'left',   scale: 0.98, opacity: 1,    behavior: 'cardAgain',    shakeOnEntry: true },
@@ -575,18 +575,43 @@ function applyAllPatterns(activeFace) {
   if (faces[activeFace]) faces[activeFace].classList.add('active-face');
 }
 
-function startAmbient(activeFace) {
-  function pulse() {
-    const otherFaces = Object.keys(faces).filter((f) => f !== activeFace);
-    const face = otherFaces[Math.floor(Math.random() * otherFaces.length)];
-    const cells = faces[face].children;
-    const idx = Math.floor(Math.random() * 9);
-    const cell = cells[idx];
-    cell.classList.add('ambient');
-    setT(() => cell.classList.remove('ambient'), TIMING.ambientCellMs);
-    setT(pulse, TIMING.ambientNextMin + Math.random() * TIMING.ambientNextRandom);
-  }
-  setT(pulse, TIMING.ambientStartMs);
+/* T2.3 — every pulse is a real signal, not decoration.
+ *
+ * Pre-T2.3 behavior: startAmbient() picked a random cell on a random
+ * inactive face every 3.5-6s and animated it. This was DESIGN.md-
+ * forbidden ("avoid decorative ambient motion") and the pulses
+ * carried zero information.
+ *
+ * New behavior: random ambient is removed. The cube is still on
+ * inactive faces by default. Specific app events trigger a pulse on
+ * a specific face via `pulseFace(name)`, exposed on
+ * `window.companion`. Each pulse means something concrete happened:
+ *   - left:   library / SRS background activity (e.g. document
+ *             indexed, card scheduled)
+ *   - right:  AI background activity in another tab
+ *   - back:   periodic sync (calendar, telemetry batch)
+ *   - top:    session progress milestone
+ *   - bottom: low-priority background (scratch buffer flush)
+ *   - front:  reserved (active-face for idle; do not pulse here)
+ *
+ * The face → domain mapping is a convention, not enforced. Callers
+ * pick the face that best represents the signal's domain. The
+ * mechanism only animates one cell on the named face for
+ * ambientCellMs; it does not schedule recurring pulses.
+ *
+ * This commit ships the mechanism. Wiring real event sources to
+ * pulseFace() lands in follow-up commits as we audit each event
+ * emitter. Until those wires exist, inactive faces stay still. */
+function pulseFace(faceName) {
+  const face = faces[faceName];
+  if (!face) return;
+  const cells = face.children;
+  if (!cells.length) return;
+  const idx = Math.floor(Math.random() * cells.length);
+  const cell = cells[idx];
+  if (!cell) return;
+  cell.classList.add('ambient');
+  setT(() => cell.classList.remove('ambient'), TIMING.ambientCellMs);
 }
 
 const BEHAVIORS = {
@@ -777,7 +802,8 @@ function applyState(name) {
   if (BEHAVIORS[cfg.behavior]) {
     setT(() => BEHAVIORS[cfg.behavior](), TIMING.behaviorWarmupMs);
   }
-  if (cfg.ambient) startAmbient(cfg.activeFace);
+  /* T2.3 — random ambient pulses removed; pulseFace() is now the
+   * only way an inactive face animates, and it's caller-driven. */
 
   /* T1.5 — announce the new state to VoiceOver. */
   announceCompanion();
@@ -787,6 +813,11 @@ let alarmActive = false;
 window.companion = {
   setState(name) { applyState(name); },
   getState() { return currentState; },
+  /** Animate a single random cell on the named face once. Used by
+   *  the bus to translate real app events into "something happened
+   *  in this domain" pulses. Names: front, back, left, right, top,
+   *  bottom. Unknown names are silently dropped. (T2.3.) */
+  pulseFace(name) { pulseFace(String(name || '')); },
   /** Toggle drop-target visual state. Swift's DropAcceptingWebView
    *  calls this on dragEntered / dragExited / performDragOperation. */
   setDropping(active) {
