@@ -47,6 +47,53 @@ def _docling_enabled_for(extension: str) -> bool:
     return extension.lstrip(".").lower() in allowed
 
 
+# PR 0a — auto-card-generation on upload is OFF by default. Users
+# explicitly trigger card drafting from the document detail view via
+# CardAiDraftDialog. The flag exists as an escape hatch for testing
+# and for the rare integration path that still wants the legacy
+# behaviour. It is read per-call so tests can flip it via env var.
+_AUTO_CARD_DRAFT_ENV = "CARREL_AUTO_CARD_DRAFT"
+# app_settings key gating the once-per-upgrade telemetry emission.
+_AUTO_DISABLED_LOGGED_KEY = "cards_auto_generation_disabled_logged"
+
+
+def _auto_card_draft_enabled() -> bool:
+    """Return True when the legacy auto-card-creation path on upload is
+    enabled. Default is False (PR 0a). Same parsing convention as
+    ``INGEST_USE_DOCLING`` for consistency with other ingest flags.
+    """
+    return os.getenv(_AUTO_CARD_DRAFT_ENV, "false").lower() in ("1", "true", "yes")
+
+
+def _maybe_log_auto_generation_disabled(conn: sqlite3.Connection) -> None:
+    """Emit ``cards.auto_generation_disabled`` once per database lifetime
+    when the flag is off, so the dashboard can confirm the migration
+    flipped. Re-emission is suppressed via an ``app_settings`` flag so
+    we don't add a row on every upload.
+
+    Best-effort: any failure here must not break the ingest path.
+    """
+    try:
+        from services import app_state, usage_events as usage_events_service
+
+        if app_state.get_setting(conn, _AUTO_DISABLED_LOGGED_KEY):
+            return
+        usage_events_service.record_event(
+            conn,
+            event_name="cards.auto_generation_disabled",
+            properties=None,
+            surface="ingestion",
+        )
+        app_state.set_setting(conn, _AUTO_DISABLED_LOGGED_KEY, "1")
+    except Exception as exc:  # pragma: no cover - defensive
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "auto_generation_disabled_log_failed",
+            error=str(exc),
+        )
+
+
 def _resolve_ingest_path(filename: str, storage_name: Optional[str]) -> Optional[Path]:
     """Best-effort resolution of the original file path on disk.
 
@@ -116,6 +163,11 @@ def ingest_document_record(
     subject_name: Optional[str] = None,
     asset: Optional[IngestedAsset] = None,
 ) -> Dict[str, object]:
+    # PR 0a telemetry: emit a single signal the first time the gated
+    # path runs with the flag off, so the dashboard can confirm the
+    # auto-generation migration has flipped on this install.
+    if not _auto_card_draft_enabled():
+        _maybe_log_auto_generation_disabled(conn)
     doc_id = str(uuid.uuid4())
     normalized_subject = normalize_subject_name(subject_name)
     raw_text = asset.cleaned_text if asset else extracted_text
@@ -391,13 +443,19 @@ def ingest_document_record(
         if concept_evidence_ids:
             provenance_service.link_evidence_to_quiz(conn, question_id, concept_evidence_ids)
 
-        _draft_cards_for_concept(
-            conn,
-            concept=concept,
-            concept_payloads=concept_payloads,
-            concept_id=concept_id,
-            concept_evidence_ids=concept_evidence_ids,
-        )
+        # PR 0a: auto-card creation on upload is gated. The default
+        # (off) makes uploads a pure ingest-and-extract pass; the user
+        # then triggers AI card drafting from the document detail view
+        # via CardAiDraftDialog. Set CARREL_AUTO_CARD_DRAFT=true to
+        # restore the legacy behaviour (escape hatch for tests).
+        if _auto_card_draft_enabled():
+            _draft_cards_for_concept(
+                conn,
+                concept=concept,
+                concept_payloads=concept_payloads,
+                concept_id=concept_id,
+                concept_evidence_ids=concept_evidence_ids,
+            )
 
         _extract_concept_depth(conn, concept_id, concept["name"], learning_text, concept_chunk_ids)
 

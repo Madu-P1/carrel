@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,13 @@ class LearningOSBackendTests(unittest.TestCase):
         self.original_db_path = main.DB_PATH
         self.original_schema_path = main.SCHEMA_PATH
 
+        # PR 0a: this suite's session+review tests assume ``ingest`` seeds
+        # SRS cards, which is no longer the default. Opt the suite into
+        # the legacy auto-draft behaviour so the existing fixture path
+        # keeps working without rewriting every test.
+        self._original_auto_card_draft = os.environ.get("CARREL_AUTO_CARD_DRAFT")
+        os.environ["CARREL_AUTO_CARD_DRAFT"] = "true"
+
         main.BASE_DIR = self.base_dir
         main.DATA_DIR = self.base_dir / "data"
         main.UPLOAD_DIR = main.DATA_DIR / "uploads"
@@ -42,6 +50,10 @@ class LearningOSBackendTests(unittest.TestCase):
         main.UPLOAD_DIR = self.original_upload_dir
         main.DB_PATH = self.original_db_path
         main.SCHEMA_PATH = self.original_schema_path
+        if self._original_auto_card_draft is None:
+            os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
+        else:
+            os.environ["CARREL_AUTO_CARD_DRAFT"] = self._original_auto_card_draft
         self.temp_dir.cleanup()
 
     def clear_seed_data(self) -> None:

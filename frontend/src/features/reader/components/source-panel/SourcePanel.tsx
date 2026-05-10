@@ -1,8 +1,10 @@
 import { useEffect, useState } from "preact/hooks";
 
 import type { DocumentDetail, EvidenceResolution } from "@/services/api/endpoints";
-import { Tabs } from "@/design-system";
+import { Button, Icon, Stack, Tabs } from "@/design-system";
 import type { TabItem } from "@/design-system";
+
+import { CardAiDraftDialog } from "@/features/study/CardAiDraftDialog";
 
 import { ChunksList } from "./ChunksList";
 import { ConceptsList } from "./ConceptsList";
@@ -52,6 +54,7 @@ export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePa
     : [];
 
   const [tab, setTab] = useState<TabId>(selectedEvidence ? "related" : "chunks");
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const currentPage = readerState.currentPage.value || null;
 
   useEffect(() => {
@@ -71,6 +74,29 @@ export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePa
   return (
     <div className={styles.panel}>
       <MetadataStripe doc={detail.document} />
+      {/*
+        PR 0a — auto-card-generation on upload is off. Users now opt
+        into AI card drafting from the document detail surface. The
+        button reuses the existing CardAiDraftDialog (which posts to
+        /api/srs/cards/ai-draft); no tier check today.
+      */}
+      <Stack direction="horizontal" gap={2}>
+        <Button
+          leadingIcon={<Icon name="sparkle" />}
+          onClick={() => setAiDraftOpen(true)}
+          variant="secondary"
+        >
+          Draft cards with AI
+        </Button>
+      </Stack>
+      <CardAiDraftDialog
+        onCardsCreated={() => {
+          // Card creation is its own surface; the source panel doesn't
+          // own the card list. Closing is handled by the dialog itself.
+        }}
+        onClose={() => setAiDraftOpen(false)}
+        open={aiDraftOpen}
+      />
       <Tabs
         ariaLabel="Source panel sections"
         items={items}

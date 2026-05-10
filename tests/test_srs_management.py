@@ -8,6 +8,7 @@ concepts → documents) rather than handcrafted rows.
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,6 +47,13 @@ class ManageCardsServiceTests(unittest.TestCase):
         self.original_db_path = main.DB_PATH
         self.original_schema_path = main.SCHEMA_PATH
 
+        # PR 0a: this suite's fixture is "ingest two documents and expect
+        # cards to exist". Auto-card creation on upload is now off by
+        # default; opt the suite into the legacy behaviour so the
+        # ingestion-seeded join queries still have rows to filter.
+        self._original_auto_card_draft = os.environ.get("CARREL_AUTO_CARD_DRAFT")
+        os.environ["CARREL_AUTO_CARD_DRAFT"] = "true"
+
         main.BASE_DIR = self.base_dir
         main.DATA_DIR = self.base_dir / "data"
         main.UPLOAD_DIR = main.DATA_DIR / "uploads"
@@ -60,6 +68,10 @@ class ManageCardsServiceTests(unittest.TestCase):
         main.UPLOAD_DIR = self.original_upload_dir
         main.DB_PATH = self.original_db_path
         main.SCHEMA_PATH = self.original_schema_path
+        if self._original_auto_card_draft is None:
+            os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
+        else:
+            os.environ["CARREL_AUTO_CARD_DRAFT"] = self._original_auto_card_draft
         self.temp_dir.cleanup()
 
     def _seed_library(self) -> None:
@@ -190,6 +202,11 @@ class ManageCardsRouteTests(unittest.TestCase):
         self.original_db_path = main.DB_PATH
         self.original_schema_path = main.SCHEMA_PATH
 
+        # PR 0a: Manage Cards routes assume cards exist after ingest;
+        # opt this suite into the legacy auto-card behaviour.
+        self._original_auto_card_draft = os.environ.get("CARREL_AUTO_CARD_DRAFT")
+        os.environ["CARREL_AUTO_CARD_DRAFT"] = "true"
+
         main.BASE_DIR = self.base_dir
         main.DATA_DIR = self.base_dir / "data"
         main.UPLOAD_DIR = main.DATA_DIR / "uploads"
@@ -213,6 +230,10 @@ class ManageCardsRouteTests(unittest.TestCase):
         main.UPLOAD_DIR = self.original_upload_dir
         main.DB_PATH = self.original_db_path
         main.SCHEMA_PATH = self.original_schema_path
+        if self._original_auto_card_draft is None:
+            os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
+        else:
+            os.environ["CARREL_AUTO_CARD_DRAFT"] = self._original_auto_card_draft
         self.temp_dir.cleanup()
 
     def test_list_endpoint_returns_cards_and_total(self) -> None:
