@@ -139,8 +139,16 @@ export function StudyView() {
     setPhase(count === 0 ? "done" : "front");
   };
 
-  const revealAnswer = () => {
+  // Bidirectional flip: front <-> back. The original `revealAnswer` was
+  // one-way (front → back) and `onFlip` was nulled after reveal so the
+  // user could not flip back to re-read the question. PR 1 of the
+  // flashcards-focus plan replaces the one-way reveal with a toggle.
+  // Rating gating still keys off `phase === "back"`, so a flipped-then-
+  // back-then-flipped card cannot be rated until the user reveals
+  // again.
+  const togglePhase = () => {
     if (phase === "front") setPhase("back");
+    else if (phase === "back") setPhase("front");
   };
 
   const rateCard = async (rating: SrsRating) => {
@@ -178,9 +186,16 @@ export function StudyView() {
     if (mode !== "review") return;
     const handler = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (phase === "front" && (event.code === "Space" || event.code === "Enter")) {
+      // Space / Enter toggle in either direction now (was front-only before
+      // PR 1 of flashcards-focus). The bidirectional flip lets users re-read
+      // the question without losing session position.
+      if ((phase === "front" || phase === "back") && (event.code === "Space" || event.code === "Enter")) {
+        // Skip the toggle when focus is already on a rating button — Space
+        // there should activate the button, not flip the card behind it.
+        const target = event.target as HTMLElement | null;
+        if (target?.closest("[data-rating]")) return;
         event.preventDefault();
-        revealAnswer();
+        togglePhase();
         return;
       }
       if (phase === "back") {
@@ -400,7 +415,7 @@ export function StudyView() {
     <FlipCard
       key={`flip-${currentIndex}`}
       flipped={phase === "back"}
-      onFlip={phase === "front" ? revealAnswer : undefined}
+      onFlip={togglePhase}
       front={
         <div className={styles.cardFace}>
           <span className={styles.cardEyebrow}>
