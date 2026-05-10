@@ -13,6 +13,7 @@ import { useQuery } from "@/lib/query";
 
 import { FlashcardFace } from "./components/FlashcardFace";
 import { FlipCard } from "./components/FlipCard";
+import { KeyChip } from "./components/KeyChip";
 import { RatingRow } from "./components/RatingRow";
 import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
 import { StudyFocusOverlay } from "./components/StudyFocusOverlay";
@@ -417,6 +418,19 @@ export function StudyView() {
   // `concept` reads as the anchor and the source file is supporting
   // metadata. Avoids the dense "Concept · doc.pdf" interpunct that
   // crowded the eyebrow before.
+  // PR 3 of flashcards-focus: bottom-anchored keyboard chip glyph
+  // replaces the inline "Press space or click to reveal" text. Phase-
+  // aware: front shows [Space], back shows [1][2][3][4]. Dims after
+  // the user has reviewed at least one card in this session — the
+  // cue is no longer load-bearing once they have learned it.
+  const hintDimmed = completedCount > 0;
+  const frontHint = (
+    <KeyChip keys={["Space"]} dimmed={hintDimmed} />
+  );
+  const backHint = (
+    <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
+  );
+
   const flipBody = (
     <FlipCard
       key={`flip-${currentIndex}`}
@@ -428,7 +442,7 @@ export function StudyView() {
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
           body={currentCard.front}
-          hint="Tap to flip"
+          hint={frontHint}
         />
       }
       back={
@@ -437,6 +451,7 @@ export function StudyView() {
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
           body={currentCard.back}
+          hint={backHint}
         />
       }
     />
