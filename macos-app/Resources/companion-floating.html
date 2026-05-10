@@ -210,11 +210,16 @@ body.drop-ready .face {
   height: 100px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  /* T2.1 Layer A polish: rounder face corners and slightly looser
+   * cell gap give the cube a more "instrument" feel, closer to the
+   * Linear/Raycast aesthetic DESIGN.md targets. The face stays at
+   * 100px so existing positioning math (translateZ(50px)) is
+   * unchanged. */
+  border-radius: 8px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 3px;
+  gap: 4px;
   padding: 6px;
   backface-visibility: hidden;
   /* No `overflow: hidden` here — the teal-bright cells deliberately
@@ -242,7 +247,10 @@ body.drop-ready .face {
 .cell {
   background: transparent;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  /* T2.1 Layer A: rounder cell corners (5px) match the new face
+   * radius (8px) and read as a continuous instrument cluster
+   * rather than a coarse pixel grid. */
+  border-radius: 5px;
   transition:
     background var(--dur-medium) var(--ease-soft),
     border-color var(--dur-medium) var(--ease-soft),
@@ -471,22 +479,13 @@ const TIMING = {
    * pulseFace(). The pre-T2.3 ambient*Start/Next* entries scheduled
    * the now-removed random recurring ambient and are gone. */
   ambientCellMs: 1700,
-  focusPulseHoldMs: 320,
-  focusPulseNextMs: 1600,
-  focusPulseStaggerMs: 220,
-  thinkPulseHoldMs: 260,
-  thinkPulseNextMs: 1700,
-  thinkPulseStaggerMs: 200,
-  citeScanCellMs: 220,
-  citeScanStaggerMs: 90,
-  citeScanNextMs: 1300,
-  cardGoodStaggerMs: 60,
-  cardGoodSettleMs: 700,
-  breakDrainStaggerMs: 180,
-  sleepGlimmerStartMs: 4000,
-  sleepGlimmerHoldMs: 1400,
-  sleepGlimmerNextMin: 8000,
-  sleepGlimmerNextRandom: 4000,
+  /* T2.1 dropped timings: the focusPulse*, thinkPulse*, citeScan*,
+   * cardGood*, breakDrain*, and sleepGlimmer* entries belonged to
+   * the pre-T2.1 cell-sweep behaviors. Their replacements (ring
+   * rotate, three-dot loader, check stroke, moon glyph) use cadence
+   * inline since each is a single-purpose loop with one number to
+   * tune. Adding new TIMING entries for one-shot uses creates more
+   * indirection than payoff. */
   shakeRecoveryMs: 700,
   auraReleaseMs: 2400,
   behaviorWarmupMs: 450,
@@ -567,12 +566,44 @@ function applyPattern(faceName, pattern, useTeal) {
   }
 }
 
+/* T2.1 Layer C — eye overlay on the front face.
+ *
+ * idle    → two bright "eye" cells in the top corners of the front
+ *           face (positions 0 and 2). Reads as a friendly
+ *           always-watching presence on the desktop.
+ * sleeping → two outlined "closed eye" cells in the same positions
+ *           (dim, suggesting eyes shut). The bottom face is the
+ *           rotated-active during sleeping; eyes still show on the
+ *           front during transition + when the cube is dragged
+ *           backwards into view.
+ * other    → no overlay; the diamond pattern from FACE_DEFAULTS
+ *           stays.
+ *
+ * applyEyeOverlay runs AFTER applyPattern so it overwrites the
+ * diamond's positions 0 and 2. Read currentState directly so the
+ * helper doesn't need a parameter. (Layered on top of B glyphs;
+ * positions 0/2 don't conflict with any B-state glyph because B
+ * glyphs paint other faces, not front.) */
+function applyEyeOverlay() {
+  const cells = faces.front.children;
+  if (currentState === 'idle') {
+    cells[0].className = 'cell teal-bright';
+    cells[2].className = 'cell teal-bright';
+  } else if (currentState === 'sleeping') {
+    cells[0].className = 'cell teal-outlined';
+    cells[2].className = 'cell teal-outlined';
+  }
+}
+
 function applyAllPatterns(activeFace) {
   Object.keys(FACE_DEFAULTS).forEach((name) => {
     applyPattern(name, FACE_DEFAULTS[name], name === activeFace);
   });
   Object.values(faces).forEach((f) => f.classList.remove('active-face'));
   if (faces[activeFace]) faces[activeFace].classList.add('active-face');
+  /* T2.1 Layer C: paint eyes after the base pattern so they layer
+   * on top of the diamond. */
+  applyEyeOverlay();
 }
 
 /* T2.3 — every pulse is a real signal, not decoration.
@@ -616,11 +647,13 @@ function pulseFace(faceName) {
 
 const BEHAVIORS = {
   idleTwinkle() {
-    /* Front face has 9 cells (0..8). Twinkle skips index 4 (the
-     * always-bright center, per FACE_DEFAULTS). Pre-T2.5 this list
-     * also carved out 6/7/8 for the streak overlay; streak is gone,
-     * so all 8 non-center positions are fair game again. */
-    const ALL_POS = [0, 1, 2, 3, 5, 6, 7, 8];
+    /* T2.1 Layer C: positions 0 and 2 are now eye cells (always
+     * bright during idle via applyEyeOverlay). Twinkling those
+     * positions would clobber the eyes; carve them out here. The
+     * always-bright center (position 4 per FACE_DEFAULTS.front) is
+     * also excluded. Twinkles are still random over the remaining
+     * 6 cells [1, 3, 5, 6, 7, 8]. */
+    const ALL_POS = [1, 3, 5, 6, 7, 8];
     function tick() {
       if (currentState !== 'idle') return;
       const pos = ALL_POS[Math.floor(Math.random() * ALL_POS.length)];
@@ -632,103 +665,103 @@ const BEHAVIORS = {
     }
     setT(tick, TIMING.idleTwinkleStartMs);
   },
+  /* T2.1 Layer B: focused → pomodoro-feel rotating ring on the
+   * top face. The 8 outer cells form an outline ring (center
+   * empty); a single bright cell rotates clockwise to suggest
+   * "session is in progress". Replaces the prior 3-cell column
+   * pulse, which read as abstract motion. The ring reads as a
+   * literal progress indicator even before we wire real session
+   * progress data (T2.1-Phase-2 will fill the ring proportionally
+   * as the timer advances). */
   focusColumn() {
     const cells = faces.top.children;
-    [1, 4, 7].forEach((i) => cells[i].className = 'cell teal-filled');
-    [0, 2, 3, 5, 6, 8].forEach((i) => cells[i].className = 'cell');
-    function pulse() {
+    applyPattern('top', ['o', 'o', 'o', 'o', '.', 'o', 'o', 'o', 'o'], true);
+    const ringOrder = [0, 1, 2, 5, 8, 7, 6, 3];
+    let pos = 0;
+    function rotate() {
       if (currentState !== 'focused') return;
-      [1, 4, 7].forEach((idx, n) => {
-        setT(() => {
-          if (currentState !== 'focused') return;
-          cells[idx].className = 'cell teal-bright';
-          setT(() => { cells[idx].className = 'cell teal-filled'; }, TIMING.focusPulseHoldMs);
-        }, n * TIMING.focusPulseStaggerMs);
-      });
-      setT(pulse, TIMING.focusPulseNextMs);
+      ringOrder.forEach((idx) => { cells[idx].className = 'cell teal-outlined'; });
+      cells[ringOrder[pos]].className = 'cell teal-bright';
+      pos = (pos + 1) % ringOrder.length;
+      setT(rotate, 220);
     }
-    pulse();
+    rotate();
   },
+  /* T2.1 Layer B: thinking → three-dot loader on the middle row
+   * of the right face. One of the three dots is bright at a time,
+   * sweeping right through dim outlines. Reads as a universally
+   * legible "thinking..." indicator, replacing the prior abstract
+   * 5-cell sweep. */
   thinkSweep() {
     const cells = faces.right.children;
-    const seq = [0, 8, 2, 6, 4];
-    function pulse() {
+    applyPattern('right', ['.', '.', '.', 'o', 'o', 'o', '.', '.', '.'], true);
+    const dots = [3, 4, 5];
+    let i = 0;
+    function tick() {
       if (currentState !== 'thinking') return;
-      seq.forEach((idx, n) => {
-        setT(() => {
-          if (currentState !== 'thinking') return;
-          const old = cells[idx].className;
-          cells[idx].className = 'cell teal-bright';
-          setT(() => { cells[idx].className = old; }, TIMING.thinkPulseHoldMs);
-        }, n * TIMING.thinkPulseStaggerMs);
-      });
-      setT(pulse, TIMING.thinkPulseNextMs);
+      dots.forEach((idx) => { cells[idx].className = 'cell teal-outlined'; });
+      cells[dots[i]].className = 'cell teal-bright';
+      i = (i + 1) % dots.length;
+      setT(tick, 280);
     }
-    pulse();
+    tick();
   },
+  /* T2.1 Layer B: citeChecking → same three-dot indicator at a
+   * faster cadence so the user can distinguish it from generic
+   * thinking. Visually contiguous (still loader dots) but reads
+   * as more deliberate. */
   citeScan() {
     const cells = faces.right.children;
-    function scan() {
+    applyPattern('right', ['.', '.', '.', 'o', 'o', 'o', '.', '.', '.'], true);
+    const dots = [3, 4, 5];
+    let i = 0;
+    function tick() {
       if (currentState !== 'citeChecking') return;
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          const idx = row * 3 + col;
-          setT(() => {
-            if (currentState !== 'citeChecking') return;
-            const old = cells[idx].className;
-            cells[idx].className = 'cell teal-bright';
-            setT(() => { cells[idx].className = old; }, TIMING.citeScanCellMs);
-          }, (row * 3 + col) * TIMING.citeScanStaggerMs);
-        }
-      }
-      setT(scan, TIMING.citeScanNextMs);
+      dots.forEach((idx) => { cells[idx].className = 'cell teal-outlined'; });
+      cells[dots[i]].className = 'cell teal-bright';
+      i = (i + 1) % dots.length;
+      setT(tick, 180);
     }
-    scan();
+    tick();
   },
+  /* T2.1 Layer B: encouraging → check-mark glyph on the left
+   * face, animated as a stroke (bottom-left → middle → top-right)
+   * before settling. Reads as "correct" without learning the
+   * cube's dialect.
+   * Pattern: positions 6 (bottom-left), 4 (center), 2 (top-right)
+   * form an ascending diagonal stroke — close enough to a check
+   * in 3x3 to read as one. */
   cardGood() {
     const cells = faces.left.children;
-    const order = [0, 1, 2, 5, 8, 7, 6, 3, 4];
-    order.forEach((idx, n) => {
-      setT(() => { cells[idx].className = 'cell teal-bright'; }, n * TIMING.cardGoodStaggerMs);
+    for (let i = 0; i < 9; i++) cells[i].className = 'cell';
+    [6, 4, 2].forEach((idx, n) => {
+      setT(() => {
+        if (currentState !== 'encouraging') return;
+        cells[idx].className = 'cell teal-bright';
+      }, n * 80);
     });
-    setT(() => {
-      if (currentState !== 'encouraging') return;
-      const pat = FACE_DEFAULTS.left;
-      for (let i = 0; i < 9; i++) {
-        if (i === 2 || i === 5) cells[i].className = 'cell teal-bright';
-        else cells[i].className = 'cell ' + (CELL_CLASS_TEAL[pat[i]] || '');
-      }
-    }, TIMING.cardGoodSettleMs);
   },
+  /* T2.1 Layer B: stumped → soft X glyph on the left face,
+   * outlined (not bright) — failure should read as "not great"
+   * without the celebratory glow. The shake-on-entry stays
+   * (configured in STATES.stumped.shakeOnEntry). */
   cardAgain() {
-    const cells = faces.left.children;
-    for (let i = 8; i >= 0; i--) {
-      if (cells[i].classList.contains('teal-bright')) {
-        cells[i].className = 'cell teal-outlined';
-        return;
-      }
-    }
+    applyPattern('left', ['o', '.', 'o', '.', 'o', '.', 'o', '.', 'o'], true);
   },
+  /* T2.1 Layer B: break → moon-crescent glyph on the back face.
+   * Cells 1, 2, 3, 7, 8 lit (filled, not bright — break is calm,
+   * not loud). Forms a left-facing crescent in the 3x3 grid. */
   breakDrain() {
-    const cells = faces.back.children;
-    [4, 1, 3, 5, 7, 0, 2, 6, 8].forEach((idx, n) => {
-      setT(() => { cells[idx].className = 'cell dim'; }, n * TIMING.breakDrainStaggerMs);
-    });
+    applyPattern('back', ['.', 'f', 'f', 'f', '.', '.', '.', 'f', 'f'], true);
   },
+  /* T2.1 Layer B+C: sleeping → bottom face uniformly dim and
+   * still. The closed-eyes overlay on the front face (set by
+   * applyEyeOverlay in applyAllPatterns) is now the primary
+   * "asleep" signal; the prior random glimmer was decorative
+   * ambient that DESIGN.md said to avoid. */
   sleepGlimmer() {
     const cells = faces.bottom.children;
-    for (let i = 0; i < 9; i++) {
-      if (FACE_DEFAULTS.bottom[i] === 'b') cells[i].className = 'cell dim';
-    }
-    function glimmer() {
-      if (currentState !== 'sleeping') return;
-      const idx = Math.floor(Math.random() * 9);
-      const old = cells[idx].className;
-      cells[idx].className = 'cell teal-filled';
-      setT(() => { cells[idx].className = old; }, TIMING.sleepGlimmerHoldMs);
-      setT(glimmer, TIMING.sleepGlimmerNextMin + Math.random() * TIMING.sleepGlimmerNextRandom);
-    }
-    setT(glimmer, TIMING.sleepGlimmerStartMs);
+    for (let i = 0; i < 9; i++) cells[i].className = 'cell dim';
   },
 };
 
