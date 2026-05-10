@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { Button, Card, Icon, Spinner, Stack, Text } from "@/design-system";
 import {
@@ -116,6 +116,17 @@ export function StudyView() {
     _persistFocusMode(next);
   }, []);
 
+  // PR 7 of flashcards-focus: per-card timing telemetry. Two refs:
+  //   cardShownAtRef  — set when a card front first appears.
+  //   firstRevealAtRef — set when the user FIRST reveals the answer.
+  //                      Stays sticky across PR 1's bidirectional
+  //                      re-flips so `seconds_to_first_reveal` does
+  //                      not inflate when users flip back to the
+  //                      question and forward again.
+  // Both reset when `currentIndex` changes (next card).
+  const cardShownAtRef = useRef<number>(0);
+  const firstRevealAtRef = useRef<number | null>(null);
+
   // When the user switches to Manage and back, we re-fetch due so any cards
   // they deleted disappear from the next review session. Also refetch the
   // subjects roll-up so the chip counts stay honest after a delete.
@@ -149,16 +160,48 @@ export function StudyView() {
   // back-then-flipped card cannot be rated until the user reveals
   // again.
   const togglePhase = () => {
-    if (phase === "front") setPhase("back");
-    else if (phase === "back") setPhase("front");
+    if (phase === "front") {
+      // PR 7 telemetry: first front→back transition for this card.
+      // Sticky — re-flips later don't overwrite it.
+      if (firstRevealAtRef.current === null) {
+        firstRevealAtRef.current = Date.now();
+      }
+      setPhase("back");
+    } else if (phase === "back") {
+      setPhase("front");
+    }
   };
 
   const rateCard = async (rating: SrsRating) => {
     if (!currentCard || submitting) return;
     setSubmitting(true);
     setLastError(null);
+    // PR 7 telemetry — capture the deltas BEFORE the await so we
+    // are timing the user's decision, not the network roundtrip.
+    const ratedAt = Date.now();
+    const shownAt = cardShownAtRef.current;
+    const firstRevealAt = firstRevealAtRef.current;
+    const secondsToFirstReveal =
+      shownAt > 0 && firstRevealAt !== null
+        ? Math.round((firstRevealAt - shownAt) / 100) / 10  // 0.1s precision
+        : null;
+    const secondsToRate =
+      firstRevealAt !== null
+        ? Math.round((ratedAt - firstRevealAt) / 100) / 10
+        : null;
     try {
       await study.review(currentCard.id, rating);
+      // Per-card timing event, fires regardless of session position.
+      // Backend allowlist: services/usage_events.py::ALLOWED_EVENT_NAMES.
+      void events.track(
+        "srs.card_rated",
+        {
+          rating,
+          seconds_to_first_reveal: secondsToFirstReveal,
+          seconds_to_rate: secondsToRate,
+        },
+        "study",
+      );
       const nextIndex = currentIndex + 1;
       const reviewedCount = completedCount + 1;
       setCompletedCount((c) => c + 1);
@@ -179,6 +222,16 @@ export function StudyView() {
       setSubmitting(false);
     }
   };
+
+  // PR 7 telemetry: reset timing refs when a new card appears.
+  // Triggers on currentIndex change AND on re-entry to phase="front"
+  // (covers the rateCard reset path which advances index + phase).
+  useEffect(() => {
+    if (phase === "front" && currentCard) {
+      cardShownAtRef.current = Date.now();
+      firstRevealAtRef.current = null;
+    }
+  }, [currentIndex, phase, currentCard]);
 
   // Keyboard shortcuts during a session. Gated on review mode because the
   // component has an early return for manage mode further up — without this
