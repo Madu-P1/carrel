@@ -186,7 +186,18 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         )
         panel.isFloatingPanel = true
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        // .fullScreenAuxiliary is the single line that lets the cube stay
+        // visible when the user enters fullscreen Reader / fullscreen
+        // Anything. Without it, panel.level=.floating sits below the
+        // fullscreen window and the companion vanishes precisely when
+        // it's most useful — to surface "next study block in 12m" alarms
+        // during deep study sessions.
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .stationary,
+            .ignoresCycle,
+            .fullScreenAuxiliary,
+        ]
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
