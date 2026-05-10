@@ -11,6 +11,7 @@ import { friendlyError } from "@/services/api/errorMessages";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
+import { FlashcardFace } from "./components/FlashcardFace";
 import { FlipCard } from "./components/FlipCard";
 import { RatingRow } from "./components/RatingRow";
 import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
@@ -411,33 +412,32 @@ export function StudyView() {
   // the surrounding chrome differs. Keying on currentIndex re-mounts
   // the FlipCard between cards so the slide-in animation fires fresh
   // each transition.
+  // Eyebrow split: PR 2 of flashcards-focus moves the document name
+  // off the primary eyebrow line and onto a smaller secondary line so
+  // `concept` reads as the anchor and the source file is supporting
+  // metadata. Avoids the dense "Concept · doc.pdf" interpunct that
+  // crowded the eyebrow before.
   const flipBody = (
     <FlipCard
       key={`flip-${currentIndex}`}
       flipped={phase === "back"}
       onFlip={togglePhase}
       front={
-        <div className={styles.cardFace}>
-          <span className={styles.cardEyebrow}>
-            {currentCard.concept} · {currentCard.document_name}
-          </span>
-          <Text as="p" variant="h1" weight="semibold" className={styles.cardQuestion}>
-            {currentCard.front}
-          </Text>
-          <span className={styles.cardHint}>
-            Press space or click to reveal
-          </span>
-        </div>
+        <FlashcardFace
+          kind="question"
+          eyebrow={currentCard.concept}
+          eyebrowSecondary={currentCard.document_name}
+          body={currentCard.front}
+          hint="Tap to flip"
+        />
       }
       back={
-        <div className={styles.cardFace}>
-          <span className={styles.cardEyebrow}>
-            {currentCard.concept} · {currentCard.document_name}
-          </span>
-          <Text as="p" className={styles.cardAnswer}>
-            {currentCard.back}
-          </Text>
-        </div>
+        <FlashcardFace
+          kind="answer"
+          eyebrow={currentCard.concept}
+          eyebrowSecondary={currentCard.document_name}
+          body={currentCard.back}
+        />
       }
     />
   );
