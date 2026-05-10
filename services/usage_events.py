@@ -26,6 +26,10 @@ ALLOWED_EVENT_NAMES = {
     "ask.first_question",
     "srs.review_started",
     "srs.review_completed",
+    # PR 0a — emitted once per install when auto-card-creation on
+    # upload has been disabled, so the dashboard can confirm the
+    # migration flipped.
+    "cards.auto_generation_disabled",
 }
 
 EVENT_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$")

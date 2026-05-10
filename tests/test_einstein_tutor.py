@@ -1,8 +1,10 @@
 import asyncio
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import main
 from api_models import FlashcardDraftRequest, StudioGenerateRequest
@@ -815,6 +817,141 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertEqual(0, concept_total)
         self.assertEqual(0, question_total)
         self.assertEqual(0, card_total)
+
+    # ------------------------------------------------------------------
+    # PR 0a — auto-card-generation gate
+    # ------------------------------------------------------------------
+
+    def test_upload_does_not_create_srs_cards_by_default(self) -> None:
+        """Default ingest path must not auto-seed flashcards.
+
+        PR 0a removes the per-concept INSERT-into-srs_cards loop from
+        the upload pipeline. Concepts and questions still extract; only
+        the card creation is gated. Users explicitly trigger AI card
+        drafting from the document detail view via CardAiDraftDialog.
+        """
+        # Defensive: clear the flag in case a prior test in the same
+        # process leaked it. setUp doesn't currently touch CARREL_*.
+        prior = os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
+        try:
+            doc_id = self.ingest(
+                "photosynthesis-default.txt",
+                "Photosynthesis converts light into chemical energy. "
+                "Chlorophyll absorbs photons. Calvin cycle fixes carbon.",
+                "Biology",
+            )
+
+            with main.get_db() as conn:
+                concept_total = conn.execute(
+                    "SELECT COUNT(*) AS total FROM concepts WHERE doc_id = ?",
+                    (doc_id,),
+                ).fetchone()["total"]
+                card_total = conn.execute(
+                    """
+                    SELECT COUNT(*) AS total FROM srs_cards s
+                    JOIN concepts c ON c.id = s.concept_id
+                    WHERE c.doc_id = ?
+                    """,
+                    (doc_id,),
+                ).fetchone()["total"]
+        finally:
+            if prior is not None:
+                os.environ["CARREL_AUTO_CARD_DRAFT"] = prior
+
+        # Concepts still extract (we did not break the rest of the
+        # pipeline); only auto-cards are gated.
+        self.assertGreater(
+            concept_total,
+            0,
+            "ingest must still extract concepts when auto-card flag is off",
+        )
+        self.assertEqual(
+            0,
+            card_total,
+            "PR 0a: upload must not create flashcards by default",
+        )
+
+    def test_upload_creates_srs_cards_when_flag_enabled(self) -> None:
+        """Escape hatch: setting CARREL_AUTO_CARD_DRAFT=true restores the
+        legacy behaviour. This is the path that internal tests still on
+        the old fixture pattern opt into.
+        """
+        with patch.dict(os.environ, {"CARREL_AUTO_CARD_DRAFT": "true"}):
+            doc_id = self.ingest(
+                "photosynthesis-flagged.txt",
+                "Photosynthesis converts light into chemical energy. "
+                "Chlorophyll absorbs photons. Calvin cycle fixes carbon.",
+                "Biology",
+            )
+
+            with main.get_db() as conn:
+                card_total = conn.execute(
+                    """
+                    SELECT COUNT(*) AS total FROM srs_cards s
+                    JOIN concepts c ON c.id = s.concept_id
+                    WHERE c.doc_id = ?
+                    """,
+                    (doc_id,),
+                ).fetchone()["total"]
+
+        self.assertGreater(
+            card_total,
+            0,
+            "CARREL_AUTO_CARD_DRAFT=true must restore the legacy auto-card path",
+        )
+
+    def test_default_ingest_emits_auto_generation_disabled_event_once(self) -> None:
+        """The dashboard should see ``cards.auto_generation_disabled``
+        exactly once per install when the flag is off — even if the
+        user uploads ten documents in a row.
+        """
+        prior = os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
+        try:
+            self.ingest("doc-a.txt", "Photosynthesis converts light to energy.", "Biology")
+            self.ingest("doc-b.txt", "Mitosis is a form of cell division.", "Biology")
+
+            with main.get_db() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT COUNT(*) AS total
+                    FROM usage_events
+                    WHERE event_name = 'cards.auto_generation_disabled'
+                    """,
+                ).fetchall()
+                event_total = rows[0]["total"]
+        finally:
+            if prior is not None:
+                os.environ["CARREL_AUTO_CARD_DRAFT"] = prior
+
+        self.assertEqual(
+            1,
+            event_total,
+            "auto-generation-disabled event must fire exactly once per install",
+        )
+
+    def test_user_triggered_ai_draft_endpoint_is_reachable(self) -> None:
+        """The post-upload entry point: the user opens
+        CardAiDraftDialog from the document detail view, types a
+        topic, and the dialog POSTs /api/srs/cards/ai-draft. The
+        underlying provider is gated by ``CARREL_AI_PROVIDER`` and
+        defaults to ``noop`` in tests, so we assert the route is
+        reachable and returns a structurally-sound payload — not that
+        the LLM produced cards. The dialog handles the empty-state UX.
+        """
+        from api_models import CardAiDraftRequest
+        from routes.study import ai_draft_cards
+
+        result = ai_draft_cards(
+            CardAiDraftRequest(
+                topic="Photosynthesis",
+                context=None,
+                count=3,
+            )
+        )
+        self.assertIn("status", result)
+        self.assertIn(result["status"], ("ok", "ai_disabled", "ai_failed"))
+        self.assertIn("cards", result)
+        self.assertIsInstance(result["cards"], list)
 
 
 if __name__ == "__main__":
