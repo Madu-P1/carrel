@@ -26,6 +26,15 @@ ALLOWED_EVENT_NAMES = {
     "ask.first_question",
     "srs.review_started",
     "srs.review_completed",
+    # PR 7 — per-card timing telemetry. Properties:
+    #   seconds_to_first_reveal: float, time from card-shown to first
+    #     front→back transition. Untouched by subsequent re-flips
+    #     (PR 1 made flips bidirectional; without this carve-out the
+    #     metric inflates as users review the question again).
+    #   seconds_to_rate: float, time from first reveal to rating.
+    #   rating: again|hard|good|easy.
+    # Used to decide whether PRs 5/6 (citation, cloze) ship in week 3.
+    "srs.card_rated",
     # PR 0a — emitted once per install when auto-card-creation on
     # upload has been disabled, so the dashboard can confirm the
     # migration flipped.

@@ -19,7 +19,11 @@ export type UsageEventName =
   | "reader.focus_toggled"
   | "ask.first_question"
   | "srs.review_started"
-  | "srs.review_completed";
+  | "srs.review_completed"
+  // PR 7 of flashcards-focus — per-card timing telemetry. Properties:
+  // rating, seconds_to_first_reveal, seconds_to_rate. Backend
+  // allowlist mirror at services/usage_events.py.
+  | "srs.card_rated";
 
 type UsageEventPrimitive = boolean | number | string | null;
 type UsageEventProperties = Record<string, UsageEventPrimitive | undefined>;
