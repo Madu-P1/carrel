@@ -350,13 +350,48 @@ body.drop-ready .face {
   0%, 100% { box-shadow: inset 0 0 0 1px var(--color-teal-30), 0 0 8px var(--color-teal-15); }
   50%      { box-shadow: inset 0 0 0 2px var(--color-teal),    0 0 32px var(--color-teal-50); }
 }
+
+/* Screen-reader-only utility. The cube is a 3D CSS scene with no
+ * inherent semantics for VoiceOver — every cell is a div, every face
+ * is a div, the rotation conveys nothing to assistive tech. The
+ * .sr-only spans inside .stage carry the actual state label and
+ * streak count so VoiceOver users hear something meaningful. (T1.5.) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 </style>
 </head>
 <body>
 
-<div class="stage">
-  <div class="aura" id="aura"></div>
-  <div class="anchor" id="anchor">
+<!--
+  ARIA scaffolding (T1.5).
+  The .stage is the live region; aria-live="polite" tells VoiceOver
+  to announce text changes inside it without interrupting the user.
+  aria-atomic="true" forces the entire region to re-read on change so
+  "Idle, 7 day streak" reads as a single statement rather than two
+  separate updates. The role="status" gives VoiceOver a meaningful
+  type ("status announcement") rather than a generic group.
+
+  Inside, two .sr-only spans carry the actual semantics:
+  - #companion-state-label:  state and alarm
+  - #companion-streak-label: streak count (only populated when > 0)
+  The cube divs themselves are aria-hidden because their visual
+  language doesn't translate (a CSS rotation conveys nothing to
+  assistive tech).
+-->
+<div class="stage" role="status" aria-live="polite" aria-atomic="true" aria-label="Carrel companion">
+  <span class="sr-only" id="companion-state-label">Idle.</span>
+  <span class="sr-only" id="companion-streak-label"></span>
+  <div class="aura" id="aura" aria-hidden="true"></div>
+  <div class="anchor" id="anchor" aria-hidden="true">
     <div class="cube3d" id="cube3d">
       <div class="drift" id="drift">
         <div class="face face-front"  data-face="front"></div>
@@ -691,6 +726,49 @@ const BEHAVIORS = {
   },
 };
 
+/* Human-readable labels for VoiceOver. Mirror keys with STATES.
+ * Kept here (not in STATES) so the visual config and the
+ * accessibility config can evolve independently — adding a state
+ * to STATES without a label here will gracefully fall back to the
+ * raw state name. (T1.5.) */
+const STATE_LABELS = {
+  idle: 'Idle',
+  focused: 'Focused on a study session',
+  thinking: 'Thinking',
+  citeChecking: 'Verifying citations',
+  encouraging: 'Card answered correctly',
+  stumped: 'Card needs review',
+  break: 'On break',
+  sleeping: 'Sleeping. No recent activity.',
+  streak: 'Streak day reached',
+};
+
+function announceCompanion() {
+  /* Recompose the live-region label from current state + alarm. The
+   * alarm is the highest-priority signal so it leads. The streak
+   * sits in its own sr-only span so VoiceOver hears it after the
+   * primary state. (T1.5.) */
+  const label = document.getElementById('companion-state-label');
+  if (!label) return;
+  if (alarmActive) {
+    label.textContent = 'Study session starting now. Click to dismiss.';
+    return;
+  }
+  label.textContent = (STATE_LABELS[currentState] || currentState) + '.';
+}
+
+function announceStreak() {
+  const label = document.getElementById('companion-streak-label');
+  if (!label) return;
+  if (streakDays > 0) {
+    label.textContent = streakDays === 1
+      ? '1 day streak.'
+      : streakDays + ' day streak.';
+  } else {
+    label.textContent = '';
+  }
+}
+
 function applyState(name) {
   const cfg = STATES[name];
   if (!cfg) {
@@ -733,6 +811,9 @@ function applyState(name) {
     setT(() => BEHAVIORS[cfg.behavior](), TIMING.behaviorWarmupMs);
   }
   if (cfg.ambient) startAmbient(cfg.activeFace);
+
+  /* T1.5 — announce the new state to VoiceOver. */
+  announceCompanion();
 }
 
 let alarmActive = false;
@@ -746,6 +827,7 @@ window.companion = {
     const num = Number(n);
     streakDays = Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
     applyStreakOverlay();
+    announceStreak();
   },
   getStreakDays() { return streakDays; },
   /** Toggle drop-target visual state. Swift's DropAcceptingWebView
@@ -761,6 +843,10 @@ window.companion = {
   setAlarm(active) {
     alarmActive = !!active;
     document.body.classList.toggle('alarm', alarmActive);
+    /* T1.5 — when alarm goes active, announceCompanion replaces the
+     * state label with the urgent string. When alarm clears, the
+     * announcer re-falls-through to the current state label. */
+    announceCompanion();
   },
   isAlarming() { return alarmActive; },
 };
