@@ -26,11 +26,13 @@ export interface FlashcardFaceProps {
    */
   body: ComponentChildren;
   /**
-   * Optional bottom-anchored hint (e.g. "Tap to flip"). Anchored
-   * via `margin-top: auto` in the stylesheet so the body always has
-   * room to breathe before the hint shows up.
+   * Optional bottom-anchored hint (e.g. a `<KeyChip>` glyph or a
+   * plain string). Bottom-anchoring is controlled by the hint
+   * element itself (e.g. `KeyChip` uses `margin-top: auto` +
+   * `align-self: flex-end`); plain-string hints fall back to the
+   * `.hint` class which keeps the same anchoring.
    */
-  hint?: string;
+  hint?: ComponentChildren;
 }
 
 /**
@@ -66,7 +68,11 @@ export function FlashcardFace({
         <span className={styles.eyebrowSecondary}>{eyebrowSecondary}</span>
       ) : null}
       <p className={bodyClass}>{body}</p>
-      {hint ? <span className={styles.hint}>{hint}</span> : null}
+      {hint == null
+        ? null
+        : typeof hint === "string"
+          ? <span className={styles.hint}>{hint}</span>
+          : hint}
     </div>
   );
 }
