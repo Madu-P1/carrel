@@ -68,6 +68,44 @@ def _file_extension(filename: str, storage_name: Optional[str]) -> str:
     return Path(name).suffix.lstrip(".").lower()
 
 
+def _draft_cards_for_concept(
+    conn: sqlite3.Connection,
+    *,
+    concept: Dict[str, object],
+    concept_payloads: List[Dict[str, object]],
+    concept_id: str,
+    concept_evidence_ids: List[str],
+) -> None:
+    """Create SRS cards for a single concept and link card→evidence.
+
+    Extracted from ``ingest_document_record`` so the per-concept card
+    creation can be gated independently of the rest of the ingest
+    pipeline (PR 0a). The behavior is byte-identical to the inline
+    block this replaced — same INSERT shape, same defaults, same
+    evidence-link call. No callers other than ``ingest_document_record``
+    today.
+    """
+    for card in build_card_records(concept, concept_payloads):
+        card_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO srs_cards (id, concept_id, card_type, front, back, state, stability, difficulty, due_date)
+            VALUES (?, ?, ?, ?, ?, 'new', 1.0, ?, ?)
+            """,
+            (
+                card_id,
+                concept_id,
+                card["card_type"],
+                card["front"],
+                card["back"],
+                card["difficulty"],
+                date.today().isoformat(),
+            ),
+        )
+        if concept_evidence_ids:
+            provenance_service.link_evidence_to_card(conn, card_id, concept_evidence_ids)
+
+
 def ingest_document_record(
     conn: sqlite3.Connection,
     filename: str,
@@ -353,25 +391,13 @@ def ingest_document_record(
         if concept_evidence_ids:
             provenance_service.link_evidence_to_quiz(conn, question_id, concept_evidence_ids)
 
-        for card in build_card_records(concept, concept_payloads):
-            card_id = str(uuid.uuid4())
-            conn.execute(
-                """
-                INSERT INTO srs_cards (id, concept_id, card_type, front, back, state, stability, difficulty, due_date)
-                VALUES (?, ?, ?, ?, ?, 'new', 1.0, ?, ?)
-                """,
-                (
-                    card_id,
-                    concept_id,
-                    card["card_type"],
-                    card["front"],
-                    card["back"],
-                    card["difficulty"],
-                    date.today().isoformat(),
-                ),
-            )
-            if concept_evidence_ids:
-                provenance_service.link_evidence_to_card(conn, card_id, concept_evidence_ids)
+        _draft_cards_for_concept(
+            conn,
+            concept=concept,
+            concept_payloads=concept_payloads,
+            concept_id=concept_id,
+            concept_evidence_ids=concept_evidence_ids,
+        )
 
         _extract_concept_depth(conn, concept_id, concept["name"], learning_text, concept_chunk_ids)
 
