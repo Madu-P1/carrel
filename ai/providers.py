@@ -267,6 +267,7 @@ def _afm_available() -> bool:
     if major < 26:
         return False
     from ai.native_bridge_paths import AFM_BRIDGE_CANDIDATES, find_binary
+
     return find_binary(AFM_BRIDGE_CANDIDATES) is not None
 
 

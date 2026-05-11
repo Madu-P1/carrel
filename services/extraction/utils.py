@@ -13,6 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 # this module's existing public name (`NATIVE_BRIDGE_CANDIDATES`)
 # working for callers like services/extraction/native_bridge.py.
 from ai.native_bridge_paths import INGESTION_BRIDGE_CANDIDATES as NATIVE_BRIDGE_CANDIDATES  # noqa: E402
+
 TEXT_SUFFIXES = {
     ".txt",
     ".md",

@@ -34,13 +34,54 @@ _TOKEN_RE = re.compile(r"\w+")
 # "Variance is the average of squared differences" trivially shares
 # {"the", "of"} with any chapter-title chunk). Filtering them yields
 # scores that better reflect substantive semantic overlap.
-_STOPWORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "been", "being",
-    "but", "by", "do", "does", "for", "from", "has", "have", "if",
-    "in", "into", "is", "it", "its", "of", "on", "or", "so", "such",
-    "than", "that", "the", "their", "them", "these", "this", "those",
-    "to", "was", "were", "which", "will", "with", "you", "your",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "being",
+        "but",
+        "by",
+        "do",
+        "does",
+        "for",
+        "from",
+        "has",
+        "have",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "so",
+        "such",
+        "than",
+        "that",
+        "the",
+        "their",
+        "them",
+        "these",
+        "this",
+        "those",
+        "to",
+        "was",
+        "were",
+        "which",
+        "will",
+        "with",
+        "you",
+        "your",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -62,11 +103,7 @@ def _tokens(text: str) -> list[str]:
     """Lowercased content tokens. Stopwords are filtered out so the
     Jaccard scorer reflects substantive overlap, not function-word
     coincidence."""
-    return [
-        t.lower()
-        for t in _TOKEN_RE.findall(text)
-        if t.lower() not in _STOPWORDS
-    ]
+    return [t.lower() for t in _TOKEN_RE.findall(text) if t.lower() not in _STOPWORDS]
 
 
 def _jaccard(a: list[str], b: list[str]) -> float:
@@ -195,18 +232,69 @@ def _truncate_at_word(text: str, max_chars: int) -> str:
 
 # Frequent sentence-starters that are usually NOT proper nouns. Keep
 # this list short; over-broad allow-listing erases the guard.
-_COMMON_SENTENCE_STARTERS = frozenset({
-    "the", "a", "an", "this", "that", "these", "those",
-    "it", "they", "we", "you", "i",
-    "in", "on", "at", "for", "to", "of", "by", "with", "from",
-    "if", "when", "while", "during", "after", "before",
-    "is", "are", "was", "were", "be", "been", "being",
-    "and", "or", "but", "so", "because",
-    "every", "each", "all", "some", "many", "few",
-    "any", "no", "not", "yes",
-    "however", "therefore", "thus", "hence",
-    "first", "second", "third", "next", "last", "finally",
-})
+_COMMON_SENTENCE_STARTERS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "they",
+        "we",
+        "you",
+        "i",
+        "in",
+        "on",
+        "at",
+        "for",
+        "to",
+        "of",
+        "by",
+        "with",
+        "from",
+        "if",
+        "when",
+        "while",
+        "during",
+        "after",
+        "before",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "and",
+        "or",
+        "but",
+        "so",
+        "because",
+        "every",
+        "each",
+        "all",
+        "some",
+        "many",
+        "few",
+        "any",
+        "no",
+        "not",
+        "yes",
+        "however",
+        "therefore",
+        "thus",
+        "hence",
+        "first",
+        "second",
+        "third",
+        "next",
+        "last",
+        "finally",
+    }
+)
 
 # Capitalized word at least 4 chars long. Allows simple acronyms
 # (BFI, CEO) only when they appear in chunk text -- this regex still

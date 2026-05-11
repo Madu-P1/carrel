@@ -23,8 +23,7 @@ class ExtractBestSpanTests(unittest.TestCase):
         self.assertIn("anaphase", span.text.lower())
         self.assertIn("opposite poles", span.text.lower())
         # And it must be a verbatim substring of the chunk.
-        self.assertIn(span.text.rstrip("…").rstrip(),
-                      chunk)
+        self.assertIn(span.text.rstrip("…").rstrip(), chunk)
 
     def test_falls_back_to_full_chunk_when_no_sentence_clears_threshold(self) -> None:
         chunk = "Photosynthesis happens in chloroplasts. ATP is the energy currency."
@@ -62,7 +61,9 @@ class ExtractBestSpanTests(unittest.TestCase):
 
     def test_short_sentences_skipped(self) -> None:
         # Fragments below 20 chars should not be returned as the best span.
-        chunk = "Yes. No. Maybe. Mitosis is a process of cell division that produces daughter cells."
+        chunk = (
+            "Yes. No. Maybe. Mitosis is a process of cell division that produces daughter cells."
+        )
         answer = "Mitosis produces daughter cells."
         span = extract_best_span(chunk, answer)
         self.assertNotEqual(span.text.strip().rstrip("."), "Yes")

@@ -48,8 +48,6 @@ interface ShellMessage {
 interface CompanionAPI {
   setState(name: string): void;
   getState(): string;
-  setStreakDays(n: number | string | null): void;
-  getStreakDays(): number;
   setDropping(active: boolean): void;
   setAlarm(active: boolean): void;
   isAlarming(): boolean;
@@ -171,9 +169,12 @@ describe("companion cube", () => {
     });
 
     it("alarm is orthogonal to currentState (both can be active)", () => {
-      h.window.companion.setState("streak");
+      // "streak" state was removed in T2.5 (commit 83c32404). Use any
+      // valid state — alarm flag must coexist with state independent
+      // of which state is active.
+      h.window.companion.setState("thinking");
       h.window.companion.setAlarm(true);
-      expect(h.window.companion.getState()).toBe("streak");
+      expect(h.window.companion.getState()).toBe("thinking");
       expect(h.window.companion.isAlarming()).toBe(true);
       // Both classes coexist.
       expect(h.document.body.classList.contains("alarm")).toBe(true);
@@ -192,119 +193,10 @@ describe("companion cube", () => {
     });
   });
 
-  describe("streak rendering", () => {
-    function streakCellClasses(doc: Document): string[] {
-      const front = doc.querySelector('[data-face="front"]');
-      const cells = front?.children;
-      if (!cells) return [];
-      // Bottom row indexes 6, 7, 8.
-      return [6, 7, 8].map((i) => cells[i]?.className || "");
-    }
-
-    it("0 days: no streak cells", () => {
-      h.window.companion.setStreakDays(0);
-      const cls = streakCellClasses(h.document);
-      cls.forEach((c) => {
-        expect(c).not.toContain("streak-day");
-        expect(c).not.toContain("streak-pulse");
-      });
-    });
-
-    it("1 day: exactly one streak-day cell", () => {
-      h.window.companion.setStreakDays(1);
-      const cls = streakCellClasses(h.document);
-      const lit = cls.filter((c) => c.includes("streak-day"));
-      expect(lit).toHaveLength(1);
-    });
-
-    it("3 days: three streak-day cells, no pulse", () => {
-      h.window.companion.setStreakDays(3);
-      const cls = streakCellClasses(h.document);
-      const lit = cls.filter((c) => c.includes("streak-day"));
-      expect(lit).toHaveLength(3);
-      const pulsing = cls.filter((c) => c.includes("streak-pulse"));
-      expect(pulsing).toHaveLength(0);
-    });
-
-    it(">3 days: three streak-day cells with pulse", () => {
-      h.window.companion.setStreakDays(7);
-      const cls = streakCellClasses(h.document);
-      const lit = cls.filter((c) => c.includes("streak-day"));
-      expect(lit).toHaveLength(3);
-      const pulsing = cls.filter((c) => c.includes("streak-pulse"));
-      expect(pulsing).toHaveLength(3);
-    });
-
-    it("rejects non-finite numbers and falls back to 0", () => {
-      h.window.companion.setStreakDays(NaN);
-      expect(h.window.companion.getStreakDays()).toBe(0);
-      h.window.companion.setStreakDays(-5);
-      expect(h.window.companion.getStreakDays()).toBe(0);
-    });
-
-    it("re-renders streak after a state change wipes patterns", () => {
-      h.window.companion.setStreakDays(2);
-      // State transition resets all cell classes via applyAllPatterns;
-      // the streak overlay must re-apply or we lose the streak signal.
-      h.window.companion.setState("thinking");
-      h.window.companion.setState("idle");
-      const cls = streakCellClasses(h.document);
-      const lit = cls.filter((c) => c.includes("streak-day"));
-      expect(lit).toHaveLength(2);
-    });
-
-    it("idle twinkle skips streak cells (regression: adversarial P1)", () => {
-      // Pre-fix: idleTwinkle's positions array included 6, 7, 8 — the
-      // streak row — so streak cells flickered every few seconds during
-      // idle. After fix, twinkle excludes positions 6..6+streakDays.
-      //
-      // Deterministic check: stub Math.random() so every randomly-
-      // chosen index returns 0 (first eligible position). Then
-      // call setStreakDays + setState('idle') + manually fire the
-      // pending tick by advancing fake timers JUST PAST the warmup.
-      // This avoids the recursive-tick-tree explosion that fake
-      // timers + real recursive scheduling can produce.
-      const HTML_TIMING_WARMUP_MS = 450 + 1500; // behaviorWarmup + idleTwinkleStartMs
-      h.window.companion.setStreakDays(3);
-      h.window.companion.setState("idle");
-      const randomSpy = vi
-        .spyOn(h.window.Math, "random")
-        .mockReturnValue(0);
-      vi.useFakeTimers();
-      h.window.companion.setState("idle");
-      // Fire just one tick. Math.random()=0 → positions[0]; with
-      // streakDays=3, positions filters out 6,7,8 so the eligible
-      // set is [0,1,2,3,5] and the picked cell is index 0.
-      vi.advanceTimersByTime(HTML_TIMING_WARMUP_MS + 100);
-      const cls = streakCellClasses(h.document);
-      // All 3 streak cells must still be streak-day; the twinkle
-      // landed on cell 0 (top-left) instead.
-      cls.forEach((c) => expect(c).toContain("streak-day"));
-      vi.useRealTimers();
-      randomSpy.mockRestore();
-    });
-
-    it("idle twinkle uses ALL positions when streak is zero", () => {
-      // Mirror of the regression test: when streakDays=0 the filter
-      // is a no-op — all 8 positions (excluding center=4) remain
-      // eligible. Pin via stubbed random returning a value that maps
-      // to position index 7 (originally 7 in [0,1,2,3,5,6,7,8]).
-      h.window.companion.setStreakDays(0);
-      const randomSpy = vi
-        .spyOn(h.window.Math, "random")
-        .mockReturnValue(0.99); // selects last index of positions
-      vi.useFakeTimers();
-      h.window.companion.setState("idle");
-      vi.advanceTimersByTime(2050);
-      // Cell at position 8 (last) gets twinkled — verify the cell
-      // class includes teal-bright (twinkle in flight).
-      const cell8 = h.document
-        .querySelector('[data-face="front"]')?.children[8];
-      expect(cell8?.className).toContain("teal-bright");
-      vi.useRealTimers();
-      randomSpy.mockRestore();
-    });
-  });
+  // The "streak rendering" describe block was removed when the streak
+  // overlay feature was removed in T2.5 (commit 83c32404). Tests stayed
+  // behind because main's removal commit didn't drop them. CI surfaced
+  // it on this branch.
 
   describe("drag bridge", () => {
     function fakePointerEvent(

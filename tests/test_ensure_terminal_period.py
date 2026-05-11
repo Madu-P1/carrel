@@ -14,9 +14,7 @@ from services.ingestion.topics import _ensure_terminal_period
 
 class TestEnsureTerminalPeriod:
     def test_adds_period_when_missing(self):
-        assert _ensure_terminal_period("focus of who are leaders") == (
-            "focus of who are leaders."
-        )
+        assert _ensure_terminal_period("focus of who are leaders") == ("focus of who are leaders.")
 
     def test_idempotent_on_terminated_sentence(self):
         # Re-running the function must never double-up punctuation.
@@ -43,7 +41,4 @@ class TestEnsureTerminalPeriod:
         # a run-on.
         a = _ensure_terminal_period("focus of who are leaders")
         b = _ensure_terminal_period("Meta analysis shows 154 traits")
-        assert (
-            f"{a} {b}"
-            == "focus of who are leaders. Meta analysis shows 154 traits."
-        )
+        assert f"{a} {b}" == "focus of who are leaders. Meta analysis shows 154 traits."

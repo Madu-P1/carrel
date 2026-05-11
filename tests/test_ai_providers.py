@@ -46,24 +46,30 @@ class SelectProviderTests(unittest.TestCase):
 
     def test_explicit_afm_returns_afm_client(self) -> None:
         from ai.afm_client import AFMClient
+
         with mock.patch.dict(os.environ, {"EINSTEIN_AI_PROVIDER": "afm"}, clear=False):
             provider = select_provider()
         self.assertIsInstance(provider, AFMClient)
 
     def test_auto_prefers_afm_over_ollama_when_macos26_no_claude_key(self) -> None:
         from ai.afm_client import AFMClient
+
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         env["EINSTEIN_AI_PROVIDER"] = "auto"
-        with mock.patch.dict(os.environ, env, clear=True), \
-             mock.patch("ai.providers._afm_available", return_value=True):
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=True),
+        ):
             provider = select_provider()
         self.assertIsInstance(provider, AFMClient)
 
     def test_auto_falls_back_to_ollama_when_afm_unavailable(self) -> None:
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         env["EINSTEIN_AI_PROVIDER"] = "auto"
-        with mock.patch.dict(os.environ, env, clear=True), \
-             mock.patch("ai.providers._afm_available", return_value=False):
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
             provider = select_provider()
         self.assertIsInstance(provider, OllamaClient)
 
@@ -81,8 +87,10 @@ class SelectProviderTests(unittest.TestCase):
         # With no Claude key AND AFM unavailable, the next pick is Ollama.
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         env["EINSTEIN_AI_PROVIDER"] = "auto"
-        with mock.patch.dict(os.environ, env, clear=True), \
-             mock.patch("ai.providers._afm_available", return_value=False):
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
             provider = select_provider()
         self.assertIsInstance(provider, OllamaClient)
 
@@ -143,6 +151,7 @@ class ProviderProtocolTests(unittest.TestCase):
 
     def test_afm_client_is_ai_provider(self) -> None:
         from ai.afm_client import AFMClient
+
         self.assertIsInstance(AFMClient(), AIProvider)
 
 
