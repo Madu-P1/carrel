@@ -39,11 +39,16 @@ class ExtractBestSpanTests(unittest.TestCase):
             f"fallback span '{truncated}' not in chunk",
         )
 
-    def test_truncates_at_word_boundary_with_ellipsis(self) -> None:
+    def test_truncates_at_word_boundary_verbatim(self) -> None:
+        # Codex P2: the returned span MUST be a verbatim substring of
+        # the source chunk. The old behaviour appended an ellipsis on
+        # truncation, which broke that invariant and let citations
+        # render text that doesn't exist in the source.
         long_chunk = ("word " * 200).strip()
         span = extract_best_span(long_chunk, "word", max_chars=80)
         self.assertLessEqual(len(span.text), 80)
-        self.assertTrue(span.text.endswith("…"))
+        self.assertFalse(span.text.endswith("…"))
+        self.assertIn(span.text, long_chunk)
 
     def test_handles_empty_chunk(self) -> None:
         span = extract_best_span("", "anything")

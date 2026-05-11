@@ -40,6 +40,24 @@ _PUA_RE = re.compile(r"[-]+")
 # whitespace because PDFs often emit "( )" with a stray space.
 _EMPTY_PARENS_RE = re.compile(r"\(\s*\)")
 
+# Orphan math operator runs left over after PUA glyph stripping.
+# Real chunk seen in production (2026-05-11):
+#     "BFI Var R = × − − + × −"
+#     "0.045 21.2% SD R Var R= = ="
+# The operands lived in PUA-mapped font glyphs; once we strip those,
+# only operator skeletons remain. Real expressions never contain 2+
+# math operators in a row separated by whitespace ("× −" or "= ="),
+# so a run of 2+ is a reliable signal of post-strip junk.
+#
+# Two patterns:
+#  1. End-of-line operator tail: "... = × − − + × −" at $ -> strip
+#  2. Repeated equals interior: "R= = =" -> strip the chain
+#
+# Both anchored to whitespace boundaries so legitimate math like
+# "2 + 2 = 4" or "Var(R) = E[(R - E[R])^2]" survives.
+_TRAILING_OP_RUN_RE = re.compile(r"\s*[×−+÷=](?:\s+[×−+÷=])+\s*$", re.MULTILINE)
+_INTERIOR_OP_RUN_RE = re.compile(r"\s+[×−+÷=](?:\s+[×−+÷=]){1,}(?=\s|$)")
+
 # Collapse runs of spaces / tabs inside a single line, but preserve
 # newlines so paragraph structure survives.
 _INLINE_WS_RE = re.compile(r"[ \t]{2,}")
@@ -58,6 +76,14 @@ def strip_extraction_artifacts(text: str) -> str:
         return ""
     cleaned = _PUA_RE.sub("", text)
     cleaned = _EMPTY_PARENS_RE.sub("", cleaned)
+    # Run trailing-tail FIRST so it can match the operator soup at the
+    # end of a line; otherwise interior collapse would leave a single
+    # operator stranded that trailing wouldn't catch (needs 2+).
+    cleaned = _TRAILING_OP_RUN_RE.sub("", cleaned)
+    cleaned = _INTERIOR_OP_RUN_RE.sub("", cleaned)
+    # Re-run trailing once more in case the interior collapse exposed
+    # a fresh tail. Cheap; keeps the function idempotent.
+    cleaned = _TRAILING_OP_RUN_RE.sub("", cleaned)
     cleaned = _INLINE_WS_RE.sub(" ", cleaned)
     cleaned = _BLANK_LINES_RE.sub("\n\n", cleaned)
     # Trim trailing spaces on each line so " \n" does not become a

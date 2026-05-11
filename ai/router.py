@@ -424,6 +424,44 @@ class ClaudeRouter:
         self._log_result(result)
         return result
 
+    def supports_grounded_answer(self) -> bool:
+        """ClaudeRouter routes grounded questions through tool_use, not a
+        dedicated grounded-answer endpoint. Return False so callers fall
+        back to the regular tool-call path (which already produces the
+        same tutor json schema for paid users)."""
+        return False
+
+    def request_grounded_answer(
+        self,
+        *,
+        request_kind: str,
+        system: str,
+        question: str,
+        chunks: Any,
+        max_tokens: int = 600,
+        task: Any = "balanced",
+    ) -> ClaudeCallResult:
+        del system, question, chunks, max_tokens
+        return ClaudeCallResult(
+            ok=False,
+            task=task,
+            model="claude-unsupported",
+            request_kind=request_kind,
+            text=None,
+            json_payload=None,
+            error_code="grounded_unsupported",
+            error_message="ClaudeRouter has no dedicated grounded-answer endpoint; use request_tool_call.",
+            latency_ms=0.0,
+            input_tokens=None,
+            output_tokens=None,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier=None,
+            stop_reason=None,
+            request_id=None,
+        )
+
     def _log_result(self, result: ClaudeCallResult) -> None:
         log_event(
             self._logger,

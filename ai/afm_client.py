@@ -24,7 +24,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from ai.afm_grounded import detect_fabricated_terms, extract_best_span
+from ai.afm_grounded import (
+    _split_sentences,
+    detect_fabricated_terms,
+    extract_best_span,
+)
 from ai.native_bridge_paths import AFM_BRIDGE_CANDIDATES, find_binary
 from ai.router import ClaudeCallResult
 
@@ -169,6 +173,10 @@ class AFMClient:
             )
         return replace(result, json_payload=parsed)
 
+    def supports_grounded_answer(self) -> bool:
+        """AFM is the only provider with a true grounded-answer flow."""
+        return True
+
     def request_grounded_answer(
         self,
         *,
@@ -281,6 +289,7 @@ class AFMClient:
         # answer (a soft form of citation fabrication).
         citations = []
         best_overlap_score = 0.0
+        cited_chunks: list[tuple[int, GroundedChunk]] = []
         for idx in valid_indices:
             chunk = chunks[idx - 1]
             span = extract_best_span(chunk.text, answer)
@@ -289,6 +298,7 @@ class AFMClient:
                 "chunk_index": idx,
                 "quote": span.text,
             })
+            cited_chunks.append((idx, chunk))
 
         # Second ungrounded guard: model said "these chunks support
         # my answer" but the actual sentences in those chunks don't
@@ -350,35 +360,111 @@ class AFMClient:
                 },
             )
 
-        # Fabrication guard: AFM 3B occasionally substitutes proper
-        # nouns from training data (real case: said "Microsoft" when
-        # the chunks said "BFI"). Surface anything capitalized in the
-        # answer that does not appear in the chunks. We don't strip
-        # the term -- a hard rewrite risks producing ungrammatical
-        # text -- but we do append a clear warning to
-        # unsupported_spans so the UI can show "AFM may have
-        # introduced names not in your sources" and the user can
-        # verify against the citations themselves.
+        # Fabrication guard (hard refuse, not warn): AFM 3B occasionally
+        # substitutes proper nouns AND specific numeric values from
+        # training data. Real case: answer said "Microsoft" when chunks
+        # said "BFI". Same failure mode applies to invented numbers
+        # ("0.05" when chunks say "0.045") and dates.
+        #
+        # Per Carrel's "no fabrication" contract, refuse instead of
+        # surfacing a poisoned answer with a "we may have lied"
+        # disclaimer. A refusal with the retrieved chunks shown is
+        # strictly better than a wrong answer with a footnote.
         chunk_texts = [chunk.text for chunk in chunks]
         fabrication = detect_fabricated_terms(answer, chunk_texts)
         unsupported_spans = [
             str(item).strip() for item in unsupported if str(item).strip()
         ]
         if not fabrication.is_clean:
-            unsupported_spans.append(
-                "AFM may have introduced names that are not in your sources: "
-                + ", ".join(fabrication.suspect_terms)
-                + ". Verify against the cited chunks."
+            suspect_list = ", ".join(fabrication.suspect_terms)
+            return replace(
+                result,
+                ok=False,
+                error_code="fabricated_content",
+                error_message=(
+                    "The on-device model introduced terms that are not in "
+                    "your sources: " + suspect_list + ". Refusing to surface "
+                    "a potentially-wrong answer."
+                ),
+                json_payload={
+                    "summary": "",
+                    "claims": [],
+                    "unsupported_spans": [
+                        "Model produced terms not found in sources: " + suspect_list,
+                        *unsupported_spans,
+                    ],
+                    "ungrounded_draft": answer,
+                },
             )
 
-        # Assemble the tutor-schema-compatible payload. A single Claim
-        # holds the full answer; per-sentence splitting is a v2
-        # enhancement (the tutor's verbatim-quote validator handles
-        # single-claim shape correctly today).
+        # Per-claim grounding: split the answer into sentences and
+        # ground each independently against the cited chunks. One
+        # well-supported sentence does not vouch for the rest of a
+        # multi-claim answer (Codex P1: previously the whole answer
+        # was wrapped in a single Claim, so a single supported clause
+        # made unsupported clauses ride along invisibly).
+        #
+        # For each answer sentence we find the cited chunk with the
+        # highest token-overlap span. Sentences whose best span clears
+        # the per-claim threshold get their own Claim with that
+        # chunk's citation. Sentences below threshold are surfaced in
+        # `unsupported_spans` so the tutor renders them dimmed/flagged
+        # rather than treating them as verified.
+        per_claim_threshold = 0.08
+        answer_sentences = _split_sentences(answer) if answer else []
+        # If the answer is a single short sentence, _split_sentences
+        # may drop it (min 20 chars). Fall back to the whole answer.
+        if not answer_sentences and answer:
+            answer_sentences = [answer.strip()]
+
+        claims: list[dict[str, Any]] = []
+        unsupported_sentences: list[str] = []
+        for sentence in answer_sentences:
+            best_for_sentence: tuple[float, int, str] | None = None
+            for idx, chunk in cited_chunks:
+                span = extract_best_span(chunk.text, sentence)
+                if best_for_sentence is None or span.score > best_for_sentence[0]:
+                    best_for_sentence = (span.score, idx, span.text)
+            if best_for_sentence is None:
+                unsupported_sentences.append(sentence)
+                continue
+            score, idx, quote = best_for_sentence
+            if score < per_claim_threshold:
+                unsupported_sentences.append(sentence)
+                continue
+            claims.append({
+                "text": sentence,
+                "citations": [{"chunk_index": idx, "quote": quote}],
+            })
+
+        # If every sentence dropped, the model produced text that
+        # looked grounded in aggregate (best_overlap_score cleared 0.10
+        # somewhere) but no individual claim is supported. Refuse.
+        if answer and not claims:
+            return replace(
+                result,
+                ok=False,
+                error_code="ungrounded_answer",
+                error_message=(
+                    "The on-device model produced an answer but no individual "
+                    "sentence is supported by your sources."
+                ),
+                json_payload={
+                    "summary": "",
+                    "claims": [],
+                    "unsupported_spans": [
+                        "The provided sources do not directly answer this question.",
+                        *unsupported_sentences,
+                        *unsupported_spans,
+                    ],
+                    "ungrounded_draft": answer,
+                },
+            )
+
         payload = {
             "summary": answer,
-            "claims": [{"text": answer, "citations": citations}] if answer else [],
-            "unsupported_spans": unsupported_spans,
+            "claims": claims,
+            "unsupported_spans": [*unsupported_sentences, *unsupported_spans],
         }
         return replace(result, json_payload=payload)
 

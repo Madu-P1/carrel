@@ -86,6 +86,40 @@ class StripExtractionArtifactsTests(unittest.TestCase):
         twice = strip_extraction_artifacts(once)
         self.assertEqual(once, twice)
 
+    def test_orphan_operator_tail_stripped(self) -> None:
+        # Real chunk from production 2026-05-11 Ask Library: after PUA
+        # stripping, operator skeleton remained. Should be cleaned.
+        self.assertEqual(
+            strip_extraction_artifacts("BFI Var R = × − − + × −"),
+            "BFI Var R",
+        )
+
+    def test_repeated_equals_stripped(self) -> None:
+        self.assertEqual(
+            strip_extraction_artifacts("0.045 21.2% SD R Var R= = ="),
+            "0.045 21.2% SD R Var R",
+        )
+        self.assertEqual(
+            strip_extraction_artifacts("8.59% 29.30% SD R Var R= = ="),
+            "8.59% 29.30% SD R Var R",
+        )
+
+    def test_legitimate_math_preserved(self) -> None:
+        # Regression: cleanup MUST NOT touch real equations.
+        for expr in [
+            "2 + 2 = 4",
+            "Var(R) = E[(R - E[R])^2]",
+            "a = b",
+            "x − y = z",
+        ]:
+            self.assertEqual(strip_extraction_artifacts(expr), expr, msg=expr)
+
+    def test_idempotent_on_operator_soup(self) -> None:
+        text = "BFI Var R = × − − + × −\nSD R Var R= = ="
+        once = strip_extraction_artifacts(text)
+        twice = strip_extraction_artifacts(once)
+        self.assertEqual(once, twice)
+
 
 if __name__ == "__main__":
     unittest.main()
