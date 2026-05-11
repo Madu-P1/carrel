@@ -2,6 +2,11 @@
 
 import PackageDescription
 
+// Platform floor stays at macOS 14 for EinsteinDesktop and
+// EinsteinIngestionBridge. EinsteinAFMBridge gates its Apple Foundation
+// Models usage with @available(macOS 26.0, *) inside its source so the
+// package still builds on macOS 14/15; the binary surfaces a
+// macos_too_old error at runtime on those OS versions.
 let package = Package(
     name: "EinsteinDesktop",
     platforms: [
@@ -15,6 +20,10 @@ let package = Package(
         .executable(
             name: "EinsteinIngestionBridge",
             targets: ["EinsteinIngestionBridge"]
+        ),
+        .executable(
+            name: "EinsteinAFMBridge",
+            targets: ["EinsteinAFMBridge"]
         )
     ],
     targets: [
@@ -25,6 +34,10 @@ let package = Package(
         .executableTarget(
             name: "EinsteinIngestionBridge",
             path: "Sources/EinsteinIngestionBridge"
+        ),
+        .executableTarget(
+            name: "EinsteinAFMBridge",
+            path: "Sources/EinsteinAFMBridge"
         )
     ]
 )

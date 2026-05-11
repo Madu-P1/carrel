@@ -8,11 +8,11 @@ from typing import Any
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-NATIVE_BRIDGE_CANDIDATES = [
-    ROOT_DIR / "dist" / "EinsteinIngestionBridge",
-    ROOT_DIR / "macos-app" / ".build" / "arm64-apple-macosx" / "debug" / "EinsteinIngestionBridge",
-    ROOT_DIR / "macos-app" / ".build" / "debug" / "EinsteinIngestionBridge",
-]
+# Centralised in ai/native_bridge_paths.py so the ingestion bridge and
+# the AFM bridge use the same candidate-walking logic. The alias keeps
+# this module's existing public name (`NATIVE_BRIDGE_CANDIDATES`)
+# working for callers like services/extraction/native_bridge.py.
+from ai.native_bridge_paths import INGESTION_BRIDGE_CANDIDATES as NATIVE_BRIDGE_CANDIDATES  # noqa: E402
 TEXT_SUFFIXES = {
     ".txt",
     ".md",

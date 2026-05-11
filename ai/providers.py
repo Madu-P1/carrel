@@ -1,46 +1,55 @@
 """Provider selection for Carrel AI calls.
 
-The app has two peer LLM providers now:
+The app has three peer LLM providers:
 
-* `ClaudeRouter` in `ai/router.py` — production path. Ships with tool_use,
+* `ClaudeRouter` in `ai/router.py` — paid Pro path. Ships with tool_use,
   prompt caching, and the eval-gated grounded-answer pipeline.
-* `OllamaClient` in `ai/ollama.py` — local-first path. Same call surface,
-  same `ClaudeCallResult` shape, no API key required.
+* `AFMClient` in `ai/afm_client.py` — on-device free tier on macOS 26+
+  Apple Silicon. Talks to the `EinsteinAFMBridge` Swift sidecar over
+  stdin/stdout JSON. Same `ClaudeCallResult` shape, zero download.
+* `OllamaClient` in `ai/ollama.py` — legacy local fallback for users
+  on macOS 14/15 or Intel. Same call surface.
 
 Everything downstream (tutor, concept extraction, etc.) should import
-`get_default_provider()` from here instead of reaching into either module
-directly. That keeps provider selection in one place and lets us flip
-between Claude and Ollama via env flag without refactoring callers.
+`get_default_provider()` from here instead of reaching into any provider
+module directly. That keeps provider selection in one place and lets us
+flip between backends via env flag without refactoring callers.
 
 Env vars:
 
-    CARREL_AI_PROVIDER      "auto" (default) | "claude" | "ollama" | "off"
+    CARREL_AI_PROVIDER      "auto" (default) | "claude" | "afm" | "ollama" | "off"
     EINSTEIN_AI_PROVIDER    legacy alias, still honoured. The 2026-04-29
                             rename keeps both names working until the
                             deferred-rename pass migrates the rest of the
                             system identifiers (DB filename, bundle ID).
 
-      auto    prefer Claude when ANTHROPIC_API_KEY is set, otherwise Ollama
-              when OLLAMA_BASE_URL resolves to something non-empty.
+      auto    Claude (when ANTHROPIC_API_KEY set) → AFM (macOS 26+
+              Apple Silicon with the bridge built) → Ollama → off.
       claude  force ClaudeRouter. Surfaces ok=False when the API key is
               missing rather than silently falling back.
+      afm     force AFMClient. Surfaces ok=False with a specific
+              error_code when Apple Intelligence is disabled or the
+              bridge binary is missing.
       ollama  force OllamaClient. Same visibility contract.
       off     return a NullProvider that always returns ok=False with
               error_code="ai_disabled". Tests, kiosk mode, privacy lockdown.
 
-Plus the provider-specific env the two modules already read for themselves
-(ANTHROPIC_*, OLLAMA_*). This module does not duplicate those.
+Plus the provider-specific env the modules read for themselves
+(ANTHROPIC_*, AFM_*, OLLAMA_*). This module does not duplicate those.
 """
 
 from __future__ import annotations
 
 import os
+import platform
+import sys
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from ai.afm_client import AFMClient, get_default_afm_client
 from ai.ollama import OllamaClient, get_default_ollama_client
 from ai.router import ClaudeCallResult, ClaudeRouter, get_default_router
 
-ProviderKind = Literal["claude", "ollama", "null"]
+ProviderKind = Literal["claude", "ollama", "afm", "null"]
 
 
 @runtime_checkable
@@ -192,18 +201,48 @@ def _ollama_has_endpoint() -> bool:
     return bool(os.getenv("OLLAMA_BASE_URL", "").strip()) or True
 
 
+def _afm_available() -> bool:
+    """True on macOS 26+ Apple Silicon when the AFMBridge binary exists.
+
+    Cheap check, no model load. Apple Intelligence enabled-state is
+    surfaced at call time via the bridge as
+    `error_code="apple_intelligence_not_enabled"` so the UI can deep-link
+    the user into System Settings rather than the provider silently
+    falling back here.
+    """
+    if sys.platform != "darwin":
+        return False
+    if platform.machine() != "arm64":
+        return False
+    try:
+        major = int(platform.mac_ver()[0].split(".")[0])
+    except (ValueError, IndexError):
+        return False
+    if major < 26:
+        return False
+    from ai.native_bridge_paths import AFM_BRIDGE_CANDIDATES, find_binary
+    return find_binary(AFM_BRIDGE_CANDIDATES) is not None
+
+
 def select_provider(kind: str | None = None) -> AIProvider:
     """Resolve the active provider.
 
     `kind` overrides the env var when provided. Accepts:
-    "claude" | "ollama" | "auto" | "off". Unknown values fall back to
-    "auto".
+    "claude" | "ollama" | "afm" | "auto" | "off". Unknown values fall
+    back to "auto".
 
     Env var resolution: prefer `CARREL_AI_PROVIDER` (canonical post-
     rename), fall back to legacy `EINSTEIN_AI_PROVIDER` so existing
     `.env` files keep working without a forced edit. The legacy name
     will stay supported until the deferred-rename pass migrates the
     rest of the system identifiers (DB filename, bundle ID).
+
+    Auto-resolution order:
+      1. Claude (when ANTHROPIC_API_KEY is set) for paid Pro tier.
+      2. Apple Foundation Models (macOS 26+ Apple Silicon with the
+         EinsteinAFMBridge binary present) for the on-device free tier.
+      3. Ollama, the legacy local fallback for macOS 14/15 or Intel.
+      4. NullProvider when nothing is configured.
     """
     env_value = os.getenv("CARREL_AI_PROVIDER") or os.getenv("EINSTEIN_AI_PROVIDER", "auto")
     raw = (kind or env_value).strip().lower()
@@ -213,10 +252,14 @@ def select_provider(kind: str | None = None) -> AIProvider:
         return get_default_router()
     if raw == "ollama":
         return get_default_ollama_client()
+    if raw == "afm":
+        return get_default_afm_client()
 
     # auto: pick the best available without paying a network probe.
     if _claude_has_key():
         return get_default_router()
+    if _afm_available():
+        return get_default_afm_client()
     if _ollama_has_endpoint():
         return get_default_ollama_client()
     return NullProvider()
@@ -244,8 +287,9 @@ def reset_default_provider() -> None:
     _DEFAULT_PROVIDER = None
 
 
-# Re-export for clean import path: `from ai.providers import ClaudeRouter, OllamaClient`
+# Re-export for clean import path: `from ai.providers import ClaudeRouter, OllamaClient, AFMClient`
 __all__ = [
+    "AFMClient",
     "AIProvider",
     "ClaudeCallResult",
     "ClaudeRouter",
