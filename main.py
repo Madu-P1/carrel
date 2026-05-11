@@ -123,14 +123,17 @@ def _resume_ingestion_jobs() -> None:
 
 app = FastAPI(title="Carrel", lifespan=lifespan)
 
-# WKWebView loads via `loadFileURL` and reads the token via WKUserScript
-# injection; no CORS access from `file://` needed. In dev the app is reached
-# from localhost via uvicorn. Dropping `null` + `file://.*` closes the path
-# where a downloaded HTML file (or any tab opened from disk) could hit the
-# loopback API.
+# WKWebView loads via `loadFileURL`, which presents the page to fetch() as
+# `null` origin. Every API call therefore triggers a CORS preflight; without
+# `null` / `file://` in the allow list the browser blocks the request before
+# the token middleware ever sees it. CORS is NOT the security boundary on
+# the loopback API — the `X-Carrel-Local-Token` header is. A malicious local
+# HTML file CAN preflight to 127.0.0.1, but it cannot mutate without the
+# token, which it can no longer steal (route deleted, file mode 0600). So
+# we keep the CORS allowlist wide for local origins and lean on the token.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|file://.*|null)$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
