@@ -369,29 +369,18 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         UploadMimeTypes.mimeType(for: url)
     }
 
-    /// Same shape as LocalCalendarBridge.fetchLocalToken — Carrel's
-    /// `/api/local-token` endpoint is unauthenticated so the frontend
-    /// can bootstrap. Cache for the lifetime of the panel; bust on 403.
+    /// Resolve the local API token via the on-disk store. PR-S1 deleted
+    /// the GET /api/local-token route. BackendSupervisor and every native
+    /// bridge now read the same token from
+    /// ~/Library/Application Support/Carrel/local-api-token via
+    /// LocalApiToken.resolve().
     private func fetchLocalToken() async -> String? {
         if let cachedLocalToken { return cachedLocalToken }
-        let url = backendBase.appendingPathComponent("api/local-token")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-            let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            if let token = payload?["token"] as? String, !token.isEmpty {
-                cachedLocalToken = token
-                return token
-            }
-            return nil
-        } catch {
-            return nil
+        if let token = try? LocalApiToken.resolve(), !token.isEmpty {
+            cachedLocalToken = token
+            return token
         }
+        return nil
     }
 
     // MARK: - WKScriptMessageHandler

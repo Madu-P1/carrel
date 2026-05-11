@@ -142,6 +142,25 @@ final class BackendSupervisor {
             return
         }
 
+        // Resolve the shared local-API token BEFORE the Process is
+        // constructed so we can hand it to uvicorn via env. Both ends
+        // (this Swift app's WebView injection and Python's
+        // local_api_security middleware) must agree on the same value;
+        // see LocalApiToken.swift for the audit context. If resolution
+        // fails we log and continue — Python will fall back to its own
+        // `secrets.token_urlsafe(32)` and the WebView's API client will
+        // simply 401 on mutating calls until the user restarts. That's
+        // degraded behavior, not a crash.
+        let localApiToken: String?
+        do {
+            localApiToken = try LocalApiToken.resolve()
+        } catch {
+            supervisorLog.error(
+                "Failed to resolve local API token: \(error.localizedDescription, privacy: .public)"
+            )
+            localApiToken = nil
+        }
+
         let proc = Process()
         proc.executableURL = env.python
         proc.arguments = [
@@ -152,6 +171,15 @@ final class BackendSupervisor {
             "--app-dir", env.repoRoot.path,
         ]
         proc.currentDirectoryURL = env.repoRoot
+
+        // Inherit the parent environment (PATH, HOME, etc.) and then
+        // overlay our token. Replacing `proc.environment` wholesale
+        // with just our keys would strip everything uvicorn relies on.
+        var environment = ProcessInfo.processInfo.environment
+        if let localApiToken {
+            environment["CARREL_LOCAL_API_TOKEN"] = localApiToken
+        }
+        proc.environment = environment
 
         // Append all output to the same log file the bash launcher
         // writes to so a single tail covers either origin.

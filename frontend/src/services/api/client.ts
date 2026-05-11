@@ -69,15 +69,17 @@ export type RequestInitEx = Omit<RequestInit, "body"> & {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
-const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 let cachedLocalApiToken: string | null = null;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
   const { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const isObjectBody =
     body !== undefined && body !== null && !(body instanceof FormData) && typeof body === "object";
-  const method = (rest.method ?? "GET").toUpperCase();
-  const token = SAFE_METHODS.has(method) ? null : await resolveLocalApiToken();
+  // PR-S1: send the local-API token on every request (including GET). The
+  // backend now gates all /api/* paths except /api/health, closing the
+  // local privilege-escalation hole where a malicious local HTML file
+  // could read unauthenticated GET endpoints.
+  const token = await resolveLocalApiToken();
   const timeout = createTimeoutSignal(timeoutMs);
   const requestSignal = mergeSignals(signal, timeout.signal);
 
@@ -140,21 +142,13 @@ async function resolveLocalApiToken(): Promise<string | null> {
     return cachedLocalApiToken;
   }
 
-  try {
-    const response = await fetch(`${API_BASE}/api/local-token`, {
-      method: "GET",
-      cache: "no-store"
-    });
-    if (!response.ok) return null;
-    const payload = await response.json() as { token?: unknown };
-    if (typeof payload.token === "string" && payload.token.length > 0) {
-      cachedLocalApiToken = payload.token;
-      return cachedLocalApiToken;
-    }
-  } catch {
-    return null;
-  }
-
+  // PR-S1: the previous `fetch('/api/local-token')` fallback was a local
+  // privilege escalation — any malicious HTML on the local filesystem
+  // could read the token over an unauthenticated GET. The token is now
+  // injected via WKUserScript into `window.__CARREL_LOCAL_API_TOKEN`
+  // before any frontend JS runs. If neither the env nor the window
+  // global is populated, we surface the boot-error overlay instead of
+  // recovering with an insecure HTTP call.
   return null;
 }
 

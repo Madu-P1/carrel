@@ -13,7 +13,7 @@ from app_runtime import resolve_runtime_paths
 from routes import register_routes
 from services.local_api_security import (
     has_valid_local_api_token,
-    is_mutating_api_request,
+    requires_local_api_token,
 )
 
 
@@ -123,13 +123,14 @@ def _resume_ingestion_jobs() -> None:
 
 app = FastAPI(title="Carrel", lifespan=lifespan)
 
-# The app ships bundled inside a macOS WKWebView loading file:// HTML and, in dev,
-# is reached from localhost via uvicorn. Both surfaces produce a null / file origin
-# or a loopback origin. No legitimate caller lives on a public origin, so we keep
-# the allow-list tight instead of the previous ["*"].
+# WKWebView loads via `loadFileURL` and reads the token via WKUserScript
+# injection; no CORS access from `file://` needed. In dev the app is reached
+# from localhost via uvicorn. Dropping `null` + `file://.*` closes the path
+# where a downloaded HTML file (or any tab opened from disk) could hit the
+# loopback API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|file://.*|null)$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -139,13 +140,13 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 @app.middleware("http")
 async def require_local_api_token(request: Request, call_next):
-    if is_mutating_api_request(request) and not has_valid_local_api_token(request):
+    if requires_local_api_token(request) and not has_valid_local_api_token(request):
         return JSONResponse(
             status_code=403,
             content={
                 "detail": {
                     "code": "missing_or_invalid_local_api_token",
-                    "message": "Mutating local API requests require a valid Carrel token.",
+                    "message": "Local API requests require a valid Carrel token.",
                 }
             },
         )

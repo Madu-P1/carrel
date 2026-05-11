@@ -19,6 +19,7 @@ import {
 } from "@/features/reader/state";
 import { dispatchMenuCommand, onMenuCommand } from "@/services/native/menu";
 
+import { BackendBootCheck } from "./BackendBootCheck";
 import { BrandMark } from "./BrandMark";
 import {
   ShortcutsOverlay,
@@ -612,6 +613,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
       />
       <ShortcutsOverlay />
       <ToastHost />
+      <BackendBootCheck />
     </div>
   );
 }

@@ -42,25 +42,35 @@ class LocalAPITokenTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
 
-    def test_local_token_is_not_readable_from_public_origins(self) -> None:
-        response = self.client.get(
-            "/api/local-token",
-            headers={"Origin": "https://example.com"},
-        )
-
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn("access-control-allow-origin", response.headers)
-
-    def test_localhost_origin_can_read_local_token(self) -> None:
+    def test_local_token_route_is_deleted(self) -> None:
+        # PR-S1: the unauthenticated GET /api/local-token route was the
+        # root vulnerability — any local browser tab could fetch the
+        # token then issue any mutating request. The route is gone; any
+        # remaining caller now gets the standard token gate (403) or a
+        # 404 if no other handler matches.
         response = self.client.get(
             "/api/local-token",
             headers={"Origin": "http://127.0.0.1:5173"},
         )
 
-        self.assertEqual(200, response.status_code)
-        self.assertEqual(
-            "http://127.0.0.1:5173", response.headers.get("access-control-allow-origin")
+        self.assertIn(response.status_code, {403, 404})
+
+    def test_get_request_rejects_missing_token(self) -> None:
+        # PR-S1: the token gate now covers every /api/* path (except
+        # /api/health), not just mutating methods. A naked GET should
+        # fail closed.
+        response = self.client.get("/api/workspace")
+
+        self.assertEqual(403, response.status_code)
+        self.assertEqual("missing_or_invalid_local_api_token", response.json()["detail"]["code"])
+
+    def test_get_request_accepts_correct_token(self) -> None:
+        response = self.client.get(
+            "/api/workspace",
+            headers={HEADER_NAME: get_local_api_token()},
         )
+
+        self.assertEqual(200, response.status_code, response.text)
 
     def test_mutating_request_rejects_missing_token(self) -> None:
         response = self.client.post("/api/goal", json={"goal": "Study finance"})
