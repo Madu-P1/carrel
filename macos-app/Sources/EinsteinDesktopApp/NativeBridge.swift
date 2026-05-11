@@ -183,7 +183,7 @@ enum NativeBridge {
       if (!window.nativeCompanion) {
         const COMPANION_STATES = new Set([
           "idle", "focused", "thinking", "citeChecking",
-          "encouraging", "stumped", "break", "sleeping", "streak",
+          "encouraging", "stumped", "break", "sleeping",
         ]);
         window.nativeCompanion = {
           setState(state) {
@@ -194,20 +194,23 @@ enum NativeBridge {
               console.error("Companion bridge setState failed", error);
             }
           },
-          setStreakDays(days) {
-            const n = Math.max(0, Math.floor(Number(days)));
-            if (!Number.isFinite(n)) return;
-            try {
-              postMessage("nativeCompanion", { action: "setStreakDays", days: n });
-            } catch (error) {
-              console.error("Companion bridge setStreakDays failed", error);
-            }
-          },
           setAlarm(active) {
             try {
               postMessage("nativeCompanion", { action: "setAlarm", active: !!active });
             } catch (error) {
               console.error("Companion bridge setAlarm failed", error);
+            }
+          },
+          /* T2.3 — caller-driven ambient pulse on a named face. The
+             face vocabulary mirrors window.companion.pulseFace on
+             the floating-panel side. Unknown names are dropped at
+             the cube; we don't gatekeep here. */
+          pulseFace(face) {
+            if (typeof face !== "string") return;
+            try {
+              postMessage("nativeCompanion", { action: "pulseFace", face });
+            } catch (error) {
+              console.error("Companion bridge pulseFace failed", error);
             }
           },
         };
