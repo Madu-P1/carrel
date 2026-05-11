@@ -9,6 +9,7 @@ import type {
 
 import { readerState } from "../state";
 import { loadPdfJs } from "../lib/pdfjs-setup";
+import { LOCAL_TOKEN_HEADER, resolveLocalApiToken } from "@/services/api/client";
 import type { DocumentDetail } from "@/services/api/endpoints";
 
 interface PdfOutlineItem {
@@ -127,9 +128,16 @@ export function usePdfDocument(url: string | null, chunks: ReaderChunk[] = EMPTY
       state.error.value = null;
       try {
         const pdfjsLib = await loadPdfJs();
+        // PR-S1: /api/documents/<id>/file requires the local-API token.
+        // pdf.js's internal range-request fetches don't run through our
+        // api() helper, so we pass the token via the documented
+        // httpHeaders option on getDocument.
+        const token = await resolveLocalApiToken();
+        const httpHeaders = token ? { [LOCAL_TOKEN_HEADER]: token } : undefined;
         const loadingTask = pdfjsLib.getDocument({
           disableAutoFetch: true,
           disableStream: false,
+          httpHeaders,
           url
         });
         task = loadingTask;

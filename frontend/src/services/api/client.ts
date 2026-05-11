@@ -68,7 +68,7 @@ export type RequestInitEx = Omit<RequestInit, "body"> & {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
+export const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
 let cachedLocalApiToken: string | null = null;
 
 export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T> {
@@ -127,7 +127,7 @@ export async function api<T>(path: string, init: RequestInitEx = {}): Promise<T>
   return response.json() as Promise<T>;
 }
 
-async function resolveLocalApiToken(): Promise<string | null> {
+export async function resolveLocalApiToken(): Promise<string | null> {
   if (cachedLocalApiToken) return cachedLocalApiToken;
 
   const envToken = import.meta.env.VITE_CARREL_LOCAL_API_TOKEN;
