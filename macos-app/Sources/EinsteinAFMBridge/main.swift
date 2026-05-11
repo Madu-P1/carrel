@@ -225,14 +225,17 @@ private func makeSession(systemPrompt: String?) -> LanguageModelSession {
 }
 
 @available(macOS 26.0, *)
-private func generationOptions(temperature: Double?) -> GenerationOptions {
+private func generationOptions(temperature: Double?, maxTokens: Int?) -> GenerationOptions {
     // Greedy sampling = deterministic, which is what we want for
     // grounded factual answers. Caller can pass a temperature > 0 for
     // creative tasks (e.g. flashcard generation in a future request kind).
+    // maxTokens caps generation length so a runaway model can't spend
+    // 30 seconds emitting garbage when the Python caller asked for a
+    // 600-token answer.
     if let t = temperature, t > 0 {
-        return GenerationOptions(temperature: t)
+        return GenerationOptions(temperature: t, maximumResponseTokens: maxTokens)
     }
-    return GenerationOptions(sampling: .greedy)
+    return GenerationOptions(sampling: .greedy, maximumResponseTokens: maxTokens)
 }
 
 @available(macOS 26.0, *)
@@ -242,7 +245,7 @@ private func handleFreeFormText(_ req: BridgeRequest, start: Date) async -> Brid
     do {
         let response = try await session.respond(
             to: userPrompt,
-            options: generationOptions(temperature: req.temperature)
+            options: generationOptions(temperature: req.temperature, maxTokens: req.maxTokens)
         )
         let elapsed = Date().timeIntervalSince(start) * 1000.0
         let generated = String(describing: response.content)
@@ -282,7 +285,7 @@ private func handleGroundedAnswer(_ req: BridgeRequest, start: Date) async -> Br
             to: userPrompt,
             generating: GroundedAnswer.self,
             includeSchemaInPrompt: false,
-            options: generationOptions(temperature: req.temperature)
+            options: generationOptions(temperature: req.temperature, maxTokens: req.maxTokens)
         )
         let elapsed = Date().timeIntervalSince(start) * 1000.0
         let content = response.content

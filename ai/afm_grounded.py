@@ -154,16 +154,22 @@ def extract_best_span(
 
 
 def _truncate_at_word(text: str, max_chars: int) -> str:
-    """Truncate `text` at a word boundary, appending an ellipsis if cut."""
+    """Truncate `text` at a word boundary.
+
+    Returns a verbatim substring of `text`. No ellipsis is appended:
+    the citation invariant is that the returned span must be findable
+    inside the source chunk byte-for-byte, and "…" breaks that. The
+    frontend renders its own truncation indicator if it wants one.
+    """
     text = text.strip()
     if len(text) <= max_chars:
         return text
-    cut = text[: max_chars - 1]
+    cut = text[:max_chars]
     # Walk back to the last whitespace to avoid splitting words.
     space = cut.rfind(" ")
     if space >= max_chars // 2:
         cut = cut[:space]
-    return cut.rstrip(",;:.-") + "…"
+    return cut.rstrip()
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +212,17 @@ _COMMON_SENTENCE_STARTERS = frozenset({
 # (BFI, CEO) only when they appear in chunk text -- this regex still
 # matches them, the substring check then verifies.
 _PROPER_NOUN_RE = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
+
+# Numeric tokens: integers, decimals, percentages. AFM 3B also
+# substitutes numeric values from training data: real case where the
+# chunks said "0.045" and the answer claimed "0.05". Same refuse
+# policy applies: a wrong number is a wrong answer, not a stylistic
+# rounding choice.
+#
+# We skip very short pure integers (year-like 1-3 digit numbers
+# appear in too many natural-language contexts to gate on); the guard
+# is for the "specific value claimed as a fact" failure mode.
+_NUMERIC_TOKEN_RE = re.compile(r"\b\d+(?:[.,]\d+)+%?\b|\b\d{4,}\b|\b\d+%\b")
 
 
 @dataclass(frozen=True)
@@ -255,7 +272,8 @@ def detect_fabricated_terms(
     """
     if not answer or not chunks:
         return FabricationCheck(suspect_terms=())
-    haystack = " ".join(chunks).lower()
+    haystack_lower = " ".join(chunks).lower()
+    haystack_raw = " ".join(chunks)
     sentence_starts = _sentence_initial_offsets(answer)
     seen: list[str] = []
     for match in _PROPER_NOUN_RE.finditer(answer):
@@ -264,8 +282,26 @@ def detect_fabricated_terms(
         term = match.group(0)
         if term.lower() in _COMMON_SENTENCE_STARTERS:
             continue
-        if term.lower() in haystack:
+        if term.lower() in haystack_lower:
             continue
         if term not in seen:
             seen.append(term)
+    # Numeric fabrication: any specific number in the answer must
+    # appear verbatim somewhere in the chunks. We accept either dot
+    # or comma as the decimal separator on the chunk side (PDFs
+    # localize), but the answer's numeric token must match one of the
+    # forms exactly.
+    for match in _NUMERIC_TOKEN_RE.finditer(answer):
+        token = match.group(0)
+        if token in haystack_raw:
+            continue
+        # Try the comma/dot swap so "0.045" matches a chunk written
+        # "0,045" and vice versa. PDFs from EU-localized sources mix
+        # these freely.
+        sentinel = "\x01"
+        swapped = token.replace(".", sentinel).replace(",", ".").replace(sentinel, ",")
+        if swapped in haystack_raw:
+            continue
+        if token not in seen:
+            seen.append(token)
     return FabricationCheck(suspect_terms=tuple(seen))

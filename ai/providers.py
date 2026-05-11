@@ -97,6 +97,36 @@ class AIProvider(Protocol):
         cache_system_prompt: bool = True,
     ) -> ClaudeCallResult: ...
 
+    def supports_grounded_answer(self) -> bool:
+        """True when the provider implements `request_grounded_answer`.
+
+        Optional capability: only AFM ships a true grounded-answer
+        flow today. Claude and Ollama route grounded questions through
+        the regular tool-call path, which yields a different json
+        shape. Callers should check this before dispatching.
+        """
+        ...
+
+    def request_grounded_answer(
+        self,
+        *,
+        request_kind: str,
+        system: str,
+        question: str,
+        chunks: Any,
+        max_tokens: int = 600,
+        task: Any = "balanced",
+    ) -> ClaudeCallResult:
+        """Grounded-answer flow: emit a tutor-schema payload with
+        `claims` + per-claim `citations` derived from `chunks`.
+
+        `chunks` is a sequence of `GroundedChunk`-shaped objects.
+        Providers that don't implement this should return ok=False
+        with `error_code="grounded_unsupported"` so callers fall back
+        to the tool-call path.
+        """
+        ...
+
 
 class NullProvider:
     """Provider of last resort. Every call returns a visible `ok=False`
@@ -163,6 +193,22 @@ class NullProvider:
         cache_system_prompt: bool = True,
     ) -> ClaudeCallResult:
         del system, prompt, tool, max_tokens, cache_system_prompt
+        return _null_result(task=task, request_kind=request_kind)
+
+    def supports_grounded_answer(self) -> bool:
+        return False
+
+    def request_grounded_answer(
+        self,
+        *,
+        request_kind: str,
+        system: str,
+        question: str,
+        chunks: Any,
+        max_tokens: int = 600,
+        task: Any = "balanced",
+    ) -> ClaudeCallResult:
+        del system, question, chunks, max_tokens
         return _null_result(task=task, request_kind=request_kind)
 
 

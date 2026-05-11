@@ -204,6 +204,31 @@ class OllamaClient:
             response_format=input_schema,
         )
 
+    def supports_grounded_answer(self) -> bool:
+        """Ollama has no @Generable-equivalent. Callers route grounded
+        questions through the regular tool-call path."""
+        return False
+
+    def request_grounded_answer(
+        self,
+        *,
+        request_kind: str,
+        system: str,
+        question: str,
+        chunks: Any,
+        max_tokens: int = 600,
+        task: ClaudeTask = "balanced",
+    ) -> ClaudeCallResult:
+        del system, question, chunks, max_tokens
+        return _error_result(
+            task=task,
+            model=self.model_for_task(task),
+            request_kind=request_kind,
+            error_code="grounded_unsupported",
+            error_message="OllamaClient has no dedicated grounded-answer endpoint; use request_tool_call.",
+            latency_ms=0.0,
+        )
+
     # ---------- internals ----------
 
     def _chat(

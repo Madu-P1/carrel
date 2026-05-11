@@ -526,7 +526,12 @@ def _hydrate_chunk_context(
                 content=strip_extraction_artifacts(
                     str(row["content"] or "") if row else hit.snippet
                 ),
-                snippet=hit.snippet,
+                # Codex P2: snippet flows straight into the citation
+                # quote when the LLM doesn't return one (see
+                # _fallback_quote). Without cleaning, AFM citations
+                # could still surface PUA boxes and empty-parens
+                # equation skeletons even though `content` is clean.
+                snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
             )
         )
@@ -547,19 +552,26 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedChunkContext]) 
 
 
 def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedChunkContext]:
-    return [
-        HydratedChunkContext(
-            chunk_id=str(row["id"]),
-            doc_id=str(row["doc_id"]),
-            document_name=str(row["document_name"] or "Source"),
-            section=str(row["section"]) if row["section"] else None,
-            page_num=int(row["page_num"]) if row["page_num"] is not None else None,
-            content=str(row["content"] or ""),
-            snippet=str(row["content"] or "")[:240],
-            score=0.0,
+    # Codex P2: this path bypassed _hydrate_chunk_context's artifact
+    # cleanup, so scope-fallback chunks (when retrieval returns nothing
+    # and we widen to subject/doc scope) still rendered PUA boxes and
+    # empty parens. Run the same strip the primary path does.
+    contexts: list[HydratedChunkContext] = []
+    for row in rows:
+        cleaned = strip_extraction_artifacts(str(row["content"] or ""))
+        contexts.append(
+            HydratedChunkContext(
+                chunk_id=str(row["id"]),
+                doc_id=str(row["doc_id"]),
+                document_name=str(row["document_name"] or "Source"),
+                section=str(row["section"]) if row["section"] else None,
+                page_num=int(row["page_num"]) if row["page_num"] is not None else None,
+                content=cleaned,
+                snippet=cleaned[:240],
+                score=0.0,
+            )
         )
-        for row in rows
-    ]
+    return contexts
 
 
 def _fallback_contexts_from_scope(
@@ -974,16 +986,18 @@ def grounded_tutor_response(
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
 
-    # AFM (Apple Foundation Models) path: use @Generable-constrained
-    # decoding via request_grounded_answer. The 3B on-device model
-    # cannot reliably follow the nested SUBMIT_GROUNDED_ANSWER_TOOL
-    # schema directly (no runtime guided generation), so we route
-    # through the typed bridge method which uses fixed Swift @Generable
-    # types and assembles citations server-side.
-    if getattr(router, "kind", None) == "afm":
-        from ai.afm_client import AFMClient, GroundedChunk
+    # Grounded-answer capability dispatch (Codex P2): the previous
+    # code did `getattr(router, "kind") == "afm"` plus a concrete
+    # `AFMClient` import, which made the tutor reach into the provider
+    # taxonomy. The AIProvider Protocol now declares
+    # `supports_grounded_answer()` so this branch fires for any
+    # provider that implements the typed flow. AFM is the only one
+    # today; future providers (e.g., a hypothetical Gemini Nano
+    # backend) only need to flip the flag.
+    if getattr(router, "supports_grounded_answer", lambda: False)():
+        from ai.afm_client import GroundedChunk
 
-        afm_router: AFMClient = router  # type: ignore[assignment]
+        afm_router = router
         # Trim to the smallest set that still answers most questions.
         # Small models lose the thread past ~4 chunks; chunks were
         # ranked by retrieval score so taking the head is correct.
@@ -1020,6 +1034,19 @@ def grounded_tutor_response(
             task="balanced",
         )
     if not result.ok or not isinstance(result.json_payload, dict):
+        # Surface the provider's underlying error_message so we can
+        # diagnose AFM throws (otherwise only the generic error_code
+        # like "afm_generation_failed" reaches the structured log).
+        log_event(
+            LOGGER,
+            logging.ERROR,
+            "tutor_provider_error",
+            request_kind="tutor.grounded_answer",
+            error_code=result.error_code,
+            error_message=result.error_message,
+            model=result.model,
+            latency_ms=result.latency_ms,
+        )
         answer = _passages_only_fallback(
             contexts,
             error=result.error_code or "claude_call_failed",

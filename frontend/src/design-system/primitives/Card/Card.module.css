@@ -37,6 +37,20 @@
   pointer-events: none;
 }
 
+/* Lift direct children above the .card::after gradient overlay.
+ * Without this, statically-positioned children (plain spans, headings,
+ * paragraphs) paint UNDER the absolutely-positioned ::after pseudo-
+ * element. In dark mode the highlight gradient blends with the light
+ * text color and the content visually disappears, while children that
+ * set their own z-index (Buttons, Stacks with positioned descendants)
+ * survive. Real bug surfaced 2026-05-11 on /study intro card where
+ * only the last Button rendered. One line, fixes every Card in the app.
+ */
+.card > * {
+  position: relative;
+  z-index: 1;
+}
+
 :global(html.theme-light) .card {
   border-color: var(--border-subtle);
 }
