@@ -2,9 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- allow-jit lets WKWebView's V8 / JavaScriptCore mark JIT pages
+       PROT_EXEC, which the engine needs at runtime. We deliberately do
+       NOT grant allow-unsigned-executable-memory: that entitlement
+       disables the hardened-runtime guarantee for the whole process
+       (any arbitrary mmap PROT_EXEC succeeds), well beyond what
+       WKWebView's JIT requires. If a future dependency demands more,
+       prefer the narrower disable-library-validation key instead. -->
   <key>com.apple.security.cs.allow-jit</key>
-  <true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
   <key>com.apple.security.network.client</key>
   <true/>
