@@ -53,11 +53,10 @@ final class LocalCalendarBridge {
     /// Backend URL — same loopback the BackendSupervisor probes.
     private let syncURL = URL(string: "http://127.0.0.1:8000/api/calendar/local/sync")!
 
-    /// Backend's local-API auth boundary. The middleware blocks every
-    /// mutating /api/* request without `X-Carrel-Local-Token`. The
-    /// frontend fetches the token via this endpoint at boot; we do
-    /// the same and cache it for the lifetime of the bridge.
-    private let tokenURL = URL(string: "http://127.0.0.1:8000/api/local-token")!
+    /// Backend's local-API auth boundary. The middleware now gates every
+    /// /api/* request (except /api/health) with `X-Carrel-Local-Token`.
+    /// PR-S1 deleted the GET /api/local-token route; we resolve the token
+    /// from disk via LocalApiToken.resolve() instead.
     private let localTokenHeader = "X-Carrel-Local-Token"
     private var cachedLocalToken: String?
 
@@ -222,29 +221,18 @@ final class LocalCalendarBridge {
         return String(format: "#%02X%02X%02X", r, g, b)
     }
 
-    /// Fetch + cache the local API token. The endpoint is unauthenticated
-    /// (it has to be — the frontend bootstraps from it too). Returns nil
-    /// when the backend isn't up yet; caller falls back to no-token,
-    /// which will 403 but not crash. Next sync attempt retries.
+    /// Resolve the local API token. PR-S1 moved token issuance off the wire:
+    /// `LocalApiToken.resolve()` reads (or generates + persists) the token
+    /// from the on-disk store at ~/Library/Application Support/Carrel/.
+    /// BackendSupervisor.spawn() also calls this same helper, so Python and
+    /// every native bridge agree on the same value with no HTTP round trip.
     private func fetchLocalToken() async -> String? {
         if let cachedLocalToken { return cachedLocalToken }
-        var request = URLRequest(url: tokenURL)
-        request.httpMethod = "GET"
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-            let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            if let token = payload?["token"] as? String, !token.isEmpty {
-                cachedLocalToken = token
-                return token
-            }
-            return nil
-        } catch {
-            return nil
+        if let token = try? LocalApiToken.resolve(), !token.isEmpty {
+            cachedLocalToken = token
+            return token
         }
+        return nil
     }
 
     private func postSync(_ data: Data?, calendarId: String) async {

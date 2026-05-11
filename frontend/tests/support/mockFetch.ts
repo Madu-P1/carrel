@@ -56,6 +56,9 @@ function installDefaultHandlers() {
         }
       });
     }
+    // /api/health doubles as the backend liveness probe used by the Swift
+    // BackendSupervisor and the BackendBootCheck overlay. The Python
+    // middleware exempts it from the local-API token gate (PR-S1).
     if (url.pathname === "/api/health" && method === "GET") {
       return jsonResponse({
         status: "ok",
@@ -63,9 +66,6 @@ function installDefaultHandlers() {
         documents: 0,
         paths: { base_dir: "/tmp/carrel", db_path: "/tmp/carrel/test.db" }
       });
-    }
-    if (url.pathname === "/api/local-token" && method === "GET") {
-      return jsonResponse({ token: "test-local-token" });
     }
     if (url.pathname === "/api/usage-events" && method === "POST") {
       return jsonResponse({

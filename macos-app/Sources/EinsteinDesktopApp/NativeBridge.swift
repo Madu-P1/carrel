@@ -5,6 +5,7 @@ enum NativeBridge {
     static let telemetryHandlerName = "nativeTelemetry"
     static let calendarHandlerName = "nativeCalendar"
     static let companionHandlerName = "nativeCompanion"
+    static let quitHandlerName = "quit"
 
     static let bootstrapScript = #"""
     (() => {

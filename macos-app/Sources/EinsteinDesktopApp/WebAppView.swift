@@ -16,6 +16,27 @@ struct WebAppView: NSViewRepresentable {
         contentController.add(context.coordinator, name: NativeBridge.externalOpenHandlerName)
         contentController.add(context.coordinator, name: NativeBridge.menuHandlerName)
         contentController.add(context.coordinator, name: NativeBridge.telemetryHandlerName)
+        contentController.add(context.coordinator, name: NativeBridge.quitHandlerName)
+
+        // Inject the local-API token before any frontend JS runs so the
+        // api client has it without a separate fetch. Token is persisted
+        // on disk by LocalApiToken; the same value is also passed to
+        // Python via the CARREL_LOCAL_API_TOKEN env var when the
+        // BackendSupervisor spawns uvicorn so both ends agree.
+        if let token = try? LocalApiToken.resolve() {
+            let escaped = token
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+            let tokenScript = "window.__CARREL_LOCAL_API_TOKEN = \"\(escaped)\";"
+            contentController.addUserScript(
+                WKUserScript(
+                    source: tokenScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                )
+            )
+        }
+
         contentController.addUserScript(
             WKUserScript(
                 source: NativeBridge.bootstrapScript,
@@ -74,6 +95,9 @@ struct WebAppView: NSViewRepresentable {
         )
         nsView.configuration.userContentController.removeScriptMessageHandler(
             forName: NativeBridge.telemetryHandlerName
+        )
+        nsView.configuration.userContentController.removeScriptMessageHandler(
+            forName: NativeBridge.quitHandlerName
         )
         WebViewRegistry.unregister(nsView)
     }
@@ -139,6 +163,13 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
             logger.info("Received reserved nativeMenu bridge message")
         case NativeBridge.telemetryHandlerName:
             handleTelemetryMessage(message.body)
+        case NativeBridge.quitHandlerName:
+            // PR-S1 BackendBootCheck calls window.webkit.messageHandlers.quit
+            // when the user clicks "Quit Carrel" in the boot-error overlay.
+            // window.close() does not actually terminate a WKWebView app, so
+            // route through NSApp.terminate so the user can always escape.
+            logger.info("Quit requested from frontend")
+            NSApp.terminate(nil)
         default:
             logger.warning("Unhandled script message: \(message.name, privacy: .public)")
         }

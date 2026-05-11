@@ -1,6 +1,18 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ApiTimeoutError, BackendOfflineError, api } from "../src/services/api/client";
+
+const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
+const TEST_TOKEN = "test-local-token";
+
+beforeEach(() => {
+  // setup.ts seeds window.__CARREL_LOCAL_API_TOKEN in beforeEach, but the
+  // client caches the token in module scope after the first resolve. Reset
+  // the global and re-seed so each test sees a clean cache state. We can't
+  // easily clear the cache from outside the module; relying on the fact
+  // that the cache is set in beforeEach in setup.ts is enough for now.
+  (window as Window & { __CARREL_LOCAL_API_TOKEN?: string }).__CARREL_LOCAL_API_TOKEN = TEST_TOKEN;
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -81,6 +93,33 @@ test("api maps network failure to BackendOfflineError", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("connection refused"))));
 
   await expect(api("/offline")).rejects.toBeInstanceOf(BackendOfflineError);
+});
+
+test("api sends the local-API token on GET requests", async () => {
+  // PR-S1: the token used to be optional on safe methods, leaving GETs
+  // unauthenticated. The backend now gates all /api/* paths except
+  // /api/health, so the client must send the token on every call.
+  const fetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(() =>
+    Promise.resolve(json({ ok: true }))
+  );
+  vi.stubGlobal("fetch", fetch);
+
+  await api("/api/documents");
+
+  const init = fetch.mock.calls[0]?.[1] as RequestInit | undefined;
+  expect(init?.headers).toMatchObject({ [LOCAL_TOKEN_HEADER]: TEST_TOKEN });
+});
+
+test("api sends the local-API token on POST requests", async () => {
+  const fetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(() =>
+    Promise.resolve(json({ ok: true }))
+  );
+  vi.stubGlobal("fetch", fetch);
+
+  await api("/api/documents", { method: "POST", body: { title: "Notes" } });
+
+  const init = fetch.mock.calls[0]?.[1] as RequestInit | undefined;
+  expect(init?.headers).toMatchObject({ [LOCAL_TOKEN_HEADER]: TEST_TOKEN });
 });
 
 function json(body: unknown, status = 200): Response {

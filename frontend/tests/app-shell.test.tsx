@@ -6,7 +6,7 @@ import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import shellStyles from "../src/app/shell/AppShell.module.css";
 import { readerState } from "../src/features/reader/state";
 import { dispatchMenuCommand } from "../src/services/native/menu";
-import { mockJson } from "./support/mockFetch";
+import { jsonResponse, mockJson, registerFetchHandler } from "./support/mockFetch";
 
 async function renderAppReady() {
   // Shell tests don't care about the Dashboard content; they want a stable
@@ -279,4 +279,26 @@ test("reader route deep-link populates the right panel and highlights the chunk"
   // (2)" pane title. Assert on the tab button instead.
   expect(await screen.findByRole("tab", { name: /Chunks/i })).toBeDefined();
   expect(document.querySelector('[data-chunk-id="chunk-2"]')).toBeTruthy();
+});
+
+test("backend boot-check overlay shows when /api/health returns 403", async () => {
+  // PR-S1: a malicious local HTML page used to fetch /api/local-token over
+  // an unauthenticated GET. The Python agent now gates every /api/* path
+  // (except /api/health) behind the local token. If the boot probe
+  // returns 403 — the Python service isn't running, or the token wasn't
+  // injected — we surface a blocking dialog with Retry / Quit.
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/health" && init.method.toUpperCase() === "GET") {
+      return jsonResponse({ detail: "missing local token" }, 403);
+    }
+    return undefined;
+  });
+
+  await renderAppReady();
+
+  expect(
+    await screen.findByRole("dialog", { name: /Couldn't connect to local backend/i })
+  ).toBeDefined();
+  expect(screen.getByRole("button", { name: /Retry/i })).toBeDefined();
+  expect(screen.getByRole("button", { name: /Quit Carrel/i })).toBeDefined();
 });
