@@ -57,7 +57,9 @@ def _bridge_error_payload(
         "error_code": error_code,
         "error_message": error_message,
         "availability_state": (
-            error_code if error_code in {"apple_intelligence_not_enabled", "device_not_eligible"} else None
+            error_code
+            if error_code in {"apple_intelligence_not_enabled", "device_not_eligible"}
+            else None
         ),
     }
     return _completed(json.dumps(payload), returncode=returncode)
@@ -79,9 +81,7 @@ class AFMRequestTextTests(unittest.TestCase):
             captured["cmd"] = cmd
             captured["input"] = json.loads(input)
             captured["kwargs"] = kwargs
-            return _completed(
-                _bridge_ok_payload("Mitosis produces two daughter cells.")
-            )
+            return _completed(_bridge_ok_payload("Mitosis produces two daughter cells."))
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -154,9 +154,7 @@ class AFMRequestTextTests(unittest.TestCase):
 
     def test_request_text_surfaces_protocol_error_on_exit_64(self) -> None:
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return _completed(
-                stdout="", returncode=64, stderr="Invalid request JSON on stdin"
-            )
+            return _completed(stdout="", returncode=64, stderr="Invalid request JSON on stdin")
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -188,9 +186,7 @@ class AFMRequestTextTests(unittest.TestCase):
 class AFMRequestJsonTests(unittest.TestCase):
     def test_request_json_strict_parse(self) -> None:
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return _completed(
-                _bridge_ok_payload('{"answer": "mitosis", "confidence": 0.9}')
-            )
+            return _completed(_bridge_ok_payload('{"answer": "mitosis", "confidence": 0.9}'))
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -202,9 +198,7 @@ class AFMRequestJsonTests(unittest.TestCase):
             prompt="label this",
         )
         self.assertTrue(result.ok)
-        self.assertEqual(
-            result.json_payload, {"answer": "mitosis", "confidence": 0.9}
-        )
+        self.assertEqual(result.json_payload, {"answer": "mitosis", "confidence": 0.9})
 
     def test_request_json_appends_strict_json_instruction_to_system(self) -> None:
         captured: dict[str, object] = {}
@@ -234,9 +228,7 @@ class AFMRequestJsonTests(unittest.TestCase):
             bridge_path=Path("/fake/EinsteinAFMBridge"),
             run_subprocess=fake_run,
         )
-        result = client.request_json(
-            request_kind="t.rescue", system="return JSON", prompt="label"
-        )
+        result = client.request_json(request_kind="t.rescue", system="return JSON", prompt="label")
         self.assertTrue(result.ok)
         self.assertEqual(result.json_payload, {"x": 1})
 
@@ -253,13 +245,9 @@ class AFMRequestJsonTests(unittest.TestCase):
             bridge_path=Path("/fake/EinsteinAFMBridge"),
             run_subprocess=fake_run,
         )
-        result = client.request_json(
-            request_kind="t.fenced", system="return JSON", prompt="label"
-        )
+        result = client.request_json(request_kind="t.fenced", system="return JSON", prompt="label")
         self.assertTrue(result.ok)
-        self.assertEqual(
-            result.json_payload, {"answer": "mitosis", "confidence": 0.9}
-        )
+        self.assertEqual(result.json_payload, {"answer": "mitosis", "confidence": 0.9})
 
     def test_request_json_strips_markdown_fences_without_language_tag(self) -> None:
         fenced = '```\n{"x": 1}\n```'
@@ -450,9 +438,7 @@ class AFMConfigTests(unittest.TestCase):
         # Mock find_binary so this test is filesystem-independent.
         with mock.patch("ai.afm_client.find_binary", return_value=None):
             self.assertFalse(AFMClient(bridge_path=None).ai_enabled())
-        self.assertTrue(
-            AFMClient(bridge_path=Path("/fake/EinsteinAFMBridge")).ai_enabled()
-        )
+        self.assertTrue(AFMClient(bridge_path=Path("/fake/EinsteinAFMBridge")).ai_enabled())
 
 
 # ----------------------------------------------------------------------
@@ -471,27 +457,29 @@ def _bridge_grounded_payload(
     """JSON that mimics the bridge's response shape for the
     request_grounded_answer kind. The bridge sets `text=None` and
     populates `structured.grounded_answer`."""
-    return json.dumps({
-        "ok": True,
-        "request_id": request_id,
-        "kind": "request_grounded_answer",
-        "text": None,
-        "structured": {
-            "grounded_answer": {
-                "answer": answer,
-                "supporting_chunks": supporting_chunks,
-                "unsupported_claims": unsupported_claims or [],
+    return json.dumps(
+        {
+            "ok": True,
+            "request_id": request_id,
+            "kind": "request_grounded_answer",
+            "text": None,
+            "structured": {
+                "grounded_answer": {
+                    "answer": answer,
+                    "supporting_chunks": supporting_chunks,
+                    "unsupported_claims": unsupported_claims or [],
+                },
             },
-        },
-        "model": "afm-3b",
-        "input_tokens": None,
-        "output_tokens": None,
-        "latency_ms": latency_ms,
-        "stop_reason": "stop",
-        "error_code": None,
-        "error_message": None,
-        "availability_state": None,
-    })
+            "model": "afm-3b",
+            "input_tokens": None,
+            "output_tokens": None,
+            "latency_ms": latency_ms,
+            "stop_reason": "stop",
+            "error_code": None,
+            "error_message": None,
+            "availability_state": None,
+        }
+    )
 
 
 _SAMPLE_CHUNKS = [
@@ -529,10 +517,12 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
 
         def fake_run(cmd, input=None, **kwargs):  # type: ignore[no-untyped-def]
             captured["input"] = json.loads(input)
-            return _completed(_bridge_grounded_payload(
-                answer="In anaphase, sister chromatids are pulled to opposite poles of the cell.",
-                supporting_chunks=[2],
-            ))
+            return _completed(
+                _bridge_grounded_payload(
+                    answer="In anaphase, sister chromatids are pulled to opposite poles of the cell.",
+                    supporting_chunks=[2],
+                )
+            )
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -586,10 +576,12 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
         # answer text overlaps with chunk 2 so the ungrounded guard
         # does not trip; this isolates the index-filtering behaviour.
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return _completed(_bridge_grounded_payload(
-                answer="During anaphase sister chromatids are pulled to opposite poles.",
-                supporting_chunks=[2, 99, 0, -1],
-            ))
+            return _completed(
+                _bridge_grounded_payload(
+                    answer="During anaphase sister chromatids are pulled to opposite poles.",
+                    supporting_chunks=[2, 99, 0, -1],
+                )
+            )
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -610,11 +602,13 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
 
     def test_propagates_unsupported_claims(self) -> None:
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return _completed(_bridge_grounded_payload(
-                answer="Mitosis produces two daughter cells.",
-                supporting_chunks=[1],
-                unsupported_claims=["The exact duration of mitosis."],
-            ))
+            return _completed(
+                _bridge_grounded_payload(
+                    answer="Mitosis produces two daughter cells.",
+                    supporting_chunks=[1],
+                    unsupported_claims=["The exact duration of mitosis."],
+                )
+            )
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),
@@ -636,21 +630,23 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
     def test_surfaces_bridge_error(self) -> None:
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
             return _completed(
-                json.dumps({
-                    "ok": False,
-                    "request_id": "x",
-                    "kind": "request_grounded_answer",
-                    "text": None,
-                    "structured": None,
-                    "model": "afm-3b",
-                    "input_tokens": None,
-                    "output_tokens": None,
-                    "latency_ms": 5.0,
-                    "stop_reason": None,
-                    "error_code": "apple_intelligence_not_enabled",
-                    "error_message": "Enable Apple Intelligence in System Settings.",
-                    "availability_state": "apple_intelligence_not_enabled",
-                }),
+                json.dumps(
+                    {
+                        "ok": False,
+                        "request_id": "x",
+                        "kind": "request_grounded_answer",
+                        "text": None,
+                        "structured": None,
+                        "model": "afm-3b",
+                        "input_tokens": None,
+                        "output_tokens": None,
+                        "latency_ms": 5.0,
+                        "stop_reason": None,
+                        "error_code": "apple_intelligence_not_enabled",
+                        "error_message": "Enable Apple Intelligence in System Settings.",
+                        "availability_state": "apple_intelligence_not_enabled",
+                    }
+                ),
                 returncode=1,
             )
 
@@ -671,21 +667,25 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
         # Bridge says ok=true but never populated `structured`. Should
         # not crash; surface a specific error so the tutor can fall back.
         def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
-            return _completed(json.dumps({
-                "ok": True,
-                "request_id": "x",
-                "kind": "request_grounded_answer",
-                "text": None,
-                "structured": None,
-                "model": "afm-3b",
-                "input_tokens": None,
-                "output_tokens": None,
-                "latency_ms": 100.0,
-                "stop_reason": "stop",
-                "error_code": None,
-                "error_message": None,
-                "availability_state": None,
-            }))
+            return _completed(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "request_id": "x",
+                        "kind": "request_grounded_answer",
+                        "text": None,
+                        "structured": None,
+                        "model": "afm-3b",
+                        "input_tokens": None,
+                        "output_tokens": None,
+                        "latency_ms": 100.0,
+                        "stop_reason": "stop",
+                        "error_code": None,
+                        "error_message": None,
+                        "availability_state": None,
+                    }
+                )
+            )
 
         client = AFMClient(
             bridge_path=Path("/fake/EinsteinAFMBridge"),

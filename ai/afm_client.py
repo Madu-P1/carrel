@@ -72,8 +72,8 @@ class AFMClient:
         # Test seam: inject a callable matching subprocess.run's signature.
         run_subprocess: Any = None,
     ) -> None:
-        self.bridge_path = bridge_path if bridge_path is not None else find_binary(
-            AFM_BRIDGE_CANDIDATES
+        self.bridge_path = (
+            bridge_path if bridge_path is not None else find_binary(AFM_BRIDGE_CANDIDATES)
         )
         env_timeout = os.getenv("AFM_TIMEOUT_SECONDS")
         if timeout_seconds is not None:
@@ -139,9 +139,8 @@ class AFMClient:
         # runtime guided-generation; @Generable is a compile-time macro
         # so we cannot drive it from a runtime schema.
         system_with_json = (
-            (system or "")
-            + "\n\nReply with a single JSON object. No prose, no markdown, "
-              "no leading or trailing text."
+            (system or "") + "\n\nReply with a single JSON object. No prose, no markdown, "
+            "no leading or trailing text."
         )
         result = self._call(
             kind="request_json",
@@ -276,8 +275,7 @@ class AFMClient:
         # contained. Models occasionally emit out-of-range indices when
         # the question doesn't match any chunk well.
         valid_indices = [
-            idx for idx in supporting
-            if isinstance(idx, int) and 1 <= idx <= len(chunks)
+            idx for idx in supporting if isinstance(idx, int) and 1 <= idx <= len(chunks)
         ]
 
         # Build the citations array via server-side span extraction.
@@ -294,10 +292,12 @@ class AFMClient:
             chunk = chunks[idx - 1]
             span = extract_best_span(chunk.text, answer)
             best_overlap_score = max(best_overlap_score, span.score)
-            citations.append({
-                "chunk_index": idx,
-                "quote": span.text,
-            })
+            citations.append(
+                {
+                    "chunk_index": idx,
+                    "quote": span.text,
+                }
+            )
             cited_chunks.append((idx, chunk))
 
         # Second ungrounded guard: model said "these chunks support
@@ -372,9 +372,7 @@ class AFMClient:
         # strictly better than a wrong answer with a footnote.
         chunk_texts = [chunk.text for chunk in chunks]
         fabrication = detect_fabricated_terms(answer, chunk_texts)
-        unsupported_spans = [
-            str(item).strip() for item in unsupported if str(item).strip()
-        ]
+        unsupported_spans = [str(item).strip() for item in unsupported if str(item).strip()]
         if not fabrication.is_clean:
             suspect_list = ", ".join(fabrication.suspect_terms)
             return replace(
@@ -432,10 +430,12 @@ class AFMClient:
             if score < per_claim_threshold:
                 unsupported_sentences.append(sentence)
                 continue
-            claims.append({
-                "text": sentence,
-                "citations": [{"chunk_index": idx, "quote": quote}],
-            })
+            claims.append(
+                {
+                    "text": sentence,
+                    "citations": [{"chunk_index": idx, "quote": quote}],
+                }
+            )
 
         # If every sentence dropped, the model produced text that
         # looked grounded in aggregate (best_overlap_score cleared 0.10
@@ -548,8 +548,7 @@ class AFMClient:
                 request_kind=request_kind,
                 error_code="bridge_unavailable",
                 error_message=(
-                    "EinsteinAFMBridge binary not found. Run "
-                    "`cd macos-app && swift build`."
+                    "EinsteinAFMBridge binary not found. Run `cd macos-app && swift build`."
                 ),
             )
         request_id = str(uuid.uuid4())

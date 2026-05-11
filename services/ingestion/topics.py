@@ -240,8 +240,7 @@ def build_concept_payloads_from_chunks(
         # sentence before joining gives readable prose without
         # altering the underlying evidence semantics.
         description = " ".join(
-            _ensure_terminal_period(sentence)
-            for sentence, _chunk_id in evidence[:2]
+            _ensure_terminal_period(sentence) for sentence, _chunk_id in evidence[:2]
         ).strip()
         if not _is_valid_answer_text(summary, normalized_name):
             return
