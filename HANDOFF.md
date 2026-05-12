@@ -176,6 +176,104 @@ hell. The session notes capture this in detail.
 
 ## What is NOT done
 
+### Type-check findings (5 latent bugs, plus a verify-chain gap)
+
+Running `mypy --ignore-missing-imports --follow-imports=silent ai services routes`
+with `--config-file /dev/null` (so the typed-island exclude in `mypy.ini`
+doesn't apply) finds **70 errors in 27 of 120 files** non-strict,
+**185 errors in 58 files** strict. Current `mypy.ini` gate is clean on
+the 8 typed-island files; this is the debt outside that gate.
+
+Five of the 70 are real latent bugs sitting in the codebase today,
+not annotation noise. Fix these first regardless of any decision
+about expanding the verify chain.
+
+**1. `services/local_api_security.py:42` — `compare_digest` receives `str | None`.**
+
+On the auth path. `hmac.compare_digest` raises `TypeError` when either
+arg is `None`, so a `None` slipping through is a hard fail rather than
+a silent bypass, but the error surface is uncontrolled. Guard upstream:
+
+```python
+if provided is None or expected is None:
+    return False
+if not hmac.compare_digest(provided, expected):
+    return False
+```
+
+**2. `routes/calendar.py:126, 217, 269` — `FeedRow | None` assigned to `FeedRow`.**
+
+Three lookups by id whose `None` return is dropped on the floor before
+the next attribute access. Three latent `AttributeError`s in the calendar
+feed flow. Fix: at each site, raise
+`HTTPException(status_code=404, detail="feed not found")` when the
+lookup returns `None` before the assignment.
+
+**3. `services/tutor.py:1074` — `request_grounded_answer` called with unsupported `temperature=` kwarg.**
+
+Neither `AIProvider.request_grounded_answer` nor
+`ClaudeRouter.request_grounded_answer` accept a `temperature` parameter.
+Either dead path that never executes, or runtime `TypeError` the first
+time the line is reached. Delete the kwarg or add it to both ends of
+the protocol.
+
+**4. `ai/providers.py:329, 337` — `ClaudeRouter` does not satisfy the `AIProvider` protocol it is returned as.**
+
+The protocol declares
+`request_json(*, ..., fallback: Any = ..., task: Any = ..., ...)`.
+`ClaudeRouter.request_json` is missing `fallback` entirely and uses a
+narrower `task: Literal['fast', 'balanced', 'deep']`. The abstraction
+is theatrical at the protocol level. Either widen the router signature
+to honor the protocol or narrow the protocol to describe what the router
+actually does, then update both call sites.
+
+**5. `services/extraction/parsers/pdf.py:342-343` — `elements` and `warnings` redefined inside the same function.**
+
+Lines 342 and 343 rebind names already bound at lines 272 and 273.
+Probably benign shadowing. Worth one minute of reading to confirm the
+second binding does not silently drop accumulated state from the first.
+
+#### Verify-chain gap
+
+The verify chain runs `ruff` on `ai services evals tests main.py db.py
+routes api_models.py` but does not run `mypy` on the broader backend.
+Only `app_runtime.py`, `app_logging.py`, `ai/router.py`, `benchmarks/*`,
+and `evals/*` are mypy-gated today (the typed islands in `mypy.ini`).
+
+After the 5 bugs above land, add this single line to the verify chain
+in `CLAUDE.md` and to whatever script gates PRs:
+
+```bash
+./.venv/bin/python -m mypy --ignore-missing-imports --follow-imports=silent ai services routes
+```
+
+That run currently produces ~65 remaining errors after the 5 bug fixes.
+Breakdown:
+
+- ~8 Literal/enum mismatches in `services/anchors.py` and `routes/plan.py`
+  (half a day to align producers with the declared Literals)
+- ~10 optional-import shadowing in `services/extraction/parsers/*.py`
+  (`docx`, `html`, `epub`, `pptx` use the `try: import X; except: X = None`
+  pattern, which mypy reads as "Cannot assign to a type"; half a day
+  with targeted `# type: ignore[assignment, misc]` or a small
+  `Optional[type[X]]` restructure)
+- ~25 `object` propagation through `services/ingestion/*` and
+  `services/documents.py` (real typing work, 1 to 2 days; the root
+  cause is dict values typed as `object` at the boundary, which then
+  flow into call sites that need `str`, `int`, or richer types)
+- ~5 mechanical (float assigned to int-typed variable, missing list
+  annotations); 30 minutes
+
+Total to zero on the broader gate and lock it in: roughly 1 to 2
+engineer-days after the bug-fix PR lands.
+
+**Do not pursue full `--strict` on this scope yet.** Strict adds another
+~115 errors (185 total) that are mostly `[no-untyped-def]` on legacy
+modules. Promote files into strict one at a time, the same way
+`app_runtime.py`, `app_logging.py`, and `ai/router.py` were promoted
+into the strict list in `mypy.ini`. The typed-island pattern is the
+right discipline; just widen the perimeter.
+
 ### Coach Phase 2 — make the coach feel real
 
 Phase 1 ships ONE rule (`free_block_overdue_srs`). The reason
