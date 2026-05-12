@@ -30,6 +30,7 @@ from ai.afm_grounded import (
     extract_best_span,
 )
 from ai.native_bridge_paths import AFM_BRIDGE_CANDIDATES, find_binary
+from ai.prompt_sanitization import escape_afm_chunk_marker
 from ai.router import ClaudeCallResult
 
 # Python-side ProviderKind tag. The literal type lives in ai/providers.py.
@@ -236,9 +237,15 @@ class AFMClient:
         # Render numbered chunks in the prompt. AFM is reliably better
         # at "[Chunk 2]" than at content-based references. Keep the
         # rendering compact so we don't burn the model's context budget.
+        #
+        # PR-S3: a malicious source could contain a literal "[Chunk 999]"
+        # prefix to fake an additional chunk. Escape the boundary token
+        # in each chunk body before insertion. The AFM system prompt
+        # documents the sentinel as reference text.
         chunk_lines = []
         for idx, chunk in enumerate(chunks, start=1):
-            chunk_lines.append(f"[Chunk {idx}] {chunk.text.strip()}")
+            sanitized = escape_afm_chunk_marker(chunk.text.strip())
+            chunk_lines.append(f"[Chunk {idx}] {sanitized}")
         chunks_block = "\n".join(chunk_lines)
         prompt = f"{chunks_block}\n\nQuestion: {question.strip()}"
 
