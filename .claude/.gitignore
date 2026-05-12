@@ -1,0 +1,4 @@
+# Routine-internal artifacts: do not commit
+logs/
+HALT
+settings.local.json
