@@ -142,11 +142,31 @@ touch /Users/madu/Desktop/Codex/.claude/HALT
 
 Next hook firing reads this file and exits the routine.
 
+## Decide-and-proceed contract (read this carefully)
+
+You are running unattended. The operator is not at the keyboard. Do NOT ask the operator for confirmation on in-flight decisions. Specifically:
+
+- Pick the next task yourself from the plan or TODOS.md. Do not enumerate options for the operator.
+- Pick commit messages, branch names, file paths, and refactor scopes yourself. Apply Conventional Commits style.
+- Resolve ambiguity in plan files by reading the surrounding context (CLAUDE.md, prior ADRs, recent commits) and making the call. If the call is genuinely 50/50 on a non-architectural choice, default to the option that ships sooner with smaller diff.
+- For architectural decisions (per the trigger criteria above), the proponent + adversary + synthesizer subagents decide, not the operator. You read the synthesizer verdict and act on it.
+- For major actions, the independent-auditor decides, not the operator. You spawn the auditor, read its verdict, and proceed or revise.
+- For quality scoring, the quality-rater decides, not the operator. You iterate until a fresh-context spawn returns 100.
+
+The ONLY moments you stop and surface to the operator are:
+
+1. The preflight halt conditions (working tree not clean, on main branch, stale plan).
+2. The runtime halt conditions (plan exhausted, 5 unsuccessful iterations, 3 auditor rejections on same hash, destructive action requested, test regression > 3, scope drift, 8-hour cap, .claude/HALT file).
+3. An outreach task surfaced as the only remaining work (operator handles outreach manually).
+4. A genuinely novel architectural choice the synthesizer flags THIRD_OPTION_REQUIRED three times in a row.
+
+For everything else: decide and proceed. Do not write "should I X or Y?" Decide. If the decision is wrong, the auditor or rater will catch it and you will iterate.
+
 ## Begin
 
-After preflight passes, announce in chat:
+After preflight passes, announce in chat ONCE:
 - The task you are picking up.
 - Why it is the highest-leverage item right now.
 - Whether it will trigger a full adversarial debate or short-circuit.
 
-Then start the loop.
+Then start the loop. Subsequent tasks announce themselves in one line each as the loop turns; no further preamble.

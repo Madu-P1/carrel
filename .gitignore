@@ -1,6 +1,7 @@
 .DS_Store
 .codex/
 .codex-debug/
+.claude-flow/
 .pycache/
 __pycache__/
 dist/
