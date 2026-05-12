@@ -86,8 +86,34 @@ wait_for_backend() {
   return 1
 }
 
+ensure_local_api_token() {
+  # PR-S1 + S4 follow-up: bash launcher must agree with Swift on the
+  # local-API token. Swift's LocalApiToken.resolve() reads/writes a
+  # mode-0600 file at this path; we mirror that contract here so a
+  # uvicorn spawned by this script uses the same token the WKWebView
+  # gets injected with. Without this, every fetch from the bundled
+  # frontend 403's because Python generated a fresh random token at
+  # boot that does not match what Swift hands to the WebView.
+  local token_dir="$HOME/Library/Application Support/Carrel"
+  local token_path="$token_dir/local-api-token"
+
+  if [[ ! -f "$token_path" ]]; then
+    mkdir -p "$token_dir"
+    # URL-safe base64 over 32 random bytes — matches secrets.token_urlsafe(32)
+    # on the Python side and Swift's LocalApiToken.resolve() output.
+    local generated
+    generated="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")')"
+    (umask 077 && printf '%s' "$generated" > "$token_path")
+  fi
+
+  CARREL_LOCAL_API_TOKEN="$(cat "$token_path")"
+  export CARREL_LOCAL_API_TOKEN
+}
+
 ensure_backend() {
   mkdir -p "$DIST_DIR"
+
+  ensure_local_api_token
 
   # Kill any uvicorn process bound to our slot, not just the one named in
   # the pidfile. Two earlier failure modes prompted this:
