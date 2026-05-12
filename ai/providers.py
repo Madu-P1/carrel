@@ -135,6 +135,7 @@ class AIProvider(Protocol):
         chunks: Any,
         max_tokens: int = 600,
         task: Any = "balanced",
+        temperature: float = 0.0,
     ) -> ClaudeCallResult:
         """Grounded-answer flow: emit a tutor-schema payload with
         `claims` + per-claim `citations` derived from `chunks`.
@@ -143,6 +144,11 @@ class AIProvider(Protocol):
         Providers that don't implement this should return ok=False
         with `error_code="grounded_unsupported"` so callers fall back
         to the tool-call path.
+
+        `temperature` is part of the protocol because the two real
+        implementations (AFM, Ollama) honor it for grounded decoding;
+        stub implementations that short-circuit to
+        `error_code="grounded_unsupported"` accept and ignore it.
         """
         ...
 
@@ -226,8 +232,9 @@ class NullProvider:
         chunks: Any,
         max_tokens: int = 600,
         task: Any = "balanced",
+        temperature: float = 0.0,
     ) -> ClaudeCallResult:
-        del system, question, chunks, max_tokens
+        del system, question, chunks, max_tokens, temperature
         return _null_result(task=task, request_kind=request_kind)
 
 

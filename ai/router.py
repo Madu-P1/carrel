@@ -539,8 +539,9 @@ class ClaudeRouter:
         chunks: Any,
         max_tokens: int = 600,
         task: Any = "balanced",
+        temperature: float = 0.0,
     ) -> ClaudeCallResult:
-        del system, question, chunks, max_tokens
+        del system, question, chunks, max_tokens, temperature
         return ClaudeCallResult(
             ok=False,
             task=task,

@@ -149,6 +149,39 @@ class NullProviderContractTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "ai_disabled")
 
+    def test_null_provider_request_grounded_answer_accepts_temperature(self) -> None:
+        """Pin the post-Bug-3 protocol contract: callers can pass
+        `temperature=` to any provider's `request_grounded_answer`,
+        including stub providers that short-circuit. Regression-guards
+        the protocol-widening fix in HANDOFF Bug 3 — if a refactor
+        drops the kwarg from NullProvider, this test fails before
+        the latent runtime TypeError can reach production."""
+        null = NullProvider()
+        result = null.request_grounded_answer(
+            request_kind="test",
+            system="",
+            question="",
+            chunks=[],
+            temperature=0.0,
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "ai_disabled")
+
+    def test_claude_router_request_grounded_answer_accepts_temperature(self) -> None:
+        """Same regression guard for the ClaudeRouter stub. The
+        services/tutor.py call site passes temperature; this pins
+        that contract."""
+        router = ClaudeRouter()
+        result = router.request_grounded_answer(
+            request_kind="test",
+            system="",
+            question="",
+            chunks=[],
+            temperature=0.0,
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "grounded_unsupported")
+
 
 class ProviderProtocolTests(unittest.TestCase):
     """Structural check: every backend satisfies AIProvider at runtime."""

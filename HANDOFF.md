@@ -209,13 +209,15 @@ feed flow. Fix: at each site, raise
 `HTTPException(status_code=404, detail="feed not found")` when the
 lookup returns `None` before the assignment.
 
-**3. `services/tutor.py:1074` — `request_grounded_answer` called with unsupported `temperature=` kwarg.**
+**3. `services/tutor.py:1074` — `request_grounded_answer` called with unsupported `temperature=` kwarg. — FIXED 2026-05-12.**
 
-Neither `AIProvider.request_grounded_answer` nor
-`ClaudeRouter.request_grounded_answer` accept a `temperature` parameter.
-Either dead path that never executes, or runtime `TypeError` the first
-time the line is reached. Delete the kwarg or add it to both ends of
-the protocol.
+Resolved by widening the `AIProvider` protocol to declare
+`temperature: float = 0.0` and threading the same parameter through
+the `NullProvider` and `ClaudeRouter` stubs (accept-and-ignore via
+`del temperature`). AFM and Ollama implementations already honored it.
+The call site is now type-correct; mypy delta on the broad sweep
+(`mypy --config-file /dev/null --ignore-missing-imports
+--follow-imports=silent ai services`): 56 → 54 errors.
 
 **4. `ai/providers.py:329, 337` — `ClaudeRouter` does not satisfy the `AIProvider` protocol it is returned as.**
 
