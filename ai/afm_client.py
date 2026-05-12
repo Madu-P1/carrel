@@ -15,8 +15,6 @@ Wire protocol matches `macos-app/Sources/EinsteinAFMBridge/main.swift`.
 from __future__ import annotations
 
 import json
-import os
-import re
 import subprocess
 import time
 import uuid
@@ -31,7 +29,7 @@ from ai.afm_grounded import (
 )
 from ai.native_bridge_paths import AFM_BRIDGE_CANDIDATES, find_binary
 from ai.prompt_sanitization import escape_afm_chunk_marker
-from ai.router import ClaudeCallResult
+from ai.router import ClaudeCallResult, parse_or_rescue_json, resolve_ai_timeout_seconds
 
 # Python-side ProviderKind tag. The literal type lives in ai/providers.py.
 PROVIDER_KIND_AFM = "afm"
@@ -76,16 +74,19 @@ class AFMClient:
         self.bridge_path = (
             bridge_path if bridge_path is not None else find_binary(AFM_BRIDGE_CANDIDATES)
         )
-        env_timeout = os.getenv("AFM_TIMEOUT_SECONDS")
-        if timeout_seconds is not None:
-            self.timeout_seconds = float(timeout_seconds)
-        elif env_timeout:
-            try:
-                self.timeout_seconds = float(env_timeout)
-            except ValueError:
-                self.timeout_seconds = 120.0
-        else:
-            self.timeout_seconds = 120.0
+        # PR-P2: prefer the unified CARREL_AI_TIMEOUT_SECONDS over the
+        # legacy AFM_TIMEOUT_SECONDS env var. AFM's default of 120s is
+        # double Claude/Ollama because cold-spawn + on-device inference
+        # on a loaded Mac can legitimately need that headroom; the env
+        # vars let power users tune it.
+        self.timeout_seconds = (
+            float(timeout_seconds)
+            if timeout_seconds is not None
+            else resolve_ai_timeout_seconds(
+                default=120.0,
+                legacy_env_name="AFM_TIMEOUT_SECONDS",
+            )
+        )
         self._run = run_subprocess if run_subprocess is not None else subprocess.run
 
     # ------------------------------------------------------------------
@@ -678,55 +679,14 @@ class AFMClient:
 # ----------------------------------------------------------------------
 
 
-def _parse_or_rescue(text: str | None) -> Any:
-    """Strict JSON parse, then rescue parse around prose, code fences,
-    and trailing junk.
-
-    AFM's 3B model often wraps JSON in markdown code fences
-    (```json ... ```). Smaller models also tend to add prose before
-    or after the JSON. We strip those wrappers and try the strict
-    parser on the inner payload before falling back to the
-    "find first { or [" approach.
-
-    Returns the parsed value or None if every attempt fails.
-    """
-    if not text:
-        return None
-    candidate = text.strip()
-    # Strict parse first.
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
-    # Strip markdown code fences. Matches ```json ... ``` and ``` ... ```.
-    fenced = re.match(
-        r"^```(?:json|JSON)?\s*\n?(.*?)\n?```\s*$",
-        candidate,
-        re.DOTALL,
-    )
-    if fenced:
-        try:
-            return json.loads(fenced.group(1).strip())
-        except json.JSONDecodeError:
-            pass
-    # Last resort: find first { or [, parse from there. Also try
-    # truncating to the matching closing brace so trailing prose after
-    # a closing } doesn't trip the parser.
-    for opener, closer in (("{", "}"), ("[", "]")):
-        start = candidate.find(opener)
-        if start < 0:
-            continue
-        try:
-            return json.loads(candidate[start:])
-        except json.JSONDecodeError:
-            pass
-        end = candidate.rfind(closer)
-        if end > start:
-            try:
-                return json.loads(candidate[start : end + 1])
-            except json.JSONDecodeError:
-                continue
-    return None
+# PR-P2: AFM previously had a local copy of this rescue logic that
+# diverged from Claude's `_extract_json_from_text` (AFM stripped
+# markdown fences and did `rfind` truncation; Claude only did
+# find-first-opener). Same malformed output → different `ok` value
+# depending on provider. The canonical implementation now lives in
+# `ai/router.py:parse_or_rescue_json`; AFM aliases the local name to
+# preserve in-module call sites without diverging again.
+_parse_or_rescue = parse_or_rescue_json
 
 
 def _bridge_error_result(

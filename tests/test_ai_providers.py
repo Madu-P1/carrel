@@ -64,8 +64,14 @@ class SelectProviderTests(unittest.TestCase):
         self.assertIsInstance(provider, AFMClient)
 
     def test_auto_falls_back_to_ollama_when_afm_unavailable(self) -> None:
+        # PR-P2: auto-select picks Ollama only when the user has
+        # explicitly set OLLAMA_BASE_URL. Pre-PR-P2 this happened
+        # unconditionally via an `or True` foot-gun that made the
+        # fallback chain pick Ollama on every machine, broken
+        # daemon or not.
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         env["EINSTEIN_AI_PROVIDER"] = "auto"
+        env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
         with (
             mock.patch.dict(os.environ, env, clear=True),
             mock.patch("ai.providers._afm_available", return_value=False),
@@ -82,17 +88,24 @@ class SelectProviderTests(unittest.TestCase):
             provider = select_provider()
         self.assertIsInstance(provider, ClaudeRouter)
 
-    def test_auto_falls_back_to_ollama_when_no_key_and_no_afm(self) -> None:
-        # Auto path now: Claude -> AFM -> Ollama -> Null.
-        # With no Claude key AND AFM unavailable, the next pick is Ollama.
+    def test_auto_falls_back_to_null_when_no_provider_configured(self) -> None:
+        # PR-P2: when Claude has no key, AFM is unavailable, AND
+        # OLLAMA_BASE_URL is not set, the fallback chain ends at
+        # NullProvider so the UI can render a clear "no AI configured"
+        # state. Pre-PR-P2 the chain incorrectly picked Ollama in this
+        # scenario via an `or True` short-circuit, which then surfaced
+        # as confusing http_error on the first call.
+        from ai.providers import NullProvider
+
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         env["EINSTEIN_AI_PROVIDER"] = "auto"
+        env.pop("OLLAMA_BASE_URL", None)
         with (
             mock.patch.dict(os.environ, env, clear=True),
             mock.patch("ai.providers._afm_available", return_value=False),
         ):
             provider = select_provider()
-        self.assertIsInstance(provider, OllamaClient)
+        self.assertIsInstance(provider, NullProvider)
 
     def test_unknown_value_falls_back_to_auto(self) -> None:
         with mock.patch.dict(

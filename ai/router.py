@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -65,19 +66,114 @@ def _extract_text_block(content: Any) -> str:
     return str(content or "")
 
 
-def _extract_json_from_text(text: str) -> Any | None:
+_RESCUE_FENCE_RE = re.compile(
+    r"^```(?:json|JSON)?\s*\n?(.*?)\n?```\s*$",
+    re.DOTALL,
+)
+
+
+def parse_or_rescue_json(text: str | None) -> Any | None:
+    """Strict JSON parse, then rescue parse around prose, code fences,
+    and trailing junk.
+
+    PR-P2: previously every provider had its own rescue. Claude's
+    `_extract_json_from_text` did first-`{` find but no `rfind`
+    truncation; AFM's `_parse_or_rescue` stripped markdown fences and
+    did the truncation; Ollama imported Claude's. Same malformed
+    output → different `ok` value depending on provider. Promoting
+    this single canonical implementation up to the router so all three
+    callers agree.
+
+    Strategies, applied in order:
+    1. Strict ``json.loads`` on the trimmed input.
+    2. Strip markdown code fences (```json ... ``` or ``` ... ```)
+       and re-parse the inner payload. AFM's 3B model wraps JSON in
+       fences with high frequency.
+    3. Find the first ``{`` or ``[`` and parse from there. Catches
+       "Here is the JSON: {...}" prefixes.
+    4. Find the matching trailing ``}`` or ``]`` via ``rfind`` and
+       parse just that slice. Catches "{...} (note: ...)" suffixes
+       that the prior strategies' parsers reject.
+
+    Returns the parsed value or ``None`` if every attempt fails.
+    """
+    if not text:
+        return None
+    candidate = text.strip()
+    # 1. Strict.
     try:
-        return json.loads(text)
+        return json.loads(candidate)
     except json.JSONDecodeError:
-        start = text.find("{")
-        alt_start = text.find("[")
-        candidates = [position for position in (start, alt_start) if position != -1]
-        if not candidates:
-            return None
+        pass
+    # 2. Markdown fence.
+    fenced = _RESCUE_FENCE_RE.match(candidate)
+    if fenced:
         try:
-            return json.loads(text[min(candidates) :])
+            return json.loads(fenced.group(1).strip())
         except json.JSONDecodeError:
-            return None
+            pass
+    # 3+4. Find-first-opener, optionally rfind-closer.
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = candidate.find(opener)
+        if start < 0:
+            continue
+        try:
+            return json.loads(candidate[start:])
+        except json.JSONDecodeError:
+            pass
+        end = candidate.rfind(closer)
+        if end > start:
+            try:
+                return json.loads(candidate[start : end + 1])
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
+def _extract_json_from_text(text: str) -> Any | None:
+    """Backward-compat alias for callers in this module and external
+    consumers. New code should use ``parse_or_rescue_json`` directly.
+    """
+    return parse_or_rescue_json(text)
+
+
+def resolve_ai_timeout_seconds(default: float, legacy_env_name: str | None = None) -> float:
+    """Return the timeout for an AI provider HTTP / subprocess call.
+
+    PR-P2: every provider had its own env var (``OLLAMA_TIMEOUT_SECONDS``,
+    ``AFM_TIMEOUT_SECONDS``, Claude was hardcoded). A user who wanted to
+    bump timeouts had to set N env vars and remember to keep them in
+    sync. The audit's "single central knob" recommendation surfaces here
+    as ``CARREL_AI_TIMEOUT_SECONDS``, which overrides everything.
+
+    Precedence (highest to lowest):
+    1. ``CARREL_AI_TIMEOUT_SECONDS`` — unified knob, wins for all
+       providers when set.
+    2. ``legacy_env_name`` — provider-specific override. Honored for
+       backward compatibility and for power users who genuinely need
+       different timeouts per provider (e.g. AFM cold-spawn on a
+       loaded Mac legitimately needs longer than Claude).
+    3. ``default`` — provider-specific default. Different across
+       providers by design (AFM 120s, Claude/Ollama 60s) because those
+       defaults reflect real cold-start latency differences.
+
+    Invalid float values in env are silently ignored — the next layer
+    in the precedence chain is consulted instead.
+    """
+    unified = os.getenv("CARREL_AI_TIMEOUT_SECONDS")
+    if unified:
+        try:
+            return float(unified)
+        except ValueError:
+            pass
+    if legacy_env_name:
+        legacy = os.getenv(legacy_env_name)
+        if legacy:
+            try:
+                return float(legacy)
+            except ValueError:
+                pass
+    return default
 
 
 def _extract_tool_payload(content: Any, tool_name: str) -> Any | None:
@@ -131,9 +227,12 @@ class ClaudeRouter:
         # Bounded timeout so a wedged API call can't hang a tutor turn for the
         # SDK default (10 min). max_retries lets the SDK handle 429 + 5xx with
         # exponential backoff that honors the Retry-After header.
+        # PR-P2: honour the unified CARREL_AI_TIMEOUT_SECONDS env var so a
+        # user can bump the timeout once for every provider.
+        timeout = resolve_ai_timeout_seconds(default=60.0, legacy_env_name="CLAUDE_TIMEOUT_SECONDS")
         return anthropic.Anthropic(
             api_key=api_key,
-            timeout=60.0,
+            timeout=timeout,
             max_retries=3,
         )
 
