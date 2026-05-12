@@ -56,7 +56,26 @@ ProviderKind = Literal["claude", "ollama", "afm", "null"]
 class AIProvider(Protocol):
     """Minimal surface shared by every backend. Matches `ClaudeRouter` /
     `OllamaClient`. Anything the tutor or extraction pipeline calls must be
-    here."""
+    here.
+
+    ``ClaudeCallResult`` fields — provider parity notes (PR-P2):
+
+    * ``cache_hit`` is Claude-only. AFM and Ollama hardcode False
+      because the underlying providers don't expose an ephemeral
+      prompt-cache hit/miss signal. UI consumers that show a "cached"
+      badge should treat ``cache_hit=False`` as "no information" on
+      AFM and Ollama, not "definitely not cached".
+    * ``cache_creation_input_tokens`` / ``cache_read_input_tokens``
+      are also Claude-only, set from the Anthropic SDK's usage block.
+      Both fields stay None on AFM and Ollama.
+    * Timeouts are unified via ``CARREL_AI_TIMEOUT_SECONDS``; legacy
+      per-provider env vars (``OLLAMA_TIMEOUT_SECONDS``,
+      ``AFM_TIMEOUT_SECONDS``, ``CLAUDE_TIMEOUT_SECONDS``) still
+      honored. See ``ai.router.resolve_ai_timeout_seconds``.
+    * JSON rescue parsing is unified via
+      ``ai.router.parse_or_rescue_json``; every provider that does
+      post-hoc JSON salvage uses the same fence-aware rescuer.
+    """
 
     def ai_enabled(self) -> bool: ...
 
@@ -239,12 +258,23 @@ def _claude_has_key() -> bool:
 
 
 def _ollama_has_endpoint() -> bool:
-    # Default base URL in the OllamaClient is localhost, so "configured" means
-    # either the user set OLLAMA_BASE_URL explicitly or they're on the local
-    # default. We can't verify reachability without paying a network round-trip,
-    # so we treat presence of the default URL as "configured" and let call-time
-    # errors surface via ok=False.
-    return bool(os.getenv("OLLAMA_BASE_URL", "").strip()) or True
+    """True only when the user explicitly opted into Ollama via env var.
+
+    PR-P2: previously this returned True unconditionally (`or True`),
+    which made auto-selection pick Ollama in every fallback scenario
+    even on machines where Ollama isn't installed. The first API call
+    would then fail with `http_error` — opaque to users who never
+    asked for Ollama in the first place.
+
+    The honest contract is: auto-select picks Ollama only when the
+    user has explicitly set `OLLAMA_BASE_URL`. Zero-config users who
+    are running Ollama on the default localhost can still use it by
+    setting `CARREL_AI_PROVIDER=ollama` (explicit selection bypasses
+    this check), or by setting `OLLAMA_BASE_URL=http://127.0.0.1:11434`.
+    The fallback chain prefers `NullProvider` (clear "no AI configured")
+    over a silently-broken Ollama selection.
+    """
+    return bool(os.getenv("OLLAMA_BASE_URL", "").strip())
 
 
 def _afm_available() -> bool:

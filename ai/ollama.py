@@ -38,7 +38,7 @@ from typing import Any, Literal
 import httpx
 
 from ai.prompt_sanitization import escape_chunk_xml
-from ai.router import ClaudeCallResult, _extract_json_from_text
+from ai.router import ClaudeCallResult, parse_or_rescue_json, resolve_ai_timeout_seconds
 from app_logging import get_logger, log_event
 
 ClaudeTask = Literal["fast", "balanced", "deep"]  # identical labels, different backend
@@ -155,10 +155,16 @@ class OllamaClient:
             balanced_model or os.getenv("OLLAMA_MODEL_BALANCED") or DEFAULT_BALANCED_MODEL
         )
         self.deep_model = deep_model or os.getenv("OLLAMA_MODEL_DEEP") or DEFAULT_DEEP_MODEL
-        self.timeout_seconds = float(
-            timeout_seconds
+        # PR-P2: prefer the unified CARREL_AI_TIMEOUT_SECONDS knob over
+        # the legacy OLLAMA_TIMEOUT_SECONDS env var. Constructor-time
+        # override still wins absolute precedence (used by tests).
+        self.timeout_seconds = (
+            float(timeout_seconds)
             if timeout_seconds is not None
-            else os.getenv("OLLAMA_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS)
+            else resolve_ai_timeout_seconds(
+                default=DEFAULT_TIMEOUT_SECONDS,
+                legacy_env_name="OLLAMA_TIMEOUT_SECONDS",
+            )
         )
         self.keep_alive = keep_alive or os.getenv("OLLAMA_KEEP_ALIVE") or DEFAULT_KEEP_ALIVE
         self._http_client = http_client  # injected in tests
@@ -224,7 +230,7 @@ class OllamaClient:
         )
         if result.ok and result.json_payload is None and result.text:
             # Model ignored format=json; try to rescue a JSON object from prose.
-            rescued = _extract_json_from_text(result.text)
+            rescued = parse_or_rescue_json(result.text)
             if rescued is not None:
                 return _replace_result(result, json_payload=rescued)
         if not result.ok and fallback is not None:
@@ -483,7 +489,7 @@ class OllamaClient:
             try:
                 json_payload = json.loads(text)
             except json.JSONDecodeError:
-                json_payload = _extract_json_from_text(text)
+                json_payload = parse_or_rescue_json(text)
 
         latency_ms = _latency_ms_from_response(response_json, fallback_start=start)
         input_tokens = _optional_int(response_json.get("prompt_eval_count"))
