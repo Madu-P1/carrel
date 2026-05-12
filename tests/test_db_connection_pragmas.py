@@ -128,9 +128,7 @@ class ConcurrentWriterTests(unittest.TestCase):
         )
         # Single tiny table is enough to exercise the writer lock.
         with db.get_db() as conn:
-            conn.execute(
-                "CREATE TABLE writer_probe (id INTEGER PRIMARY KEY, who TEXT NOT NULL)"
-            )
+            conn.execute("CREATE TABLE writer_probe (id INTEGER PRIMARY KEY, who TEXT NOT NULL)")
             conn.commit()
 
     def tearDown(self) -> None:
@@ -161,9 +159,7 @@ class ConcurrentWriterTests(unittest.TestCase):
             except Exception as exc:
                 results[idx] = exc
 
-        threads = [
-            threading.Thread(target=write, args=(idx,)) for idx in range(writer_count)
-        ]
+        threads = [threading.Thread(target=write, args=(idx,)) for idx in range(writer_count)]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -180,9 +176,7 @@ class ConcurrentWriterTests(unittest.TestCase):
         )
 
         with db.get_db() as conn:
-            (committed,) = conn.execute(
-                "SELECT COUNT(*) FROM writer_probe"
-            ).fetchone()
+            (committed,) = conn.execute("SELECT COUNT(*) FROM writer_probe").fetchone()
             self.assertEqual(committed, writer_count)
 
     def test_reader_does_not_block_writer_under_wal(self) -> None:
