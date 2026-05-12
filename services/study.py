@@ -78,10 +78,18 @@ def fetch_due_cards(
     today = date.today().isoformat()
     sql = [
         "SELECT s.id, s.front, s.back, s.state, s.stability, s.difficulty, s.reps,",
-        "       s.lapses, s.due_date, c.name AS concept, d.filename AS document_name, d.subject_name",
+        "       s.lapses, s.due_date, c.name AS concept, d.filename AS document_name,",
+        "       d.subject_name, d.id AS document_id,",
+        "       a.chunk_id, a.page_num, a.quote_text",
         "FROM srs_cards s",
         "LEFT JOIN concepts c ON s.concept_id = c.id",
         "LEFT JOIN documents d ON c.doc_id = d.id",
+        # Most-recent anchor bound to this card carries the source citation
+        # (chunk + page + verbatim quote). LEFT JOIN so cards without an
+        # anchor still appear; the citation fields stay NULL and the UI
+        # hides the citation row for those cards.
+        "LEFT JOIN anchors a ON a.srs_card_id = s.id",
+        "  AND a.rowid = (SELECT MAX(rowid) FROM anchors a2 WHERE a2.srs_card_id = s.id)",
         "WHERE (s.due_date IS NULL OR s.due_date <= ?)",
     ]
     params: List[object] = [today]

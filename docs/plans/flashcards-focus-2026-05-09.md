@@ -83,7 +83,9 @@ Order is: bug-first (PR 1), visual-truth (PR 2-3), Carrel's wedge made real (PR 
 2. Same chip changes label across phases: `[ Space ]` to reveal → `[ 1 2 3 4 ]` to rate.
 3. Add a tiny "Show question" link in the bottom-left of the back-face card *if* PR 1 didn't make this discoverable enough (test with the user before adding — might be redundant).
 
-### PR 4 — Citation reveal on the back face (~half day)
+### PR 4 — Citation reveal on the back face (~half day) — **SHIPPED 2026-05-12**
+
+Shipped as: backend `services/study.py::fetch_due_cards` LEFT JOINs `anchors` keyed on `srs_card_id`, surfacing `document_id`, `chunk_id`, `page_num`, `quote_text` (most-recent anchor wins). New `SourceCitation` component renders on the answer face when both `document_id` and `chunk_id` are present; whole row is a single button deep-linking to `/reader/{document_id}?chunk={chunk_id}` via the existing `buildReaderChunkPath` helper. Tests: 4 backend + 6 component + 2 view-integration. Header reads "From {doc}, page N" (page hidden when null); excerpt italic, truncated to ~40 words; existing anchor index (`idx_anchors_srs_card`) keeps the per-card subquery O(1).
 
 **Why this is the real value moment.** Carrel's wedge is "verbatim source-grounding, never fabricates." But the SRS loop today exposes none of that. The user reviews a card and never sees the underlying chunk, the page, or the source — they just see Q + A. That's the same product as Anki + ChatGPT.
 

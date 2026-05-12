@@ -781,6 +781,19 @@ export interface SrsDueCard {
   document_name: string;
   subject_name: string | null;
   raw_concept?: string;
+  /** Source document id. Null for orphan cards with no concept binding.
+   *  When present, click-through on the citation row deep-links to
+   *  `/reader/{document_id}?chunk={chunk_id}`. */
+  document_id?: string | null;
+  /** Chunk id of the most-recent anchor bound to this card. Null when no
+   *  anchor exists; the citation row is hidden in that case. */
+  chunk_id?: string | null;
+  /** 1-indexed page number from the bound anchor. Null when paginating
+   *  source doesn't apply (plain-text feeds, manual cards). */
+  page_num?: number | null;
+  /** Verbatim quote text from the bound anchor. Rendered as the citation
+   *  excerpt below the answer body, truncated to ~40 words. */
+  quote_text?: string | null;
 }
 
 export type SrsRating = "again" | "hard" | "good" | "easy";

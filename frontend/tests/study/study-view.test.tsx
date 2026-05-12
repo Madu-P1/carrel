@@ -126,6 +126,102 @@ describe("StudyView", () => {
     expect(card.getAttribute("aria-pressed")).toBe("false");
   });
 
+  // PR 4 of flashcards-focus: source citation appears on the back face
+  // when the card has both document_id and chunk_id. Cards missing
+  // either field render the back face without the citation row. These
+  // tests pin the conditional wiring gate so a future refactor of the
+  // back-face render can't silently drop the citation.
+  test("back face renders SourceCitation when document_id + chunk_id are present", async () => {
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        {
+          id: "card-cited",
+          front: "What does duration measure?",
+          back: "First-order interest-rate sensitivity.",
+          state: "review",
+          stability: 1,
+          difficulty: 0.5,
+          reps: 0,
+          lapses: 0,
+          due_date: "2026-05-10",
+          concept: "Duration",
+          document_name: "bonds.pdf",
+          subject_name: "Finance",
+          document_id: "doc-abc",
+          chunk_id: "chunk-xyz",
+          page_num: 7,
+          quote_text: "Duration is the weighted-average time to receipt of cash flows.",
+        },
+      ],
+    });
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+
+    const citation = await waitFor(() =>
+      screen.getByRole("button", { name: /Open the source for this card/i }),
+    );
+    expect(citation).toBeDefined();
+    expect(screen.getByText(/From bonds.pdf, page 7/)).toBeTruthy();
+  });
+
+  test("back face hides SourceCitation when document_id or chunk_id is missing", async () => {
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        {
+          id: "card-uncited",
+          front: "Manual card",
+          back: "No source attached.",
+          state: "review",
+          stability: 1,
+          difficulty: 0.5,
+          reps: 0,
+          lapses: 0,
+          due_date: "2026-05-10",
+          concept: "Topic",
+          document_name: "doc.pdf",
+          subject_name: null,
+        },
+      ],
+    });
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: /Rate your recall/i })).toBeDefined();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Open the source for this card/i }),
+    ).toBeNull();
+  });
+
   test("error state shows retry affordance", async () => {
     mockJson("GET", "/api/srs/due", () => {
       throw new Error("network down");

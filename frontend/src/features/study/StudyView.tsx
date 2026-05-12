@@ -15,6 +15,7 @@ import { FlashcardFace } from "./components/FlashcardFace";
 import { FlipCard } from "./components/FlipCard";
 import { KeyChip } from "./components/KeyChip";
 import { RatingRow } from "./components/RatingRow";
+import { SourceCitation } from "./components/SourceCitation";
 import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
 import { StudyFocusOverlay } from "./components/StudyFocusOverlay";
 import { ManageCardsView } from "./ManageCardsView";
@@ -505,6 +506,17 @@ export function StudyView() {
           eyebrowSecondary={currentCard.document_name}
           body={currentCard.back}
           hint={backHint}
+          footer={
+            currentCard.document_id && currentCard.chunk_id ? (
+              <SourceCitation
+                documentId={currentCard.document_id}
+                documentName={currentCard.document_name}
+                chunkId={currentCard.chunk_id}
+                pageNum={currentCard.page_num}
+                quoteText={currentCard.quote_text}
+              />
+            ) : null
+          }
         />
       }
     />
