@@ -342,24 +342,70 @@ def select_provider(kind: str | None = None) -> AIProvider:
     return NullProvider()
 
 
-_DEFAULT_PROVIDER: AIProvider | None = None
+# PR-P3: signature-keyed singleton. Stores the env-var snapshot that
+# the cached provider was built against so a later get_default_provider()
+# call detects env drift and re-selects. Pre-PR-P3 the singleton was
+# lifetime-cached, which meant a user who flipped CARREL_AI_PROVIDER in
+# settings kept hitting the old provider until process restart.
+_DEFAULT_PROVIDER: tuple[str, AIProvider] | None = None
+
+
+def _provider_selection_signature() -> str:
+    """Stable signature of the env vars that ``select_provider`` reads.
+
+    Used as the cache key for ``get_default_provider`` so the singleton
+    invalidates when the user changes any of:
+
+    * ``CARREL_AI_PROVIDER`` / ``EINSTEIN_AI_PROVIDER`` — the explicit
+      choice. The audit's specific scenario: settings UI writes this,
+      next call must see the new provider.
+    * ``ANTHROPIC_API_KEY`` — affects the "auto" path's Claude branch.
+      Tracked by presence only (no value digest) so a leaked log
+      can't reverse the key from the signature.
+    * ``OLLAMA_BASE_URL`` — affects the "auto" path's Ollama branch
+      (PR-P2 made this gate honest).
+
+    No value digesting is done; presence/absence is enough to detect
+    a meaningful change to selection outcome.
+    """
+    return "|".join(
+        [
+            os.getenv("CARREL_AI_PROVIDER", ""),
+            os.getenv("EINSTEIN_AI_PROVIDER", ""),
+            "claude" if os.getenv("ANTHROPIC_API_KEY", "").strip() else "",
+            "ollama" if os.getenv("OLLAMA_BASE_URL", "").strip() else "",
+        ]
+    )
 
 
 def get_default_provider() -> AIProvider:
-    """Module-level singleton matching `get_default_router()`'s pattern.
+    """Return the auto-selected provider, re-selecting when env changes.
 
-    Stays cached for the lifetime of the process; callers that need a
-    different provider (e.g. the eval harness forcing Claude for scoring)
-    should call `select_provider(kind=...)` directly instead.
+    Cached behind a signature of the env vars that ``select_provider``
+    reads. When the user changes ``CARREL_AI_PROVIDER`` (or any other
+    selection-relevant env var), the signature mismatches and the cache
+    re-populates from a fresh ``select_provider()`` call. The previous
+    behavior (lifetime cache) made settings UI changes invisible until
+    process restart.
+
+    Callers that need a specific provider (the eval harness forcing
+    Claude for scoring, integration tests pinning a backend) should
+    keep calling ``select_provider(kind=...)`` directly — that path
+    bypasses the singleton entirely.
     """
     global _DEFAULT_PROVIDER
-    if _DEFAULT_PROVIDER is None:
-        _DEFAULT_PROVIDER = select_provider()
-    return _DEFAULT_PROVIDER
+    signature = _provider_selection_signature()
+    if _DEFAULT_PROVIDER is None or _DEFAULT_PROVIDER[0] != signature:
+        _DEFAULT_PROVIDER = (signature, select_provider())
+    return _DEFAULT_PROVIDER[1]
 
 
 def reset_default_provider() -> None:
-    """Drop the cached provider. Tests and env reconfigurations use this."""
+    """Drop the cached provider. Tests use this to avoid leaking state
+    across cases; settings-write paths can call it for an immediate
+    invalidate, though ``get_default_provider`` now auto-detects env
+    drift so the explicit call is no longer strictly required.
+    """
     global _DEFAULT_PROVIDER
     _DEFAULT_PROVIDER = None
 

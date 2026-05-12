@@ -195,5 +195,112 @@ class DefaultProviderSingletonTests(unittest.TestCase):
         self.assertIsInstance(third, NullProvider)
 
 
+class DefaultProviderSignatureInvalidationTests(unittest.TestCase):
+    """PR-P3: ``get_default_provider`` now auto-invalidates when the
+    env vars that drive ``select_provider`` change. Tests pin the new
+    contract so a future refactor that re-introduces a lifetime cache
+    (the pre-PR-P3 behavior the audit flagged) fails loudly."""
+
+    def setUp(self) -> None:
+        reset_default_provider()
+
+    def tearDown(self) -> None:
+        reset_default_provider()
+
+    def test_env_change_invalidates_without_explicit_reset(self) -> None:
+        # The audit's exact scenario: settings UI writes
+        # CARREL_AI_PROVIDER, the next call must see the new provider
+        # WITHOUT the caller having to remember to call
+        # reset_default_provider.
+        from ai.providers import NullProvider
+
+        with mock.patch.dict(
+            os.environ,
+            {"CARREL_AI_PROVIDER": "off"},
+            clear=False,
+        ):
+            first = get_default_provider()
+            self.assertIsInstance(first, NullProvider)
+
+        # No reset; just change the env. Next call must re-select.
+        with mock.patch.dict(
+            os.environ,
+            {"CARREL_AI_PROVIDER": "ollama", "OLLAMA_BASE_URL": "http://127.0.0.1:11434"},
+            clear=False,
+        ):
+            second = get_default_provider()
+            self.assertIsInstance(second, OllamaClient)
+
+        # Sanity: the cache returned a different object.
+        self.assertIsNot(first, second)
+
+    def test_same_env_returns_cached_instance(self) -> None:
+        # The signature check is presence-based, so two calls with the
+        # same env state still hit the cache. No spurious re-selects.
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["EINSTEIN_AI_PROVIDER"] = "off"
+        with mock.patch.dict(os.environ, env, clear=True):
+            first = get_default_provider()
+            second = get_default_provider()
+            third = get_default_provider()
+        self.assertIs(first, second)
+        self.assertIs(second, third)
+
+    def test_signature_does_not_leak_api_key_value(self) -> None:
+        # The signature must reflect ANTHROPIC_API_KEY *presence*, not
+        # the key itself. A leaked log/trace of the signature should
+        # not expose the key.
+        from ai.providers import _provider_selection_signature
+
+        with mock.patch.dict(
+            os.environ,
+            {"ANTHROPIC_API_KEY": "sk-supersecret-FAKE"},
+            clear=True,
+        ):
+            sig = _provider_selection_signature()
+        self.assertNotIn("supersecret", sig)
+        self.assertNotIn("FAKE", sig)
+        self.assertNotIn("sk-", sig)
+        # But it does reflect presence — a non-empty marker is in.
+        self.assertIn("claude", sig)
+
+    def test_signature_changes_when_claude_key_appears(self) -> None:
+        # Power user adds ANTHROPIC_API_KEY mid-session. The auto path
+        # should now pick Claude over previously-selected NullProvider.
+        from ai.providers import ClaudeRouter, NullProvider
+
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["CARREL_AI_PROVIDER"] = "auto"
+        env.pop("OLLAMA_BASE_URL", None)
+
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
+            first = get_default_provider()
+            self.assertIsInstance(first, NullProvider)
+
+        env["ANTHROPIC_API_KEY"] = "sk-real-key-now"
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
+            second = get_default_provider()
+            self.assertIsInstance(second, ClaudeRouter)
+
+    def test_explicit_reset_still_works(self) -> None:
+        # reset_default_provider continues to function for test
+        # fixtures and settings-write paths that want explicit
+        # invalidation even when no env var changed.
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["CARREL_AI_PROVIDER"] = "off"
+        with mock.patch.dict(os.environ, env, clear=True):
+            first = get_default_provider()
+            reset_default_provider()
+            second = get_default_provider()
+        # Same signature, but reset forced a new instance.
+        self.assertIsNot(first, second)
+
+
 if __name__ == "__main__":
     unittest.main()
