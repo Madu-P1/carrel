@@ -11,6 +11,10 @@ export interface StudyFocusOverlayProps {
   progress?: string;
   /** Optional scope label rendered top-left below progress, e.g. "Biology". */
   scope?: string | null;
+  /** Optional ETA chip rendered top-left below scope, e.g. "~4m left".
+   *  Null hides the chip; the parent decides when there's enough
+   *  signal to estimate. */
+  eta?: string | null;
 }
 
 /**
@@ -32,6 +36,7 @@ export function StudyFocusOverlay({
   children,
   progress,
   scope,
+  eta,
 }: StudyFocusOverlayProps) {
   useEffect(() => {
     if (!open) return;
@@ -54,6 +59,7 @@ export function StudyFocusOverlay({
         <div className={styles.header}>
           {progress ? <span className={styles.progress}>{progress}</span> : null}
           {scope ? <span className={styles.scope}>{scope}</span> : null}
+          {eta ? <span className={styles.eta} aria-live="polite">{eta}</span> : null}
         </div>
         <button
           type="button"

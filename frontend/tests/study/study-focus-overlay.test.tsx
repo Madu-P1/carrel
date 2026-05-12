@@ -74,4 +74,25 @@ describe("StudyFocusOverlay (S-2)", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  // PR 6.1: ETA chip lives in the focus header, alongside progress
+  // and scope. Pin both the show-when-supplied and hide-when-null
+  // shapes so a future header refactor can't silently drop the chip.
+  test("renders the eta chip when an eta string is provided", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} eta="~4m left">
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.getByText("~4m left")).toBeDefined();
+  });
+
+  test("hides the eta chip when eta is null", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} eta={null}>
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.queryByText(/~.+left/)).toBeNull();
+  });
 });

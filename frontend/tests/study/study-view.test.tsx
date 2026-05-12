@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { StudyView } from "@/features/study/StudyView";
 import { mockJson } from "../support/mockFetch";
@@ -220,6 +220,91 @@ describe("StudyView", () => {
     expect(
       screen.queryByRole("button", { name: /Open the source for this card/i }),
     ).toBeNull();
+  });
+
+  // PR 6.1 — the ETA chip in focus mode is the visible end of a
+  // ref → memo → overlay-prop pipeline. The seam is fragile (a refactor
+  // that drops the push in rateCard or breaks the useMemo deps would
+  // silently kill the chip). This integration test walks 3 rating
+  // cycles inside focus mode and asserts the chip surfaces. It
+  // doubles as the regression guard for the "fallback when timing
+  // legs are non-null" gating in rateCard.
+  test("focus-mode ETA chip appears after three rated cards", async () => {
+    // Drive Date.now manually so each card consumes ~10 seconds total
+    // (5s reveal + 5s rate). fireEvent.click happens in microseconds
+    // otherwise, which would produce zero-second samples and the
+    // formatEta floor (>0) would gate the chip off.
+    let nowMs = 1_700_000_000_000;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
+    const tick = (ms: number) => {
+      nowMs += ms;
+    };
+
+    mockJson("POST", "/api/srs/review", { next_due_date: "2026-05-15", interval: 1, ease: 2.5 });
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: Array.from({ length: 5 }, (_, i) => ({
+        id: `card-${i}`,
+        front: `Q${i}`,
+        back: `A${i}`,
+        state: "review",
+        stability: 1,
+        difficulty: 0.5,
+        reps: 0,
+        lapses: 0,
+        due_date: "2026-05-10",
+        concept: "Topic",
+        document_name: "doc.pdf",
+        subject_name: null,
+      })),
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    // Enter focus mode so the ETA chip has a render surface.
+    fireEvent.click(screen.getByRole("button", { name: /Focus mode/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /Focused review/i })).toBeDefined();
+    });
+
+    // Before any ratings: chip is hidden.
+    expect(screen.queryByText(/~.+(s|m) left/)).toBeNull();
+
+    // Three rate cycles: reveal, rate "good", repeat. Each cycle
+    // ticks 10s on the mocked Date so samples land at ~10s/card.
+    for (let i = 0; i < 3; i++) {
+      const card = await waitFor(() =>
+        screen.getByRole("button", { name: /Card showing question/i }),
+      );
+      tick(5000);
+      fireEvent.click(card); // reveal → captures firstRevealAt
+      await waitFor(() => {
+        expect(screen.getByRole("group", { name: /Rate your recall/i })).toBeDefined();
+      });
+      const goodButton = document.querySelector('button[data-rating="good"]');
+      if (!goodButton) throw new Error("Good rating button not in DOM");
+      tick(5000);
+      fireEvent.click(goodButton); // rate → captures ratedAt
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 10));
+      });
+    }
+
+    // After 3 rated cards at ~10s each with 2 cards remaining,
+    // the chip should read "~20s left" (median 10 × 2 = 20s).
+    await waitFor(() => {
+      expect(screen.getByText(/~\d+(s|m) left/)).toBeDefined();
+    });
+
+    dateNowSpy.mockRestore();
   });
 
   test("error state shows retry affordance", async () => {

@@ -89,6 +89,36 @@ function _persistFocusMode(value: boolean): void {
   }
 }
 
+// PR 6.1 — Estimated time remaining for the focus-mode header.
+// MIN_SAMPLES guards against the early-session noise: a single
+// fast-or-slow card would otherwise project a wildly misleading
+// estimate. Three is a small enough threshold to surface the chip
+// quickly without overfitting to one outlier.
+const ETA_MIN_SAMPLES = 3;
+
+function _median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+export function formatEta(samples: readonly number[], remaining: number): string | null {
+  if (remaining <= 0) return null;
+  if (samples.length < ETA_MIN_SAMPLES) return null;
+  const totalSeconds = _median(samples) * remaining;
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
+  // Always round UP — the chip must never under-promise a finish line
+  // that hasn't arrived. Sub-60s shows seconds (with a 5s floor so the
+  // chip never reads "~0s left" right before the session ends), and
+  // 60s+ ceils to the nearest minute.
+  if (totalSeconds < 60) return `~${Math.max(5, Math.ceil(totalSeconds))}s left`;
+  const minutes = Math.max(1, Math.ceil(totalSeconds / 60));
+  return `~${minutes}m left`;
+}
+
 export function StudyView() {
   // Subject scope persists across sessions so the user's "Biology only"
   // preference survives reloads. Read it once on mount; future changes
@@ -128,6 +158,15 @@ export function StudyView() {
   const cardShownAtRef = useRef<number>(0);
   const firstRevealAtRef = useRef<number | null>(null);
 
+  // PR 6.1 of flashcards-focus: estimated time remaining. We keep a
+  // session-local rolling list of `secondsToRate` deltas (PR 7 already
+  // computes these per card). After >=MIN_SAMPLES rated cards, the
+  // running median × remaining-card count drives the "~Nm left" chip
+  // rendered in the focus-mode overlay header. Held in a ref so push
+  // happens outside React's render cycle; the derived chip text is
+  // memoized off `completedCount`.
+  const secondsPerCardRef = useRef<number[]>([]);
+
   // When the user switches to Manage and back, we re-fetch due so any cards
   // they deleted disappear from the next review session. Also refetch the
   // subjects roll-up so the chip counts stay honest after a delete.
@@ -140,6 +179,16 @@ export function StudyView() {
 
   const cards = data.value?.cards ?? [];
   const currentCard: SrsDueCard | undefined = cards[currentIndex];
+
+  // PR 6.1 ETA: median seconds-per-card × cards remaining. Computed
+  // here (above any early returns below) so React's rules-of-hooks
+  // see the same hook order on every render. Re-evaluates when a
+  // card is rated (completedCount ticks) or when the queue size
+  // changes (cards.length on refetch).
+  const eta = useMemo(
+    () => formatEta(secondsPerCardRef.current, cards.length - completedCount),
+    [completedCount, cards.length],
+  );
 
   const startSession = async () => {
     setCompletedCount(0);
@@ -203,6 +252,15 @@ export function StudyView() {
         },
         "study",
       );
+      // PR 6.1: feed the ETA chip's running-median estimator. Use the
+      // total seconds-on-card (reveal + rate) so the prediction tracks
+      // real wall time, not just decision time after reveal. Skip the
+      // push when either timing leg is null — that would be a sample
+      // with no real shownAt baseline (e.g. a card rated without
+      // entering phase=front), which would skew the median downward.
+      if (secondsToRate !== null && secondsToFirstReveal !== null) {
+        secondsPerCardRef.current.push(secondsToRate + secondsToFirstReveal);
+      }
       const nextIndex = currentIndex + 1;
       const reviewedCount = completedCount + 1;
       setCompletedCount((c) => c + 1);
@@ -583,6 +641,7 @@ export function StudyView() {
         onClose={() => setFocusMode(false)}
         progress={`Card ${currentIndex + 1} of ${total}`}
         scope={cardSubject}
+        eta={eta}
       >
         {sessionContent}
       </StudyFocusOverlay>

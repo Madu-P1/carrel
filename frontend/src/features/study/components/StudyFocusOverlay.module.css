@@ -80,6 +80,25 @@
   color: color-mix(in srgb, var(--color-text-tertiary) 90%, transparent);
 }
 
+/* PR 6.1 ETA chip. One step quieter than `.scope` so it sits beneath
+   the user's primary location signals (progress + scope) without
+   competing for attention. Uses `--color-text-tertiary` at full
+   opacity (defined in `frontend/src/design-system/themes.css`) —
+   the same token consumed by Input/Toast/FlashcardFace surfaces.
+   Tier-1 (200ms) entrance fade keeps the chip from popping in
+   abruptly when the running median first crosses MIN_SAMPLES;
+   `prefers-reduced-motion` shortens it to 60ms via the same
+   media-query block that throttles the overlay's other animations. */
+.eta {
+  color: var(--color-text-tertiary);
+  animation: study-focus-eta-fade-in 200ms ease-out;
+}
+
+@keyframes study-focus-eta-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .close {
   font: inherit;
   font-family: var(--font-mono);
@@ -147,7 +166,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .overlay,
-  .glassFrame {
+  .glassFrame,
+  .eta {
     animation-duration: 60ms !important;
   }
 }
