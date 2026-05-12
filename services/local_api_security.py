@@ -39,7 +39,9 @@ def has_valid_local_api_token(request: Request) -> bool:
     # Loopback-only, so query-string leakage via shared logs is not a
     # cross-origin concern.
     supplied = request.headers.get(HEADER_NAME) or request.query_params.get("token")
-    return bool(supplied) and secrets.compare_digest(supplied, _LOCAL_API_TOKEN)
+    if not supplied:
+        return False
+    return secrets.compare_digest(supplied, _LOCAL_API_TOKEN)
 
 
 # Backward-compat alias. Pre-PR-S1 the predicate was named for the
