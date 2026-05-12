@@ -55,8 +55,38 @@ def configure_paths(
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, factory=ManagedConnection)
     conn.row_factory = sqlite3.Row
+    _apply_connection_pragmas(conn)
     _load_extensions(conn)
     return conn
+
+
+def _apply_connection_pragmas(conn: sqlite3.Connection) -> None:
+    """Set per-connection SQLite PRAGMAs that the default is wrong for.
+
+    PR-S4: Carrel runs FastAPI which serves concurrent requests + an
+    in-process job worker that writes during ingest. Out of the box,
+    SQLite's busy_timeout is 0ms: any second writer sees an instant
+    "database is locked" OperationalError. With WAL mode, readers and
+    one writer can coexist without blocking, but two writers still
+    race; a 5s busy_timeout lets the loser wait for the winner to
+    commit instead of erroring out. 5s is generous for any normal
+    write on this machine (~ms range).
+
+    journal_mode=WAL is database-level rather than connection-level —
+    the first connection that opens the DB persists the mode into the
+    file header, and subsequent connections inherit it. Setting it on
+    every connection is idempotent and self-heals if some other tool
+    flipped the mode (e.g., the user opening the DB with `sqlite3` and
+    running `.mode delete`).
+
+    synchronous=NORMAL is per-connection. The SQLite default under WAL
+    is FULL, which fsyncs more aggressively than WAL needs. NORMAL is
+    the documented safe complement to WAL (no torn writes; one fsync
+    per checkpoint instead of two).
+    """
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
 
 
 def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
