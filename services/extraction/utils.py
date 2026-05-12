@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,18 @@ SUPPORTED_SUFFIXES = (
 
 
 def normalize_space(value: str) -> str:
-    value = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    # PR-D1: NFKC normalization decomposes Unicode compatibility forms —
+    # ligatures like `ﬁ` → `fi`, fullwidth digits → ASCII, math
+    # alphabetic symbols → ASCII. PDFKit and PyPDF2 routinely emit
+    # `U+FB01 (ﬁ)` for the "fi" ligature; without NFKC the verbatim-
+    # quote validator in services/tutor.py would never find a literal
+    # "finance" in chunk content storing "ﬁnance" and would drop the
+    # citation. The same `_normalize_match_text` in tutor.py also NFKCs
+    # at compare time so existing un-normalized chunks keep working;
+    # this write-side pass makes new chunks visually consistent in
+    # storage.
+    value = unicodedata.normalize("NFKC", str(value or ""))
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
     value = re.sub(r"[ \t]+", " ", value)
     value = re.sub(r"\n{3,}", "\n\n", value)
     return value.strip()
