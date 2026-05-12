@@ -183,6 +183,83 @@ class NullProviderContractTests(unittest.TestCase):
         self.assertEqual(result.error_code, "grounded_unsupported")
 
 
+class ClaudeRouterFallbackContractTests(unittest.TestCase):
+    """HANDOFF Bug 4: ClaudeRouter.request_json must accept a `fallback`
+    kwarg per the AIProvider protocol. Pre-fix, the method was missing
+    `fallback` entirely and mypy refused to consider ClaudeRouter an
+    AIProvider. Post-fix, the router honors `fallback` symmetrically
+    with NullProvider: on a failed call, json_payload is replaced with
+    `fallback` while ok stays False so callers retain failure
+    visibility."""
+
+    def test_request_json_returns_fallback_when_no_api_key(self) -> None:
+        """No ANTHROPIC_API_KEY → request_text fails fast with
+        missing_api_key → request_json's fallback path stamps the
+        provided fallback into json_payload while keeping ok=False."""
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            router = ClaudeRouter()
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+                fallback={"safe": "default"},
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.json_payload, {"safe": "default"})
+
+    def test_request_json_no_fallback_returns_none_payload(self) -> None:
+        """fallback=None (the default) preserves the pre-Bug-4
+        behavior: failed call returns json_payload=None."""
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            router = ClaudeRouter()
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+            )
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.json_payload)
+
+    def test_request_json_invalid_json_returns_fallback(self) -> None:
+        """The second failure branch (request_text succeeds but the
+        returned text is not valid JSON) must also honor fallback.
+        Bug 4's fix changed both branches; this pins the
+        `invalid_json` branch so a refactor that drops the fallback
+        stamp from that path trips a named test."""
+        router = ClaudeRouter()
+        ok_text_result = ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-haiku-4-5",
+            request_kind="test",
+            text="not valid json {{{",
+            json_payload=None,
+            error_code=None,
+            error_message=None,
+            latency_ms=0.0,
+            input_tokens=None,
+            output_tokens=None,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier=None,
+            stop_reason=None,
+            request_id=None,
+        )
+        with mock.patch.object(
+            ClaudeRouter, "request_text", return_value=ok_text_result
+        ):
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+                fallback={"safe": "json"},
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "invalid_json")
+        self.assertEqual(result.json_payload, {"safe": "json"})
+
+
 class ProviderProtocolTests(unittest.TestCase):
     """Structural check: every backend satisfies AIProvider at runtime."""
 

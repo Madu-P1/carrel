@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from app_logging import get_logger, log_event
@@ -363,10 +363,16 @@ class ClaudeRouter:
         request_kind: str,
         system: str,
         prompt: str,
+        fallback: Any = None,
         max_tokens: int = 1600,
         task: ClaudeTask = "balanced",
         cache_system_prompt: bool = True,
     ) -> ClaudeCallResult:
+        # `fallback` is part of the AIProvider protocol: on a failed call,
+        # the result's json_payload is replaced with `fallback` so callers
+        # that just need a safe default can read json_payload without
+        # branching on ok. ok stays False so visibility-of-failure is
+        # preserved, matching NullProvider.request_json's behavior.
         text_result = self.request_text(
             request_kind=request_kind,
             system=system,
@@ -376,6 +382,8 @@ class ClaudeRouter:
             cache_system_prompt=cache_system_prompt,
         )
         if not text_result.ok or not text_result.text:
+            if fallback is not None:
+                return replace(text_result, json_payload=fallback)
             return text_result
 
         payload = _extract_json_from_text(text_result.text)
@@ -386,7 +394,7 @@ class ClaudeRouter:
                 model=text_result.model,
                 request_kind=text_result.request_kind,
                 text=text_result.text,
-                json_payload=None,
+                json_payload=fallback,
                 error_code="invalid_json",
                 error_message="Claude returned text, but it was not valid JSON.",
                 latency_ms=text_result.latency_ms,

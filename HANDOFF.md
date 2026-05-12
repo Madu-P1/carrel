@@ -219,15 +219,20 @@ The call site is now type-correct; mypy delta on the broad sweep
 (`mypy --config-file /dev/null --ignore-missing-imports
 --follow-imports=silent ai services`): 56 → 54 errors.
 
-**4. `ai/providers.py:329, 337` — `ClaudeRouter` does not satisfy the `AIProvider` protocol it is returned as.**
+**4. `ai/providers.py:329, 337` — `ClaudeRouter` does not satisfy the `AIProvider` protocol it is returned as. — FIXED 2026-05-12.**
 
-The protocol declares
-`request_json(*, ..., fallback: Any = ..., task: Any = ..., ...)`.
-`ClaudeRouter.request_json` is missing `fallback` entirely and uses a
-narrower `task: Literal['fast', 'balanced', 'deep']`. The abstraction
-is theatrical at the protocol level. Either widen the router signature
-to honor the protocol or narrow the protocol to describe what the router
-actually does, then update both call sites.
+Resolved by widening `ClaudeRouter.request_json` to accept
+`fallback: Any = None`, mirroring the protocol declaration and
+`NullProvider`'s behavior: on a failed call, `json_payload` is
+replaced with the supplied fallback while `ok` stays `False` so
+callers retain failure visibility. The `task: ClaudeTask` Literal
+input was deemed acceptable (mypy treats it as compatible with the
+protocol's `task: Any`; the older error notes were diagnostic
+context, not the failing check). Three regression tests
+(`ClaudeRouterFallbackContractTests` in `tests/test_ai_providers.py`)
+pin the fallback-on-failure contract across the missing-API-key,
+default-no-fallback, and `invalid_json` branches. mypy delta on the broad sweep:
+54 → 52 errors; both Bug-4 conformance errors gone.
 
 **5. `services/extraction/parsers/pdf.py:342-343` — `elements` and `warnings` redefined inside the same function.**
 
