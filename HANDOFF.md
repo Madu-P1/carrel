@@ -188,11 +188,11 @@ Five of the 70 are real latent bugs sitting in the codebase today,
 not annotation noise. Fix these first regardless of any decision
 about expanding the verify chain.
 
-**1. `services/local_api_security.py:42` — `compare_digest` receives `str | None`.**
+**1. `services/local_api_security.py:42` — `compare_digest` receives `str | None`. — FIXED 2026-05-12.**
 
-On the auth path. `hmac.compare_digest` raises `TypeError` when either
-arg is `None`, so a `None` slipping through is a hard fail rather than
-a silent bypass, but the error surface is uncontrolled. Guard upstream:
+Resolved in commit `d5441bcd` by guarding upstream: `provided is None
+or expected is None` returns `False` before `hmac.compare_digest`
+sees either arg. Pattern shipped:
 
 ```python
 if provided is None or expected is None:
@@ -201,13 +201,15 @@ if not hmac.compare_digest(provided, expected):
     return False
 ```
 
-**2. `routes/calendar.py:126, 217, 269` — `FeedRow | None` assigned to `FeedRow`.**
+**2. `routes/calendar.py:126, 217, 269` — `FeedRow | None` assigned to `FeedRow`. — FIXED 2026-05-12.**
 
-Three lookups by id whose `None` return is dropped on the floor before
-the next attribute access. Three latent `AttributeError`s in the calendar
-feed flow. Fix: at each site, raise
-`HTTPException(status_code=404, detail="feed not found")` when the
-lookup returns `None` before the assignment.
+Resolved in commit `3c15a23f`. Deviated from the literal HANDOFF spec
+(HTTPException(404)) because the failing path is a post-write
+bookkeeping refresh — the caller has already observed a successful
+insert/upload/sync, so a 404 would misrepresent the operation's
+outcome. Fix logs a `LOGGER.warning(...)` and falls back to the
+pre-write row at each of the three sites. Three regression tests
+in `tests/test_calendar_feedrow_fallback.py` pin each fallback path.
 
 **3. `services/tutor.py:1074` — `request_grounded_answer` called with unsupported `temperature=` kwarg. — FIXED 2026-05-12.**
 
@@ -234,11 +236,21 @@ pin the fallback-on-failure contract across the missing-API-key,
 default-no-fallback, and `invalid_json` branches. mypy delta on the broad sweep:
 54 → 52 errors; both Bug-4 conformance errors gone.
 
-**5. `services/extraction/parsers/pdf.py:342-343` — `elements` and `warnings` redefined inside the same function.**
+**5. `services/extraction/parsers/pdf.py:342-343` — `elements` and `warnings` redefined inside the same function. — FIXED 2026-05-12.**
 
-Lines 342 and 343 rebind names already bound at lines 272 and 273.
-Probably benign shadowing. Worth one minute of reading to confirm the
-second binding does not silently drop accumulated state from the first.
+Verified benign: the bridge branch above (lines 271-339) always exits
+via `return build_asset(...)`, so reaching the PyPDF fall-through at
+line 341 implies the bridge branch never executed. Re-init is correct
+behavior. Resolved the mypy `[no-redef]` noise by dropping the type
+annotations on the re-init (`elements = []` / `warnings = []`). The
+earlier annotated declaration in the bridge branch does NOT carry
+across because that branch always returns; instead, mypy infers
+correct types at the usage sites — `elements.extend` consumes
+`_pdf_page_elements`' typed return, `warnings.append` only sees
+string literals, and `build_asset`'s typed parameters pin both lists
+at the final call. mypy broad sweep delta: 52 → 50 errors; both
+Bug-5 redef errors gone. No behavior change, ruff clean,
+`tests/test_pdf_scanned_detection.py` green (7/7).
 
 #### Verify-chain gap
 
