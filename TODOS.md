@@ -10,8 +10,8 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 | `flashcard-quality-investigation.md` | User feedback ("card quality is bad") | Auto-gen is paused via PR 0a until card quality is investigated. Needs prompt-engineering pass + eval suite expansion before auto-gen can return behind a feature flag. | autoplan Phase 1 (CEO) |
 | `voice-refresh-app-wide.md` | User directive ("more welcoming") | Flashcard surface gets voice work in this milestone (deferred to week 3 pending telemetry). Library, Reader, Ask, Plan, Dashboard, Session need their own focused voice pass. | autoplan Phase 2 (Design) |
 | `bulk-card-generation-flow.md` | CEO subagent's "generation-first" reframe | If post-PR-7 telemetry shows median active user has <20 cards, the real funnel issue is generation, not review. This plan covers "drop a textbook chapter → 50 cards proposed in 30s, all source-linked → accept-all in one click." | autoplan Phase 1 (CEO) |
-| `flashcards-citation-on-back.md` | Original PR 4, deferred to Phase B | Citation reveal on the back face. Requires backend change: `SrsDueCard` does not currently include `chunk_id` (verified). Ship after PR 7 telemetry shows engagement justifies the work. | autoplan Phase 3 |
-| `flashcards-cloze-and-reverse.md` | Original PR 5, deferred to Phase B | Schema change (`srs_cards.kind`, `paired_card_id`), AI prompt template for cloze, reverse-card auto-generation. Don't ship more card *types* before validating existing card *quality*. | autoplan Phase 3 |
+| ~~`flashcards-citation-on-back.md`~~ | ~~Original PR 4~~ | **SHIPPED 2026-05-12** as PR 4 of flashcards-focus. | autoplan Phase 3 |
+| ~~`flashcards-cloze-and-reverse.md`~~ | ~~Original PR 5~~ | **SHIPPED 2026-05-13** as PR 5.1 (cloze, ADR 0002) and PR 5.2 (reverse-pair, ADR 0003) of flashcards-focus. | autoplan Phase 3 |
 
 ## Notes
 - Each plan name in `docs/plans/<plan>.md` when written.
