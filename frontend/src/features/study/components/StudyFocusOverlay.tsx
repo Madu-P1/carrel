@@ -15,6 +15,10 @@ export interface StudyFocusOverlayProps {
    *  Null hides the chip; the parent decides when there's enough
    *  signal to estimate. */
   eta?: string | null;
+  /** Optional streak chip rendered top-left below ETA, e.g. "3 in a row".
+   *  Null hides the chip; the parent decides when there's enough
+   *  signal to surface a streak (PR 6.4 requires ≥2 Good/Easy in a row). */
+  streak?: string | null;
 }
 
 /**
@@ -37,6 +41,7 @@ export function StudyFocusOverlay({
   progress,
   scope,
   eta,
+  streak,
 }: StudyFocusOverlayProps) {
   useEffect(() => {
     if (!open) return;
@@ -60,6 +65,9 @@ export function StudyFocusOverlay({
           {progress ? <span className={styles.progress}>{progress}</span> : null}
           {scope ? <span className={styles.scope}>{scope}</span> : null}
           {eta ? <span className={styles.eta} aria-live="polite">{eta}</span> : null}
+          {streak ? (
+            <span className={styles.streak} aria-live="polite">{streak}</span>
+          ) : null}
         </div>
         <button
           type="button"

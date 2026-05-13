@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { formatEta } from "@/features/study/StudyView";
+import { formatEta, formatStreak } from "@/features/study/StudyView";
 
 /*
  * PR 6.1 — format-eta unit tests.
@@ -54,5 +54,33 @@ describe("formatEta (PR 6.1)", () => {
     // Sorted: [10, 20, 30, 40] → median (20+30)/2 = 25.
     // 25 × 4 = 100s → ceil(100/60) = 2 minutes.
     expect(formatEta([40, 10, 30, 20], 4)).toBe("~2m left");
+  });
+});
+
+/*
+ * PR 6.4 — formatStreak unit tests.
+ *
+ * The streak chip is gated on ≥2 consecutive Good+Easy ratings.
+ * "1 in a row" is noise; "0 in a row" is silence. The first count
+ * that carries any signal is 2.
+ */
+
+describe("formatStreak (PR 6.4)", () => {
+  test("returns null below the show threshold", () => {
+    expect(formatStreak(0)).toBeNull();
+    expect(formatStreak(1)).toBeNull();
+  });
+
+  test("returns 'N in a row' at and above the show threshold", () => {
+    expect(formatStreak(2)).toBe("2 in a row");
+    expect(formatStreak(3)).toBe("3 in a row");
+    expect(formatStreak(10)).toBe("10 in a row");
+  });
+
+  test("treats negative streaks as null (defensive)", () => {
+    // The streak counter cannot go negative in practice (the reducer
+    // sets it to 0 on Again/Hard), but the formatter shouldn't panic
+    // if a future refactor passes a stray negative count.
+    expect(formatStreak(-1)).toBeNull();
   });
 });

@@ -99,6 +99,17 @@
   to   { opacity: 1; }
 }
 
+/* PR 6.4 streak chip. Same tertiary token + fade-in as the ETA so the
+   header reads as one quiet metadata column. The plan calls for a
+   "positive feedback loop without being gamified" — no flame emoji,
+   no color shift, just a subdued number. Tier-1 (200ms) entrance
+   matches the ETA chip; the `prefers-reduced-motion` block below
+   throttles both. */
+.streak {
+  color: var(--color-text-tertiary);
+  animation: study-focus-eta-fade-in 200ms ease-out;
+}
+
 .close {
   font: inherit;
   font-family: var(--font-mono);
@@ -167,7 +178,8 @@
 @media (prefers-reduced-motion: reduce) {
   .overlay,
   .glassFrame,
-  .eta {
+  .eta,
+  .streak {
     animation-duration: 60ms !important;
   }
 }

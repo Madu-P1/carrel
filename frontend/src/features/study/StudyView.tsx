@@ -105,6 +105,17 @@ function _median(values: readonly number[]): number {
     : sorted[mid];
 }
 
+// PR 6.4 — Streak threshold: a chip reading "1 in a row" is noise,
+// so the streak surfaces only once the user has chained at least two
+// Good+Easy ratings. Two is the smallest count where "in a row"
+// carries any signal at all.
+const STREAK_MIN_TO_SHOW = 2;
+
+export function formatStreak(count: number): string | null {
+  if (count < STREAK_MIN_TO_SHOW) return null;
+  return `${count} in a row`;
+}
+
 export function formatEta(samples: readonly number[], remaining: number): string | null {
   if (remaining <= 0) return null;
   if (samples.length < ETA_MIN_SAMPLES) return null;
@@ -136,6 +147,12 @@ export function StudyView() {
   const [phase, setPhase] = useState<Phase>("intro");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
+  // PR 6.4 — session-local streak of consecutive Good+Easy ratings.
+  // Resets on Again/Hard. Surfaced as a quiet chip in the focus-mode
+  // header once the count crosses STREAK_MIN_TO_SHOW. The plan calls
+  // for "a positive feedback loop without being gamified" — no flame
+  // emoji, no leaderboard, just a number with a label.
+  const [streak, setStreak] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   // Focus mode persists across sessions on the same machine — same
@@ -196,11 +213,15 @@ export function StudyView() {
     () => formatEta(secondsPerCardRef.current, cards.length - completedCount),
     [completedCount, cards.length],
   );
+  // PR 6.4 — streak chip text. Null while the streak is below the
+  // surface threshold; the overlay hides the slot in that case.
+  const streakText = useMemo(() => formatStreak(streak), [streak]);
 
   const startSession = async () => {
     setCompletedCount(0);
     setCurrentIndex(0);
     setLastError(null);
+    setStreak(0);
     secondsPerCardRef.current = [];
     await refetch();
     const fetched = data.value?.cards ?? [];
@@ -302,6 +323,14 @@ export function StudyView() {
       if (secondsToRate !== null && secondsToFirstReveal !== null) {
         secondsPerCardRef.current.push(secondsToRate + secondsToFirstReveal);
       }
+      // PR 6.4 — feed the streak chip. Good+Easy extend the streak;
+      // Again+Hard reset it. Mirrors the FSRS semantics: the first
+      // two ratings mean "I struggled or forgot", the latter two mean
+      // "I remembered well", which is exactly the binary the streak
+      // is meant to celebrate.
+      setStreak((prev) =>
+        rating === "good" || rating === "easy" ? prev + 1 : 0,
+      );
       const nextIndex = currentIndex + 1;
       const reviewedCount = completedCount + 1;
       setCompletedCount((c) => c + 1);
@@ -724,6 +753,7 @@ export function StudyView() {
         progress={`Card ${currentIndex + 1} of ${total}`}
         scope={cardSubject}
         eta={eta}
+        streak={streakText}
       >
         {sessionContent}
       </StudyFocusOverlay>

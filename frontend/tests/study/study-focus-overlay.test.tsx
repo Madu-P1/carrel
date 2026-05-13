@@ -95,4 +95,24 @@ describe("StudyFocusOverlay (S-2)", () => {
     );
     expect(screen.queryByText(/~.+left/)).toBeNull();
   });
+
+  // PR 6.4: streak chip mirrors the ETA chip's contract — show when
+  // the parent supplies a string, hide when it's null.
+  test("renders the streak chip when a streak string is provided", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} streak="3 in a row">
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.getByText("3 in a row")).toBeDefined();
+  });
+
+  test("hides the streak chip when streak is null", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} streak={null}>
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.queryByText(/in a row/)).toBeNull();
+  });
 });

@@ -6,6 +6,14 @@ import { getFetchCalls, mockJson } from "../support/mockFetch";
 
 afterEach(() => {
   cleanup();
+  // Focus mode persists to localStorage. Clear it between tests so
+  // a prior test that toggled focus on doesn't seed the next test's
+  // initial state.
+  try {
+    window.localStorage.clear();
+  } catch {
+    // jsdom localStorage is always writable; the catch is defensive.
+  }
 });
 
 describe("StudyView", () => {
@@ -616,6 +624,80 @@ describe("StudyView", () => {
     fireEvent.keyDown(window, { key: "d" });
     await waitFor(() => {
       expect(screen.getByText("Q-B")).toBeTruthy();
+    });
+  });
+
+  // PR 6.4 — streak chip appears in the focus header after two
+  // consecutive Good+Easy ratings, and resets on Again/Hard. Drives
+  // the chip end-to-end through rateCard so the wire (rating →
+  // streak state → formatStreak → overlay slot) is covered.
+  test("streak chip appears after two consecutive Good ratings and resets on Hard", async () => {
+    mockJson("POST", "/api/srs/review", { next_due_date: "2026-05-15", interval: 1, ease: 2.5 });
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: Array.from({ length: 5 }, (_, i) => ({
+        id: `card-${i}`,
+        front: `Q${i}`,
+        back: `A${i}`,
+        state: "review",
+        stability: 1,
+        difficulty: 0.5,
+        reps: 0,
+        lapses: 0,
+        due_date: "2026-05-10",
+        concept: "Topic",
+        document_name: "doc.pdf",
+        subject_name: null,
+      })),
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    // Start the session first; then enter focus mode so the streak
+    // chip has a render surface (the chip lives in the overlay
+    // header). Same ordering as the ETA chip test.
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Focus mode/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /Focused review/i })).toBeDefined();
+    });
+
+    const rateOnce = async (dataRating: string) => {
+      const card = await waitFor(() =>
+        screen.getByRole("button", { name: /Card showing question/i }),
+      );
+      fireEvent.click(card);
+      await waitFor(() => {
+        expect(screen.getByRole("group", { name: /Rate your recall/i })).toBeDefined();
+      });
+      const rateButton = document.querySelector(`button[data-rating="${dataRating}"]`);
+      if (!rateButton) throw new Error(`rating button ${dataRating} not in DOM`);
+      fireEvent.click(rateButton);
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 10));
+      });
+    };
+
+    // First Good: streak=1, still below the surface threshold.
+    await rateOnce("good");
+    expect(screen.queryByText(/in a row/)).toBeNull();
+
+    // Second Good: streak=2, chip surfaces.
+    await rateOnce("good");
+    await waitFor(() => {
+      expect(screen.getByText("2 in a row")).toBeTruthy();
+    });
+
+    // Hard breaks the streak — chip disappears.
+    await rateOnce("hard");
+    await waitFor(() => {
+      expect(screen.queryByText(/in a row/)).toBeNull();
     });
   });
 
