@@ -368,20 +368,124 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
         self.assertIn("MAJOR ACTION GATE", reason,
                       "unclosed heredoc must fall through and fire (safe direction)")
 
-    def test_main_uses_stripped_form_for_staged_diff_hash(self) -> None:
-        # Regression guard for the second hunk of the heredoc-strip fix:
-        # main()'s staged_diff_hash decision must call _strip_heredocs
-        # before the git-commit regex check. Otherwise a non-commit
-        # action like `gh pr create` whose body happens to mention
-        # "git commit" would erroneously trigger staged_diff_hash
-        # computation, making the hash drift across staged-state changes
-        # for an action that doesn't actually involve a commit.
-        source = (HOOKS_DIR / "audit-gate.py").read_text()
-        self.assertIn(
-            "_strip_heredocs(cmd), re.IGNORECASE):",
-            source,
-            "main() git-commit regex must use the heredoc-stripped form",
+    def test_gh_pr_create_with_heredoc_git_commit_does_not_fold_staged_diff_hash(
+        self,
+    ) -> None:
+        """Behavioral pin for main()'s staged_diff_hash decision: a
+        non-commit action (gh pr create) whose body mentions "git commit"
+        inside a heredoc must NOT drag the staged-diff hash into its
+        canonical hash. Otherwise the hash would drift across
+        staged-tree changes for an action that doesn't involve a commit.
+
+        Run the same command against two temp project_dirs: one with no
+        git context (compute_staged_diff_hash returns "no-diff"), one
+        with an initialized repo and a staged file (compute_staged_diff_hash
+        returns a real 16-char hex of the staged diff). If the strip is
+        working, the hashes are identical because staged_diff_hash is
+        never folded in. If the strip were reverted, the hashes would
+        diverge because the heredoc-body "git commit" substring would
+        match the git-commit regex and pull in the staged_diff_hash.
+        """
+        cmd = (
+            "gh pr create --title test --body \"$(cat <<'EOF'\n"
+            "Discussion of git commit policy in this PR.\n"
+            "EOF\n)\""
         )
+
+        dir_a = tempfile.mkdtemp(prefix="carrel-audit-noinit-")
+        dir_b = tempfile.mkdtemp(prefix="carrel-audit-staged-")
+        try:
+            for d in (dir_a, dir_b):
+                (Path(d) / ".claude" / "logs" / "audits" / "approved").mkdir(parents=True)
+                (Path(d) / ".claude" / "logs" / "audits" / "pending").mkdir(parents=True)
+            # dir_b: init a repo and stage a file so compute_staged_diff_hash
+            # produces a non-empty diff hash.
+            subprocess.run(
+                ["git", "init", "-q"], cwd=dir_b,
+                capture_output=True, check=True, timeout=10,
+            )
+            (Path(dir_b) / "staged.txt").write_text("staged content for the test\n")
+            subprocess.run(
+                ["git", "add", "staged.txt"], cwd=dir_b,
+                capture_output=True, check=True, timeout=10,
+            )
+
+            _, stdout_a, _ = run_hook("audit-gate.py", {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            }, project_dir=dir_a)
+            _, stdout_b, _ = run_hook("audit-gate.py", {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            }, project_dir=dir_b)
+
+            import re as _re
+            out_a = json.loads(stdout_a)
+            out_b = json.loads(stdout_b)
+            m_a = _re.search(r"hash ([0-9a-f]{16})", out_a["hookSpecificOutput"]["permissionDecisionReason"])
+            m_b = _re.search(r"hash ([0-9a-f]{16})", out_b["hookSpecificOutput"]["permissionDecisionReason"])
+            self.assertIsNotNone(m_a)
+            self.assertIsNotNone(m_b)
+            self.assertEqual(
+                m_a.group(1), m_b.group(1),
+                "gh pr create with heredoc-only 'git commit' mention must "
+                "produce a stable hash regardless of git state; otherwise "
+                "the strip is not being applied to the staged_diff_hash branch",
+            )
+        finally:
+            shutil.rmtree(dir_a, ignore_errors=True)
+            shutil.rmtree(dir_b, ignore_errors=True)
+
+    def test_real_git_commit_does_fold_staged_diff_hash(self) -> None:
+        """Sanity contrapositive: a REAL git commit (no heredoc trick)
+        SHOULD fold staged_diff_hash, so the same git commit command
+        produces different hashes when the staged tree differs.
+
+        Without this contrapositive the previous test could spuriously
+        pass if compute_staged_diff_hash always returned "no-diff" (e.g.,
+        if git were missing). This test would fail in that case, so the
+        pair together pins the actual behavior.
+        """
+        dir_x = tempfile.mkdtemp(prefix="carrel-audit-real-empty-")
+        dir_y = tempfile.mkdtemp(prefix="carrel-audit-real-staged-")
+        try:
+            for d in (dir_x, dir_y):
+                (Path(d) / ".claude" / "logs" / "audits" / "approved").mkdir(parents=True)
+                (Path(d) / ".claude" / "logs" / "audits" / "pending").mkdir(parents=True)
+                subprocess.run(
+                    ["git", "init", "-q"], cwd=d,
+                    capture_output=True, check=True, timeout=10,
+                )
+            (Path(dir_y) / "staged.txt").write_text("staged content\n")
+            subprocess.run(
+                ["git", "add", "staged.txt"], cwd=dir_y,
+                capture_output=True, check=True, timeout=10,
+            )
+
+            cmd = "git commit -m sanity"
+            _, stdout_x, _ = run_hook("audit-gate.py", {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            }, project_dir=dir_x)
+            _, stdout_y, _ = run_hook("audit-gate.py", {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            }, project_dir=dir_y)
+
+            import re as _re
+            out_x = json.loads(stdout_x)
+            out_y = json.loads(stdout_y)
+            m_x = _re.search(r"hash ([0-9a-f]{16})", out_x["hookSpecificOutput"]["permissionDecisionReason"])
+            m_y = _re.search(r"hash ([0-9a-f]{16})", out_y["hookSpecificOutput"]["permissionDecisionReason"])
+            self.assertNotEqual(
+                m_x.group(1), m_y.group(1),
+                "real git commit must fold staged_diff_hash; identical hash "
+                "across distinct staged trees means the approval-laundering "
+                "protection from the prior commit (92186f19) is broken",
+            )
+        finally:
+            shutil.rmtree(dir_x, ignore_errors=True)
+            shutil.rmtree(dir_y, ignore_errors=True)
 
 
 class DebateTriggerFalsePositiveTests(unittest.TestCase):
