@@ -336,6 +336,53 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
         self.assertEqual(stdout.strip(), "",
                          "double-quoted heredoc tag must also be stripped")
 
+    def test_dash_form_heredoc_body_does_not_fire(self) -> None:
+        # <<-TAG strips leading tabs from the body and the closing tag
+        # (bash semantics); our regex allows leading whitespace before
+        # the closing tag via `\s*\1\s*`.
+        cmd = (
+            "cat > /tmp/x.txt <<-EOF\n"
+            "\tgit commit body inside dash-form heredoc\n"
+            "\tEOF"
+        )
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "",
+                         "<<-EOF dash-form must strip body verbs too")
+
+    def test_unclosed_heredoc_falls_through_and_fires(self) -> None:
+        # No closing EOF: regex cannot match, body is preserved, verb
+        # fires. This is the safe-fail direction (over-fire, never
+        # under-fire) — a malformed command in a future routine run
+        # cannot smuggle a destructive verb past the gate.
+        cmd = "cat > /tmp/x.txt << EOF\ngit commit -m wip\n"
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        out = json.loads(stdout)
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("MAJOR ACTION GATE", reason,
+                      "unclosed heredoc must fall through and fire (safe direction)")
+
+    def test_main_uses_stripped_form_for_staged_diff_hash(self) -> None:
+        # Regression guard for the second hunk of the heredoc-strip fix:
+        # main()'s staged_diff_hash decision must call _strip_heredocs
+        # before the git-commit regex check. Otherwise a non-commit
+        # action like `gh pr create` whose body happens to mention
+        # "git commit" would erroneously trigger staged_diff_hash
+        # computation, making the hash drift across staged-state changes
+        # for an action that doesn't actually involve a commit.
+        source = (HOOKS_DIR / "audit-gate.py").read_text()
+        self.assertIn(
+            "_strip_heredocs(cmd), re.IGNORECASE):",
+            source,
+            "main() git-commit regex must use the heredoc-stripped form",
+        )
+
 
 class DebateTriggerFalsePositiveTests(unittest.TestCase):
     """The debate-trigger must not fire on free-text inside heredoc commit messages.

@@ -66,11 +66,23 @@ def _strip_heredocs(cmd: str) -> str:
     command surface (anything before `<<TAG` and after the closing tag)
     is preserved so real verbs after a heredoc still fire.
 
+    Fall-through on unclosed heredoc: if the body has no matching
+    closing tag, the regex cannot match and the body stays in the
+    string. The verb regex then fires as if the strip never ran. This
+    is the safe-fail direction (over-fire, never under-fire) so a
+    malformed command from a future routine run cannot smuggle a
+    destructive verb past the gate. Pinned by
+    `test_unclosed_heredoc_falls_through_and_fires`.
+
     Trade-off: a heredoc whose body is piped to a shell (`cat << EOF | sh`)
     would silently lose its verb. The Carrel routine does not use that
     pattern; heredocs here are exclusively for `git commit -m "<msg>"`
     bodies and `cat > file.json << EOF` writes, neither of which executes
     the heredoc body as commands.
+
+    See also: `.claude/hooks/debate-trigger.py` has the same class of
+    false positive on its `ARCH_BASH_VERBS` regexes. Tracked separately;
+    apply the same helper there when consolidating.
     """
     if not cmd:
         return cmd
