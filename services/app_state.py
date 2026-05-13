@@ -1,12 +1,17 @@
 import json
+import logging
 import sqlite3
 import uuid
 from typing import Any, Dict, List, Optional
 
+from app_logging import get_logger, log_event
 from services import review_scheduler as review_service
 from services import study as study_service
 from services import workspace as workspace_service
 from services.documents import clean_concept_label, fetch_documents, fetch_subject_groups
+
+
+LOGGER = get_logger("app_state")
 
 
 def get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
@@ -45,22 +50,45 @@ def log_study_event(
     duration_seconds: Optional[int] = None,
     payload: Optional[Dict[str, Any]] = None,
 ) -> None:
-    conn.execute(
-        """
-        INSERT INTO study_events (id, event_type, doc_id, concept_id, confidence, duration_seconds, payload)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            str(uuid.uuid4()),
-            event_type,
-            doc_id,
-            concept_id,
-            confidence,
-            duration_seconds,
-            json.dumps(payload or {}),
-        ),
-    )
-    conn.commit()
+    # Telemetry write. Wrapped in try/except sqlite3.OperationalError because
+    # telemetry is fire-and-forget by definition: a failure here must never
+    # propagate as a 500 to the user-visible response. The most common
+    # failure is write-lock contention during long ingestion transactions
+    # (see docs/issues/2026-05-14-sqlite-write-lock-during-ingestion.md):
+    # the user's tutor query was returning 500 because log_study_event
+    # couldn't acquire the writer lock while a big-PDF ingestion held it.
+    # On contention we drop the event and log a structured warning; we do
+    # NOT retry inline because that would extend the lock-wait and worsen
+    # the contention. Only OperationalError is swallowed; programming
+    # errors (TypeError, etc.) still raise so real bugs aren't papered over.
+    try:
+        conn.execute(
+            """
+            INSERT INTO study_events (id, event_type, doc_id, concept_id, confidence, duration_seconds, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                event_type,
+                doc_id,
+                concept_id,
+                confidence,
+                duration_seconds,
+                json.dumps(payload or {}),
+            ),
+        )
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "telemetry_dropped",
+            reason="sqlite_operational_error",
+            event_type=event_type,
+            doc_id=doc_id,
+            concept_id=concept_id,
+            error=str(exc),
+        )
 
 
 def fetch_recent_events(conn: sqlite3.Connection, limit: int = 12) -> List[Dict[str, Any]]:
