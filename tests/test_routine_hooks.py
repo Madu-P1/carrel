@@ -182,6 +182,79 @@ class AuditGateRoutingTests(unittest.TestCase):
         self.assertEqual(stdout.strip(), "")
 
 
+class AuditGateHashStabilityTests(unittest.TestCase):
+    """The audit-gate hash must be stable across cosmetic Bash `description` changes.
+
+    Three independent auditors flagged this same friction on 2026-05-13:
+    each cosmetic relabel of a Bash command (same command, different
+    description string) was producing a fresh pending hash, forcing a
+    re-audit with no risk-reduction value. The fix drops `description`
+    from the hash domain while keeping `command` (and the staged-diff
+    hash for git commit) load-bearing.
+    """
+
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.mkdtemp(prefix="carrel-audit-hash-")
+        self.project_dir = Path(self.tmpdir)
+        (self.project_dir / ".claude" / "logs" / "audits" / "approved").mkdir(parents=True)
+        (self.project_dir / ".claude" / "logs" / "audits" / "pending").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _extract_hash(self, stdout: str) -> str:
+        import re as _re
+        out = json.loads(stdout)
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        m = _re.search(r"hash ([0-9a-f]{16})", reason)
+        self.assertIsNotNone(m, f"no hash found in reason: {reason}")
+        return m.group(1)
+
+    def test_description_change_does_not_change_hash(self) -> None:
+        cmd = "pnpm add some-package"
+        _, stdout1, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd, "description": "alpha label"},
+        }, project_dir=str(self.project_dir))
+        _, stdout2, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd, "description": "beta wording, totally different"},
+        }, project_dir=str(self.project_dir))
+        self.assertEqual(self._extract_hash(stdout1), self._extract_hash(stdout2))
+        pending_files = list((self.project_dir / ".claude" / "logs" / "audits" / "pending").iterdir())
+        self.assertEqual(len(pending_files), 1,
+                         "different descriptions should not produce different pending files")
+
+    def test_command_change_does_change_hash(self) -> None:
+        _, stdout1, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pnpm add foo", "description": "same desc"},
+        }, project_dir=str(self.project_dir))
+        _, stdout2, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pnpm add bar", "description": "same desc"},
+        }, project_dir=str(self.project_dir))
+        self.assertNotEqual(self._extract_hash(stdout1), self._extract_hash(stdout2))
+
+    def test_approval_with_canonical_hash_allows_relabel(self) -> None:
+        # Approval file is keyed by canonical hash (description-free). Re-running
+        # with a fresh description should be silently allowed (rc=0, empty stdout).
+        cmd = "pnpm add some-package"
+        _, stdout1, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd, "description": "first wording"},
+        }, project_dir=str(self.project_dir))
+        h = self._extract_hash(stdout1)
+        approved = self.project_dir / ".claude" / "logs" / "audits" / "approved" / f"{h}.json"
+        approved.write_text(json.dumps({"verdict": "APPROVED", "hash": h}))
+        _, stdout2, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd, "description": "second wording, cosmetic relabel"},
+        }, project_dir=str(self.project_dir))
+        self.assertEqual(stdout2.strip(), "",
+                         "approved canonical hash should pass through after a relabel")
+
+
 class DebateTriggerFalsePositiveTests(unittest.TestCase):
     """The debate-trigger must not fire on free-text inside heredoc commit messages.
 

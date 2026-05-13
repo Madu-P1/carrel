@@ -175,7 +175,15 @@ def main() -> None:
     # Stable hash of the action. For git commit, include the staged-diff hash so
     # that modifying staged files invalidates a previous approval (fix for the
     # audit-gate hash-drift weakness in operator-followups.jsonl).
-    canonical_parts: dict = {"tool": tool_name, "input": tool_input}
+    #
+    # For Bash, the `description` field is a cosmetic LLM-generated label that
+    # never affects what the shell runs. Drop it from the hash so relabeling
+    # does not force a re-audit on identical commands. The pending file still
+    # records the full tool_input including description.
+    hash_input = dict(tool_input)
+    if tool_name == "Bash":
+        hash_input.pop("description", None)
+    canonical_parts: dict = {"tool": tool_name, "input": hash_input}
     if tool_name == "Bash":
         cmd = tool_input.get("command", "") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.IGNORECASE):
