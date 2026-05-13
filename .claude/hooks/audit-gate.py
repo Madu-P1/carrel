@@ -51,6 +51,32 @@ def compute_staged_diff_hash(project_dir: str) -> str:
         return "no-diff"
 
 
+HEREDOC_PATTERN = re.compile(
+    r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)\n\s*\1\s*(?:\n|$)",
+    re.DOTALL,
+)
+
+
+def _strip_heredocs(cmd: str) -> str:
+    """Elide heredoc bodies so command-verb pattern matching isn't fooled
+    by free text inside JSON payloads, commit messages, or docs.
+
+    Matches `<<TAG`, `<<-TAG`, `<< 'TAG'`, `<< "TAG"` openings and
+    removes everything up to the matching closing tag line. The outer
+    command surface (anything before `<<TAG` and after the closing tag)
+    is preserved so real verbs after a heredoc still fire.
+
+    Trade-off: a heredoc whose body is piped to a shell (`cat << EOF | sh`)
+    would silently lose its verb. The Carrel routine does not use that
+    pattern; heredocs here are exclusively for `git commit -m "<msg>"`
+    bodies and `cat > file.json << EOF` writes, neither of which executes
+    the heredoc body as commands.
+    """
+    if not cmd:
+        return cmd
+    return HEREDOC_PATTERN.sub("\n", cmd)
+
+
 MAJOR_BASH_PATTERNS = [
     r"\bgit\s+commit\b",
     r"\bgit\s+push\b",
@@ -122,7 +148,10 @@ OUTREACH_BASH_PATTERNS = [
 
 def is_major(tool_name: str, tool_input: dict) -> tuple[bool, str]:
     if tool_name == "Bash":
-        cmd = tool_input.get("command", "") or ""
+        raw = tool_input.get("command", "") or ""
+        # Strip heredoc bodies so prose inside JSON writes or commit
+        # messages doesn't false-positive against the verb regexes.
+        cmd = _strip_heredocs(raw)
         for p in OUTREACH_BASH_PATTERNS:
             if re.search(p, cmd, re.IGNORECASE):
                 return True, "outreach"
@@ -186,7 +215,10 @@ def main() -> None:
     canonical_parts: dict = {"tool": tool_name, "input": hash_input}
     if tool_name == "Bash":
         cmd = tool_input.get("command", "") or ""
-        if re.search(r"\bgit\s+commit\b", cmd, re.IGNORECASE):
+        # Use the heredoc-stripped form so "git commit" inside a JSON
+        # body or message prose doesn't trigger staged_diff_hash on a
+        # non-commit action (e.g., gh pr create whose body mentions it).
+        if re.search(r"\bgit\s+commit\b", _strip_heredocs(cmd), re.IGNORECASE):
             canonical_parts["staged_diff_hash"] = compute_staged_diff_hash(project_dir)
     canonical = json.dumps(canonical_parts, sort_keys=True, ensure_ascii=False)
     h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]

@@ -255,6 +255,88 @@ class AuditGateHashStabilityTests(unittest.TestCase):
                          "approved canonical hash should pass through after a relabel")
 
 
+class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
+    """The audit-gate must not fire on major-action verbs that appear
+    only inside heredoc bodies.
+
+    Surfaced by the quality-rater agent on 2026-05-13: writing a JSON
+    score file via `cat > .claude/logs/scores/foo.json << EOF` whose
+    body contained "git commit" / "migration" / "install" in prose
+    blocked the rater's own Bash call. The fix strips heredoc bodies
+    before pattern matching so verbs only count when they sit in
+    actual command position.
+    """
+
+    def test_heredoc_body_git_commit_does_not_fire(self) -> None:
+        cmd = (
+            "cat > /tmp/score.json << 'EOF'\n"
+            "{\"score\": 100, \"note\": \"considered git commit and migration paths\"}\n"
+            "EOF"
+        )
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "",
+                         "heredoc-only mention of git commit should not fire")
+
+    def test_heredoc_body_pip_install_does_not_fire(self) -> None:
+        cmd = (
+            "cat > /tmp/notes.md << 'EOF'\n"
+            "Reminder: run `pip install` before testing.\n"
+            "EOF"
+        )
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "",
+                         "heredoc-only mention of pip install should not fire")
+
+    def test_real_git_commit_still_fires(self) -> None:
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m wip"},
+        })
+        out = json.loads(stdout)
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("MAJOR ACTION GATE", reason,
+                      "real git commit must still trigger the major gate")
+
+    def test_real_verb_after_heredoc_still_fires(self) -> None:
+        cmd = (
+            "cat > /tmp/note.txt << 'EOF'\n"
+            "draft note that mentions pip install for context\n"
+            "EOF\n"
+            "git commit -m note"
+        )
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        out = json.loads(stdout)
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertIn("MAJOR ACTION GATE", reason,
+                      "real verb after a heredoc body must still fire")
+
+    def test_quoted_heredoc_tag_handled(self) -> None:
+        # Both <<'EOF' and <<"EOF" forms must strip the body.
+        cmd = (
+            'cat > /tmp/x.txt << "EOF"\n'
+            "git push --force is something we never do\n"
+            "EOF"
+        )
+        rc, stdout, _ = run_hook("audit-gate.py", {
+            "tool_name": "Bash",
+            "tool_input": {"command": cmd},
+        })
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "",
+                         "double-quoted heredoc tag must also be stripped")
+
+
 class DebateTriggerFalsePositiveTests(unittest.TestCase):
     """The debate-trigger must not fire on free-text inside heredoc commit messages.
 
