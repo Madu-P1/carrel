@@ -67,6 +67,11 @@
 
 .deferButton {
   align-self: flex-end;
+  /* PR 6.3 — defer is keyboard-equivalent (d) and tap-targetable, so we
+     enforce a 44x44 minimum (WCAG 2.5.5 AAA + Apple HIG) on top of the
+     size="md" baseline (36px) from the design system. */
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .hero {

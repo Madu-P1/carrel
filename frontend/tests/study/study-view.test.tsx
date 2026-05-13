@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { StudyView } from "@/features/study/StudyView";
-import { mockJson } from "../support/mockFetch";
+import { getFetchCalls, mockJson } from "../support/mockFetch";
 
 afterEach(() => {
   cleanup();
@@ -418,6 +418,133 @@ describe("StudyView", () => {
     expect(
       screen.queryByRole("button", { name: /Defer this card/i }),
     ).toBeNull();
+  });
+
+  // PR 6.3 — negative-invariant: defer must NOT call study.review.
+  // This is the entire point of "defer" vs "Again" — the SRS schedule
+  // stays untouched. If a future refactor accidentally wires defer
+  // through rateCard, this test fails.
+  test("defer does not call /api/srs/review", async () => {
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        { id: "card-A", front: "Q-A", back: "A-A", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+        { id: "card-B", front: "Q-B", back: "A-B", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+    const deferButton = await waitFor(() =>
+      screen.getByRole("button", { name: /Defer this card to the end/i }),
+    );
+    fireEvent.click(deferButton);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const reviewPosts = getFetchCalls().filter(
+      (c) => c.method === "POST" && c.url.includes("/api/srs/review"),
+    );
+    expect(reviewPosts).toHaveLength(0);
+  });
+
+  // PR 6.3 — defer emits srs.card_deferred {card_id, remaining} so
+  // the dashboard can measure usage. Asserting the wire payload
+  // (not just that something fired) pins the contract end-to-end.
+  test("defer emits srs.card_deferred event with card_id and remaining", async () => {
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        { id: "card-A", front: "Q-A", back: "A-A", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+        { id: "card-B", front: "Q-B", back: "A-B", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+        { id: "card-C", front: "Q-C", back: "A-C", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+    const deferButton = await waitFor(() =>
+      screen.getByRole("button", { name: /Defer this card to the end/i }),
+    );
+    fireEvent.click(deferButton);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const deferEvents = getFetchCalls().filter((c) => {
+      if (c.method !== "POST" || !c.url.includes("/api/usage-events")) return false;
+      const body = typeof c.body === "string" ? JSON.parse(c.body) : null;
+      return body?.event_name === "srs.card_deferred";
+    });
+    expect(deferEvents).toHaveLength(1);
+    const body = JSON.parse(deferEvents[0].body as string);
+    expect(body.event_name).toBe("srs.card_deferred");
+    expect(body.surface).toBe("study");
+    expect(body.properties.card_id).toBe("card-A");
+    // Two cards remain after card-A is sent to the back of a 3-card queue.
+    expect(body.properties.remaining).toBe(2);
+  });
+
+  // PR 6.3 — keyboard "d" mirrors the Defer button. Tests both the
+  // shortcut firing on the back face and gating on the last-card
+  // condition (no defer past where there's nothing past).
+  test("keyboard 'd' on the back face defers the current card", async () => {
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        { id: "card-A", front: "Q-A", back: "A-A", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+        { id: "card-B", front: "Q-B", back: "A-B", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    expect(screen.getByText("Q-A")).toBeTruthy();
+    fireEvent.click(card);
+    await waitFor(() =>
+      screen.getByRole("button", { name: /Defer this card to the end/i }),
+    );
+
+    fireEvent.keyDown(window, { key: "d" });
+    await waitFor(() => {
+      expect(screen.getByText("Q-B")).toBeTruthy();
+    });
   });
 
   test("error state shows retry affordance", async () => {

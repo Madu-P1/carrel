@@ -352,6 +352,14 @@ export function StudyView() {
         if (hit) {
           event.preventDefault();
           void rateCard(hit.rating);
+          return;
+        }
+        // PR 6.3 — "d" defers the current card without recording a
+        // rating. Gated on the same visibility rule as the button:
+        // only when there's a downstream card to defer past.
+        if ((event.key === "d" || event.key === "D") && currentIndex < cards.length - 1) {
+          event.preventDefault();
+          deferCurrentCard();
         }
       }
     };
@@ -574,8 +582,15 @@ export function StudyView() {
   const frontHint = (
     <KeyChip keys={["Space"]} dimmed={hintDimmed} />
   );
+  // PR 6.3 — surface the "d" keyboard shortcut for defer once it's
+  // actionable (i.e., there's a downstream card to defer past).
+  // Skipping the chip on the last card keeps the hint row honest.
+  const canDeferOnBack = currentIndex < cards.length - 1;
   const backHint = (
-    <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
+    <>
+      <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
+      {canDeferOnBack ? <KeyChip keys={["d"]} label="defer" dimmed={hintDimmed} /> : null}
+    </>
   );
 
   const flipBody = (
@@ -630,9 +645,10 @@ export function StudyView() {
         {canDefer ? (
           <Button
             variant="ghost"
-            size="sm"
+            size="md"
             onClick={deferCurrentCard}
             aria-label="Defer this card to the end of the session"
+            aria-keyshortcuts="d"
             className={styles.deferButton}
           >
             Defer
