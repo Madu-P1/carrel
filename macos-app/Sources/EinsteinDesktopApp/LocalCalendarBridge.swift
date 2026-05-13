@@ -47,7 +47,14 @@ final class LocalCalendarBridge {
     /// modest so payloads stay small.
     private let lookbehindDays: TimeInterval = 7 * 24 * 60 * 60
 
-    private let store = EKEventStore()
+    // EKEventStore is documented thread-safe but isn't formally Sendable
+    // in Swift 6.0/6.1 SDKs (Xcode 16.x). Without `nonisolated(unsafe)`,
+    // the await on requestFullAccessToEvents() below trips strict
+    // concurrency's "sending main-actor-isolated value" diagnostic and
+    // fails the build on older toolchains. Apple added Sendable
+    // conformance in later SDKs, which is why the build passes on
+    // Swift 6.3+ (Xcode 26) without this annotation.
+    nonisolated(unsafe) private let store = EKEventStore()
     private let session = URLSession(configuration: .ephemeral)
 
     /// Backend URL — same loopback the BackendSupervisor probes.
