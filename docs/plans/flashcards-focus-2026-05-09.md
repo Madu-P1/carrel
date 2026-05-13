@@ -104,9 +104,7 @@ Shipped as: backend `services/study.py::fetch_due_cards` LEFT JOINs `anchors` ke
 **Currently:** every card is a Q-front, A-back pair.
 
 **Add:**
-1. **Cloze deletion** (Anki-style): a sentence with one term blanked out. The blank is the question; the term is the answer.
-    - Schema change: `srs_cards.kind ∈ {"qa", "cloze"}` (default qa for back-compat).
-    - For cloze, both faces render the same sentence; the back fills in the blanked term in accent colour.
+1. **Cloze deletion** (Anki-style) — **PR 5.1 SHIPPED 2026-05-13.** Sentence with one term blanked out via the Anki `{{cN::term}}` marker. Schema: `srs_cards.kind ∈ {"qa", "cloze"}` (default 'qa' so legacy rows back-compat). Both faces store the same source; front face renders the term as a placeholder, back face reveals it in accent color. Architecture documented in [ADR 0002](../decisions/0002-pr-5-1-cloze-cards-schema.md). Mandatory scope additions folded in from the adversary leg: (a) `list_cards` search projection strips cloze markers (SQLite UDF), (b) `_normalize_card_text` skips cloze marker spans so a concept named `"c1"` doesn't corrupt markers. Tests: 15 backend + 9 frontend rendering.
 2. **Reverse cards**: for any AI-drafted Q/A card with a single-term answer, auto-generate the reverse direction (term → definition).
     - Toggle in card creation: "Also create a reverse card."
     - Stored as a separate `srs_cards` row linked via `paired_card_id`.

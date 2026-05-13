@@ -350,6 +350,7 @@ def create_card(payload: CardCreateRequest) -> Dict[str, Any]:
                 back=payload.back,
                 concept_id=payload.concept_id,
                 card_type=payload.card_type,
+                kind=payload.kind,
             )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

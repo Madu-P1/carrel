@@ -36,3 +36,12 @@
 .textarea::placeholder {
   color: var(--color-text-tertiary);
 }
+
+/* PR 5.1 (ADR 0002) — kind picker. Horizontal segmented control that
+   toggles between Q&A and Cloze authoring. Quiet treatment so the
+   primary visual focus stays on the textarea content. */
+.kindPicker {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}

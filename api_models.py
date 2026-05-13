@@ -21,12 +21,22 @@ class CardCreateRequest(BaseModel):
     the New Card dialog. concept_id is optional; orphan cards are allowed
     and surface in the "All" filter via LEFT JOIN. card_type defaults to
     "custom" so we can distinguish user-authored cards from those that
-    the ingestion pipeline produced."""
+    the ingestion pipeline produced.
+
+    PR 5.1 (ADR 0002) — `kind` is the render-mode discriminator. For
+    `kind='qa'` (the default), front carries the question and back the
+    answer. For `kind='cloze'`, both fields carry the same source
+    sentence containing one `{{cN::term}}` marker — the client sends
+    them mirrored so the schema invariant "both columns non-empty"
+    holds without server-side mirroring. The service rejects cloze
+    requests without a marker.
+    """
 
     front: str = Field(..., min_length=1, max_length=4000)
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
     card_type: str = Field(default="custom", max_length=64)
+    kind: Literal["qa", "cloze"] = "qa"
 
 
 class CardAiDraftRequest(BaseModel):

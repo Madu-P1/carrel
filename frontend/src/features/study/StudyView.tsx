@@ -11,6 +11,7 @@ import { friendlyError } from "@/services/api/errorMessages";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
+import { renderClozeBody } from "./cloze";
 import { FlashcardFace } from "./components/FlashcardFace";
 import { FlipCard } from "./components/FlipCard";
 import { KeyChip } from "./components/KeyChip";
@@ -646,7 +647,11 @@ export function StudyView() {
           kind="question"
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
-          body={currentCard.front}
+          body={
+            currentCard.kind === "cloze"
+              ? renderClozeBody(currentCard.front, "front")
+              : currentCard.front
+          }
           hint={frontHint}
         />
       }
@@ -655,7 +660,11 @@ export function StudyView() {
           kind="answer"
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
-          body={currentCard.back}
+          body={
+            currentCard.kind === "cloze"
+              ? renderClozeBody(currentCard.back, "back")
+              : currentCard.back
+          }
           hint={backHint}
           footer={
             currentCard.document_id && currentCard.chunk_id ? (

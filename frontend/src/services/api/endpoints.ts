@@ -794,6 +794,11 @@ export interface SrsDueCard {
   /** Verbatim quote text from the bound anchor. Rendered as the citation
    *  excerpt below the answer body, truncated to ~40 words. */
   quote_text?: string | null;
+  /** PR 5.1 (ADR 0002) — render-mode discriminator. "qa" for the legacy
+   *  question/answer pair. "cloze" for a sentence with one
+   *  `{{cN::term}}` marker shared across both faces (front hides the
+   *  term; back reveals it in accent color). */
+  kind?: "qa" | "cloze";
 }
 
 export type SrsRating = "again" | "hard" | "good" | "easy";
@@ -829,6 +834,8 @@ export interface SrsCard {
   document_id: string | null;
   document_name: string | null;
   subject_name: string | null;
+  /** PR 5.1 (ADR 0002) — render-mode discriminator; see SrsDueCard.kind. */
+  kind?: "qa" | "cloze";
 }
 
 export interface CardCreatePayload {
@@ -838,6 +845,8 @@ export interface CardCreatePayload {
   conceptId?: string;
   /** Optional override. Defaults to "custom" on the server. */
   cardType?: string;
+  /** PR 5.1 — render mode. Omit for legacy qa cards (default). */
+  kind?: "qa" | "cloze";
 }
 
 export interface CardAiDraftPayload {
@@ -939,7 +948,8 @@ export const study = {
         front: payload.front,
         back: payload.back,
         concept_id: payload.conceptId ?? null,
-        card_type: payload.cardType ?? "custom"
+        card_type: payload.cardType ?? "custom",
+        kind: payload.kind ?? "qa"
       }
     }),
   /**

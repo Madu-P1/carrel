@@ -1,10 +1,30 @@
 import json
+import re
 import sqlite3
 import uuid
 from datetime import date
 from typing import Any, Dict, List, Optional
 
 from services.documents import clean_concept_label
+
+
+# PR 5.1 (ADR 0002) — cloze marker `{{cN::term}}`. Matches single-occlusion
+# Anki-style cloze; the three-segment form `{{cN::term::hint}}` is out of
+# scope for PR 5.1 per the plan and ADR.
+_CLOZE_MARKER_RE = re.compile(r"\{\{c\d+::([^}]+)\}\}")
+
+
+def _strip_cloze_markers(text: str) -> str:
+    """Return `text` with `{{cN::term}}` markers replaced by `term`.
+
+    Used by the search projection in `list_cards` so a user searching for
+    a concept doesn't get cloze noise (literal `c1` matching the marker
+    token) nor false positives on hidden terms (the marker syntax
+    obscures the inner word from a plain LIKE).
+    """
+    if not text:
+        return ""
+    return _CLOZE_MARKER_RE.sub(lambda m: m.group(1), str(text))
 
 
 def _name_replacements(conn: sqlite3.Connection) -> List[tuple[str, str]]:
@@ -25,10 +45,33 @@ def _name_replacements(conn: sqlite3.Connection) -> List[tuple[str, str]]:
 
 
 def _normalize_card_text(text: str, replacements: List[tuple[str, str]]) -> str:
+    """Apply concept-name cleanups to card text without corrupting cloze
+    markers.
+
+    PR 5.1 (ADR 0002) — naive `value.replace(raw_name, cleaned)` would
+    rewrite a concept literally named "c1" (financial coupon labels,
+    chemistry compound identifiers, etc.) inside a `{{c1::...}}` cloze
+    marker, breaking the render. We split the text on marker boundaries,
+    rewrite only the prose segments, and stitch the markers back in
+    unchanged.
+    """
     value = str(text or "")
+    if not value:
+        return value
+    parts: List[str] = []
+    last_end = 0
+    for match in _CLOZE_MARKER_RE.finditer(value):
+        prose = value[last_end : match.start()]
+        for raw_name, cleaned in replacements:
+            prose = prose.replace(raw_name, cleaned)
+        parts.append(prose)
+        parts.append(match.group(0))
+        last_end = match.end()
+    tail = value[last_end:]
     for raw_name, cleaned in replacements:
-        value = value.replace(raw_name, cleaned)
-    return value
+        tail = tail.replace(raw_name, cleaned)
+    parts.append(tail)
+    return "".join(parts)
 
 
 def fetch_questions(conn: sqlite3.Connection, limit: int = 10) -> List[Dict[str, object]]:
@@ -78,7 +121,7 @@ def fetch_due_cards(
     today = date.today().isoformat()
     sql = [
         "SELECT s.id, s.front, s.back, s.state, s.stability, s.difficulty, s.reps,",
-        "       s.lapses, s.due_date, c.name AS concept, d.filename AS document_name,",
+        "       s.lapses, s.due_date, s.kind, c.name AS concept, d.filename AS document_name,",
         "       d.subject_name, d.id AS document_id,",
         "       a.chunk_id, a.page_num, a.quote_text",
         "FROM srs_cards s",
@@ -131,6 +174,11 @@ def list_cards(
     simple LIKE — fine at the current data volume; migrate to FTS5 if cards
     grow past ~10k.
     """
+    # PR 5.1 (ADR 0002) — register the cloze-marker strip as a SQLite UDF on
+    # this connection so the search WHERE clause can compare against
+    # marker-stripped text. Re-registering on the same connection is a noop
+    # for sqlite3.
+    conn.create_function("_strip_cloze", 1, _strip_cloze_markers)
     where: List[str] = []
     params: List[object] = []
     if subject:
@@ -140,7 +188,15 @@ def list_cards(
         where.append("d.id = ?")
         params.append(doc_id)
     if search:
-        where.append("(LOWER(s.front) LIKE ? OR LOWER(s.back) LIKE ?)")
+        # PR 5.1 (ADR 0002) — strip `{{cN::term}}` markers before LIKE so a
+        # cloze front "the {{c1::powerhouse}} of the cell" matches a search
+        # for "powerhouse" (the hidden term is the actual content) without
+        # also matching the literal "c1" marker token. The strip is applied
+        # to the SQL projection, not the search needle, so qa cards (which
+        # contain no markers) compare identically to today.
+        where.append(
+            "(LOWER(_strip_cloze(s.front)) LIKE ? OR LOWER(_strip_cloze(s.back)) LIKE ?)"
+        )
         needle = f"%{search.lower()}%"
         params.extend([needle, needle])
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
@@ -161,7 +217,7 @@ def list_cards(
     rows = conn.execute(
         f"""
         SELECT s.id, s.front, s.back, s.state, s.difficulty, s.reps, s.lapses,
-               s.due_date, s.last_review, s.card_type,
+               s.due_date, s.last_review, s.card_type, s.kind,
                c.id AS concept_id, c.name AS concept,
                d.id AS document_id, d.filename AS document_name,
                d.subject_name
@@ -261,6 +317,7 @@ def create_card(
     back: str,
     concept_id: Optional[str] = None,
     card_type: str = "custom",
+    kind: str = "qa",
 ) -> Dict[str, Any]:
     """Insert a user-authored flashcard and return the row shape list_cards emits.
 
@@ -271,11 +328,24 @@ def create_card(
     with a null concept/document. We set stability / difficulty to the same
     defaults the schema uses (1.0 / 0.3) rather than leaving them implicit so the
     row shape matches what the ORM callers already consume.
+
+    PR 5.1 (ADR 0002) — `kind` selects the render mode. `kind='cloze'`
+    requires at least one `{{cN::term}}` marker in `front` (the same
+    text should be supplied for `back`; cloze renders both faces from
+    one source). `kind='qa'` accepts any non-empty front/back as today.
+    The route layer (api_models.CardCreateRequest) limits kind to the
+    enum; this service is the second guard.
     """
+    if kind not in ("qa", "cloze"):
+        raise ValueError(f"kind must be 'qa' or 'cloze', got {kind!r}")
     cleaned_front = (front or "").strip()
     cleaned_back = (back or "").strip()
     if not cleaned_front or not cleaned_back:
         raise ValueError("front and back must each be non-empty after trimming")
+    if kind == "cloze" and not _CLOZE_MARKER_RE.search(cleaned_front):
+        raise ValueError(
+            "cloze cards must contain at least one {{cN::term}} marker"
+        )
 
     card_id = str(uuid.uuid4())
     today = date.today().isoformat()
@@ -293,17 +363,18 @@ def create_card(
     conn.execute(
         """
         INSERT INTO srs_cards (
-            id, concept_id, card_type, front, back,
+            id, concept_id, card_type, kind, front, back,
             state, stability, difficulty,
             elapsed_days, scheduled_days, reps, lapses,
             due_date, confidence
         )
-        VALUES (?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
         """,
         (
             card_id,
             resolved_concept_id,
             card_type,
+            kind,
             cleaned_front,
             cleaned_back,
             today,
@@ -315,7 +386,7 @@ def create_card(
     row = conn.execute(
         """
         SELECT s.id, s.front, s.back, s.state, s.difficulty, s.reps, s.lapses,
-               s.due_date, s.last_review, s.card_type,
+               s.due_date, s.last_review, s.card_type, s.kind,
                c.id AS concept_id, c.name AS concept,
                d.id AS document_id, d.filename AS document_name,
                d.subject_name

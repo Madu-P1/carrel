@@ -32,6 +32,11 @@ interface CardCreateDialogProps {
 export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: CardCreateDialogProps) {
   const frontId = useId();
   const backId = useId();
+  // PR 5.1 (ADR 0002) — kind toggle. "qa" keeps the legacy two-textarea
+  // shape. "cloze" collapses to a single textarea (the cloze source);
+  // the back column is server-mirrored from front so the schema's
+  // "both columns non-empty" invariant still holds.
+  const [kind, setKind] = useState<"qa" | "cloze">("qa");
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -43,20 +48,29 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
   // user may want to reopen and retry after fixing a connectivity error.
   useEffect(() => {
     if (open) {
+      setKind("qa");
       setFront("");
       setBack("");
       setError(null);
     }
   }, [open]);
 
-  const canSubmit = front.trim().length > 0 && back.trim().length > 0 && !submitting;
+  const clozeMarkerOk = /\{\{c\d+::[^}]+\}\}/.test(front);
+  const canSubmit =
+    kind === "qa"
+      ? front.trim().length > 0 && back.trim().length > 0 && !submitting
+      : front.trim().length > 0 && clozeMarkerOk && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      const { card } = await study.createCard({ front, back });
+      const payload =
+        kind === "cloze"
+          ? { front, back: front, kind: "cloze" as const }
+          : { front, back, kind: "qa" as const };
+      const { card } = await study.createCard(payload);
       onCreated(card);
       onClose();
     } catch (err) {
@@ -116,11 +130,32 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
       title="New flashcard"
     >
       <Stack gap={4}>
+        <div className={styles.kindPicker} role="group" aria-label="Card type">
+          <Button
+            variant={kind === "qa" ? "primary" : "ghost"}
+            size="sm"
+            onClick={() => setKind("qa")}
+            aria-pressed={kind === "qa"}
+          >
+            Q &amp; A
+          </Button>
+          <Button
+            variant={kind === "cloze" ? "primary" : "ghost"}
+            size="sm"
+            onClick={() => setKind("cloze")}
+            aria-pressed={kind === "cloze"}
+          >
+            Cloze
+          </Button>
+        </div>
+
         <div className={styles.field}>
           <label className={styles.label} htmlFor={frontId}>
-            Front
+            {kind === "cloze" ? "Cloze sentence" : "Front"}
             <Text tone="tertiary" variant="caption">
-              The question or prompt. Enter moves to the back.
+              {kind === "cloze"
+                ? "Wrap the blanked term in {{c1::term}}. Both faces render the same sentence."
+                : "The question or prompt. Enter moves to the back."}
             </Text>
           </label>
           <textarea
@@ -128,30 +163,41 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
             id={frontId}
             onInput={(e) => setFront((e.currentTarget as HTMLTextAreaElement).value)}
             onKeyDown={handleFrontKeyDown}
-            placeholder="e.g. What is the difference between a coupon rate and a yield?"
-            rows={3}
+            placeholder={
+              kind === "cloze"
+                ? "e.g. The mitochondrion is the {{c1::powerhouse}} of the cell."
+                : "e.g. What is the difference between a coupon rate and a yield?"
+            }
+            rows={kind === "cloze" ? 5 : 3}
             value={front}
           />
+          {kind === "cloze" && front.trim().length > 0 && !clozeMarkerOk ? (
+            <Text tone="tertiary" variant="caption">
+              Add a {`{{c1::term}}`} marker around the word you want hidden.
+            </Text>
+          ) : null}
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor={backId}>
-            Back
-            <Text tone="tertiary" variant="caption">
-              The answer you want to recall. Cmd+Enter to save.
-            </Text>
-          </label>
-          <textarea
-            className={styles.textarea}
-            id={backId}
-            onInput={(e) => setBack((e.currentTarget as HTMLTextAreaElement).value)}
-            onKeyDown={handleBackKeyDown}
-            placeholder="e.g. The coupon rate is fixed at issuance; the yield reflects the current market price."
-            ref={backRef}
-            rows={5}
-            value={back}
-          />
-        </div>
+        {kind === "qa" ? (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={backId}>
+              Back
+              <Text tone="tertiary" variant="caption">
+                The answer you want to recall. Cmd+Enter to save.
+              </Text>
+            </label>
+            <textarea
+              className={styles.textarea}
+              id={backId}
+              onInput={(e) => setBack((e.currentTarget as HTMLTextAreaElement).value)}
+              onKeyDown={handleBackKeyDown}
+              placeholder="e.g. The coupon rate is fixed at issuance; the yield reflects the current market price."
+              ref={backRef}
+              rows={5}
+              value={back}
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <Text role="alert" tone="danger" variant="caption">

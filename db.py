@@ -326,6 +326,11 @@ def _mark_legacy_baseline_if_needed(
         5: _has_columns(conn, "concept_edges", ["doc_id"]),
         12: _has_columns(conn, "calendar_feeds", ["keychain_ref"]),
         14: _has_columns(conn, "calendar_feeds", ["kind"]),
+        # PR 5.1 (ADR 0002) — legacy databases that already have the
+        # srs_cards.kind column should be marked as having applied 0017
+        # rather than re-running ALTER TABLE (which would fail with
+        # "duplicate column name").
+        17: _has_columns(conn, "srs_cards", ["kind"]),
     }
 
     for version, satisfied in checks.items():
