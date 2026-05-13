@@ -510,6 +510,78 @@ describe("StudyView", () => {
     expect(body.properties.remaining).toBe(2);
   });
 
+  // PR 6.3 polish — the keyboard "d" path is gated on !submitting,
+  // the same way the Defer button is. Without that guard a "d"
+  // keypress racing a rateCard roundtrip would splice the queue
+  // under the in-flight advance and emit a stale event. This test
+  // pins the unified gating by holding /api/srs/review open and
+  // asserting "d" produces no defer event while submitting is true.
+  test("keyboard 'd' does NOT defer while a rating is in flight", async () => {
+    let resolveReview: ((value: unknown) => void) | undefined;
+    const reviewPending = new Promise<unknown>((resolve) => {
+      resolveReview = resolve;
+    });
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("POST", "/api/srs/review", () => reviewPending);
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        { id: "card-A", front: "Q-A", back: "A-A", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+        { id: "card-B", front: "Q-B", back: "A-B", state: "review", stability: 1, difficulty: 0.5, reps: 0, lapses: 0, due_date: "2026-05-10", concept: "Topic", document_name: "doc.pdf", subject_name: null },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+    await waitFor(() =>
+      screen.getByRole("button", { name: /Defer this card to the end/i }),
+    );
+
+    // Click "Good" — submitting flips true and stays true because
+    // /api/srs/review is held open. (The rating buttons disable;
+    // defer is also expected to ignore "d" while in this state.)
+    const goodButton = screen.getByRole("button", { name: /Good/i });
+    fireEvent.click(goodButton);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    // Snapshot the call list before the "d" press; defer must not
+    // appear in the delta.
+    const beforeCount = getFetchCalls().filter((c) => {
+      if (c.method !== "POST" || !c.url.includes("/api/usage-events")) return false;
+      const body = typeof c.body === "string" ? JSON.parse(c.body) : null;
+      return body?.event_name === "srs.card_deferred";
+    }).length;
+
+    fireEvent.keyDown(window, { key: "d" });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const afterCount = getFetchCalls().filter((c) => {
+      if (c.method !== "POST" || !c.url.includes("/api/usage-events")) return false;
+      const body = typeof c.body === "string" ? JSON.parse(c.body) : null;
+      return body?.event_name === "srs.card_deferred";
+    }).length;
+    expect(afterCount).toBe(beforeCount);
+
+    // Release the held review request so the cleanup teardown doesn't
+    // leave a dangling promise around.
+    resolveReview?.({ next_due_date: "2026-05-15", interval: 1, ease: 2.5 });
+  });
+
   // PR 6.3 — keyboard "d" mirrors the Defer button. Tests both the
   // shortcut firing on the back face and gating on the last-card
   // condition (no defer past where there's nothing past).

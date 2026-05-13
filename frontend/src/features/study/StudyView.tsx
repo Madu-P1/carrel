@@ -220,6 +220,12 @@ export function StudyView() {
   // schedule the backend would have given it if untouched.
   const deferCurrentCard = () => {
     if (!currentCard) return;
+    // PR 6.3 polish — also bail while a rating is in flight. Without
+    // this guard, a "d" keypress racing a rateCard roundtrip would
+    // splice the queue under the in-flight advance and emit a stale
+    // srs.card_deferred event. Belt-and-braces with the call-site
+    // gating on canDefer.
+    if (submitting) return;
     const cardsRemaining = cards.length - currentIndex;
     if (cardsRemaining <= 1) return; // only one card left — nothing to defer past
     setSessionCards((prev) => {
@@ -355,9 +361,15 @@ export function StudyView() {
           return;
         }
         // PR 6.3 — "d" defers the current card without recording a
-        // rating. Gated on the same visibility rule as the button:
-        // only when there's a downstream card to defer past.
-        if ((event.key === "d" || event.key === "D") && currentIndex < cards.length - 1) {
+        // rating. Same gating as the Defer button: there must be a
+        // downstream card to defer past AND no rating roundtrip can
+        // be in flight (otherwise a stale defer would race the
+        // submit).
+        if (
+          (event.key === "d" || event.key === "D")
+          && currentIndex < cards.length - 1
+          && !submitting
+        ) {
           event.preventDefault();
           deferCurrentCard();
         }
@@ -366,7 +378,7 @@ export function StudyView() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, phase, currentIndex, cards.length]);
+  }, [mode, phase, currentIndex, cards.length, submitting]);
 
   // Subjects roll-up; memoised so identity is stable across renders
   // when the payload didn't change. Used both by the cleanup effect
@@ -582,10 +594,12 @@ export function StudyView() {
   const frontHint = (
     <KeyChip keys={["Space"]} dimmed={hintDimmed} />
   );
-  // PR 6.3 — surface the "d" keyboard shortcut for defer once it's
-  // actionable (i.e., there's a downstream card to defer past).
-  // Skipping the chip on the last card keeps the hint row honest.
-  const canDeferOnBack = currentIndex < cards.length - 1;
+  // PR 6.3 — surface the "d" keyboard shortcut for defer only while
+  // it's actionable. Mirrors the Defer button's gating exactly
+  // (downstream card exists AND no rating roundtrip in flight) so
+  // the hint and the button live and die together — no stale chip
+  // teasing a key that wouldn't fire.
+  const canDeferOnBack = currentIndex < cards.length - 1 && !submitting;
   const backHint = (
     <>
       <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
