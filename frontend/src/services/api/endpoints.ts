@@ -797,8 +797,9 @@ export interface SrsDueCard {
   /** PR 5.1 (ADR 0002) — render-mode discriminator. "qa" for the legacy
    *  question/answer pair. "cloze" for a sentence with one
    *  `{{cN::term}}` marker shared across both faces (front hides the
-   *  term; back reveals it in accent color). */
-  kind?: "qa" | "cloze";
+   *  term; back reveals it in accent color). PR 5.2 (ADR 0003) — "reverse"
+   *  is the swapped twin of a paired qa card; renders identically to qa. */
+  kind?: "qa" | "cloze" | "reverse";
 }
 
 export type SrsRating = "again" | "hard" | "good" | "easy";
@@ -835,7 +836,7 @@ export interface SrsCard {
   document_name: string | null;
   subject_name: string | null;
   /** PR 5.1 (ADR 0002) — render-mode discriminator; see SrsDueCard.kind. */
-  kind?: "qa" | "cloze";
+  kind?: "qa" | "cloze" | "reverse";
 }
 
 export interface CardCreatePayload {
@@ -846,7 +847,23 @@ export interface CardCreatePayload {
   /** Optional override. Defaults to "custom" on the server. */
   cardType?: string;
   /** PR 5.1 — render mode. Omit for legacy qa cards (default). */
-  kind?: "qa" | "cloze";
+  kind?: "qa" | "cloze" | "reverse";
+}
+
+export interface CardPairCreatePayload {
+  front: string;
+  back: string;
+  /** Optional. Omit to create an orphan pair (shows up in "All subjects"). */
+  conceptId?: string;
+  /** Optional override. Defaults to "custom" on the server. */
+  cardType?: string;
+}
+
+export interface CardPairCreateResponse {
+  primary: SrsCard;
+  reverse: SrsCard;
+  primary_id: string;
+  reverse_id: string;
 }
 
 export interface CardAiDraftPayload {
@@ -950,6 +967,22 @@ export const study = {
         concept_id: payload.conceptId ?? null,
         card_type: payload.cardType ?? "custom",
         kind: payload.kind ?? "qa"
+      }
+    }),
+  /**
+   * Create a reverse-pair from one front/back input. Server inserts a
+   * primary qa card AND its swapped reverse twin AND a card_pairs row
+   * in one transaction. Each card has independent FSRS state. PR 5.2
+   * (ADR 0003).
+   */
+  createCardPair: (payload: CardPairCreatePayload) =>
+    api<CardPairCreateResponse>("/api/srs/cards/pair", {
+      method: "POST",
+      body: {
+        front: payload.front,
+        back: payload.back,
+        concept_id: payload.conceptId ?? null,
+        card_type: payload.cardType ?? "custom"
       }
     }),
   /**

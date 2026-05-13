@@ -603,6 +603,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/srs/cards/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Card Pair
+         * @description Create a reverse-pair: one Q→A card plus its swapped A→Q twin
+         *     and a card_pairs link. Both cards land in srs_cards as separate
+         *     rows with independent FSRS state. The response includes both
+         *     fully-hydrated card rows so the client can drop them straight
+         *     into its cached list. PR 5.2 / ADR 0003.
+         */
+        post: operations["create_card_pair_api_srs_cards_pair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/srs/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -1972,7 +1996,29 @@ export interface components {
              * @default qa
              * @enum {string}
              */
-            kind: "qa" | "cloze";
+            kind: "qa" | "cloze" | "reverse";
+        };
+        /**
+         * CardPairCreateRequest
+         * @description POST /api/srs/cards/pair payload. The "Reverse pair" mode of the
+         *     New Card dialog sends a single front/back pair; the server inserts
+         *     two srs_cards (the primary Q→A and the reverse A→Q) plus one
+         *     card_pairs row in a single transaction. Both ids come back so the
+         *     client can drop both rows into its cached list. concept_id +
+         *     card_type behave the same as CardCreateRequest. PR 5.2 / ADR 0003.
+         */
+        CardPairCreateRequest: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+            /** Concept Id */
+            concept_id?: string | null;
+            /**
+             * Card Type
+             * @default custom
+             */
+            card_type: string;
         };
         /** CompareRequest */
         CompareRequest: {
@@ -3843,6 +3889,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardAiDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_pair_api_srs_cards_pair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardPairCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

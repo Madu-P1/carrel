@@ -10,6 +10,7 @@ from api_models import (
     CardAiDraftRequest,
     CardAiDraftResponse,
     CardCreateRequest,
+    CardPairCreateRequest,
     FlashcardDraftRequest,
     FlashcardDraftResponse,
     QuizGenerateRequest,
@@ -355,6 +356,33 @@ def create_card(payload: CardCreateRequest) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"card": card}
+
+
+@router.post("/api/srs/cards/pair")
+def create_card_pair(payload: CardPairCreateRequest) -> Dict[str, Any]:
+    """Create a reverse-pair: one Q→A card plus its swapped A→Q twin
+    and a card_pairs link. Both cards land in srs_cards as separate
+    rows with independent FSRS state. The response includes both
+    fully-hydrated card rows so the client can drop them straight
+    into its cached list. PR 5.2 / ADR 0003.
+    """
+    try:
+        with db.get_db() as conn:
+            result = study_service.create_card_pair(
+                conn,
+                front=payload.front,
+                back=payload.back,
+                concept_id=payload.concept_id,
+                card_type=payload.card_type,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "primary": result["primary"],
+        "reverse": result["reverse"],
+        "primary_id": result["primary_id"],
+        "reverse_id": result["reverse_id"],
+    }
 
 
 @router.delete("/api/srs/cards/{card_id}")

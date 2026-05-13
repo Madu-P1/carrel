@@ -180,16 +180,19 @@ class ClozeBackendTests(unittest.TestCase):
         self.assertIn("{{c1::powerhouse}}", card["front"])
 
     def test_create_card_rejects_unknown_kind(self) -> None:
-        """Defense in depth: api_models.CardCreateRequest enums to
-        ('qa', 'cloze'), but the service must reject anything else
-        in case a future caller bypasses the route layer."""
+        """Defense in depth: api_models.CardCreateRequest enums kind to
+        a fixed Literal, but the service must reject anything else in
+        case a future caller bypasses the route layer. PR 5.2 widened
+        the allowlist to include 'reverse'; this test now uses an
+        always-unknown sentinel so it stays meaningful as the allowlist
+        grows."""
         with main.get_db() as conn:
             with self.assertRaises(ValueError):
                 create_card(
                     conn,
                     front="x",
                     back="y",
-                    kind="reverse",
+                    kind="image-occlusion",
                 )
 
     # ------------------------------------------------------------------

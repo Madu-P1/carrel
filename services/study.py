@@ -335,9 +335,16 @@ def create_card(
     one source). `kind='qa'` accepts any non-empty front/back as today.
     The route layer (api_models.CardCreateRequest) limits kind to the
     enum; this service is the second guard.
+
+    PR 5.2 (ADR 0003) widened the allowlist to include 'reverse'. The
+    SQL CHECK on srs_cards.kind was dropped in migration 0018; the
+    allowlist below is now the only validation surface alongside the
+    Pydantic Literal. Future card kinds add a value to this tuple.
     """
-    if kind not in ("qa", "cloze"):
-        raise ValueError(f"kind must be 'qa' or 'cloze', got {kind!r}")
+    if kind not in ("qa", "cloze", "reverse"):
+        raise ValueError(
+            f"kind must be 'qa', 'cloze', or 'reverse', got {kind!r}"
+        )
     cleaned_front = (front or "").strip()
     cleaned_back = (back or "").strip()
     if not cleaned_front or not cleaned_back:
@@ -407,3 +414,127 @@ def create_card(
     item["front"] = _normalize_card_text(item["front"], replacements)
     item["back"] = _normalize_card_text(item["back"], replacements)
     return item
+
+
+def create_card_pair(
+    conn: sqlite3.Connection,
+    *,
+    front: str,
+    back: str,
+    concept_id: Optional[str] = None,
+    card_type: str = "custom",
+) -> Dict[str, Any]:
+    """Insert a Q→A card AND its reverse A→Q twin, plus a card_pairs link.
+
+    All three inserts run inside one savepoint so a failure rolls back
+    every row. The pair row uses the lexicographically smaller id as
+    `card_a_id` to satisfy the CHECK (card_a_id < card_b_id) invariant
+    from migration 0018.
+
+    PR 5.2 (ADR 0003). The primary card is the user-typed direction
+    (front→back, kind='qa'); the reverse is the same content with
+    front/back swapped and kind='reverse'. Each row carries its own
+    FSRS state — they schedule independently, which mirrors the
+    real-world case where you remember a term but not its inverse.
+
+    Returns {"primary": <card-shape>, "reverse": <card-shape>,
+    "primary_id": str, "reverse_id": str} so the client can drop both
+    rows into its cached list without a round-trip.
+    """
+    cleaned_front = (front or "").strip()
+    cleaned_back = (back or "").strip()
+    if not cleaned_front or not cleaned_back:
+        raise ValueError("front and back must each be non-empty after trimming")
+
+    resolved_concept_id: Optional[str] = None
+    if concept_id:
+        row = conn.execute(
+            "SELECT id FROM concepts WHERE id = ?",
+            (concept_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"concept_id {concept_id!r} does not exist")
+        resolved_concept_id = str(row["id"])
+
+    primary_id = str(uuid.uuid4())
+    reverse_id = str(uuid.uuid4())
+    today = date.today().isoformat()
+
+    # Order the pair so card_a_id < card_b_id (CHECK invariant from 0018).
+    if primary_id < reverse_id:
+        pair_a, pair_b = primary_id, reverse_id
+    else:
+        pair_a, pair_b = reverse_id, primary_id
+
+    conn.execute("SAVEPOINT create_card_pair")
+    try:
+        for new_id, f_text, b_text, kind in (
+            (primary_id, cleaned_front, cleaned_back, "qa"),
+            (reverse_id, cleaned_back, cleaned_front, "reverse"),
+        ):
+            conn.execute(
+                """
+                INSERT INTO srs_cards (
+                    id, concept_id, card_type, kind, front, back,
+                    state, stability, difficulty,
+                    elapsed_days, scheduled_days, reps, lapses,
+                    due_date, confidence
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
+                """,
+                (
+                    new_id,
+                    resolved_concept_id,
+                    card_type,
+                    kind,
+                    f_text,
+                    b_text,
+                    today,
+                    1.0,
+                ),
+            )
+        conn.execute(
+            "INSERT INTO card_pairs (card_a_id, card_b_id) VALUES (?, ?)",
+            (pair_a, pair_b),
+        )
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT create_card_pair")
+        conn.execute("RELEASE SAVEPOINT create_card_pair")
+        raise
+    conn.execute("RELEASE SAVEPOINT create_card_pair")
+    conn.commit()
+
+    replacements = _name_replacements(conn)
+
+    def _read_back(card_id: str) -> Dict[str, Any]:
+        row = conn.execute(
+            """
+            SELECT s.id, s.front, s.back, s.state, s.difficulty, s.reps, s.lapses,
+                   s.due_date, s.last_review, s.card_type, s.kind,
+                   c.id AS concept_id, c.name AS concept,
+                   d.id AS document_id, d.filename AS document_name,
+                   d.subject_name
+            FROM srs_cards s
+            LEFT JOIN concepts c ON s.concept_id = c.id
+            LEFT JOIN documents d ON c.doc_id = d.id
+            WHERE s.id = ?
+            """,
+            (card_id,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(f"freshly-inserted card {card_id} missing on read-back")
+        item = dict(row)
+        item["raw_concept"] = item["concept"]
+        item["concept"] = (
+            clean_concept_label(item["concept"]) if item["concept"] else None
+        )
+        item["front"] = _normalize_card_text(item["front"], replacements)
+        item["back"] = _normalize_card_text(item["back"], replacements)
+        return item
+
+    return {
+        "primary": _read_back(primary_id),
+        "reverse": _read_back(reverse_id),
+        "primary_id": primary_id,
+        "reverse_id": reverse_id,
+    }

@@ -36,7 +36,27 @@ class CardCreateRequest(BaseModel):
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
     card_type: str = Field(default="custom", max_length=64)
-    kind: Literal["qa", "cloze"] = "qa"
+    kind: Literal["qa", "cloze", "reverse"] = "qa"
+
+
+class CardPairCreateRequest(BaseModel):
+    """POST /api/srs/cards/pair payload. The "Reverse pair" mode of the
+    New Card dialog sends a single front/back pair; the server inserts
+    two srs_cards (the primary Q→A and the reverse A→Q) plus one
+    card_pairs row in a single transaction. Both ids come back so the
+    client can drop both rows into its cached list. concept_id +
+    card_type behave the same as CardCreateRequest. PR 5.2 / ADR 0003.
+    """
+
+    front: str = Field(..., min_length=1, max_length=4000)
+    back: str = Field(..., min_length=1, max_length=4000)
+    concept_id: Optional[str] = None
+    card_type: str = Field(default="custom", max_length=64)
+
+
+class CardPairCreateResponse(BaseModel):
+    primary_id: str
+    reverse_id: str
 
 
 class CardAiDraftRequest(BaseModel):

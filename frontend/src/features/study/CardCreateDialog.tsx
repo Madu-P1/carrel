@@ -36,7 +36,10 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
   // shape. "cloze" collapses to a single textarea (the cloze source);
   // the back column is server-mirrored from front so the schema's
   // "both columns non-empty" invariant still holds.
-  const [kind, setKind] = useState<"qa" | "cloze">("qa");
+  // PR 5.2 (ADR 0003) — "reverse" reuses the qa two-textarea layout
+  // but submits to /api/srs/cards/pair, which creates both the
+  // primary Q→A and the swapped A→Q twin in one transaction.
+  const [kind, setKind] = useState<"qa" | "cloze" | "reverse">("qa");
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -57,21 +60,27 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
 
   const clozeMarkerOk = /\{\{c\d+::[^}]+\}\}/.test(front);
   const canSubmit =
-    kind === "qa"
-      ? front.trim().length > 0 && back.trim().length > 0 && !submitting
-      : front.trim().length > 0 && clozeMarkerOk && !submitting;
+    kind === "cloze"
+      ? front.trim().length > 0 && clozeMarkerOk && !submitting
+      : front.trim().length > 0 && back.trim().length > 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      const payload =
-        kind === "cloze"
-          ? { front, back: front, kind: "cloze" as const }
-          : { front, back, kind: "qa" as const };
-      const { card } = await study.createCard(payload);
-      onCreated(card);
+      if (kind === "reverse") {
+        const { primary, reverse } = await study.createCardPair({ front, back });
+        onCreated(primary);
+        onCreated(reverse);
+      } else {
+        const payload =
+          kind === "cloze"
+            ? { front, back: front, kind: "cloze" as const }
+            : { front, back, kind: "qa" as const };
+        const { card } = await study.createCard(payload);
+        onCreated(card);
+      }
       onClose();
     } catch (err) {
       setError((err as Error).message || "Could not create the card. Save it again.");
@@ -116,7 +125,7 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
             keyHint="⌘↵"
             onClick={() => void handleSubmit()}
           >
-            Create card
+            {kind === "reverse" ? "Create pair" : "Create card"}
           </Button>
         </Stack>
       }
@@ -147,15 +156,29 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
           >
             Cloze
           </Button>
+          <Button
+            variant={kind === "reverse" ? "primary" : "ghost"}
+            size="sm"
+            onClick={() => setKind("reverse")}
+            aria-pressed={kind === "reverse"}
+          >
+            Reverse pair
+          </Button>
         </div>
 
         <div className={styles.field}>
           <label className={styles.label} htmlFor={frontId}>
-            {kind === "cloze" ? "Cloze sentence" : "Front"}
+            {kind === "cloze"
+              ? "Cloze sentence"
+              : kind === "reverse"
+                ? "Term"
+                : "Front"}
             <Text tone="tertiary" variant="caption">
               {kind === "cloze"
                 ? "Wrap the blanked term in {{c1::term}}. Both faces render the same sentence."
-                : "The question or prompt. Enter moves to the back."}
+                : kind === "reverse"
+                  ? "The first half of the pair. We'll also create the swapped card automatically."
+                  : "The question or prompt. Enter moves to the back."}
             </Text>
           </label>
           <textarea
@@ -178,12 +201,14 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
           ) : null}
         </div>
 
-        {kind === "qa" ? (
+        {kind === "qa" || kind === "reverse" ? (
           <div className={styles.field}>
             <label className={styles.label} htmlFor={backId}>
-              Back
+              {kind === "reverse" ? "Definition" : "Back"}
               <Text tone="tertiary" variant="caption">
-                The answer you want to recall. Cmd+Enter to save.
+                {kind === "reverse"
+                  ? "The second half of the pair. Cmd+Enter to save both cards."
+                  : "The answer you want to recall. Cmd+Enter to save."}
               </Text>
             </label>
             <textarea
@@ -191,7 +216,11 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
               id={backId}
               onInput={(e) => setBack((e.currentTarget as HTMLTextAreaElement).value)}
               onKeyDown={handleBackKeyDown}
-              placeholder="e.g. The coupon rate is fixed at issuance; the yield reflects the current market price."
+              placeholder={
+                kind === "reverse"
+                  ? "e.g. The interest rate paid on a bond's face value."
+                  : "e.g. The coupon rate is fixed at issuance; the yield reflects the current market price."
+              }
               ref={backRef}
               rows={5}
               value={back}
