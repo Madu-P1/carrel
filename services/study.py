@@ -280,6 +280,13 @@ def delete_card(conn: sqlite3.Connection, card_id: str) -> bool:
 
     Also cleans up the `flashcard_evidence` junction if it exists so we don't
     leave orphan provenance rows pointing at a deleted card.
+
+    PR 5.2 — also cleans up `card_pairs` rows that reference this card.
+    The card_pairs FKs declare ON DELETE CASCADE, but the app does not
+    currently enable PRAGMA foreign_keys globally (see
+    db.py::_apply_connection_pragmas), so the cleanup must happen in
+    application code. The pair row dies; any surviving twin stays alive
+    (its reverse partner is just gone — the pair link no longer exists).
     """
     # flashcard_evidence may or may not exist depending on migration state;
     # be defensive.
@@ -287,12 +294,26 @@ def delete_card(conn: sqlite3.Connection, card_id: str) -> bool:
         conn.execute("DELETE FROM flashcard_evidence WHERE card_id = ?", (card_id,))
     except sqlite3.OperationalError:
         pass
+    # card_pairs landed in migration 0018; be defensive on table_exists
+    # so this code path is safe on older DBs encountered during partial
+    # rollouts or migration-skip test environments.
+    try:
+        conn.execute(
+            "DELETE FROM card_pairs WHERE card_a_id = ? OR card_b_id = ?",
+            (card_id, card_id),
+        )
+    except sqlite3.OperationalError:
+        pass
     cursor = conn.execute("DELETE FROM srs_cards WHERE id = ?", (card_id,))
     return cursor.rowcount > 0
 
 
 def bulk_delete_cards(conn: sqlite3.Connection, card_ids: List[str]) -> int:
-    """Delete many cards in one transaction. Returns deleted row count."""
+    """Delete many cards in one transaction. Returns deleted row count.
+
+    PR 5.2 — cleans up `card_pairs` rows referencing any deleted card,
+    same reasoning as `delete_card`.
+    """
     if not card_ids:
         return 0
     placeholders = ",".join("?" * len(card_ids))
@@ -300,6 +321,14 @@ def bulk_delete_cards(conn: sqlite3.Connection, card_ids: List[str]) -> int:
         conn.execute(
             f"DELETE FROM flashcard_evidence WHERE card_id IN ({placeholders})",
             card_ids,
+        )
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute(
+            f"DELETE FROM card_pairs WHERE card_a_id IN ({placeholders}) "
+            f"OR card_b_id IN ({placeholders})",
+            list(card_ids) + list(card_ids),
         )
     except sqlite3.OperationalError:
         pass

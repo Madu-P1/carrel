@@ -29,8 +29,10 @@ from pathlib import Path
 import main
 from services.ingestion import ingest_document_record
 from services.study import (
+    bulk_delete_cards,
     create_card,
     create_card_pair,
+    delete_card,
 )
 
 _SAMPLE_TEXT = "Anatomy: the femur is the longest bone in the human body."
@@ -367,6 +369,47 @@ class ReverseCardServiceTests(unittest.TestCase):
         self.assertEqual(count, 2)
         self.assertIsNotNone(result["primary_id"])
         self.assertIsNotNone(result["reverse_id"])
+
+    def test_delete_card_cleans_card_pairs_row(self) -> None:
+        """delete_card must remove the card_pairs row that references
+        the deleted card. The schema declares ON DELETE CASCADE, but
+        the app does not enable PRAGMA foreign_keys globally — so the
+        cleanup has to live in application code. This test hits the
+        production code path with no PRAGMA toggle."""
+        with main.get_db() as conn:
+            result = create_card_pair(conn, front="Femur", back="Thigh bone")
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"],
+                1,
+            )
+            self.assertTrue(delete_card(conn, result["primary_id"]))
+            pair_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM card_pairs"
+            ).fetchone()["n"]
+            surviving = conn.execute(
+                "SELECT id FROM srs_cards WHERE id = ?", (result["reverse_id"],)
+            ).fetchone()
+        self.assertEqual(pair_count, 0)
+        self.assertIsNotNone(surviving)
+
+    def test_bulk_delete_cards_cleans_card_pairs(self) -> None:
+        """bulk_delete_cards removes card_pairs rows referencing any
+        deleted card."""
+        with main.get_db() as conn:
+            pair_a = create_card_pair(conn, front="A1", back="A2")
+            pair_b = create_card_pair(conn, front="B1", back="B2")
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"],
+                2,
+            )
+            removed = bulk_delete_cards(
+                conn, [pair_a["primary_id"], pair_b["reverse_id"]]
+            )
+            pair_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM card_pairs"
+            ).fetchone()["n"]
+        self.assertEqual(removed, 2)
+        self.assertEqual(pair_count, 0)
 
     def test_existing_qa_rows_preserved_after_rebuild(self) -> None:
         """The 12-step rebuild in 0018 must preserve every srs_cards row
