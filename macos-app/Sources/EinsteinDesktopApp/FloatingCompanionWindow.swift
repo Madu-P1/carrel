@@ -265,9 +265,14 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
     }
 
     private func nudgeLibraryRefresh() async {
-        // Up to 4 attempts, ~3s total. The hook is set up on the very
-        // first JS line of main.tsx, so this normally lands on attempt
-        // 1; the retries cover cold launches.
+        // Up to 4 attempts, ~3s total. The hook is registered at module
+        // scope in frontend/src/features/library/hooks/useDocumentsQuery.ts,
+        // which the LibraryView imports on mount. Lands on attempt 1 if
+        // Library has been opened at least once this session; the retries
+        // cover the cold-launch window where Library hasn't loaded yet.
+        // If all 4 attempts fail (Library never opened), the doc still
+        // shows when the user opens Library next — the component-mount
+        // refetch picks it up.
         for _ in 0..<4 {
             let landed: Bool = await withCheckedContinuation { continuation in
                 guard let webView = WebViewRegistry.current else {
@@ -317,7 +322,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
             }
             request.httpBody = body
             do {
-                let (_, response) = try await session.data(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse else { return false }
                 if http.statusCode == 403 {
                     // Token went stale (backend restarted). Bust + retry.
@@ -329,8 +334,12 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
                 }
                 let ok = (200..<300).contains(http.statusCode) || http.statusCode == 409
                 if !ok {
+                    // Surface the server's response body so silent ingestion
+                    // failures (415 unsupported type, 422 validation, 500 etc.)
+                    // are diagnosable from Console.app instead of vanishing.
+                    let body = String(data: data, encoding: .utf8)?.prefix(800) ?? ""
                     companionLog.error(
-                        "Upload \(url.lastPathComponent, privacy: .public) failed status=\(http.statusCode, privacy: .public)"
+                        "Upload \(url.lastPathComponent, privacy: .public) failed status=\(http.statusCode, privacy: .public) body=\(String(body), privacy: .public)"
                     )
                 }
                 return ok
