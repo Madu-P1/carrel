@@ -24,9 +24,31 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
+
+
+def compute_staged_diff_hash(project_dir: str) -> str:
+    """Hash the current staged diff so that approval invalidates on staged-content edits.
+
+    Fix for the hash-drift weakness surfaced in operator-followups: previously the
+    hash was computed from the bash command alone, so approving `git commit -m foo`
+    once meant any later staged-file edits got the same approval. Including the
+    staged-diff hash means each distinct staged tree gets its own audit.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--staged", "--no-color"],
+            cwd=project_dir,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return hashlib.sha256(result.stdout).hexdigest()[:16]
+    except Exception:
+        return "no-diff"
 
 
 MAJOR_BASH_PATTERNS = [
@@ -150,12 +172,15 @@ def main() -> None:
         except Exception:
             pass
 
-    # Stable hash of the action
-    canonical = json.dumps(
-        {"tool": tool_name, "input": tool_input},
-        sort_keys=True,
-        ensure_ascii=False,
-    )
+    # Stable hash of the action. For git commit, include the staged-diff hash so
+    # that modifying staged files invalidates a previous approval (fix for the
+    # audit-gate hash-drift weakness in operator-followups.jsonl).
+    canonical_parts: dict = {"tool": tool_name, "input": tool_input}
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "") or ""
+        if re.search(r"\bgit\s+commit\b", cmd, re.IGNORECASE):
+            canonical_parts["staged_diff_hash"] = compute_staged_diff_hash(project_dir)
+    canonical = json.dumps(canonical_parts, sort_keys=True, ensure_ascii=False)
     h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
     if halt_file.exists():

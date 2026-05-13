@@ -49,6 +49,19 @@ When you receive a pending action with `"kind": "outreach"`, write the rejection
 
 If a task surfaces a candidate outreach moment (e.g., "this feature is ready for cohort feedback"), record it as a non-blocking follow-up in `.claude/logs/operator-followups.jsonl` and let the build proceed. The operator will read the follow-up log and decide whether and when to do outreach.
 
+## Checkpoint-commit exception
+
+A "checkpoint commit" is a special class of commit the routine writes BEFORE any voluntary stop, to preserve in-flight state so a chat-clear or session-end does not strand work. They have the message prefix `wip(routine): checkpoint` and bundle whatever was on the working tree at stop time.
+
+For checkpoint commits, run an abbreviated audit:
+
+1. Verify the message starts with `wip(routine): checkpoint`.
+2. Verify the diff is logically coherent: all files belong to one feature or PR theme, OR the message names a clear reason for the bundling.
+3. Confirm tests are not in a regressed state at the moment of the checkpoint (run the local test command, expect either green or the same yellow as the previous commit).
+4. Approve liberally if 1, 2, and 3 hold. The point of a checkpoint is recoverability, not a clean ship.
+
+If a checkpoint commit fails 1, 2, or 3, REJECT with a counter-proposal: "split into N coherent checkpoints" or "drop the unrelated files before checkpointing."
+
 ## How to audit well
 
 1. Read the goal from the pending-action JSON in `.claude/logs/audits/pending/<hash>.json`. Reread the originating ADR in `docs/decisions/` if one was cited.

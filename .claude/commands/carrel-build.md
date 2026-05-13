@@ -18,9 +18,35 @@ Run these in parallel:
 5. `export CARREL_AUTONOMOUS=true` so the hooks activate
 
 Halt and ask the operator if any of:
-- working tree is not clean
 - current branch is `main` or `master`
 - the most recent plan is older than 14 days (stale plan signals stale intent)
+- working tree is dirty AND the dirty files do not share a directory or feature with the most recent commit (ambiguous in-flight state)
+
+If the working tree is dirty but the dirty files clearly continue a recent commit's PR theme OR a current plan task's scope, do NOT halt. Instead:
+
+1. Run `git diff --name-only` to list modified paths.
+2. Run `git log -3 --format='%h %s'` to read the last three commit subjects, AND read the active plan file (most recent file under `docs/plans/`) to see what the next task is.
+3. Match the modified paths against (a) any of the last 3 commits' touched directories, OR (b) the next plan task's named scope (e.g., "PR 6.2 touches StudyView.tsx and usage_events.py"). A match on either is sufficient.
+4. If multiple distinct file groups are dirty (e.g., routine improvements under `.claude/` AND PR 6.x under `frontend/`), commit each group as a separate coherent commit before continuing. The audit-gate fires on each; the auditor's checkpoint-commit exception applies if the message uses `wip(routine): checkpoint` prefix.
+5. Announce "continuing PR <name> from <hash>" or "committing routine improvements then resuming PR <name>" depending on what was found, and proceed.
+6. Run the local test command, run lint, run typecheck. If green, the dirty state is closeable. If not green, finish the missing pieces, then commit.
+7. Continue the normal loop from the next plan task.
+
+## Checkpoint commit before any voluntary stop
+
+Before the routine reports "done for now" (plan exhausted, time cap hit, voluntary stop), the implementer MUST commit whatever is on the working tree as a checkpoint commit so a chat-clear or session-end does not strand work:
+
+```
+git add -A
+git commit -m "wip(routine): checkpoint <plan-section> before stop
+
+<one paragraph: what is in-flight, what state the tests are in,
+where the next implementing agent should resume>"
+```
+
+The audit-gate fires on this commit. Spawn the independent-auditor with the checkpoint context; the auditor's checkpoint-commit exception applies (abbreviated audit, approves liberally if the diff is coherent and tests are not regressed).
+
+A chat-clear or HALT signal AFTER a checkpoint commit means the next /carrel-build session sees a clean tree at preflight and resumes from the next plan task naturally. A chat-clear BEFORE a checkpoint commit means 7+ in-flight files in the working tree and the dirty-tree continuation rule above kicks in.
 
 ## The loop
 
