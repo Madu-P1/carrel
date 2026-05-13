@@ -307,6 +307,119 @@ describe("StudyView", () => {
     dateNowSpy.mockRestore();
   });
 
+  // PR 6.3 — defer button pushes the current card to the end of the
+  // session queue without recording a rating. Visible only after
+  // reveal and only when there's at least one card to defer past.
+  test("defer button pushes the current card to the end of the queue", async () => {
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        {
+          id: "card-A",
+          front: "Q-A",
+          back: "A-A",
+          state: "review",
+          stability: 1,
+          difficulty: 0.5,
+          reps: 0,
+          lapses: 0,
+          due_date: "2026-05-10",
+          concept: "Topic",
+          document_name: "doc.pdf",
+          subject_name: null,
+        },
+        {
+          id: "card-B",
+          front: "Q-B",
+          back: "A-B",
+          state: "review",
+          stability: 1,
+          difficulty: 0.5,
+          reps: 0,
+          lapses: 0,
+          due_date: "2026-05-10",
+          concept: "Topic",
+          document_name: "doc.pdf",
+          subject_name: null,
+        },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    // Card A on top. Reveal it so the defer button shows up.
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    expect(screen.getByText("Q-A")).toBeTruthy();
+    fireEvent.click(card);
+
+    const deferButton = await waitFor(() =>
+      screen.getByRole("button", { name: /Defer this card to the end/i }),
+    );
+    fireEvent.click(deferButton);
+
+    // After defer, B is on the front face; A is still in the queue
+    // (deferred to the end) but not yet visible.
+    await waitFor(() => {
+      expect(screen.getByText("Q-B")).toBeTruthy();
+    });
+    expect(screen.queryByText("Q-A")).toBeNull();
+  });
+
+  test("defer button hides on the last card of the session", async () => {
+    mockJson("GET", "/api/srs/subjects", { subjects: [] });
+    mockJson("GET", "/api/srs/due", {
+      cards: [
+        {
+          id: "only-card",
+          front: "lone front",
+          back: "lone back",
+          state: "review",
+          stability: 1,
+          difficulty: 0.5,
+          reps: 0,
+          lapses: 0,
+          due_date: "2026-05-10",
+          concept: "Topic",
+          document_name: "doc.pdf",
+          subject_name: null,
+        },
+      ],
+    });
+
+    render(<StudyView />);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start a session/i }));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    const card = await waitFor(() =>
+      screen.getByRole("button", { name: /Card showing question/i }),
+    );
+    fireEvent.click(card);
+
+    // Rating row visible (back face) — but defer button is hidden.
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: /Rate your recall/i })).toBeDefined();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Defer this card/i }),
+    ).toBeNull();
+  });
+
   test("error state shows retry affordance", async () => {
     mockJson("GET", "/api/srs/due", () => {
       throw new Error("network down");

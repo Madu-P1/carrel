@@ -177,7 +177,14 @@ export function StudyView() {
     void subjectsQuery.refetch();
   };
 
-  const cards = data.value?.cards ?? [];
+  // PR 6.3 — session-local card ordering. Seeded from the API response
+  // when a new session starts; the user can then reorder via the
+  // "Defer" affordance which pushes the current card to the end of
+  // the queue. While `sessionCards` is null, we fall through to the
+  // raw API list, so existing flows (manage mode, error, empty queue)
+  // behave identically.
+  const [sessionCards, setSessionCards] = useState<SrsDueCard[] | null>(null);
+  const cards = sessionCards ?? data.value?.cards ?? [];
   const currentCard: SrsDueCard | undefined = cards[currentIndex];
 
   // PR 6.1 ETA: median seconds-per-card × cards remaining. Computed
@@ -194,12 +201,40 @@ export function StudyView() {
     setCompletedCount(0);
     setCurrentIndex(0);
     setLastError(null);
+    secondsPerCardRef.current = [];
     await refetch();
-    const count = data.value?.cards.length ?? 0;
-    if (count > 0) {
-      void events.track("srs.review_started", { card_count: count }, "study");
+    const fetched = data.value?.cards ?? [];
+    setSessionCards(fetched.length > 0 ? [...fetched] : null);
+    if (fetched.length > 0) {
+      void events.track("srs.review_started", { card_count: fetched.length }, "study");
     }
-    setPhase(count === 0 ? "done" : "front");
+    setPhase(fetched.length === 0 ? "done" : "front");
+  };
+
+  // PR 6.3 — defer the current card to the end of the session queue.
+  // Splice-out-then-append leaves the next card at the same
+  // `currentIndex` so we don't have to bump it. Resets phase to
+  // "front" so the new card opens with the question. Does NOT call
+  // `study.review` (defer is explicitly not a rating). The deferred
+  // card still shows up later in the session, on the same SRS
+  // schedule the backend would have given it if untouched.
+  const deferCurrentCard = () => {
+    if (!currentCard) return;
+    const cardsRemaining = cards.length - currentIndex;
+    if (cardsRemaining <= 1) return; // only one card left — nothing to defer past
+    setSessionCards((prev) => {
+      const source = prev ?? cards;
+      const next = [...source];
+      const [picked] = next.splice(currentIndex, 1);
+      next.push(picked);
+      return next;
+    });
+    void events.track(
+      "srs.card_deferred",
+      { card_id: currentCard.id, remaining: cardsRemaining - 1 },
+      "study",
+    );
+    setPhase("front");
   };
 
   // Bidirectional flip: front <-> back. The original `revealAnswer` was
@@ -580,13 +615,30 @@ export function StudyView() {
     />
   );
 
+  // PR 6.3 — "Defer" only appears when there's something to defer past.
+  // Hidden on the last card of the session.
+  const canDefer = phase === "back" && currentIndex < cards.length - 1 && !submitting;
+
   const ratingsRow =
     phase === "back" ? (
-      <RatingRow
-        ratings={RATINGS}
-        submitting={submitting}
-        onSelect={(rating) => void rateCard(rating)}
-      />
+      <div className={styles.ratingsRow}>
+        <RatingRow
+          ratings={RATINGS}
+          submitting={submitting}
+          onSelect={(rating) => void rateCard(rating)}
+        />
+        {canDefer ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={deferCurrentCard}
+            aria-label="Defer this card to the end of the session"
+            className={styles.deferButton}
+          >
+            Defer
+          </Button>
+        ) : null}
+      </div>
     ) : null;
 
   const sessionContent = (

@@ -54,6 +54,21 @@
   justify-content: flex-end;
 }
 
+/* PR 6.3 — defer button sits beside the rating row. Stack the row
+   vertically with the rating buttons on top and the defer affordance
+   pinned to the right below, so the visual hierarchy reads
+   "rate this card → or push it to the end". */
+.ratingsRow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.deferButton {
+  align-self: flex-end;
+}
+
 .hero {
   padding: var(--space-4) 0;
 }
