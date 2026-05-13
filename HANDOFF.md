@@ -333,41 +333,27 @@ hook (`restoreSuggestion`) are wired and tested. The blocker:
 with an optional `{ action: { label, onClick } }` field is the
 fix. Small primitive change.
 
-### Reader outline rail empty for most PDFs
+### ~~Reader outline rail empty for most PDFs~~ — SHIPPED
 
-Symptom: open a freshly ingested PDF in the Reader and the left
-outline rail is the collapsed-empty state with the disabled book
-icon. Looks like a bug; isn't. `usePdfDocument.ts:120` calls
-`pdf.getOutline()` (PDF.js's API for the document's bookmark
-tree), which returns `null` for any PDF whose publisher didn't
-embed a TOC. Defaults to `[]`, and `OutlineRail.tsx` renders the
-empty state. Most academic PDFs and almost every scanned PDF hit
-this path.
+Implementation landed in `frontend/src/features/reader/hooks/usePdfDocument.ts`:
+`deriveOutlineFromChunks()` (line 80) is wired as the fallback when
+`pdf.getOutline()` returns null/empty (line 154). Adjacent
+same-section + same-page runs collapse to one node; non-adjacent
+same sections stay separate so the rail reflects reading order.
 
-The fix is a fallback, not a replacement. We already have the
-data: `services/extraction/` tags every chunk with a `section`
-and `page_num`. When `pdf.getOutline()` returns empty, derive an
-outline from chunks:
+Test coverage: `frontend/src/features/reader/hooks/usePdfDocument.test.ts`
+(7 tests, all green) pins the contract — empty input, adjacent
+dedup, non-adjacent kept separate, page-aware dedup key, empty
+section fallback to "Source section", null page_num preservation,
+flat-leaf node structure.
 
-1. Pull chunks from the existing `/api/documents/{id}/chunks`
-   payload the Reader already loads
-2. Group by `section`, dedup adjacent same-section runs
-3. Map to `PdfOutlineNode[]` with the section as title and the
-   first chunk's `page_num` as the destination
-4. Pass through to `OutlineRail` unchanged — the rail doesn't
-   care whether the tree came from PDF.js or from chunks
-
-Files to touch:
-- `frontend/src/features/reader/hooks/usePdfDocument.ts` — when
-  `rawOutline.length === 0`, run the chunk-section fallback
-- `frontend/src/features/reader/components/OutlineRail.tsx` — no
-  changes needed; the data shape is the same
-- Optionally surface a `outlineSource: "embedded" | "derived"`
-  field so the rail can show a small "auto-derived" hint
-
-~30 minutes, ~30 lines. The user benefit is large: every PDF
-gets a navigable outline regardless of how the publisher prepped
-it. Without this, the rail is dead weight on most documents.
+NOT done from the original plan: the optional `outlineSource:
+"embedded" | "derived"` field that would let `OutlineRail` show
+a subtle "auto-derived" hint to the user. Skipped because every
+academic PDF would surface the hint, which is noise; if the rail
+is reliable the user doesn't need to know which path produced it.
+Re-add this only if the derived outlines turn out to be visibly
+worse than embedded ones.
 
 ### Carry-overs from before this session
 
