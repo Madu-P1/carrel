@@ -1,4 +1,5 @@
 import { api } from "@/services/api/client";
+import type { components } from "@/services/api/types.gen";
 import type { CalendarFeed } from "./calendarApi";
 
 /**
@@ -28,22 +29,14 @@ export interface PlanEvent {
   status: "confirmed" | "cancelled" | "tentative";
 }
 
-export interface PlanSuggestion {
-  id: string;
-  kind: "study_block" | "review_block" | "catchup";
-  status: "pending" | "accepted" | "dismissed" | "expired";
-  start_at: string;
-  end_at: string;
-  due_at: string | null;
-  reason_code:
-    | "free_block_overdue_srs"
-    | "deadline_imminent"
-    | "low_recent_review"
-    | "gap_between_classes"
-    | "rebalance_on_miss";
-  reason_text: string;
-  score: number | null;
-}
+/**
+ * Re-export of the auto-generated StudySuggestionRow schema. Single
+ * source of truth: ./script/generate-api-types.sh derives this from
+ * api_models.py:StudySuggestionRow on every verify run, so the
+ * frontend can never drift from the backend Pydantic Literal again
+ * (which used to happen when this was hand-written).
+ */
+export type PlanSuggestion = components["schemas"]["StudySuggestionRow"];
 
 export interface PlanResponse {
   events: PlanEvent[];
