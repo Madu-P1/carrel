@@ -194,9 +194,7 @@ def list_cards(
         # also matching the literal "c1" marker token. The strip is applied
         # to the SQL projection, not the search needle, so qa cards (which
         # contain no markers) compare identically to today.
-        where.append(
-            "(LOWER(_strip_cloze(s.front)) LIKE ? OR LOWER(_strip_cloze(s.back)) LIKE ?)"
-        )
+        where.append("(LOWER(_strip_cloze(s.front)) LIKE ? OR LOWER(_strip_cloze(s.back)) LIKE ?)")
         needle = f"%{search.lower()}%"
         params.extend([needle, needle])
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
@@ -394,17 +392,13 @@ def create_card(
     Pydantic Literal. Future card kinds add a value to this tuple.
     """
     if kind not in ("qa", "cloze", "reverse"):
-        raise ValueError(
-            f"kind must be 'qa', 'cloze', or 'reverse', got {kind!r}"
-        )
+        raise ValueError(f"kind must be 'qa', 'cloze', or 'reverse', got {kind!r}")
     cleaned_front = (front or "").strip()
     cleaned_back = (back or "").strip()
     if not cleaned_front or not cleaned_back:
         raise ValueError("front and back must each be non-empty after trimming")
     if kind == "cloze" and not _CLOZE_MARKER_RE.search(cleaned_front):
-        raise ValueError(
-            "cloze cards must contain at least one {{cN::term}} marker"
-        )
+        raise ValueError("cloze cards must contain at least one {{cN::term}} marker")
 
     card_id = str(uuid.uuid4())
     today = date.today().isoformat()
@@ -577,9 +571,7 @@ def create_card_pair(
             raise RuntimeError(f"freshly-inserted card {card_id} missing on read-back")
         item = dict(row)
         item["raw_concept"] = item["concept"]
-        item["concept"] = (
-            clean_concept_label(item["concept"]) if item["concept"] else None
-        )
+        item["concept"] = clean_concept_label(item["concept"]) if item["concept"] else None
         item["front"] = _normalize_card_text(item["front"], replacements)
         item["back"] = _normalize_card_text(item["back"], replacements)
         return item

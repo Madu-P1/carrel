@@ -13,12 +13,12 @@ marker file the rater can write when it scores 100.
 
 Opt-in: only fires when CARREL_AUTONOMOUS=true.
 """
+
 import json
 import os
 import sys
 import time
 from pathlib import Path
-
 
 MAX_NUDGES_PER_SESSION = 25
 RECENT_PERFECT_WINDOW_S = 1800  # 30 minutes
@@ -27,7 +27,9 @@ RECENT_PERFECT_WINDOW_S = 1800  # 30 minutes
 def has_recent_perfect_score(score_dir: Path) -> bool:
     try:
         now = time.time()
-        for p in sorted(score_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)[:10]:
+        for p in sorted(score_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)[
+            :10
+        ]:
             try:
                 with p.open() as f:
                     s = json.load(f)
@@ -68,12 +70,16 @@ def main() -> None:
     halt_file = project_path / ".claude" / "HALT"
     if halt_file.exists():
         # Let the session stop; surface a system message so the operator sees it.
-        print(json.dumps({
-            "systemMessage": (
-                "Carrel HALT signal present at .claude/HALT. Routine winding down. "
-                "Remove the file before resuming."
+        print(
+            json.dumps(
+                {
+                    "systemMessage": (
+                        "Carrel HALT signal present at .claude/HALT. Routine winding down. "
+                        "Remove the file before resuming."
+                    )
+                }
             )
-        }))
+        )
         sys.exit(0)
 
     if has_recent_perfect_score(score_dir):
@@ -94,30 +100,38 @@ def main() -> None:
 
     if n > MAX_NUDGES_PER_SESSION:
         # Refuse to keep nudging; let stop succeed but warn loudly.
-        print(json.dumps({
-            "systemMessage": (
-                f"Carrel quality-rater nudge cap hit ({MAX_NUDGES_PER_SESSION} per session). "
-                f"The routine iterated without converging on a 100 score. Halt and surface "
-                f"for human review. Status summary should be written to .claude/logs/status.md."
+        print(
+            json.dumps(
+                {
+                    "systemMessage": (
+                        f"Carrel quality-rater nudge cap hit ({MAX_NUDGES_PER_SESSION} per session). "
+                        f"The routine iterated without converging on a 100 score. Halt and surface "
+                        f"for human review. Status summary should be written to .claude/logs/status.md."
+                    )
+                }
             )
-        }))
+        )
         sys.exit(0)
 
     # Nudge: block the stop so Claude continues, with reason that drives a rater spawn.
-    print(json.dumps({
-        "decision": "block",
-        "reason": (
-            "Carrel quality gate: before declaring this work complete, spawn the "
-            "quality-rater subagent in a fresh context with: (1) the original goal, "
-            "(2) the diff produced (git diff HEAD~1 or git diff --cached), (3) test, lint, "
-            "and build results. The rater scores against the 100-point rubric and writes "
-            "JSON to .claude/logs/scores/<feature>-<ts>.json. If total is below 100, iterate "
-            "(refactor, add tests, fix issues, re-debate if needed) until a fresh-context "
-            "spawn returns 100 exactly. Only exit the loop on SHIP. If there is no work to "
-            "rate yet (preflight halt, no feature touched), respond with a brief status "
-            "summary and let the session stop without spawning the rater."
+    print(
+        json.dumps(
+            {
+                "decision": "block",
+                "reason": (
+                    "Carrel quality gate: before declaring this work complete, spawn the "
+                    "quality-rater subagent in a fresh context with: (1) the original goal, "
+                    "(2) the diff produced (git diff HEAD~1 or git diff --cached), (3) test, lint, "
+                    "and build results. The rater scores against the 100-point rubric and writes "
+                    "JSON to .claude/logs/scores/<feature>-<ts>.json. If total is below 100, iterate "
+                    "(refactor, add tests, fix issues, re-debate if needed) until a fresh-context "
+                    "spawn returns 100 exactly. Only exit the loop on SHIP. If there is no work to "
+                    "rate yet (preflight halt, no feature touched), respond with a brief status "
+                    "summary and let the session stop without spawning the rater."
+                ),
+            }
         )
-    }))
+    )
     sys.exit(0)
 
 

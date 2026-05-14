@@ -98,9 +98,7 @@ class ClozeBackendTests(unittest.TestCase):
                 page_count=None,
                 subject_name="Biology",
             )["doc_id"]
-            self.concept_id = _insert_concept(
-                conn, doc_id=self.doc_id, name="Mitochondrion"
-            )
+            self.concept_id = _insert_concept(conn, doc_id=self.doc_id, name="Mitochondrion")
             conn.commit()
 
     def tearDown(self) -> None:
