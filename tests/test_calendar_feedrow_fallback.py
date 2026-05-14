@@ -94,13 +94,14 @@ class CalendarFeedRowFallbackTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_create_feed_falls_back_when_refetch_returns_none(self) -> None:
-        with mock.patch(
-            "routes.calendar.validate_feed_url", side_effect=_ok_validator
-        ), mock.patch(
-            "routes.calendar.sync_service.run_one_feed", return_value=_ok_sync_outcome()
-        ), mock.patch(
-            "routes.calendar.repository.get_feed", return_value=None
-        ), self.assertLogs(_LOGGER_NAME, level="WARNING") as captured:
+        with (
+            mock.patch("routes.calendar.validate_feed_url", side_effect=_ok_validator),
+            mock.patch(
+                "routes.calendar.sync_service.run_one_feed", return_value=_ok_sync_outcome()
+            ),
+            mock.patch("routes.calendar.repository.get_feed", return_value=None),
+            self.assertLogs(_LOGGER_NAME, level="WARNING") as captured,
+        ):
             response = self.client.post(
                 "/api/calendar/feeds",
                 json={
@@ -117,10 +118,11 @@ class CalendarFeedRowFallbackTests(unittest.TestCase):
         self.assertTrue(any("post-insert re-fetch" in m for m in captured.output))
 
     def test_sync_feed_falls_back_when_post_sync_refetch_returns_none(self) -> None:
-        with mock.patch(
-            "routes.calendar.validate_feed_url", side_effect=_ok_validator
-        ), mock.patch(
-            "routes.calendar.sync_service.run_one_feed", return_value=_ok_sync_outcome()
+        with (
+            mock.patch("routes.calendar.validate_feed_url", side_effect=_ok_validator),
+            mock.patch(
+                "routes.calendar.sync_service.run_one_feed", return_value=_ok_sync_outcome()
+            ),
         ):
             created = self.client.post(
                 "/api/calendar/feeds",
@@ -147,12 +149,14 @@ class CalendarFeedRowFallbackTests(unittest.TestCase):
                 return real_get_feed(conn, fid)
             return None
 
-        with mock.patch(
-            "routes.calendar.sync_service.run_one_feed",
-            return_value=_ok_sync_outcome(feed_id),
-        ), mock.patch(
-            "routes.calendar.repository.get_feed", side_effect=fake_get_feed
-        ), self.assertLogs(_LOGGER_NAME, level="WARNING") as captured:
+        with (
+            mock.patch(
+                "routes.calendar.sync_service.run_one_feed",
+                return_value=_ok_sync_outcome(feed_id),
+            ),
+            mock.patch("routes.calendar.repository.get_feed", side_effect=fake_get_feed),
+            self.assertLogs(_LOGGER_NAME, level="WARNING") as captured,
+        ):
             response = self.client.post(f"/api/calendar/feeds/{feed_id}/sync")
 
         self.assertEqual(200, response.status_code, response.text)
@@ -175,9 +179,10 @@ class CalendarFeedRowFallbackTests(unittest.TestCase):
             "END:VCALENDAR\r\n"
         ).encode("utf-8")
 
-        with mock.patch(
-            "routes.calendar.repository.get_feed", return_value=None
-        ), self.assertLogs(_LOGGER_NAME, level="WARNING") as captured:
+        with (
+            mock.patch("routes.calendar.repository.get_feed", return_value=None),
+            self.assertLogs(_LOGGER_NAME, level="WARNING") as captured,
+        ):
             response = self.client.post(
                 "/api/calendar/ics-upload",
                 data={"label": "Apple Calendar", "color": "#4f8cff"},

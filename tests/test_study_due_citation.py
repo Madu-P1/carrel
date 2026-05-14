@@ -87,9 +87,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
                 page_count=None,
                 subject_name="Finance",
             )["doc_id"]
-            self.concept_id = _insert_concept(
-                conn, doc_id=self.doc_id, name="Duration matching"
-            )
+            self.concept_id = _insert_concept(conn, doc_id=self.doc_id, name="Duration matching")
             conn.commit()
 
     def tearDown(self) -> None:
