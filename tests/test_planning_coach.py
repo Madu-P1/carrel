@@ -138,9 +138,7 @@ class CoachStressAwareDurationTests(_CoachTestCase):
         from services.calendar import repository
 
         with db.get_db() as conn:
-            repository.insert_check_in(
-                conn, stress_level=stress, energy_level=energy
-            )
+            repository.insert_check_in(conn, stress_level=stress, energy_level=energy)
 
     def test_recent_high_stress_helper_no_check_ins(self) -> None:
         with db.get_db() as conn:
@@ -159,9 +157,10 @@ class CoachStressAwareDurationTests(_CoachTestCase):
     def test_recent_high_stress_helper_stale_signal_false(self) -> None:
         """Check-in older than STRESS_RECENT_HOURS doesn't trigger."""
         stale_iso = (
-            datetime.now(timezone.utc)
-            - timedelta(hours=coach.STRESS_RECENT_HOURS + 2)
-        ).isoformat().replace("+00:00", "Z")
+            (datetime.now(timezone.utc) - timedelta(hours=coach.STRESS_RECENT_HOURS + 2))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         with db.get_db() as conn:
             conn.execute(
                 """
@@ -202,12 +201,8 @@ class CoachStressAwareDurationTests(_CoachTestCase):
         self._seed_check_in(stress=5)
         with db.get_db() as conn:
             self._seed_overdue_cards(conn, count=3)
-            routine_results = coach._rule_free_block_overdue_srs(
-                conn, user_id="local"
-            )
-            stress_results = coach._rule_stress_aware_duration(
-                conn, user_id="local"
-            )
+            routine_results = coach._rule_free_block_overdue_srs(conn, user_id="local")
+            stress_results = coach._rule_stress_aware_duration(conn, user_id="local")
         self.assertEqual(routine_results, [])
         self.assertEqual(len(stress_results), 1)
 
@@ -235,7 +230,9 @@ class CoachRebalanceMigrationTests(_CoachTestCase):
 
         with db.get_db() as conn:
             now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            soon_iso = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+            soon_iso = (
+                (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+            )
             sug_id = repository.insert_suggestion(
                 conn,
                 kind="catchup",
@@ -354,13 +351,11 @@ class CoachDeadlineImminentTests(_CoachTestCase):
         feed_id: str = "test-deadline-feed",
     ) -> None:
         """Seed a calendar feed + a deadline-keyword event in the window."""
-        deadline_dt = (
-            datetime.now(timezone.utc) + timedelta(days=days_from_now)
-        ).replace(microsecond=0)
+        deadline_dt = (datetime.now(timezone.utc) + timedelta(days=days_from_now)).replace(
+            microsecond=0
+        )
         # Idempotent feed insert.
-        existing = conn.execute(
-            "SELECT 1 FROM calendar_feeds WHERE id = ?", (feed_id,)
-        ).fetchone()
+        existing = conn.execute("SELECT 1 FROM calendar_feeds WHERE id = ?", (feed_id,)).fetchone()
         if not existing:
             conn.execute(
                 """
@@ -399,7 +394,9 @@ class CoachDeadlineImminentTests(_CoachTestCase):
     def test_emits_study_block_for_high_severity_deadline(self) -> None:
         with db.get_db() as conn:
             self._seed_deadline_event(
-                conn, summary="Bio midterm", days_from_now=2,
+                conn,
+                summary="Bio midterm",
+                days_from_now=2,
             )
             results = coach._rule_deadline_imminent(conn, user_id="local")
         self.assertEqual(len(results), 1)
@@ -413,7 +410,9 @@ class CoachDeadlineImminentTests(_CoachTestCase):
     def test_skips_low_severity_deadline_beyond_seven_days(self) -> None:
         with db.get_db() as conn:
             self._seed_deadline_event(
-                conn, summary="Final exam", days_from_now=14,
+                conn,
+                summary="Final exam",
+                days_from_now=14,
             )
             results = coach._rule_deadline_imminent(conn, user_id="local")
         self.assertEqual(results, [])
@@ -421,7 +420,9 @@ class CoachDeadlineImminentTests(_CoachTestCase):
     def test_normal_severity_uses_flat_normal_score(self) -> None:
         with db.get_db() as conn:
             self._seed_deadline_event(
-                conn, summary="Calc test", days_from_now=5,
+                conn,
+                summary="Calc test",
+                days_from_now=5,
             )
             results = coach._rule_deadline_imminent(conn, user_id="local")
         self.assertEqual(len(results), 1)
@@ -540,13 +541,9 @@ class CoachApiE2ETests(unittest.TestCase):
         body = response.json()
 
         codes = [s["reason_code"] for s in body["suggestions"]]
-        self.assertIn(
-            "rebalance_on_miss", codes, f"expected rebalance suggestion, got: {codes}"
-        )
+        self.assertIn("rebalance_on_miss", codes, f"expected rebalance suggestion, got: {codes}")
 
-        rebalance = next(
-            s for s in body["suggestions"] if s["reason_code"] == "rebalance_on_miss"
-        )
+        rebalance = next(s for s in body["suggestions"] if s["reason_code"] == "rebalance_on_miss")
         self.assertEqual(rebalance["kind"], "catchup")
         self.assertIsNotNone(rebalance["score"])
         # Score is normalized against batch max. Rebalance carries the

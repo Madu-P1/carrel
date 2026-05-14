@@ -837,8 +837,8 @@ def list_recent_check_ins(
     recommendations.
     """
     cutoff = (
-        datetime.now(timezone.utc) - timedelta(hours=hours)
-    ).isoformat().replace("+00:00", "Z")
+        (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+    )
     rows = conn.execute(
         """
         SELECT id, user_id, stress_level, energy_level, created_at

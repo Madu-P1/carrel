@@ -344,8 +344,10 @@ def _recent_high_stress(conn: sqlite3.Connection, *, user_id: str) -> bool:
     stress is high). One query, one cutoff, one source of truth.
     """
     cutoff = (
-        datetime.now(timezone.utc) - timedelta(hours=STRESS_RECENT_HOURS)
-    ).isoformat().replace("+00:00", "Z")
+        (datetime.now(timezone.utc) - timedelta(hours=STRESS_RECENT_HOURS))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     row = conn.execute(
         """
         SELECT MAX(stress_level) AS max_stress
@@ -359,9 +361,7 @@ def _recent_high_stress(conn: sqlite3.Connection, *, user_id: str) -> bool:
     return row["max_stress"] >= STRESS_HIGH_THRESHOLD
 
 
-def _rule_deadline_imminent(
-    conn: sqlite3.Connection, *, user_id: str
-) -> List[CandidateSuggestion]:
+def _rule_deadline_imminent(conn: sqlite3.Connection, *, user_id: str) -> List[CandidateSuggestion]:
     """Emit a study_block before each high/normal-severity deadline.
 
     Cherry-picked from the parallel codex branch. Senses deadlines
@@ -414,10 +414,7 @@ def _rule_deadline_imminent(
         suggested_end = _iso_add_minutes(block.start_at, MIN_FREE_BLOCK_MINUTES)
 
         if deadline.severity == "high":
-            urgency_boost = (
-                max(0.0, 3.0 - deadline.days_until)
-                * DEADLINE_SCORE_HIGH_URGENCY_BOOST
-            )
+            urgency_boost = max(0.0, 3.0 - deadline.days_until) * DEADLINE_SCORE_HIGH_URGENCY_BOOST
             score = DEADLINE_SCORE_HIGH_BASE + urgency_boost
         else:
             score = DEADLINE_SCORE_NORMAL
@@ -453,9 +450,7 @@ def _format_relative_days(days_until: float) -> str:
     return f"in {rounded} days"
 
 
-def _rule_rebalance_on_miss(
-    conn: sqlite3.Connection, *, user_id: str
-) -> List[CandidateSuggestion]:
+def _rule_rebalance_on_miss(conn: sqlite3.Connection, *, user_id: str) -> List[CandidateSuggestion]:
     """Coach Phase 2, first holistic loop.
 
     Senses a study-state signal (overdue SRS count beyond a "falling
@@ -506,8 +501,7 @@ def _rule_rebalance_on_miss(
             end_at=suggested_end,
             reason_code="rebalance_on_miss",
             reason_text=(
-                f"{overdue} cards overdue. "
-                f"Block {CATCHUP_BLOCK_MINUTES} minutes today to catch up."
+                f"{overdue} cards overdue. Block {CATCHUP_BLOCK_MINUTES} minutes today to catch up."
             ),
             score=score,
         )

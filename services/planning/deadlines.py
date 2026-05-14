@@ -76,17 +76,20 @@ class Deadline:
     this to surface a delete affordance only on manual deadlines —
     deleting an event-driven one would reappear on the next sync.
     """
-    label: str                  # "Bio midterm", "12 cards overdue"
-    deadline_at: str            # ISO 8601 UTC
-    days_until: float           # may be negative for past-due aggregates
-    source: str                 # "calendar_event" | "srs_overdue"
+
+    label: str  # "Bio midterm", "12 cards overdue"
+    deadline_at: str  # ISO 8601 UTC
+    days_until: float  # may be negative for past-due aggregates
+    source: str  # "calendar_event" | "srs_overdue"
     event_id: str | None = None
-    severity: str = "normal"    # "low" | "normal" | "high"
+    severity: str = "normal"  # "low" | "normal" | "high"
     feed_kind: str | None = None  # 'url' | 'local' | 'manual' | None
 
 
 def detect_upcoming_deadlines(
-    conn: sqlite3.Connection, *, user_id: str = "local",
+    conn: sqlite3.Connection,
+    *,
+    user_id: str = "local",
     now: datetime | None = None,
 ) -> list[Deadline]:
     """Pull every signal-bearing deadline within the next N days.
@@ -176,9 +179,7 @@ def _calendar_event_deadlines(
     return out
 
 
-def _srs_overdue_aggregate(
-    conn: sqlite3.Connection, *, now: datetime
-) -> Deadline | None:
+def _srs_overdue_aggregate(conn: sqlite3.Connection, *, now: datetime) -> Deadline | None:
     """Aggregate the user's overdue SRS pile into one deadline-shaped
     record. The "deadline" is today (now) since each card is already
     past-due; severity scales with count.

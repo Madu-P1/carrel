@@ -70,9 +70,7 @@ class CheckInRepositoryTests(_CheckInTestCase):
 
     def test_insert_returns_id_and_persists_row(self) -> None:
         with db.get_db() as conn:
-            check_in_id = repository.insert_check_in(
-                conn, stress_level=3, energy_level=4
-            )
+            check_in_id = repository.insert_check_in(conn, stress_level=3, energy_level=4)
             row = conn.execute(
                 "SELECT stress_level, energy_level FROM session_check_ins WHERE id = ?",
                 (check_in_id,),
@@ -112,8 +110,10 @@ class CheckInRepositoryTests(_CheckInTestCase):
             # Insert a fresh row, then a stale row by direct manipulation.
             fresh_id = repository.insert_check_in(conn, stress_level=3, energy_level=3)
             stale_iso = (
-                datetime.now(timezone.utc) - timedelta(hours=48)
-            ).isoformat().replace("+00:00", "Z")
+                (datetime.now(timezone.utc) - timedelta(hours=48))
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
             conn.execute(
                 """
                 INSERT INTO session_check_ins (id, user_id, stress_level, energy_level, created_at)
