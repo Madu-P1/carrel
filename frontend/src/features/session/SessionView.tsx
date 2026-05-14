@@ -23,7 +23,6 @@ import {
 
 import { DurationChips } from "./components/DurationChips";
 import { ModeCard, type ModeCardData } from "./components/ModeCard";
-import { NotesWorkspace } from "./components/NotesWorkspace";
 import { TimerRing } from "./components/TimerRing";
 import styles from "./SessionView.module.css";
 
@@ -44,14 +43,14 @@ import styles from "./SessionView.module.css";
  * Mode mapping to backend:
  *   pomodoro    → focus_sprint
  *   flowtime    → mixed
- *   notes       → focus_sprint  (UI branches, backend doesn't care)
  *   flashcards  → retrieval_practice
  *
  * The frontend mode identifier is kept separate from the backend mode
- * because "notes" is a UI concern, not a scheduler concern.
+ * because the UI mode (timer style vs flashcards) is a presentation
+ * concern, not a scheduler concern.
  */
 
-type UiMode = "pomodoro" | "flowtime" | "notes" | "flashcards";
+type UiMode = "pomodoro" | "flowtime" | "flashcards";
 
 const MODES: ModeCardData[] = [
   {
@@ -67,12 +66,6 @@ const MODES: ModeCardData[] = [
     iconName: "sparkle",
   },
   {
-    id: "notes",
-    title: "Notes",
-    purpose: "Writing-first; expand the draft from your sources.",
-    iconName: "doc",
-  },
-  {
     id: "flashcards",
     title: "Flashcards",
     purpose: "Spaced repetition through what's due.",
@@ -85,7 +78,6 @@ const DURATIONS = [15, 25, 45, 60];
 const UI_TO_BACKEND_MODE: Record<UiMode, string> = {
   pomodoro: "focus_sprint",
   flowtime: "mixed",
-  notes: "focus_sprint",
   flashcards: "retrieval_practice",
 };
 
@@ -105,9 +97,17 @@ function decodeObjective(stored: string | null | undefined): {
   text: string;
 } {
   if (!stored) return { uiMode: null, text: "" };
-  const match = stored.match(/^\[ui:(pomodoro|flowtime|notes|flashcards)\]\s*(.*)$/);
+  // Lenient prefix match: strip any `[ui:...]` tag so a legacy mode
+  // (e.g. the removed "notes") never leaks into the displayed
+  // objective; only resolve a uiMode when it is still a known one.
+  const match = stored.match(/^\[ui:([a-z]+)\]\s*(.*)$/);
   if (match) {
-    return { uiMode: match[1] as UiMode, text: match[2] };
+    const candidate = match[1];
+    const uiMode: UiMode | null =
+      candidate === "pomodoro" || candidate === "flowtime" || candidate === "flashcards"
+        ? candidate
+        : null;
+    return { uiMode, text: match[2] };
   }
   return { uiMode: null, text: stored };
 }
@@ -376,7 +376,7 @@ function SetupForm({
   error,
   onBegin,
 }: SetupFormProps) {
-  const showDuration = selectedMode === "pomodoro" || selectedMode === "notes";
+  const showDuration = selectedMode === "pomodoro";
   const scopeSubjects = useMemo(() => subjectsForScope(subjects), [subjects]);
 
   /*
@@ -468,7 +468,7 @@ function SetupForm({
             onInput={(event) =>
               onObjective((event.currentTarget as HTMLInputElement).value)
             }
-            placeholder="e.g. Cover chapter 7 — bond valuation"
+            placeholder="e.g. Cover chapter 7: bond valuation"
             autoComplete="off"
           />
         </label>
@@ -528,9 +528,7 @@ function ActiveBody({
       ? "focus"
       : uiMode === "flowtime"
         ? "flow"
-        : uiMode === "notes"
-          ? "writing"
-          : "review";
+        : "review";
 
   return (
     <div className={styles.active}>
@@ -564,10 +562,6 @@ function ActiveBody({
           {error ? <div className={styles.inlineError}>{error}</div> : null}
         </div>
       </div>
-
-      {uiMode === "notes" ? (
-        <NotesWorkspace sessionId={active.id} sessionObjective={decodedObjective} />
-      ) : null}
 
       {uiMode === "flashcards" ? <FlashcardsPanel /> : null}
     </div>

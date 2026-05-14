@@ -35,6 +35,7 @@ class CardCreateRequest(BaseModel):
     front: str = Field(..., min_length=1, max_length=4000)
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
+    doc_id: Optional[str] = None
     card_type: str = Field(default="custom", max_length=64)
     kind: Literal["qa", "cloze", "reverse"] = "qa"
 
@@ -51,6 +52,7 @@ class CardPairCreateRequest(BaseModel):
     front: str = Field(..., min_length=1, max_length=4000)
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
+    doc_id: Optional[str] = None
     card_type: str = Field(default="custom", max_length=64)
 
 

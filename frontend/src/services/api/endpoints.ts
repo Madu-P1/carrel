@@ -729,7 +729,34 @@ export interface SavedNote {
   content: string;
 }
 
+/** Full note row returned by `GET /api/notes` (services/tutor.py::fetch_notes).
+ *  document_name / concept_name are JOINed in for display and are null when
+ *  the note is not anchored to a document / concept. */
+export interface NoteRecord {
+  id: string;
+  doc_id: string | null;
+  concept_id: string | null;
+  title: string;
+  content: string;
+  source_snippet: string | null;
+  note_type: string;
+  goal_id: string | null;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+  document_name: string | null;
+  concept_name: string | null;
+}
+
 export const notes = {
+  list: (params: { doc_id?: string; concept_id?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.doc_id) query.set("doc_id", params.doc_id);
+    if (params.concept_id) query.set("concept_id", params.concept_id);
+    if (params.limit != null) query.set("limit", String(params.limit));
+    const suffix = query.toString();
+    return api<{ notes: NoteRecord[] }>(`/api/notes${suffix ? `?${suffix}` : ""}`);
+  },
   save: (payload: SaveNotePayload) =>
     api<{ note: SavedNote }>("/api/notes", {
       method: "POST",
@@ -844,6 +871,9 @@ export interface CardCreatePayload {
   back: string;
   /** Optional. Omit to create an orphan card (shows up in "All subjects"). */
   conceptId?: string;
+  /** Optional direct document linkage. Set by the Reader so a manually
+   *  authored card remembers which PDF it came from. */
+  docId?: string;
   /** Optional override. Defaults to "custom" on the server. */
   cardType?: string;
   /** PR 5.1 — render mode. Omit for legacy qa cards (default). */
@@ -855,6 +885,9 @@ export interface CardPairCreatePayload {
   back: string;
   /** Optional. Omit to create an orphan pair (shows up in "All subjects"). */
   conceptId?: string;
+  /** Optional direct document linkage. Set by the Reader so a manually
+   *  authored card remembers which PDF it came from. */
+  docId?: string;
   /** Optional override. Defaults to "custom" on the server. */
   cardType?: string;
 }
@@ -965,6 +998,7 @@ export const study = {
         front: payload.front,
         back: payload.back,
         concept_id: payload.conceptId ?? null,
+        doc_id: payload.docId ?? null,
         card_type: payload.cardType ?? "custom",
         kind: payload.kind ?? "qa"
       }
@@ -982,6 +1016,7 @@ export const study = {
         front: payload.front,
         back: payload.back,
         concept_id: payload.conceptId ?? null,
+        doc_id: payload.docId ?? null,
         card_type: payload.cardType ?? "custom"
       }
     }),

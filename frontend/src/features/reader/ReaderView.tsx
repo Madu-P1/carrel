@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import {
   appShell,
+  clearRememberedReaderDocument,
   clearRightPanelContent,
   rememberReaderDocument,
   toggleLeft,
   toggleRight
 } from "@/app/shell/useAppShell";
+import { ApiError } from "@/services/api/client";
 import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 import { Stack, Text } from "@/design-system";
+import { CardCreateDialog } from "@/features/study/CardCreateDialog";
 
 import { useCardFlight } from "./hooks/useCardFlight";
 import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
@@ -50,6 +53,11 @@ function ReaderDocumentView({
 }: { chunkId?: string | null; nodeId?: number | null; id: string }) {
   const { data, error, loading, refetch } = useReaderDetail(id);
   const detail = data.value;
+  // A 404 from the detail fetch means the id is stale: restored from a
+  // previous session, pointed at a different DB, or a since-deleted
+  // doc. Treated separately from other errors so it routes to the
+  // "no longer available" placeholder, not the raw error card.
+  const notFound = error.value instanceof ApiError && error.value.status === 404;
   const document = detail?.document;
   const chunks = detail?.chunks ?? [];
   const isPdf = document?.file_type?.toLowerCase() === "pdf";
@@ -57,6 +65,7 @@ function ReaderDocumentView({
   const pdfState = usePdfDocument(fileUrl, chunks);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceResolution | null>(null);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const findRequestSerial = readerState.findRequestSerial.value;
   const focusMode = readerState.focusMode.value;
   const leftPanelOpen = appShell.leftOpen.value;
@@ -79,6 +88,7 @@ function ReaderDocumentView({
     setSearchOpen(true);
     void events.track("reader.find_used", { mode }, "reader");
   }, []);
+  const openCardDialog = useCallback(() => setCardDialogOpen(true), []);
 
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
   // animate it to the target chunk.
@@ -92,8 +102,25 @@ function ReaderDocumentView({
   useEffect(() => {
     restoredReaderRef.current = null;
     resetReaderState();
-    rememberReaderDocument(id);
   }, [id]);
+
+  // Persist the doc id only once it has actually loaded. A 404 id must
+  // never be remembered, or it gets restored again on next launch and
+  // the Reader is permanently parked on a dead document.
+  useEffect(() => {
+    if (detail) {
+      rememberReaderDocument(id);
+    }
+  }, [detail, id]);
+
+  // Drop a stale id so it is not restored again next launch. ReaderView
+  // then falls back to the "no source selected" placeholder when there
+  // is no explicit route id.
+  useEffect(() => {
+    if (notFound) {
+      clearRememberedReaderDocument();
+    }
+  }, [notFound]);
 
   useEffect(() => {
     setReaderFocusAvailable(Boolean(detail && isPdf));
@@ -190,12 +217,17 @@ function ReaderDocumentView({
     }
 
     appShell.rightPanelContent.value = (
-      <SourcePanel detail={detail} docId={id} selectedEvidence={selectedEvidence} />
+      <SourcePanel
+        detail={detail}
+        docId={id}
+        selectedEvidence={selectedEvidence}
+        onCreateCard={isPdf ? openCardDialog : undefined}
+      />
     );
     return () => {
       clearRightPanelContent();
     };
-  }, [detail, id, selectedEvidence]);
+  }, [detail, id, selectedEvidence, isPdf, openCardDialog]);
 
   useEffect(() => {
     if (!isPdf || findRequestSerial === 0) return;
@@ -223,6 +255,10 @@ function ReaderDocumentView({
 
   if (loading.value && !detail) {
     return <ReaderLoadingState filename={document?.filename} />;
+  }
+
+  if (notFound) {
+    return <ReaderPlaceholder reason="not-found" />;
   }
 
   if (error.value) {
@@ -273,6 +309,7 @@ function ReaderDocumentView({
             fileType={fileType}
             flightRef={toolbarFlightRef}
             leftPanelOpen={leftPanelOpen}
+            onCreateCard={openCardDialog}
             onOpenSearch={() => openSearch("toolbar")}
             onToggleAppSidebar={toggleLeft}
             onToggleOutline={toggleReaderOutline}
@@ -291,6 +328,13 @@ function ReaderDocumentView({
           </div>
         </div>
       </div>
+      <CardCreateDialog
+        open={cardDialogOpen}
+        activeSubject={null}
+        docId={id}
+        onClose={() => setCardDialogOpen(false)}
+        onCreated={() => {}}
+      />
     </div>
   );
 }

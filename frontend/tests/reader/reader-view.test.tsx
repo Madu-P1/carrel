@@ -189,7 +189,12 @@ test("ReaderView reopens the last selected PDF when no route id is provided", as
 
   const firstView = render(<ReaderView id="pdf-doc" />);
   expect(await screen.findByText(/biology\.pdf/i)).toBeDefined();
-  expect(window.localStorage.getItem("carrel.reader.last-document-id")).toBe("pdf-doc");
+  // rememberReaderDocument now fires once the detail load resolves (so a
+  // 404 id is never persisted), so poll for it rather than reading it
+  // synchronously off the back of the filename render.
+  await waitFor(() => {
+    expect(window.localStorage.getItem("carrel.reader.last-document-id")).toBe("pdf-doc");
+  });
   firstView.unmount();
 
   render(<ReaderView />);
