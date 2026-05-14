@@ -47,6 +47,10 @@ const MESSAGES: Record<string, { title: string; action?: string }> = {
     title: "Grounded tutoring needs an API key.",
     action: "Set ANTHROPIC_API_KEY in your .env, or switch CARREL_AI_PROVIDER to ollama.",
   },
+  ollama_no_api_key: {
+    title: "Ollama Cloud needs a free API key.",
+    action: "Create one at ollama.com/settings/keys, then set OLLAMA_API_KEY in your .env.",
+  },
   grounded_tutor_disabled: {
     title: "Grounded tutoring is turned off.",
     action: "Set CARREL_AI_PROVIDER to claude or ollama in your .env.",

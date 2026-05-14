@@ -45,6 +45,20 @@ class TestCleanConceptLabel:
             == "Contingency Approach"
         )
 
+    def test_phrase_dedup_tolerates_boundary_punctuation(self):
+        # An LLM emitting "X, X" leaves a comma welded to a boundary
+        # token; the repeated-phrase check strips surrounding
+        # punctuation before comparing so the double still folds.
+        assert (
+            clean_concept_label("Contingency Approach, Contingency Approach")
+            == "Contingency Approach"
+        )
+
+    def test_phrase_dedup_collapses_triple_phrase_repeat(self):
+        # Repeat count > 2: a two-word phrase repeated three times
+        # still folds to a single copy.
+        assert clean_concept_label("Signal Path Signal Path Signal Path") == "Signal Path"
+
     def test_non_duplicate_phrase_unchanged(self):
         # Negative case: the cleaner must not over-fold genuine phrases.
         assert clean_concept_label("Foo Bar Baz") == "Foo Bar Baz"

@@ -20,6 +20,8 @@ Design choices specific to Carrel:
 
 Env vars (see `.env.example`):
     OLLAMA_BASE_URL          default "http://127.0.0.1:11434"
+    OLLAMA_API_KEY           default "" — required only for Ollama Cloud
+                             (https://ollama.com); local Ollama ignores it
     OLLAMA_MODEL_FAST        default "llama3.2:3b"
     OLLAMA_MODEL_BALANCED    default "llama3.1:8b"
     OLLAMA_MODEL_DEEP        default "llama3.1:70b"
@@ -141,6 +143,7 @@ class OllamaClient:
         self,
         *,
         base_url: str | None = None,
+        api_key: str | None = None,
         fast_model: str | None = None,
         balanced_model: str | None = None,
         deep_model: str | None = None,
@@ -150,6 +153,11 @@ class OllamaClient:
     ) -> None:
         self._logger = get_logger("ai.ollama")
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        # Only Ollama Cloud (ollama.com) needs an API key; local Ollama
+        # ignores it. When the cloud endpoint is selected without a key,
+        # _chat returns a typed `ollama_no_api_key` error instead of a raw
+        # HTTP 401 so the cause is obvious in the tutor's fallback card.
+        self.api_key = (api_key if api_key is not None else os.getenv("OLLAMA_API_KEY", "")).strip()
         self.fast_model = fast_model or os.getenv("OLLAMA_MODEL_FAST") or DEFAULT_FAST_MODEL
         self.balanced_model = (
             balanced_model or os.getenv("OLLAMA_MODEL_BALANCED") or DEFAULT_BALANCED_MODEL
@@ -168,6 +176,17 @@ class OllamaClient:
         )
         self.keep_alive = keep_alive or os.getenv("OLLAMA_KEEP_ALIVE") or DEFAULT_KEEP_ALIVE
         self._http_client = http_client  # injected in tests
+
+    def _is_cloud_endpoint(self) -> bool:
+        """True when base_url targets Ollama Cloud (ollama.com), which
+        requires OLLAMA_API_KEY. Local and self-hosted Ollama do not."""
+        return "ollama.com" in self.base_url.lower()
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Bearer auth for Ollama Cloud. Empty for keyless local Ollama."""
+        if self.api_key:
+            return {"Authorization": f"Bearer {self.api_key}"}
+        return {}
 
     # ---------- surface parity with ClaudeRouter ----------
 
@@ -418,6 +437,26 @@ class OllamaClient:
         request_id = f"ollama_{uuid.uuid4().hex[:12]}"
         start = time.perf_counter()
 
+        # Guard the real-network path only: when a transport is injected
+        # (tests), the caller owns the HTTP layer, so this is not an
+        # unauthenticated cloud call. Production always has _http_client None.
+        if self._http_client is None and self._is_cloud_endpoint() and not self.api_key:
+            return self._log_and_return(
+                _error_result(
+                    task=task,
+                    model=model,
+                    request_kind=request_kind,
+                    error_code="ollama_no_api_key",
+                    error_message=(
+                        f"OLLAMA_BASE_URL points at Ollama Cloud ({self.base_url}) "
+                        "but OLLAMA_API_KEY is not set. Get a free key at "
+                        "https://ollama.com/settings/keys and add it to your .env."
+                    ),
+                    latency_ms=0.0,
+                    request_id=request_id,
+                )
+            )
+
         payload: dict[str, Any] = {
             "model": model,
             "stream": False,
@@ -519,11 +558,12 @@ class OllamaClient:
 
     def _post_chat(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/api/chat"
+        headers = self._auth_headers()
         if self._http_client is not None:
-            response = self._http_client.post(url, json=payload)
+            response = self._http_client.post(url, json=payload, headers=headers)
         else:
             with httpx.Client(timeout=self.timeout_seconds) as client:
-                response = client.post(url, json=payload)
+                response = client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, dict):

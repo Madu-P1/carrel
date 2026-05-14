@@ -39,6 +39,74 @@ func normalize(_ value: String) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+/// PDFKit's `PDFPage.string` usually emits proper inter-word spaces, but
+/// some PDFs (certain academic publishers, some LaTeX output) draw glyphs
+/// with explicit positioning and never emit space characters at all, so
+/// the text layer comes back as "ofeventsconfrontingmanagers". For those
+/// space-deprived pages this re-derives word spaces from the horizontal
+/// gaps between glyph bounds.
+///
+/// It is deliberately conservative. Pages whose text layer already has a
+/// normal share of spaces are returned untouched: `characterBounds`
+/// reading order is not always consistent with `page.string` order (slide
+/// and title layers scatter glyph positions, and even "135/2009" can
+/// report a phantom 34pt gap mid-number), so geometry is only trusted
+/// where the alternative — a jammed, spaceless text layer — is already
+/// unusable. Newlines are never synthesised; `page.string`'s own newlines
+/// and character order are kept.
+func extractPageText(_ page: PDFPage) -> String {
+    guard let raw = page.string, !raw.isEmpty else { return "" }
+    let charCount = page.numberOfCharacters
+    let ns = raw as NSString
+    // characterBounds(at:) indexes the same space as the page string;
+    // bail to the raw string if PDFKit disagrees on the length.
+    guard charCount > 0, ns.length == charCount else { return raw }
+
+    // Gate: only space-deprived pages get geometry reconstruction. Normal
+    // English prose runs ~13-18% spaces; a broken text layer is far below
+    // that. A conservative 4% floor leaves every well-formed page exactly
+    // as `page.string` returned it, so the common case can never regress.
+    var spaceCount = 0
+    for scalar in raw.unicodeScalars where scalar == " " {
+        spaceCount += 1
+    }
+    guard Double(spaceCount) / Double(charCount) < 0.04 else { return raw }
+
+    var result = String()
+    result.reserveCapacity(ns.length + ns.length / 6)
+    var prev = CGRect.null
+
+    for i in 0..<charCount {
+        let ch = ns.substring(with: NSRange(location: i, length: 1))
+        let isWhitespace = ch.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
+        let bounds = page.characterBounds(at: i)
+        let hasGeometry = !bounds.isNull && !bounds.isInfinite
+
+        if !isWhitespace, hasGeometry, !prev.isNull,
+           let last = result.last, !last.isWhitespace {
+            // Two glyphs share a visual line when their vertical extents
+            // overlap. Comparing midY is wrong: glyph boxes vary with
+            // ascenders and descenders, so even "o" next to "n" can have
+            // different midYs on one line.
+            let verticalOverlap = min(prev.maxY, bounds.maxY) - max(prev.minY, bounds.minY)
+            let minHeight = min(prev.height, bounds.height)
+            let heightScale = max(prev.height, bounds.height)
+            let sameLine = minHeight > 0 && verticalOverlap > minHeight * 0.4
+            let gap = bounds.minX - prev.maxX
+            // A word space is a meaningful fraction of the font size;
+            // intra-word kerning and tracking are much tighter.
+            if sameLine, heightScale > 0, gap > heightScale * 0.25 {
+                result.append(" ")
+            }
+        }
+        result.append(ch)
+        if hasGeometry {
+            prev = bounds
+        }
+    }
+    return result
+}
+
 func cgImage(from image: NSImage) -> CGImage? {
     var proposedRect = NSRect(origin: .zero, size: image.size)
     if let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) {
@@ -54,7 +122,10 @@ func cgImage(from image: NSImage) -> CGImage? {
 func recognizeText(in cgImage: CGImage) throws -> String {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
-    request.usesLanguageCorrection = true
+    // Academic and technical sources are dense with domain jargon and
+    // proper nouns that Vision's language model would "correct" toward
+    // common dictionary words. Raw recognition is more faithful here.
+    request.usesLanguageCorrection = false
     let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     try handler.perform([request])
     let lines = request.results?
@@ -102,7 +173,7 @@ func pdfPayload(url: URL) throws -> BridgePayload {
 
     for index in 0..<document.pageCount {
         guard let page = document.page(at: index) else { continue }
-        let nativeText = normalize(page.string ?? "")
+        let nativeText = normalize(extractPageText(page))
         var ocrText = ""
         var usedOCR = false
         if nativeText.count < 80 {

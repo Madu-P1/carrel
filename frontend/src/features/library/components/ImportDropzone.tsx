@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 
 import { Button, Spinner, Stack, Text, toast } from "@/design-system";
 
+import { notePendingImport } from "../hooks/useDocumentsQuery";
 import { useUploadDocument, type UploadOutcome } from "../hooks/useUploadDocument";
 import styles from "./ImportDropzone.module.css";
 
@@ -136,6 +137,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
     const dupCount = results.filter((r) => r.kind === "duplicate").length;
     if (okCount > 0) {
       onUploaded();
+      notePendingImport();
       const suffix =
         dupCount || errCount
           ? `${dupCount ? ` · ${dupCount} dup${dupCount === 1 ? "" : "s"}` : ""}${errCount ? ` · ${errCount} failed` : ""}`
@@ -158,6 +160,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
     const results = await retryFailed();
     if (results && results.some((r) => r.kind === "ok")) {
       onUploaded();
+      notePendingImport();
     }
   };
 

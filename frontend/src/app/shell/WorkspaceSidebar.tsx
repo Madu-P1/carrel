@@ -232,7 +232,7 @@ function ProviderFooter({
         />
         <span
           className={styles.footerText}
-          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure — this should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
+          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure. This should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
         >
           Backend offline
         </span>

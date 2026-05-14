@@ -50,21 +50,36 @@
 }
 
 /* Light-mode overrides. macOS users on Light Appearance saw a dark
- * cube floating against a light desktop — visually loud and out of
- * step with system appearance. Flipping the neutral tokens here keeps
- * the teal accents (which work on both grounds) but inverts the
- * neutral surface and cell fills. The cube face becomes near-white
- * translucent, cells become subtly dark, and `.cell.bright` flips
- * automatically because it binds to --color-text-primary.
+ * cube against a light desktop: visually loud and out of step with
+ * system appearance. Flipping the neutral tokens keeps the teal
+ * accents (which work on both grounds) but inverts the neutral
+ * surface and cell fills. `.cell.bright` flips automatically because
+ * it binds to --color-text-primary.
  *
- * Path A only — re-evaluation does not happen if the user toggles
- * appearance with the panel open. Path B (Swift pushes effective
- * appearance into a CSS data attribute) is a follow-up; in practice
- * the panel is always open during the user's normal session and they
- * don't toggle Light/Dark mid-session. (T1.2 — Path A.)
- */
+ * Path B: FloatingCompanionWindow observes the WKWebView's effective
+ * appearance and sets `data-appearance` on <html> on every system
+ * Light/Dark switch, because a separate panel WebView does not
+ * reliably re-evaluate prefers-color-scheme on a live switch. The
+ * @media block below is only the fallback for the first paint before
+ * the host's push lands. */
+:root[data-appearance="light"] {
+  --color-bg-elevated:      rgba(247, 247, 250, 0.92);
+  --color-border-subtle:    rgba(0, 0, 0, 0.06);
+  --color-border-default:   rgba(0, 0, 0, 0.10);
+  --color-text-primary:     #1c1c1e;
+  --color-cell-fill:        rgba(0, 0, 0, 0.08);
+  --color-cell-fill-border: rgba(0, 0, 0, 0.12);
+  --color-cell-dim:         rgba(0, 0, 0, 0.03);
+  --color-cell-dim-border:  rgba(0, 0, 0, 0.05);
+  --color-face-inset:       rgba(0, 0, 0, 0.02);
+}
+
 @media (prefers-color-scheme: light) {
-  :root {
+  /* Fallback only: applies before the host pushes data-appearance.
+   * Once the attribute is set, :not([data-appearance]) stops matching
+   * and the explicit rule above (or the dark :root default for
+   * data-appearance="dark") takes over. */
+  :root:not([data-appearance]) {
     --color-bg-elevated:      rgba(247, 247, 250, 0.92);
     --color-border-subtle:    rgba(0, 0, 0, 0.06);
     --color-border-default:   rgba(0, 0, 0, 0.10);
