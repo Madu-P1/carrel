@@ -11,6 +11,7 @@ no external dependencies beyond stdlib. They exercise the three score-loop
 branches (HALT present, nudge-cap exceeded, normal nudge) and the
 outreach/major/destructive/none branches of audit-gate.
 """
+
 import json
 import os
 import shutil
@@ -23,8 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
 
 
-def run_hook(script_name: str, payload: dict, env_extra: dict | None = None,
-             project_dir: str | None = None) -> tuple[int, str, str]:
+def run_hook(
+    script_name: str, payload: dict, env_extra: dict | None = None, project_dir: str | None = None
+) -> tuple[int, str, str]:
     """Invoke a hook script with a JSON stdin payload, return (rc, stdout, stderr)."""
     env = {
         "CARREL_AUTONOMOUS": "true",
@@ -58,7 +60,9 @@ class ScoreLoopEnvelopeTests(unittest.TestCase):
         (self.project_dir / ".claude").mkdir()
         (self.project_dir / ".claude" / "hooks").mkdir()
         # Copy the real hook in so it can write to .claude/logs/ inside the temp dir.
-        shutil.copy(HOOKS_DIR / "score-loop.py", self.project_dir / ".claude" / "hooks" / "score-loop.py")
+        shutil.copy(
+            HOOKS_DIR / "score-loop.py", self.project_dir / ".claude" / "hooks" / "score-loop.py"
+        )
         (self.project_dir / ".claude" / "hooks" / "score-loop.py").chmod(0o755)
 
     def tearDown(self) -> None:
@@ -83,8 +87,9 @@ class ScoreLoopEnvelopeTests(unittest.TestCase):
     def test_normal_nudge_uses_decision_block_not_hookSpecificOutput(self) -> None:
         out = self._run({"hook_event_name": "Stop", "session_id": "test-normal"})
         self.assertNotIn(
-            "hookSpecificOutput", out,
-            "Stop hooks do not accept hookSpecificOutput; use top-level decision/reason."
+            "hookSpecificOutput",
+            out,
+            "Stop hooks do not accept hookSpecificOutput; use top-level decision/reason.",
         )
         self.assertEqual(out.get("decision"), "block")
         self.assertIn("quality-rater", out.get("reason", "").lower())
@@ -130,8 +135,10 @@ class ScoreLoopEnvelopeTests(unittest.TestCase):
             [str(self.project_dir / ".claude" / "hooks" / "score-loop.py")],
             input=json.dumps({"hook_event_name": "Stop"}).encode("utf-8"),
             capture_output=True,
-            env={"CLAUDE_PROJECT_DIR": str(self.project_dir),
-                 "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+            env={
+                "CLAUDE_PROJECT_DIR": str(self.project_dir),
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            },
         )
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stdout.decode("utf-8").strip(), "")
@@ -146,38 +153,50 @@ class AuditGateRoutingTests(unittest.TestCase):
     """
 
     def test_git_commit_classified_major(self) -> None:
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "git commit -m wip"},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git commit -m wip"},
+            },
+        )
         self.assertEqual(rc, 0)
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("MAJOR ACTION GATE", reason)
 
     def test_force_push_classified_destructive(self) -> None:
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "git push --force origin main"},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git push --force origin main"},
+            },
+        )
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("DESTRUCTIVE ACTION GATE", reason)
 
     def test_slack_webhook_classified_outreach(self) -> None:
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "curl -X POST https://hooks.slack.com/services/foo"},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "curl -X POST https://hooks.slack.com/services/foo"},
+            },
+        )
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertIn("OUTREACH SCOPE GATE", reason)
 
     def test_plain_echo_passes_through(self) -> None:
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "echo hello"},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "echo hello"},
+            },
+        )
         self.assertEqual(rc, 0)
         self.assertEqual(stdout.strip(), "")
 
@@ -204,6 +223,7 @@ class AuditGateHashStabilityTests(unittest.TestCase):
 
     def _extract_hash(self, stdout: str) -> str:
         import re as _re
+
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         m = _re.search(r"hash ([0-9a-f]{16})", reason)
@@ -212,47 +232,77 @@ class AuditGateHashStabilityTests(unittest.TestCase):
 
     def test_description_change_does_not_change_hash(self) -> None:
         cmd = "pnpm add some-package"
-        _, stdout1, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd, "description": "alpha label"},
-        }, project_dir=str(self.project_dir))
-        _, stdout2, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd, "description": "beta wording, totally different"},
-        }, project_dir=str(self.project_dir))
+        _, stdout1, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd, "description": "alpha label"},
+            },
+            project_dir=str(self.project_dir),
+        )
+        _, stdout2, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd, "description": "beta wording, totally different"},
+            },
+            project_dir=str(self.project_dir),
+        )
         self.assertEqual(self._extract_hash(stdout1), self._extract_hash(stdout2))
-        pending_files = list((self.project_dir / ".claude" / "logs" / "audits" / "pending").iterdir())
-        self.assertEqual(len(pending_files), 1,
-                         "different descriptions should not produce different pending files")
+        pending_files = list(
+            (self.project_dir / ".claude" / "logs" / "audits" / "pending").iterdir()
+        )
+        self.assertEqual(
+            len(pending_files),
+            1,
+            "different descriptions should not produce different pending files",
+        )
 
     def test_command_change_does_change_hash(self) -> None:
-        _, stdout1, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "pnpm add foo", "description": "same desc"},
-        }, project_dir=str(self.project_dir))
-        _, stdout2, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "pnpm add bar", "description": "same desc"},
-        }, project_dir=str(self.project_dir))
+        _, stdout1, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "pnpm add foo", "description": "same desc"},
+            },
+            project_dir=str(self.project_dir),
+        )
+        _, stdout2, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "pnpm add bar", "description": "same desc"},
+            },
+            project_dir=str(self.project_dir),
+        )
         self.assertNotEqual(self._extract_hash(stdout1), self._extract_hash(stdout2))
 
     def test_approval_with_canonical_hash_allows_relabel(self) -> None:
         # Approval file is keyed by canonical hash (description-free). Re-running
         # with a fresh description should be silently allowed (rc=0, empty stdout).
         cmd = "pnpm add some-package"
-        _, stdout1, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd, "description": "first wording"},
-        }, project_dir=str(self.project_dir))
+        _, stdout1, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd, "description": "first wording"},
+            },
+            project_dir=str(self.project_dir),
+        )
         h = self._extract_hash(stdout1)
         approved = self.project_dir / ".claude" / "logs" / "audits" / "approved" / f"{h}.json"
         approved.write_text(json.dumps({"verdict": "APPROVED", "hash": h}))
-        _, stdout2, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd, "description": "second wording, cosmetic relabel"},
-        }, project_dir=str(self.project_dir))
-        self.assertEqual(stdout2.strip(), "",
-                         "approved canonical hash should pass through after a relabel")
+        _, stdout2, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd, "description": "second wording, cosmetic relabel"},
+            },
+            project_dir=str(self.project_dir),
+        )
+        self.assertEqual(
+            stdout2.strip(), "", "approved canonical hash should pass through after a relabel"
+        )
 
 
 class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
@@ -270,40 +320,44 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
     def test_heredoc_body_git_commit_does_not_fire(self) -> None:
         cmd = (
             "cat > /tmp/score.json << 'EOF'\n"
-            "{\"score\": 100, \"note\": \"considered git commit and migration paths\"}\n"
+            '{"score": 100, "note": "considered git commit and migration paths"}\n'
             "EOF"
         )
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
+        )
         self.assertEqual(rc, 0)
-        self.assertEqual(stdout.strip(), "",
-                         "heredoc-only mention of git commit should not fire")
+        self.assertEqual(stdout.strip(), "", "heredoc-only mention of git commit should not fire")
 
     def test_heredoc_body_pip_install_does_not_fire(self) -> None:
-        cmd = (
-            "cat > /tmp/notes.md << 'EOF'\n"
-            "Reminder: run `pip install` before testing.\n"
-            "EOF"
+        cmd = "cat > /tmp/notes.md << 'EOF'\nReminder: run `pip install` before testing.\nEOF"
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
         )
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
         self.assertEqual(rc, 0)
-        self.assertEqual(stdout.strip(), "",
-                         "heredoc-only mention of pip install should not fire")
+        self.assertEqual(stdout.strip(), "", "heredoc-only mention of pip install should not fire")
 
     def test_real_git_commit_still_fires(self) -> None:
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "git commit -m wip"},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git commit -m wip"},
+            },
+        )
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        self.assertIn("MAJOR ACTION GATE", reason,
-                      "real git commit must still trigger the major gate")
+        self.assertIn(
+            "MAJOR ACTION GATE", reason, "real git commit must still trigger the major gate"
+        )
 
     def test_real_verb_after_heredoc_still_fires(self) -> None:
         cmd = (
@@ -312,46 +366,44 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
             "EOF\n"
             "git commit -m note"
         )
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
+        )
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        self.assertIn("MAJOR ACTION GATE", reason,
-                      "real verb after a heredoc body must still fire")
+        self.assertIn("MAJOR ACTION GATE", reason, "real verb after a heredoc body must still fire")
 
     def test_quoted_heredoc_tag_handled(self) -> None:
         # Both <<'EOF' and <<"EOF" forms must strip the body.
-        cmd = (
-            'cat > /tmp/x.txt << "EOF"\n'
-            "git push --force is something we never do\n"
-            "EOF"
+        cmd = 'cat > /tmp/x.txt << "EOF"\ngit push --force is something we never do\nEOF'
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
         )
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
         self.assertEqual(rc, 0)
-        self.assertEqual(stdout.strip(), "",
-                         "double-quoted heredoc tag must also be stripped")
+        self.assertEqual(stdout.strip(), "", "double-quoted heredoc tag must also be stripped")
 
     def test_dash_form_heredoc_body_does_not_fire(self) -> None:
         # <<-TAG strips leading tabs from the body and the closing tag
         # (bash semantics); our regex allows leading whitespace before
         # the closing tag via `\s*\1\s*`.
-        cmd = (
-            "cat > /tmp/x.txt <<-EOF\n"
-            "\tgit commit body inside dash-form heredoc\n"
-            "\tEOF"
+        cmd = "cat > /tmp/x.txt <<-EOF\n\tgit commit body inside dash-form heredoc\n\tEOF"
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
         )
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
         self.assertEqual(rc, 0)
-        self.assertEqual(stdout.strip(), "",
-                         "<<-EOF dash-form must strip body verbs too")
+        self.assertEqual(stdout.strip(), "", "<<-EOF dash-form must strip body verbs too")
 
     def test_unclosed_heredoc_falls_through_and_fires(self) -> None:
         # No closing EOF: regex cannot match, body is preserved, verb
@@ -359,14 +411,20 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
         # under-fire) — a malformed command in a future routine run
         # cannot smuggle a destructive verb past the gate.
         cmd = "cat > /tmp/x.txt << EOF\ngit commit -m wip\n"
-        rc, stdout, _ = run_hook("audit-gate.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
+        rc, stdout, _ = run_hook(
+            "audit-gate.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
+        )
         out = json.loads(stdout)
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        self.assertIn("MAJOR ACTION GATE", reason,
-                      "unclosed heredoc must fall through and fire (safe direction)")
+        self.assertIn(
+            "MAJOR ACTION GATE",
+            reason,
+            "unclosed heredoc must fall through and fire (safe direction)",
+        )
 
     def test_gh_pr_create_with_heredoc_git_commit_does_not_fold_staged_diff_hash(
         self,
@@ -389,7 +447,7 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
         cmd = (
             "gh pr create --title test --body \"$(cat <<'EOF'\n"
             "Discussion of git commit policy in this PR.\n"
-            "EOF\n)\""
+            'EOF\n)"'
         )
 
         dir_a = tempfile.mkdtemp(prefix="carrel-audit-noinit-")
@@ -401,33 +459,53 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
             # dir_b: init a repo and stage a file so compute_staged_diff_hash
             # produces a non-empty diff hash.
             subprocess.run(
-                ["git", "init", "-q"], cwd=dir_b,
-                capture_output=True, check=True, timeout=10,
+                ["git", "init", "-q"],
+                cwd=dir_b,
+                capture_output=True,
+                check=True,
+                timeout=10,
             )
             (Path(dir_b) / "staged.txt").write_text("staged content for the test\n")
             subprocess.run(
-                ["git", "add", "staged.txt"], cwd=dir_b,
-                capture_output=True, check=True, timeout=10,
+                ["git", "add", "staged.txt"],
+                cwd=dir_b,
+                capture_output=True,
+                check=True,
+                timeout=10,
             )
 
-            _, stdout_a, _ = run_hook("audit-gate.py", {
-                "tool_name": "Bash",
-                "tool_input": {"command": cmd},
-            }, project_dir=dir_a)
-            _, stdout_b, _ = run_hook("audit-gate.py", {
-                "tool_name": "Bash",
-                "tool_input": {"command": cmd},
-            }, project_dir=dir_b)
+            _, stdout_a, _ = run_hook(
+                "audit-gate.py",
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": cmd},
+                },
+                project_dir=dir_a,
+            )
+            _, stdout_b, _ = run_hook(
+                "audit-gate.py",
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": cmd},
+                },
+                project_dir=dir_b,
+            )
 
             import re as _re
+
             out_a = json.loads(stdout_a)
             out_b = json.loads(stdout_b)
-            m_a = _re.search(r"hash ([0-9a-f]{16})", out_a["hookSpecificOutput"]["permissionDecisionReason"])
-            m_b = _re.search(r"hash ([0-9a-f]{16})", out_b["hookSpecificOutput"]["permissionDecisionReason"])
+            m_a = _re.search(
+                r"hash ([0-9a-f]{16})", out_a["hookSpecificOutput"]["permissionDecisionReason"]
+            )
+            m_b = _re.search(
+                r"hash ([0-9a-f]{16})", out_b["hookSpecificOutput"]["permissionDecisionReason"]
+            )
             self.assertIsNotNone(m_a)
             self.assertIsNotNone(m_b)
             self.assertEqual(
-                m_a.group(1), m_b.group(1),
+                m_a.group(1),
+                m_b.group(1),
                 "gh pr create with heredoc-only 'git commit' mention must "
                 "produce a stable hash regardless of git state; otherwise "
                 "the strip is not being applied to the staged_diff_hash branch",
@@ -453,32 +531,52 @@ class AuditGateHeredocFalsePositiveTests(unittest.TestCase):
                 (Path(d) / ".claude" / "logs" / "audits" / "approved").mkdir(parents=True)
                 (Path(d) / ".claude" / "logs" / "audits" / "pending").mkdir(parents=True)
                 subprocess.run(
-                    ["git", "init", "-q"], cwd=d,
-                    capture_output=True, check=True, timeout=10,
+                    ["git", "init", "-q"],
+                    cwd=d,
+                    capture_output=True,
+                    check=True,
+                    timeout=10,
                 )
             (Path(dir_y) / "staged.txt").write_text("staged content\n")
             subprocess.run(
-                ["git", "add", "staged.txt"], cwd=dir_y,
-                capture_output=True, check=True, timeout=10,
+                ["git", "add", "staged.txt"],
+                cwd=dir_y,
+                capture_output=True,
+                check=True,
+                timeout=10,
             )
 
             cmd = "git commit -m sanity"
-            _, stdout_x, _ = run_hook("audit-gate.py", {
-                "tool_name": "Bash",
-                "tool_input": {"command": cmd},
-            }, project_dir=dir_x)
-            _, stdout_y, _ = run_hook("audit-gate.py", {
-                "tool_name": "Bash",
-                "tool_input": {"command": cmd},
-            }, project_dir=dir_y)
+            _, stdout_x, _ = run_hook(
+                "audit-gate.py",
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": cmd},
+                },
+                project_dir=dir_x,
+            )
+            _, stdout_y, _ = run_hook(
+                "audit-gate.py",
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": cmd},
+                },
+                project_dir=dir_y,
+            )
 
             import re as _re
+
             out_x = json.loads(stdout_x)
             out_y = json.loads(stdout_y)
-            m_x = _re.search(r"hash ([0-9a-f]{16})", out_x["hookSpecificOutput"]["permissionDecisionReason"])
-            m_y = _re.search(r"hash ([0-9a-f]{16})", out_y["hookSpecificOutput"]["permissionDecisionReason"])
+            m_x = _re.search(
+                r"hash ([0-9a-f]{16})", out_x["hookSpecificOutput"]["permissionDecisionReason"]
+            )
+            m_y = _re.search(
+                r"hash ([0-9a-f]{16})", out_y["hookSpecificOutput"]["permissionDecisionReason"]
+            )
             self.assertNotEqual(
-                m_x.group(1), m_y.group(1),
+                m_x.group(1),
+                m_y.group(1),
                 "real git commit must fold staged_diff_hash; identical hash "
                 "across distinct staged trees means the approval-laundering "
                 "protection from the prior commit (92186f19) is broken",
@@ -504,30 +602,42 @@ class DebateTriggerFalsePositiveTests(unittest.TestCase):
             "git commit -m \"$(cat <<'EOF'\n"
             "chore(deps): document the managed package dependency story\n\n"
             "Discusses the architecture decision for the data model layer.\n"
-            "EOF\n)\""
+            'EOF\n)"'
         )
-        rc, stdout, _ = run_hook("debate-trigger.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": cmd},
-        })
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+            },
+        )
         self.assertEqual(rc, 0)
         self.assertEqual(stdout.strip(), "", "debate-trigger fired on heredoc free text")
 
     def test_pnpm_add_command_does_fire(self) -> None:
-        rc, stdout, _ = run_hook("debate-trigger.py", {
-            "tool_name": "Bash",
-            "tool_input": {"command": "pnpm add some-package"},
-        })
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "pnpm add some-package"},
+            },
+        )
         out = json.loads(stdout)
         self.assertIn("hookSpecificOutput", out)
         self.assertIn("debate trigger", out["hookSpecificOutput"]["additionalContext"].lower())
 
     def test_editing_manifest_file_does_fire(self) -> None:
-        rc, stdout, _ = run_hook("debate-trigger.py", {
-            "tool_name": "Edit",
-            "tool_input": {"file_path": "/Users/madu/Desktop/Codex/pyproject.toml",
-                           "old_string": "x", "new_string": "y"},
-        })
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {
+                "tool_name": "Edit",
+                "tool_input": {
+                    "file_path": "/Users/madu/Desktop/Codex/pyproject.toml",
+                    "old_string": "x",
+                    "new_string": "y",
+                },
+            },
+        )
         out = json.loads(stdout)
         self.assertIn("hookSpecificOutput", out)
 

@@ -20,6 +20,7 @@ approval file or are hard-blocked.
 Opt-in: only fires when CARREL_AUTONOMOUS=true. Halt-aware: if .claude/HALT
 exists, denies all major actions until removed.
 """
+
 import hashlib
 import json
 import os
@@ -255,12 +256,15 @@ def main() -> None:
         try:
             allow_log = log_dir / "audit-allowed.jsonl"
             allow_log.open("a").write(
-                json.dumps({
-                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "hash": h,
-                    "tool": tool_name,
-                    "kind": kind,
-                }) + "\n"
+                json.dumps(
+                    {
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "hash": h,
+                        "tool": tool_name,
+                        "kind": kind,
+                    }
+                )
+                + "\n"
             )
         except Exception:
             pass
@@ -269,13 +273,19 @@ def main() -> None:
     # Persist pending action so the auditor can pick it up.
     pending = pending_dir / f"{h}.json"
     try:
-        pending.write_text(json.dumps({
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "hash": h,
-            "kind": kind,
-            "tool_name": tool_name,
-            "tool_input": tool_input,
-        }, indent=2, ensure_ascii=False))
+        pending.write_text(
+            json.dumps(
+                {
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "hash": h,
+                    "kind": kind,
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     except Exception:
         pass
 

@@ -12,6 +12,7 @@ ad-hoc Claude Code sessions are not affected.
 Halt: if .claude/HALT exists, injects a halt-requested message instead of
 routing advice.
 """
+
 import json
 import os
 import re
@@ -59,45 +60,63 @@ def main() -> None:
     log_file = log_dir / "routing.jsonl"
 
     rules = [
-        (r"\b(bug|broken|not working|investigate|debug|error|stack ?trace|crash)\b",
-         "/investigate",
-         "bug or debug keyword"),
-        (r"\b(security|vulnerab|injection|XSS|CSRF|auth bypass|secrets?)\b",
-         "/cso (full audit) or /security-review for the current diff",
-         "security keyword"),
-        (r"\b(adversarial review|second opinion|challenge my|/codex)\b",
-         "/codex challenge",
-         "adversarial review request"),
-        (r"\b(ship it|ship this|deploy|release|land it|merge to main)\b",
-         "/ship then /land-and-deploy",
-         "ship or deploy keyword"),
-        (r"\b(plan |planning|architecture decision|design a|architect a)\b",
-         "/claude-mem:make-plan, then /claude-mem:do, or /autoplan for review chain",
-         "planning keyword"),
-        (r"\b(accessib|a11y|WCAG|screen reader|keyboard nav)\b",
-         "design:accessibility-review",
-         "accessibility keyword"),
-        (r"\b(performance|benchmark|slow|latency|profiling|fps drop)\b",
-         "/benchmark",
-         "performance keyword"),
-        (r"\b(visual polish|UX polish|UI polish|design review|design pass)\b",
-         "/design-review",
-         "design review keyword"),
-        (r"\b(QA|test the site|find bugs|smoke test|dogfood)\b",
-         "/qa",
-         "QA keyword"),
-        (r"\b(refactor|simplify|deduplicate|clean ?up)\b",
-         "/simplify followed by /codex challenge",
-         "refactor keyword"),
-        (r"\b(review (this|the) (PR|diff|branch)|code review|review my)\b",
-         "/review",
-         "code review request"),
-        (r"\b(retrospective|retro|weekly summary)\b",
-         "/retro",
-         "retrospective keyword"),
-        (r"\b(document(ation)?|write docs|update README|update CLAUDE\.md)\b",
-         "engineering:documentation",
-         "documentation keyword"),
+        (
+            r"\b(bug|broken|not working|investigate|debug|error|stack ?trace|crash)\b",
+            "/investigate",
+            "bug or debug keyword",
+        ),
+        (
+            r"\b(security|vulnerab|injection|XSS|CSRF|auth bypass|secrets?)\b",
+            "/cso (full audit) or /security-review for the current diff",
+            "security keyword",
+        ),
+        (
+            r"\b(adversarial review|second opinion|challenge my|/codex)\b",
+            "/codex challenge",
+            "adversarial review request",
+        ),
+        (
+            r"\b(ship it|ship this|deploy|release|land it|merge to main)\b",
+            "/ship then /land-and-deploy",
+            "ship or deploy keyword",
+        ),
+        (
+            r"\b(plan |planning|architecture decision|design a|architect a)\b",
+            "/claude-mem:make-plan, then /claude-mem:do, or /autoplan for review chain",
+            "planning keyword",
+        ),
+        (
+            r"\b(accessib|a11y|WCAG|screen reader|keyboard nav)\b",
+            "design:accessibility-review",
+            "accessibility keyword",
+        ),
+        (
+            r"\b(performance|benchmark|slow|latency|profiling|fps drop)\b",
+            "/benchmark",
+            "performance keyword",
+        ),
+        (
+            r"\b(visual polish|UX polish|UI polish|design review|design pass)\b",
+            "/design-review",
+            "design review keyword",
+        ),
+        (r"\b(QA|test the site|find bugs|smoke test|dogfood)\b", "/qa", "QA keyword"),
+        (
+            r"\b(refactor|simplify|deduplicate|clean ?up)\b",
+            "/simplify followed by /codex challenge",
+            "refactor keyword",
+        ),
+        (
+            r"\b(review (this|the) (PR|diff|branch)|code review|review my)\b",
+            "/review",
+            "code review request",
+        ),
+        (r"\b(retrospective|retro|weekly summary)\b", "/retro", "retrospective keyword"),
+        (
+            r"\b(document(ation)?|write docs|update README|update CLAUDE\.md)\b",
+            "engineering:documentation",
+            "documentation keyword",
+        ),
     ]
 
     suggestion = ""
@@ -127,7 +146,7 @@ def main() -> None:
                 "hookEventName": "UserPromptSubmit",
                 "additionalContext": (
                     f"Carrel autonomous routing hint: this task pattern-matched on "
-                    f"\"{reason}\". The most fitting tool is: {suggestion}. "
+                    f'"{reason}". The most fitting tool is: {suggestion}. '
                     f"Invoke it before generic execution unless you have a documented reason to prefer otherwise. "
                     f"If you override, append a counter-rationale to .claude/logs/routing.jsonl."
                 ),

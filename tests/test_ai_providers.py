@@ -246,9 +246,7 @@ class ClaudeRouterFallbackContractTests(unittest.TestCase):
             stop_reason=None,
             request_id=None,
         )
-        with mock.patch.object(
-            ClaudeRouter, "request_text", return_value=ok_text_result
-        ):
+        with mock.patch.object(ClaudeRouter, "request_text", return_value=ok_text_result):
             result = router.request_json(
                 request_kind="test",
                 system="",
