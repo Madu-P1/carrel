@@ -16,6 +16,21 @@ class BulkDeleteCardsRequest(BaseModel):
     ids: List[str] = Field(default_factory=list)
 
 
+class CardBulkResetRequest(BaseModel):
+    """Used by POST /api/srs/cards/bulk-reset-due. The "Redo selected"
+    action on the Manage Cards view sets each card's due_date to today
+    so they re-appear in the user's review queue. SRS state (stability,
+    difficulty, reps, lapses, last_review) is intentionally preserved
+    so the algorithm keeps the cards' learning history.
+
+    Capped at 500 ids per request: anything bigger is a sign the UX is
+    wrong (no one redoes a thousand cards in one batch) and we want a
+    cheap server-side ceiling against accidental fan-out.
+    """
+
+    ids: List[str] = Field(default_factory=list, max_length=500)
+
+
 class CardCreateRequest(BaseModel):
     """POST /api/srs/cards payload. The Manage Cards view posts this from
     the New Card dialog. concept_id is optional; orphan cards are allowed

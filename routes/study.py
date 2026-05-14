@@ -7,6 +7,7 @@ import db
 from ai.providers import get_default_provider
 from api_models import (
     BulkDeleteCardsRequest,
+    CardBulkResetRequest,
     CardAiDraftRequest,
     CardAiDraftResponse,
     CardCreateRequest,
@@ -406,6 +407,22 @@ def bulk_delete_cards(payload: BulkDeleteCardsRequest) -> Dict[str, object]:
         deleted = study_service.bulk_delete_cards(conn, payload.ids)
         conn.commit()
         return {"deleted": deleted}
+
+
+@router.post("/api/srs/cards/bulk-reset-due")
+def bulk_reset_due(payload: CardBulkResetRequest) -> Dict[str, object]:
+    """Make selected cards due today so the user can redo them.
+
+    Preserves SRS state (stability, difficulty, reps, lapses,
+    last_review). Only `due_date` is rewritten to today. Returns the
+    actual row count updated; can be less than len(payload.ids) if
+    some cards were deleted between the user selecting and the
+    request reaching the server.
+    """
+    with db.get_db() as conn:
+        reset = study_service.bulk_reset_due(conn, payload.ids)
+        conn.commit()
+        return {"reset": reset}
 
 
 @router.post("/api/srs/review")

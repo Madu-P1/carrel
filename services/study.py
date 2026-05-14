@@ -2,7 +2,7 @@ import json
 import re
 import sqlite3
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from services.documents import clean_concept_label
@@ -335,6 +335,29 @@ def bulk_delete_cards(conn: sqlite3.Connection, card_ids: List[str]) -> int:
     cursor = conn.execute(
         f"DELETE FROM srs_cards WHERE id IN ({placeholders})",
         card_ids,
+    )
+    return int(cursor.rowcount or 0)
+
+
+def bulk_reset_due(conn: sqlite3.Connection, card_ids: List[str]) -> int:
+    """Make the given cards due today so the user can redo them.
+
+    Updates only `due_date`; the rest of the SRS state (state, stability,
+    difficulty, reps, lapses, last_review) is preserved so the algorithm
+    keeps each card's learning history. The next time the user rates
+    one of these cards via /api/srs/review, the regular FSRS-style
+    scheduler updates from its existing baseline.
+
+    Returns the actual UPDATE row count, which may be less than
+    len(card_ids) if some ids were already gone.
+    """
+    if not card_ids:
+        return 0
+    today = datetime.now(timezone.utc).date().isoformat()
+    placeholders = ",".join("?" * len(card_ids))
+    cursor = conn.execute(
+        f"UPDATE srs_cards SET due_date = ? WHERE id IN ({placeholders})",
+        [today, *card_ids],
     )
     return int(cursor.rowcount or 0)
 

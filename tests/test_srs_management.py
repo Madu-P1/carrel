@@ -11,12 +11,19 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 import main
-from routes.study import bulk_delete_cards, delete_card, list_cards, list_subjects
+from routes.study import (
+    bulk_delete_cards,
+    bulk_reset_due,
+    delete_card,
+    list_cards,
+    list_subjects,
+)
 from services import study as study_service
 from services.ingestion import ingest_document_record
 from services.local_api_security import HEADER_NAME, get_local_api_token
@@ -188,6 +195,71 @@ class ManageCardsServiceTests(unittest.TestCase):
         self.assertEqual(count, len(ids))
         self.assertEqual(self._total_cards(), start_total - len(ids))
 
+    def test_bulk_reset_due_updates_due_date_to_today(self) -> None:
+        """Service-level: redo selected cards. The next time the user
+        reviews them they appear in the due queue regardless of
+        whether the SRS scheduler had moved them weeks out."""
+        with main.get_db() as conn:
+            page = study_service.list_cards(conn, limit=3)
+            ids = [card["id"] for card in page["cards"]]
+            self.assertGreaterEqual(len(ids), 2)
+            # Push the cards' due_date far into the future so the
+            # reset is observable.
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(
+                f"UPDATE srs_cards SET due_date = '2099-01-01' WHERE id IN ({placeholders})",
+                ids,
+            )
+            conn.commit()
+
+            count = study_service.bulk_reset_due(conn, ids)
+            conn.commit()
+            rows = conn.execute(
+                f"SELECT due_date FROM srs_cards WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+
+        today_iso = datetime.now(timezone.utc).date().isoformat()
+        self.assertEqual(count, len(ids))
+        for row in rows:
+            self.assertEqual(row["due_date"], today_iso)
+
+    def test_bulk_reset_due_preserves_srs_state(self) -> None:
+        """Only due_date is rewritten; reps/lapses/stability/last_review
+        are preserved so the SRS algorithm keeps the learning history."""
+        with main.get_db() as conn:
+            page = study_service.list_cards(conn, limit=1)
+            card_id = page["cards"][0]["id"]
+            conn.execute(
+                """
+                UPDATE srs_cards
+                SET reps = 7, lapses = 2, stability = 14.5, difficulty = 0.6,
+                    last_review = '2026-04-01T10:00:00Z'
+                WHERE id = ?
+                """,
+                (card_id,),
+            )
+            conn.commit()
+
+            study_service.bulk_reset_due(conn, [card_id])
+            conn.commit()
+
+            row = conn.execute(
+                "SELECT reps, lapses, stability, difficulty, last_review FROM srs_cards WHERE id = ?",
+                (card_id,),
+            ).fetchone()
+
+        self.assertEqual(row["reps"], 7)
+        self.assertEqual(row["lapses"], 2)
+        self.assertAlmostEqual(row["stability"], 14.5)
+        self.assertAlmostEqual(row["difficulty"], 0.6)
+        self.assertEqual(row["last_review"], "2026-04-01T10:00:00Z")
+
+    def test_bulk_reset_due_empty_list_is_a_noop(self) -> None:
+        with main.get_db() as conn:
+            count = study_service.bulk_reset_due(conn, [])
+        self.assertEqual(count, 0)
+
 
 class ManageCardsRouteTests(unittest.TestCase):
     """End-to-end via the FastAPI router, ensuring the HTTP contract is
@@ -280,6 +352,25 @@ class ManageCardsRouteTests(unittest.TestCase):
         self.assertEqual(repeat.status_code, 200)
         self.assertEqual(repeat.json()["deleted"], 0)
 
+    def test_bulk_reset_due_endpoint_requeues_selected_cards(self) -> None:
+        list_response = self.client.get("/api/srs/cards", params={"limit": 2})
+        ids = [card["id"] for card in list_response.json()["cards"]]
+        response = self.client.post(
+            "/api/srs/cards/bulk-reset-due",
+            json={"ids": ids},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reset"], len(ids))
+
+    def test_bulk_reset_due_rejects_payload_exceeding_max_length(self) -> None:
+        """Pydantic max_length=500 is the cheap server-side ceiling."""
+        too_many = [f"id-{i}" for i in range(501)]
+        response = self.client.post(
+            "/api/srs/cards/bulk-reset-due",
+            json={"ids": too_many},
+        )
+        self.assertEqual(response.status_code, 422)
+
     # Sanity: the imported route callables exist. Keeps this module honest
     # against accidental renames.
     def test_route_callables_are_present(self) -> None:
@@ -287,6 +378,7 @@ class ManageCardsRouteTests(unittest.TestCase):
         self.assertTrue(callable(list_subjects))
         self.assertTrue(callable(delete_card))
         self.assertTrue(callable(bulk_delete_cards))
+        self.assertTrue(callable(bulk_reset_due))
 
     def test_create_card_returns_new_card_and_it_shows_up_in_list(self) -> None:
         response = self.client.post(

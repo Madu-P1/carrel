@@ -670,6 +670,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/srs/cards/bulk-reset-due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Reset Due
+         * @description Make selected cards due today so the user can redo them.
+         *
+         *     Preserves SRS state (stability, difficulty, reps, lapses,
+         *     last_review). Only `due_date` is rewritten to today. Returns the
+         *     actual row count updated; can be less than len(payload.ids) if
+         *     some cards were deleted between the user selecting and the
+         *     request reaching the server.
+         */
+        post: operations["bulk_reset_due_api_srs_cards_bulk_reset_due_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/srs/review": {
         parameters: {
             query?: never;
@@ -1962,6 +1988,22 @@ export interface components {
             status: string;
             /** Error */
             error?: string | null;
+        };
+        /**
+         * CardBulkResetRequest
+         * @description Used by POST /api/srs/cards/bulk-reset-due. The "Redo selected"
+         *     action on the Manage Cards view sets each card's due_date to today
+         *     so they re-appear in the user's review queue. SRS state (stability,
+         *     difficulty, reps, lapses, last_review) is intentionally preserved
+         *     so the algorithm keeps the cards' learning history.
+         *
+         *     Capped at 500 ids per request: anything bigger is a sign the UX is
+         *     wrong (no one redoes a thousand cards in one batch) and we want a
+         *     cheap server-side ceiling against accidental fan-out.
+         */
+        CardBulkResetRequest: {
+            /** Ids */
+            ids?: string[];
         };
         /**
          * CardCreateRequest
@@ -3980,6 +4022,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkDeleteCardsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_reset_due_api_srs_cards_bulk_reset_due_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardBulkResetRequest"];
             };
         };
         responses: {

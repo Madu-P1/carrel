@@ -955,6 +955,17 @@ export const study = {
       body: { ids }
     }),
   /**
+   * Bulk redo: make selected cards due today so they re-appear in the
+   * Review Queue. SRS history is preserved; only `due_date` is rewritten.
+   * Returns actual rows updated (may be less than ids.length if some
+   * cards were deleted between selection and submit).
+   */
+  bulkResetDueCards: (ids: string[]) =>
+    api<{ reset: number }>("/api/srs/cards/bulk-reset-due", {
+      method: "POST",
+      body: { ids }
+    }),
+  /**
    * Create a single card from the Manage Cards "New card" dialog. Orphan
    * cards (no concept) are allowed and surface under the "All" filter.
    */

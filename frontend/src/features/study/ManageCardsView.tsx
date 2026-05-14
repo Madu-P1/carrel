@@ -202,6 +202,25 @@ export function ManageCardsView() {
     }
   };
 
+  const handleBulkRedo = async () => {
+    if (selection.size === 0 || bulkPending) return;
+    setBulkPending(true);
+    const ids = Array.from(selection);
+    try {
+      const result = await study.bulkResetDueCards(ids);
+      setSelection(new Set());
+      toast.success(
+        `${result.reset} card${result.reset === 1 ? "" : "s"} queued to redo`,
+        "They will appear in your next review session.",
+      );
+    } catch (error) {
+      setLoadError((error as Error).message);
+      toast.error("Could not requeue cards", (error as Error).message);
+    } finally {
+      setBulkPending(false);
+    }
+  };
+
   const toggleSelect = (cardId: string) => {
     setSelection((prev) => {
       const next = new Set(prev);
@@ -355,6 +374,16 @@ export function ManageCardsView() {
                 {cards.length > 0 && (
                   <Button variant="ghost" onClick={toggleSelectAllVisible}>
                     {visibleAllSelected ? "Deselect visible" : "Select visible"}
+                  </Button>
+                )}
+                {selection.size > 0 && (
+                  <Button
+                    variant="ghost"
+                    disabled={bulkPending}
+                    onClick={() => void handleBulkRedo()}
+                    leadingIcon={<Icon name="sparkle" />}
+                  >
+                    {bulkPending ? "Working…" : `Redo ${selection.size} selected`}
                   </Button>
                 )}
                 {selection.size > 0 && (
