@@ -2,12 +2,13 @@ import { expect, test } from "vitest";
 
 import { deriveOutlineFromChunks } from "./usePdfDocument";
 
-// Minimal chunk-shape helper. The real ReaderChunk type is
-// NonNullable<DocumentDetail["chunks"]>[number] — many fields, but
+// Minimal chunk-shape helper. The real chunk type has many fields but
 // deriveOutlineFromChunks only reads `section` and `page_num`, so a
-// partial cast is enough to exercise the contract.
-function chunk(section: string, page_num: number | null): any {
-  return { section, page_num };
+// partial cast through the function's own parameter type keeps the
+// test honest without exporting ReaderChunk just for tests.
+type ChunkUnderTest = Parameters<typeof deriveOutlineFromChunks>[0][number];
+function chunk(section: string, page_num: number | null): ChunkUnderTest {
+  return { section, page_num } as ChunkUnderTest;
 }
 
 test("deriveOutlineFromChunks returns empty array for empty input", () => {
