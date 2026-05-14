@@ -50,6 +50,24 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 
 Every PR lands green on the full chain or it does not land.
 
+## Local pre-commit hook
+
+Run once per fresh clone:
+
+```bash
+bash script/install-hooks.sh
+```
+
+This activates the committed hook at `.githooks/pre-commit`. On every
+`git commit` it runs the fast subset of the verify chain on staged
+files only: `ruff format --check`, `ruff check`, and (if frontend
+files staged) `pnpm lint`. The slow checks (typecheck, tests, build,
+benchmarks) stay in CI. Total local budget: <5s.
+
+The hook is committed to the repo so it's identical for every
+contributor. Bypass with `--no-verify` only for genuine emergencies;
+the full CI chain still runs against the push regardless.
+
 ## Benchmarks + budgets
 
 - **Cold launch:** p50 ≤ 800ms target, current 465ms p50, warm 200-250ms. Gate: `script/measure_cold_launch.sh` + `benchmarks/cold_launch_diff.py`.

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Carrel pre-commit hook (committed, shared with all contributors)
+#
+# Activate once per clone:
+#   git config core.hooksPath .githooks
+# Or run:
+#   bash script/install-hooks.sh
+#
+# Runs the fast verify checks on staged files before allowing the
+# commit through. Catches the drift class that has historically hit
+# this repo:
+#   - python format / lint  (ruff)
+#   - frontend lint         (pnpm lint via eslint)
+#
+# Slow checks (pnpm typecheck, pnpm test, pnpm build:macos, pytest)
+# stay in CI. The point of this hook is local speed: <5s gate on
+# commit. The full chain is documented in CLAUDE.md "Verify chain".
+#
+# Bypass:  git commit --no-verify  (only for genuine emergencies)
+# Disable: git config --unset core.hooksPath
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# ANSI colors (auto-disabled when stdout isn't a tty)
+if [ -t 1 ]; then
+  RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+else
+  RED=""; GREEN=""; YELLOW=""; DIM=""; RESET=""
+fi
+
+fail=0
+
+# ---- staged-file detection ---------------------------------------------------
+staged_py=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$' || true)
+staged_fe=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^frontend/.*\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+
+# ---- python: ruff format + ruff check ----------------------------------------
+if [ -n "$staged_py" ]; then
+  if [ ! -x "./.venv/bin/python" ]; then
+    echo "${YELLOW}pre-commit: skipping python checks (./.venv/bin/python not found).${RESET}"
+    echo "${DIM}Run: uv venv && uv pip install -e \".[dev]\" to set up.${RESET}"
+  else
+    echo "${DIM}pre-commit: ruff format --check on staged python...${RESET}"
+    if ! ./.venv/bin/python -m ruff format --check $staged_py; then
+      echo "${RED}pre-commit: ruff format check failed.${RESET}"
+      echo "${YELLOW}Fix with:  ./.venv/bin/python -m ruff format $(echo $staged_py | tr '\n' ' ')${RESET}"
+      fail=1
+    fi
+
+    echo "${DIM}pre-commit: ruff check on staged python...${RESET}"
+    if ! ./.venv/bin/python -m ruff check $staged_py; then
+      echo "${RED}pre-commit: ruff check failed.${RESET}"
+      echo "${YELLOW}Fix with:  ./.venv/bin/python -m ruff check --fix $(echo $staged_py | tr '\n' ' ')${RESET}"
+      fail=1
+    fi
+  fi
+fi
+
+# ---- frontend: pnpm lint (eslint on the whole frontend) ----------------------
+# Why whole-frontend not per-file: the project's eslint config is
+# project-rooted and uses TS project refs. Running eslint on a subset
+# breaks type-aware rules. The full lint takes <2s on Carrel, well
+# inside the pre-commit budget.
+if [ -n "$staged_fe" ]; then
+  if [ ! -d "./frontend/node_modules" ]; then
+    echo "${YELLOW}pre-commit: skipping frontend lint (frontend/node_modules missing).${RESET}"
+    echo "${DIM}Run: cd frontend && corepack pnpm install${RESET}"
+  else
+    echo "${DIM}pre-commit: pnpm lint on frontend...${RESET}"
+    if ! (cd frontend && corepack pnpm lint > /tmp/carrel-precommit-lint.log 2>&1); then
+      echo "${RED}pre-commit: pnpm lint failed.${RESET}"
+      echo "${YELLOW}Output:${RESET}"
+      tail -20 /tmp/carrel-precommit-lint.log
+      echo "${YELLOW}Full output: /tmp/carrel-precommit-lint.log${RESET}"
+      fail=1
+    fi
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "${RED}commit blocked by pre-commit hook${RESET}"
+  echo "${DIM}bypass with --no-verify only for genuine emergencies${RESET}"
+  exit 1
+fi
+
+echo "${GREEN}pre-commit: ok${RESET}"
+exit 0
