@@ -58,6 +58,22 @@ MIN_FREE_BLOCK_MINUTES = 60
 # made on Friday lose the user's trust; cap at 24h ahead.
 LOOKAHEAD_HOURS = 24
 
+# Coach Phase 2 first holistic loop: rebalance_on_miss.
+# Threshold above which the user is treated as "falling behind." Below
+# this, the routine free_block_overdue_srs rule is enough and surfacing
+# a rebalance suggestion would feel like nagging.
+CATCHUP_OVERDUE_THRESHOLD = 5
+
+# Catchup blocks are longer than routine review blocks. A user behind
+# on 10+ cards needs depth, not another 60-min nudge.
+CATCHUP_BLOCK_MINUTES = 90
+
+# Base score for rebalance suggestions. Sits comfortably above
+# free_block_overdue_srs (1.0) so when both fire the rebalance ranks
+# first. Scaling factor below adds up to +1.0 based on backlog size.
+REBALANCE_BASE_SCORE = 2.5
+REBALANCE_BACKLOG_DIVISOR = 10.0
+
 
 @dataclass
 class CandidateSuggestion:
@@ -99,7 +115,8 @@ def synthesize_suggestions(
     """
     rules = [
         _rule_free_block_overdue_srs,
-        # Phase 2 plug points:
+        _rule_rebalance_on_miss,
+        # Phase 2 plug points still pending:
         # _rule_deadline_imminent,
         # _rule_low_recent_review,
         # _rule_gap_between_classes,
@@ -208,6 +225,67 @@ def _rule_free_block_overdue_srs(
                 f"{overdue} card{'s' if overdue != 1 else ''} overdue."
             ),
             score=1.0,
+        )
+    ]
+
+
+def _rule_rebalance_on_miss(
+    conn: sqlite3.Connection, *, user_id: str
+) -> List[CandidateSuggestion]:
+    """Coach Phase 2, first holistic loop.
+
+    Senses a study-state signal (overdue SRS count beyond a "falling
+    behind" threshold), reasons about available capacity in the next
+    24h, acts by surfacing an urgent catchup block longer than the
+    routine review_block suggestion.
+
+    Below CATCHUP_OVERDUE_THRESHOLD cards overdue, _rule_free_block_overdue_srs
+    handles it. Above, this rule overrides with a catchup-kind suggestion
+    that scores comfortably above the routine rule so it ranks first
+    when both fire.
+
+    Score: REBALANCE_BASE_SCORE plus a backlog factor up to +1.0 so
+    deeper backlogs surface more urgently within rebalance suggestions
+    themselves. The factor is capped so a runaway backlog can't dominate
+    other rules (deadline_imminent, when shipped, will outrank both).
+    """
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=LOOKAHEAD_HOURS)
+
+    overdue = _count_overdue_srs(conn)
+    if overdue <= CATCHUP_OVERDUE_THRESHOLD:
+        return []
+
+    free_blocks = _find_free_blocks(
+        conn,
+        window_start=now,
+        window_end=horizon,
+        min_minutes=CATCHUP_BLOCK_MINUTES,
+        user_id=user_id,
+    )
+    if not free_blocks:
+        return []
+
+    block = free_blocks[0]
+    suggested_end = _iso_add_minutes(block.start_at, CATCHUP_BLOCK_MINUTES)
+
+    backlog_factor = min(
+        (overdue - CATCHUP_OVERDUE_THRESHOLD) / REBALANCE_BACKLOG_DIVISOR,
+        1.0,
+    )
+    score = REBALANCE_BASE_SCORE + backlog_factor
+
+    return [
+        CandidateSuggestion(
+            kind="catchup",
+            start_at=block.start_at,
+            end_at=suggested_end,
+            reason_code="rebalance_on_miss",
+            reason_text=(
+                f"{overdue} cards overdue. "
+                f"Block {CATCHUP_BLOCK_MINUTES} minutes today to catch up."
+            ),
+            score=score,
         )
     ]
 

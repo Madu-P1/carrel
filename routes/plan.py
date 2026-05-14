@@ -78,6 +78,22 @@ def _events_to_response(rows: List[repository.EventRow]) -> List[CalendarEventRo
 def _suggestions_to_response(
     rows: List[repository.SuggestionRow],
 ) -> List[StudySuggestionRow]:
+    """Serialize active suggestions for the API.
+
+    Rules in services/planning/coach.py emit raw scores in arbitrary
+    positive ranges so multi-rule pipelines can rank candidates against
+    each other: free_block_overdue_srs uses 1.0, rebalance_on_miss uses
+    2.5+. The API contract clamps score to [0, 1] (Pydantic Field on
+    StudySuggestionRow), so we normalize against the max raw score in
+    the active batch before serializing. Ranking is preserved; absolute
+    score loses meaning but the frontend uses it for sort, not for an
+    "x% complete" display.
+    """
+    raw_scores = [s.score for s in rows if s.score is not None]
+    max_score = max(raw_scores) if raw_scores else 1.0
+    if max_score <= 0:
+        max_score = 1.0  # divide-by-zero guard for pathological inputs
+
     return [
         StudySuggestionRow(
             id=s.id,
@@ -88,7 +104,7 @@ def _suggestions_to_response(
             due_at=s.due_at,
             reason_code=s.reason_code,
             reason_text=s.reason_text,
-            score=s.score,
+            score=(s.score / max_score) if s.score is not None else None,
         )
         for s in rows
     ]

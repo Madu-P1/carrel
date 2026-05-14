@@ -502,8 +502,14 @@ class StudySuggestionRow(BaseModel):
         "deadline_imminent",
         "low_recent_review",
         "gap_between_classes",
+        "rebalance_on_miss",
     ]
     reason_text: str
+    # API contract caps score at [0, 1]. Rules emit raw scores in
+    # arbitrary positive ranges so multi-rule pipelines can rank
+    # candidates against each other; routes/plan.py:_suggestions_to_response
+    # normalizes against the max raw score in the batch before
+    # serialization. Ranking is preserved.
     score: Optional[float] = Field(default=None, ge=0, le=1)
 
 
