@@ -74,6 +74,27 @@ CATCHUP_BLOCK_MINUTES = 90
 REBALANCE_BASE_SCORE = 2.5
 REBALANCE_BACKLOG_DIVISOR = 10.0
 
+# Coach Phase 2.B: stress-aware duration.
+# Stress 4 or 5 (out of 5) triggers shorter sessions. 3 or below stays
+# routine. The check is on MAX(stress_level) in the recent window, so
+# a single high-stress check-in is enough to shift the day.
+STRESS_HIGH_THRESHOLD = 4
+
+# Window for "is the stress signal still fresh." A morning check-in
+# should still affect an evening recommendation; a check-in from 24h
+# ago should not.
+STRESS_RECENT_HOURS = 12
+
+# Pomodoro-length block when high stress is recent. Short enough that
+# the user can commit even when they feel slammed; long enough to
+# clear meaningful work.
+POMODORO_BLOCK_MINUTES = 25
+
+# Score for stress-aware suggestions. Above routine (1.0) so when
+# stress_aware fires the user sees it ranked first, but below
+# rebalance (2.5) so a falling-behind signal still trumps it.
+STRESS_AWARE_SCORE = 1.2
+
 
 @dataclass
 class CandidateSuggestion:
@@ -116,6 +137,7 @@ def synthesize_suggestions(
     rules = [
         _rule_free_block_overdue_srs,
         _rule_rebalance_on_miss,
+        _rule_stress_aware_duration,
         # Phase 2 plug points still pending:
         # _rule_deadline_imminent,
         # _rule_low_recent_review,
@@ -191,7 +213,16 @@ def _rule_free_block_overdue_srs(
     so the user sees "study tonight" not "study tomorrow afternoon"
     when both are options. Phase 2's deadline-aware rule will own the
     "what's the BEST time" question; v1 keeps it simple.
+
+    Phase 2.B addition: defers to _rule_stress_aware_duration when the
+    user reported high stress recently. Avoids surfacing a 60-min
+    review_block when the stress-aware rule will surface a 25-min
+    Pomodoro for the same conditions; user would otherwise see two
+    competing suggestions for the same slot.
     """
+    if _recent_high_stress(conn, user_id=user_id):
+        return []
+
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(hours=LOOKAHEAD_HOURS)
 
@@ -227,6 +258,83 @@ def _rule_free_block_overdue_srs(
             score=1.0,
         )
     ]
+
+
+def _rule_stress_aware_duration(
+    conn: sqlite3.Connection, *, user_id: str
+) -> List[CandidateSuggestion]:
+    """Coach Phase 2.B: shorter sessions when the user reports high stress.
+
+    Sense: any check-in in the last STRESS_RECENT_HOURS with stress
+    >= STRESS_HIGH_THRESHOLD.
+    Reason: a 60-min routine block is the wrong mode when the user is
+    slammed; a 25-min Pomodoro is a tractable commitment.
+    Act: emit a 25-min review_block at the next free slot with
+    STRESS_AWARE_SCORE so it ranks above routine but below rebalance.
+
+    Skips silently when no high-stress check-in exists in the window,
+    when no overdue cards exist (no work to do), or when no 25-min
+    free slot exists in the next 24h.
+    """
+    if not _recent_high_stress(conn, user_id=user_id):
+        return []
+
+    overdue = _count_overdue_srs(conn)
+    if overdue == 0:
+        return []
+
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=LOOKAHEAD_HOURS)
+    free_blocks = _find_free_blocks(
+        conn,
+        window_start=now,
+        window_end=horizon,
+        min_minutes=POMODORO_BLOCK_MINUTES,
+        user_id=user_id,
+    )
+    if not free_blocks:
+        return []
+
+    block = free_blocks[0]
+    suggested_end = _iso_add_minutes(block.start_at, POMODORO_BLOCK_MINUTES)
+
+    return [
+        CandidateSuggestion(
+            kind="review_block",
+            start_at=block.start_at,
+            end_at=suggested_end,
+            reason_code="stress_aware_duration",
+            reason_text=(
+                f"Stress is high. Try a focused {POMODORO_BLOCK_MINUTES}-min "
+                f"review instead of a longer block."
+            ),
+            score=STRESS_AWARE_SCORE,
+        )
+    ]
+
+
+def _recent_high_stress(conn: sqlite3.Connection, *, user_id: str) -> bool:
+    """True if any check-in within STRESS_RECENT_HOURS has stress
+    >= STRESS_HIGH_THRESHOLD.
+
+    Shared between _rule_free_block_overdue_srs (which defers when
+    stress is high) and _rule_stress_aware_duration (which fires when
+    stress is high). One query, one cutoff, one source of truth.
+    """
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=STRESS_RECENT_HOURS)
+    ).isoformat().replace("+00:00", "Z")
+    row = conn.execute(
+        """
+        SELECT MAX(stress_level) AS max_stress
+        FROM session_check_ins
+        WHERE user_id = ? AND created_at >= ?
+        """,
+        (user_id, cutoff),
+    ).fetchone()
+    if row is None or row["max_stress"] is None:
+        return False
+    return row["max_stress"] >= STRESS_HIGH_THRESHOLD
 
 
 def _rule_rebalance_on_miss(

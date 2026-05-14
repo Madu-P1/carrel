@@ -107,6 +107,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (18, "0018_srs_cards_kind_drop_check_and_card_pairs.sql"),
                 (19, "0019_study_suggestions_rebalance.sql"),
                 (20, "0020_session_check_ins.sql"),
+                (21, "0021_study_suggestions_stress_aware.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -142,15 +143,15 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "total"
                 ]
 
-        # +11 for 0008_anchors, 0009_calendar_and_planning,
+        # +12 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
         # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
         # 0016_nodes_typed, 0017_srs_cards_kind,
         # 0018_srs_cards_kind_drop_check_and_card_pairs,
-        # 0019_study_suggestions_rebalance, and
-        # 0020_session_check_ins. All unconditional (no runtime gate
-        # like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 11
+        # 0019_study_suggestions_rebalance, 0020_session_check_ins,
+        # and 0021_study_suggestions_stress_aware. All unconditional
+        # (no runtime gate like sqlite-vec).
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 12
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -190,6 +191,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0018_srs_cards_kind_drop_check_and_card_pairs.sql",
                 "0019_study_suggestions_rebalance.sql",
                 "0020_session_check_ins.sql",
+                "0021_study_suggestions_stress_aware.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

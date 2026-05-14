@@ -125,6 +125,103 @@ class CoachRebalanceOnMissTests(_CoachTestCase):
         self.assertLessEqual(big[0].score, coach.REBALANCE_BASE_SCORE + 1.0)
 
 
+class CoachStressAwareDurationTests(_CoachTestCase):
+    """Coach Phase 2.B rule.
+
+    Senses recent high stress from session_check_ins; reasons that the
+    routine 60-min block is the wrong mode; acts by surfacing a 25-min
+    Pomodoro. Below-threshold stress or no recent check-in lets the
+    routine rule fire as before.
+    """
+
+    def _seed_check_in(self, stress: int, energy: int = 3) -> None:
+        from services.calendar import repository
+
+        with db.get_db() as conn:
+            repository.insert_check_in(
+                conn, stress_level=stress, energy_level=energy
+            )
+
+    def test_recent_high_stress_helper_no_check_ins(self) -> None:
+        with db.get_db() as conn:
+            self.assertFalse(coach._recent_high_stress(conn, user_id="local"))
+
+    def test_recent_high_stress_helper_low_stress_false(self) -> None:
+        self._seed_check_in(stress=2)
+        with db.get_db() as conn:
+            self.assertFalse(coach._recent_high_stress(conn, user_id="local"))
+
+    def test_recent_high_stress_helper_high_stress_true(self) -> None:
+        self._seed_check_in(stress=5)
+        with db.get_db() as conn:
+            self.assertTrue(coach._recent_high_stress(conn, user_id="local"))
+
+    def test_recent_high_stress_helper_stale_signal_false(self) -> None:
+        """Check-in older than STRESS_RECENT_HOURS doesn't trigger."""
+        stale_iso = (
+            datetime.now(timezone.utc)
+            - timedelta(hours=coach.STRESS_RECENT_HOURS + 2)
+        ).isoformat().replace("+00:00", "Z")
+        with db.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO session_check_ins
+                (id, user_id, stress_level, energy_level, created_at)
+                VALUES (?, 'local', 5, 3, ?)
+                """,
+                ("stale-id", stale_iso),
+            )
+            conn.commit()
+            self.assertFalse(coach._recent_high_stress(conn, user_id="local"))
+
+    def test_rule_emits_pomodoro_when_high_stress_and_overdue(self) -> None:
+        self._seed_check_in(stress=4)
+        with db.get_db() as conn:
+            self._seed_overdue_cards(conn, count=3)
+            results = coach._rule_stress_aware_duration(conn, user_id="local")
+        self.assertEqual(len(results), 1)
+        suggestion = results[0]
+        self.assertEqual(suggestion.kind, "review_block")
+        self.assertEqual(suggestion.reason_code, "stress_aware_duration")
+        self.assertAlmostEqual(suggestion.score, coach.STRESS_AWARE_SCORE)
+
+    def test_rule_skips_when_no_high_stress(self) -> None:
+        with db.get_db() as conn:
+            self._seed_overdue_cards(conn, count=3)
+            results = coach._rule_stress_aware_duration(conn, user_id="local")
+        self.assertEqual(results, [])
+
+    def test_rule_skips_when_high_stress_but_no_overdue(self) -> None:
+        self._seed_check_in(stress=5)
+        with db.get_db() as conn:
+            results = coach._rule_stress_aware_duration(conn, user_id="local")
+        self.assertEqual(results, [])
+
+    def test_routine_rule_defers_when_high_stress_recent(self) -> None:
+        """_rule_free_block_overdue_srs skips when stress_aware will fire."""
+        self._seed_check_in(stress=5)
+        with db.get_db() as conn:
+            self._seed_overdue_cards(conn, count=3)
+            routine_results = coach._rule_free_block_overdue_srs(
+                conn, user_id="local"
+            )
+            stress_results = coach._rule_stress_aware_duration(
+                conn, user_id="local"
+            )
+        self.assertEqual(routine_results, [])
+        self.assertEqual(len(stress_results), 1)
+
+    def test_synthesize_returns_stress_aware_not_routine(self) -> None:
+        """End-to-end: high stress flips the routine block to a Pomodoro."""
+        self._seed_check_in(stress=5)
+        with db.get_db() as conn:
+            self._seed_overdue_cards(conn, count=3)
+            candidates = coach.synthesize_suggestions(conn, user_id="local")
+        codes = [c.reason_code for c in candidates]
+        self.assertIn("stress_aware_duration", codes)
+        self.assertNotIn("free_block_overdue_srs", codes)
+
+
 class CoachRebalanceMigrationTests(_CoachTestCase):
     """Pin the reason_code CHECK constraint accepts 'rebalance_on_miss'.
 

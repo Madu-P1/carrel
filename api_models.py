@@ -503,6 +503,7 @@ class StudySuggestionRow(BaseModel):
         "low_recent_review",
         "gap_between_classes",
         "rebalance_on_miss",
+        "stress_aware_duration",
     ]
     reason_text: str
     # API contract caps score at [0, 1]. Rules emit raw scores in
