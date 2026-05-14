@@ -364,6 +364,41 @@ class AFMRequestToolCallTests(unittest.TestCase):
         self.assertIn("grounded answer", sys_text.lower())
         self.assertIn("You are Einstein.", sys_text)
 
+    def test_request_tool_call_includes_input_schema_in_preamble(self) -> None:
+        """Regression: AFM has no native schema enforcement, so the
+        input_schema must appear verbatim in the system prompt or
+        smaller AFM models freely invent key names (e.g., emit
+        `{"flashcards": [...]}` when the schema asks for `cards`).
+        This caused malformed_payload errors against afm-3b in the
+        AI flashcard drafting flow before the fix landed."""
+        captured: dict[str, object] = {}
+
+        def fake_run(cmd, input=None, **kwargs):  # type: ignore[no-untyped-def]
+            captured["input"] = json.loads(input)
+            return _completed(_bridge_ok_payload('{"summary": "ok", "claims": []}'))
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        client.request_tool_call(
+            request_kind="tutor.grounded_answer",
+            system="You are Einstein.",
+            prompt="Explain mitosis.",
+            tool=self.TOOL,
+        )
+        sys_text = captured["input"]["system"]  # type: ignore[index]
+        # The schema property names must appear so the model knows
+        # the exact key names to produce.
+        self.assertIn("summary", sys_text)
+        self.assertIn("claims", sys_text)
+        # The required-keys list must appear so the model knows it
+        # cannot omit them.
+        self.assertIn("required", sys_text)
+        # Schema is rendered as JSON in the preamble so the model has
+        # a single unambiguous reference.
+        self.assertIn('"type": "object"', sys_text)
+
     def test_request_tool_call_rejects_invalid_schema(self) -> None:
         client = AFMClient(bridge_path=Path("/fake/EinsteinAFMBridge"))
         result = client.request_tool_call(

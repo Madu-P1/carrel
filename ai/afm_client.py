@@ -506,13 +506,30 @@ class AFMClient:
         # the system prompt so the on-device model emits a JSON object
         # matching the schema. Same enforcement strategy Ollama already
         # uses, since neither has runtime guided-generation.
+        #
+        # Difference vs Ollama: Ollama passes `response_format=input_schema`
+        # natively so the engine constrains output. AFM has no such
+        # mechanism (Apple Foundation Models lacks runtime guided
+        # generation in macOS 26), so we must INLINE the schema in the
+        # prompt text. Without it, smaller AFM models (afm-3b) freely
+        # invent key names like `flashcards` or `items` and the
+        # post-hoc parse fails with malformed_payload downstream.
         tool_name = tool.get("name", "tool")
         tool_desc = tool.get("description", "")
+        input_schema = tool["input_schema"]
+        try:
+            schema_text = json.dumps(input_schema, indent=2)
+        except (TypeError, ValueError):
+            schema_text = str(input_schema)
         preamble = (
             f"You must respond by populating the `{tool_name}` payload.\n"
-            f"{tool_desc}\n"
-            "Your entire response MUST be a single JSON object matching the required schema. "
-            "Do not include explanations, markdown, or text outside the JSON object."
+            f"{tool_desc}\n\n"
+            "The JSON object you produce must conform to this schema exactly:\n"
+            f"{schema_text}\n\n"
+            "Your entire response MUST be a single JSON object matching this schema. "
+            "Use the exact top-level key names shown above; do not rename "
+            "them. Do not include explanations, markdown fences, or any "
+            "text outside the JSON object."
         )
         full_system = preamble + "\n\n" + (system or "")
         result = self._call(
