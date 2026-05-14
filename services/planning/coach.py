@@ -45,6 +45,7 @@ from typing import List, Optional
 
 from app_logging import get_logger
 from services.calendar import repository
+from services.planning.deadlines import detect_upcoming_deadlines
 
 
 LOGGER = get_logger("planning.coach")
@@ -95,6 +96,17 @@ POMODORO_BLOCK_MINUTES = 25
 # rebalance (2.5) so a falling-behind signal still trumps it.
 STRESS_AWARE_SCORE = 1.2
 
+# Score envelope for the deadline rule (cherry-picked from the
+# parallel codex branch's deadline-aware planning work). Calibrated so
+# any high-severity deadline (within 3 days) ranks above the routine
+# v1 rule, and the most-imminent high-severity beats any normal one.
+# Low-severity deadlines (>7 days) are suppressed in the rule itself;
+# the coach should not nag about an exam three weeks away.
+DEADLINE_SCORE_HIGH_BASE = 2.0
+DEADLINE_SCORE_HIGH_URGENCY_BOOST = 0.2  # per day closer to today
+DEADLINE_SCORE_NORMAL = 1.5
+MAX_DEADLINE_SUGGESTIONS = 3
+
 
 @dataclass
 class CandidateSuggestion:
@@ -138,8 +150,8 @@ def synthesize_suggestions(
         _rule_free_block_overdue_srs,
         _rule_rebalance_on_miss,
         _rule_stress_aware_duration,
+        _rule_deadline_imminent,
         # Phase 2 plug points still pending:
-        # _rule_deadline_imminent,
         # _rule_low_recent_review,
         # _rule_gap_between_classes,
     ]
@@ -166,18 +178,28 @@ def refresh_active_suggestions(
     Called from GET /api/plan after expiring past-due pending ones.
     Strategy: keep already-pending suggestions (so an open dialog or a
     suggestion the user is mid-decision on doesn't disappear under
-    them), and only insert new ones whose (kind, start_at) tuple
-    isn't already represented in the pending set. Past-start_at
-    pending suggestions are expired by the caller before this runs.
+    them), and only insert new ones whose (kind, start_at,
+    source_event_id) tuple isn't already represented in the pending
+    set. Past-start_at pending suggestions are expired by the caller
+    before this runs.
+
+    Why source_event_id is in the key: when multiple imminent
+    deadlines compete for the same first free block, the deadline
+    rule picks the same start_at for each. If we deduped only on
+    (kind, start_at), the second deadline would silently disappear.
+    With source_event_id in the key, both deadlines persist as
+    distinct suggestions and the user can see and act on each. Rules
+    with source_event_id=None (free_block_overdue_srs, rebalance,
+    stress_aware) still dedup correctly against themselves.
     """
     repository.expire_past_pending_suggestions(conn, user_id=user_id)
 
     existing = repository.list_active_suggestions(conn, user_id=user_id)
-    existing_keys = {(s.kind, s.start_at) for s in existing}
+    existing_keys = {(s.kind, s.start_at, s.source_event_id) for s in existing}
 
     candidates = synthesize_suggestions(conn, user_id=user_id)
     for candidate in candidates:
-        key = (candidate.kind, candidate.start_at)
+        key = (candidate.kind, candidate.start_at, candidate.source_event_id)
         if key in existing_keys:
             continue
         repository.insert_suggestion(
@@ -335,6 +357,100 @@ def _recent_high_stress(conn: sqlite3.Connection, *, user_id: str) -> bool:
     if row is None or row["max_stress"] is None:
         return False
     return row["max_stress"] >= STRESS_HIGH_THRESHOLD
+
+
+def _rule_deadline_imminent(
+    conn: sqlite3.Connection, *, user_id: str
+) -> List[CandidateSuggestion]:
+    """Emit a study_block before each high/normal-severity deadline.
+
+    Cherry-picked from the parallel codex branch. Senses deadlines
+    from calendar event summaries via deadlines.detect_upcoming_deadlines,
+    reasons about prep time before each, acts by surfacing a 60-min
+    study_block at the soonest free slot between now and the deadline.
+
+    Skips low-severity deadlines (>7 days out), SRS-overdue
+    aggregates (already handled by free_block_overdue_srs and the
+    rebalance rule), past deadlines, and deadlines whose entire
+    run-up window is fully booked.
+
+    Caps at MAX_DEADLINE_SUGGESTIONS per refresh to avoid overwhelming
+    the user when several deadlines stack inside the same week.
+    """
+    deadlines = detect_upcoming_deadlines(conn, user_id=user_id)
+    now = datetime.now(timezone.utc)
+
+    candidates: List[CandidateSuggestion] = []
+    for deadline in deadlines:
+        if deadline.severity == "low":
+            continue
+        if deadline.source != "calendar_event":
+            # SRS-overdue aggregate is already surfaced by the
+            # free_block_overdue_srs rule (and the rebalance rule
+            # for high backlogs). Avoid double-emitting.
+            continue
+        try:
+            deadline_dt = _parse_iso(deadline.deadline_at)
+        except ValueError:
+            continue
+        if deadline_dt <= now:
+            continue
+
+        window_end = min(deadline_dt, now + timedelta(hours=LOOKAHEAD_HOURS))
+        if window_end <= now:
+            continue
+
+        free_blocks = _find_free_blocks(
+            conn,
+            window_start=now,
+            window_end=window_end,
+            min_minutes=MIN_FREE_BLOCK_MINUTES,
+            user_id=user_id,
+        )
+        if not free_blocks:
+            continue
+
+        block = free_blocks[0]
+        suggested_end = _iso_add_minutes(block.start_at, MIN_FREE_BLOCK_MINUTES)
+
+        if deadline.severity == "high":
+            urgency_boost = (
+                max(0.0, 3.0 - deadline.days_until)
+                * DEADLINE_SCORE_HIGH_URGENCY_BOOST
+            )
+            score = DEADLINE_SCORE_HIGH_BASE + urgency_boost
+        else:
+            score = DEADLINE_SCORE_NORMAL
+
+        candidates.append(
+            CandidateSuggestion(
+                kind="study_block",
+                start_at=block.start_at,
+                end_at=suggested_end,
+                reason_code="deadline_imminent",
+                reason_text=(
+                    f"{MIN_FREE_BLOCK_MINUTES}-min slot before {deadline.label} "
+                    f"({_format_relative_days(deadline.days_until)})."
+                ),
+                score=score,
+                due_at=deadline.deadline_at,
+                source_event_id=deadline.event_id,
+            )
+        )
+        if len(candidates) >= MAX_DEADLINE_SUGGESTIONS:
+            break
+
+    return candidates
+
+
+def _format_relative_days(days_until: float) -> str:
+    """Human-friendly time-to-deadline phrase for suggestion reason text."""
+    rounded = round(days_until)
+    if rounded <= 0:
+        return "today"
+    if rounded == 1:
+        return "tomorrow"
+    return f"in {rounded} days"
 
 
 def _rule_rebalance_on_miss(

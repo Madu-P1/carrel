@@ -335,6 +335,125 @@ class CoachScoreNormalizationTests(unittest.TestCase):
         self.assertEqual(result[0].reason_code, "rebalance_on_miss")
 
 
+class CoachDeadlineImminentTests(_CoachTestCase):
+    """Cherry-picked Phase 1 deadline_imminent rule.
+
+    Senses calendar events whose summary matches DEADLINE_KEYWORDS
+    via services.planning.deadlines, reasons about prep time before
+    each, acts by surfacing a 60-min study_block at the soonest free
+    slot. Low-severity (>7 days out) deadlines are suppressed.
+    """
+
+    def _seed_deadline_event(
+        self,
+        conn,
+        *,
+        summary: str,
+        days_from_now: float,
+        event_id: str = "test-deadline-event",
+        feed_id: str = "test-deadline-feed",
+    ) -> None:
+        """Seed a calendar feed + a deadline-keyword event in the window."""
+        deadline_dt = (
+            datetime.now(timezone.utc) + timedelta(days=days_from_now)
+        ).replace(microsecond=0)
+        # Idempotent feed insert.
+        existing = conn.execute(
+            "SELECT 1 FROM calendar_feeds WHERE id = ?", (feed_id,)
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                """
+                INSERT INTO calendar_feeds (
+                    id, user_id, label, url, url_hash,
+                    is_enabled, consecutive_failures
+                ) VALUES (?, 'local', ?, ?, ?, 1, 0)
+                """,
+                (
+                    feed_id,
+                    f"Feed {feed_id}",
+                    f"http://test/{feed_id}",
+                    f"hash-{feed_id}",
+                ),
+            )
+        end_dt = deadline_dt + timedelta(hours=1)
+        conn.execute(
+            """
+            INSERT INTO calendar_events (
+                id, user_id, feed_id, uid, occurrence_key, summary,
+                start_at, end_at, all_day, status
+            ) VALUES (?, 'local', ?, ?, ?, ?, ?, ?, 0, 'confirmed')
+            """,
+            (
+                event_id,
+                feed_id,
+                f"uid-{event_id}",
+                f"occ-{event_id}",
+                summary,
+                deadline_dt.isoformat().replace("+00:00", "Z"),
+                end_dt.isoformat().replace("+00:00", "Z"),
+            ),
+        )
+        conn.commit()
+
+    def test_emits_study_block_for_high_severity_deadline(self) -> None:
+        with db.get_db() as conn:
+            self._seed_deadline_event(
+                conn, summary="Bio midterm", days_from_now=2,
+            )
+            results = coach._rule_deadline_imminent(conn, user_id="local")
+        self.assertEqual(len(results), 1)
+        suggestion = results[0]
+        self.assertEqual(suggestion.kind, "study_block")
+        self.assertEqual(suggestion.reason_code, "deadline_imminent")
+        self.assertIn("Bio midterm", suggestion.reason_text)
+        self.assertGreaterEqual(suggestion.score, coach.DEADLINE_SCORE_HIGH_BASE)
+        self.assertEqual(suggestion.source_event_id, "test-deadline-event")
+
+    def test_skips_low_severity_deadline_beyond_seven_days(self) -> None:
+        with db.get_db() as conn:
+            self._seed_deadline_event(
+                conn, summary="Final exam", days_from_now=14,
+            )
+            results = coach._rule_deadline_imminent(conn, user_id="local")
+        self.assertEqual(results, [])
+
+    def test_normal_severity_uses_flat_normal_score(self) -> None:
+        with db.get_db() as conn:
+            self._seed_deadline_event(
+                conn, summary="Calc test", days_from_now=5,
+            )
+            results = coach._rule_deadline_imminent(conn, user_id="local")
+        self.assertEqual(len(results), 1)
+        self.assertAlmostEqual(results[0].score, coach.DEADLINE_SCORE_NORMAL)
+
+    def test_caps_at_max_deadline_suggestions(self) -> None:
+        """Many imminent deadlines stack inside one week; cap protects UX."""
+        with db.get_db() as conn:
+            for i in range(coach.MAX_DEADLINE_SUGGESTIONS + 2):
+                self._seed_deadline_event(
+                    conn,
+                    summary=f"Exam {i}",
+                    days_from_now=1 + i * 0.05,
+                    event_id=f"deadline-event-{i}",
+                )
+            results = coach._rule_deadline_imminent(conn, user_id="local")
+        self.assertEqual(len(results), coach.MAX_DEADLINE_SUGGESTIONS)
+
+    def test_emits_nothing_when_no_deadline_events(self) -> None:
+        with db.get_db() as conn:
+            results = coach._rule_deadline_imminent(conn, user_id="local")
+        self.assertEqual(results, [])
+
+    def test_format_relative_days_phrasing(self) -> None:
+        self.assertEqual(coach._format_relative_days(0), "today")
+        self.assertEqual(coach._format_relative_days(0.4), "today")
+        self.assertEqual(coach._format_relative_days(1), "tomorrow")
+        self.assertEqual(coach._format_relative_days(1.4), "tomorrow")
+        self.assertEqual(coach._format_relative_days(5), "in 5 days")
+        self.assertEqual(coach._format_relative_days(10.3), "in 10 days")
+
+
 class CoachApiE2ETests(unittest.TestCase):
     """End-to-end verification of rebalance_on_miss through GET /api/plan.
 
