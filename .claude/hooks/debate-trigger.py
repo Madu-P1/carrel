@@ -18,13 +18,13 @@ This hook does NOT block. The audit-gate is the hard gate. This is a nudge.
 
 Opt-in: only fires when CARREL_AUTONOMOUS=true.
 """
+
 import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
-
 
 # Manifest files: editing these is always architectural.
 MANIFEST_FILE_PATTERNS = [
@@ -91,10 +91,12 @@ def detect(tool_name: str, tool_input: dict) -> list[str]:
         fp = tool_input.get("file_path", "") or ""
         hits += match_patterns(MANIFEST_FILE_PATTERNS, fp)
         hits += match_patterns(ARCH_FILE_PATTERNS, fp)
-        content = " ".join([
-            tool_input.get("new_string", "") or "",
-            tool_input.get("content", "") or "",
-        ])
+        content = " ".join(
+            [
+                tool_input.get("new_string", "") or "",
+                tool_input.get("content", "") or "",
+            ]
+        )
         hits += match_patterns(ARCH_CONTENT_KEYWORDS, content)
     return hits
 

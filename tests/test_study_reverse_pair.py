@@ -100,9 +100,7 @@ class ReverseCardSchemaTests(unittest.TestCase):
                 (card_id, today),
             )
             conn.commit()
-            row = conn.execute(
-                "SELECT kind FROM srs_cards WHERE id = ?", (card_id,)
-            ).fetchone()
+            row = conn.execute("SELECT kind FROM srs_cards WHERE id = ?", (card_id,)).fetchone()
         self.assertEqual(row["kind"], "reverse")
 
     def test_idx_srs_cards_due_state_survives_rebuild(self) -> None:
@@ -155,13 +153,9 @@ class ReverseCardSchemaTests(unittest.TestCase):
                     """,
                     (cid, today),
                 )
-            conn.execute(
-                "INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')"
-            )
+            conn.execute("INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')")
             with self.assertRaises(sqlite3.IntegrityError):
-                conn.execute(
-                    "INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')"
-                )
+                conn.execute("INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')")
 
     def test_card_pairs_on_delete_cascade(self) -> None:
         """Deleting either card of the pair removes the card_pairs row;
@@ -192,20 +186,14 @@ class ReverseCardSchemaTests(unittest.TestCase):
                     """,
                     (cid, today),
                 )
-            conn.execute(
-                "INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')"
-            )
+            conn.execute("INSERT INTO card_pairs (card_a_id, card_b_id) VALUES ('aaa', 'bbb')")
             conn.commit()
 
             conn.execute("DELETE FROM srs_cards WHERE id = 'aaa'")
             conn.commit()
 
-            pair_rows = conn.execute(
-                "SELECT card_a_id, card_b_id FROM card_pairs"
-            ).fetchall()
-            surviving = conn.execute(
-                "SELECT id FROM srs_cards WHERE id = 'bbb'"
-            ).fetchone()
+            pair_rows = conn.execute("SELECT card_a_id, card_b_id FROM card_pairs").fetchall()
+            surviving = conn.execute("SELECT id FROM srs_cards WHERE id = 'bbb'").fetchone()
         self.assertEqual(pair_rows, [])
         self.assertIsNotNone(surviving)
 
@@ -239,9 +227,7 @@ class ReverseCardServiceTests(unittest.TestCase):
                 page_count=None,
                 subject_name="Anatomy",
             )["doc_id"]
-            self.concept_id = _insert_concept(
-                conn, doc_id=self.doc_id, name="Femur"
-            )
+            self.concept_id = _insert_concept(conn, doc_id=self.doc_id, name="Femur")
             conn.commit()
 
     def tearDown(self) -> None:
@@ -288,12 +274,8 @@ class ReverseCardServiceTests(unittest.TestCase):
                 back="The thigh bone",
                 concept_id=self.concept_id,
             )
-            count = conn.execute(
-                "SELECT COUNT(*) AS n FROM srs_cards"
-            ).fetchone()["n"]
-            pair_count = conn.execute(
-                "SELECT COUNT(*) AS n FROM card_pairs"
-            ).fetchone()["n"]
+            count = conn.execute("SELECT COUNT(*) AS n FROM srs_cards").fetchone()["n"]
+            pair_count = conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"]
             primary = conn.execute(
                 "SELECT front, back, kind FROM srs_cards WHERE id = ?",
                 (result["primary_id"],),
@@ -322,9 +304,7 @@ class ReverseCardServiceTests(unittest.TestCase):
                 back="B",
                 concept_id=self.concept_id,
             )
-            row = conn.execute(
-                "SELECT card_a_id, card_b_id FROM card_pairs"
-            ).fetchone()
+            row = conn.execute("SELECT card_a_id, card_b_id FROM card_pairs").fetchone()
         ids = {result["primary_id"], result["reverse_id"]}
         self.assertEqual({row["card_a_id"], row["card_b_id"]}, ids)
         self.assertLess(row["card_a_id"], row["card_b_id"])
@@ -339,12 +319,8 @@ class ReverseCardServiceTests(unittest.TestCase):
                     back="The thigh bone",
                     concept_id="does-not-exist",
                 )
-            count = conn.execute(
-                "SELECT COUNT(*) AS n FROM srs_cards"
-            ).fetchone()["n"]
-            pair_count = conn.execute(
-                "SELECT COUNT(*) AS n FROM card_pairs"
-            ).fetchone()["n"]
+            count = conn.execute("SELECT COUNT(*) AS n FROM srs_cards").fetchone()["n"]
+            pair_count = conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"]
         self.assertEqual(count, 0)
         self.assertEqual(pair_count, 0)
 
@@ -363,9 +339,7 @@ class ReverseCardServiceTests(unittest.TestCase):
                 front="Femur",
                 back="The thigh bone",
             )
-            count = conn.execute(
-                "SELECT COUNT(*) AS n FROM srs_cards"
-            ).fetchone()["n"]
+            count = conn.execute("SELECT COUNT(*) AS n FROM srs_cards").fetchone()["n"]
         self.assertEqual(count, 2)
         self.assertIsNotNone(result["primary_id"])
         self.assertIsNotNone(result["reverse_id"])
@@ -383,9 +357,7 @@ class ReverseCardServiceTests(unittest.TestCase):
                 1,
             )
             self.assertTrue(delete_card(conn, result["primary_id"]))
-            pair_count = conn.execute(
-                "SELECT COUNT(*) AS n FROM card_pairs"
-            ).fetchone()["n"]
+            pair_count = conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"]
             surviving = conn.execute(
                 "SELECT id FROM srs_cards WHERE id = ?", (result["reverse_id"],)
             ).fetchone()
@@ -402,12 +374,8 @@ class ReverseCardServiceTests(unittest.TestCase):
                 conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"],
                 2,
             )
-            removed = bulk_delete_cards(
-                conn, [pair_a["primary_id"], pair_b["reverse_id"]]
-            )
-            pair_count = conn.execute(
-                "SELECT COUNT(*) AS n FROM card_pairs"
-            ).fetchone()["n"]
+            removed = bulk_delete_cards(conn, [pair_a["primary_id"], pair_b["reverse_id"]])
+            pair_count = conn.execute("SELECT COUNT(*) AS n FROM card_pairs").fetchone()["n"]
         self.assertEqual(removed, 2)
         self.assertEqual(pair_count, 0)
 
@@ -434,9 +402,7 @@ class ReverseCardServiceTests(unittest.TestCase):
                 ("legacy-card", self.concept_id, today, yesterday),
             )
             conn.commit()
-            row = conn.execute(
-                "SELECT * FROM srs_cards WHERE id = 'legacy-card'"
-            ).fetchone()
+            row = conn.execute("SELECT * FROM srs_cards WHERE id = 'legacy-card'").fetchone()
         self.assertEqual(row["artifact_id"], "art-1")
         self.assertEqual(row["source_snapshot_hash"], "hash-1")
         self.assertAlmostEqual(row["confidence"], 0.85)
