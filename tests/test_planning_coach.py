@@ -238,5 +238,117 @@ class CoachScoreNormalizationTests(unittest.TestCase):
         self.assertEqual(result[0].reason_code, "rebalance_on_miss")
 
 
+class CoachApiE2ETests(unittest.TestCase):
+    """End-to-end verification of rebalance_on_miss through GET /api/plan.
+
+    Exercises the full chain: route handler -> coach.refresh_active_suggestions
+    -> rule fires -> repository.insert_suggestion -> repository.list_active
+    -> _suggestions_to_response (score normalization) -> Pydantic response
+    serialization. This is the chain that would explode at deploy time if
+    the Pydantic Literal or the score Field bounds were misaligned with
+    the new rule's outputs.
+
+    Setup mirrors tests/test_calendar_local_sync.py: monkey-patch main
+    module paths to a temp dir, call main.initialize_database, hand the
+    TestClient the local API token.
+    """
+
+    def setUp(self) -> None:
+        from fastapi.testclient import TestClient
+
+        import main
+        from services.calendar.secrets import set_default_secret_store_for_testing
+        from services.local_api_security import HEADER_NAME, get_local_api_token
+
+        # Mute keychain access; calendar feeds aren't part of this test
+        # but the lookup runs as a side effect of repository.list_feeds.
+        class _FakeStore:
+            def __init__(self):
+                self.values: dict[str, str] = {}
+
+            def store_url(self, feed_id: str, raw_url: str) -> str:
+                ref = f"fake:{feed_id}"
+                self.values[ref] = raw_url
+                return ref
+
+            def get_url(self, reference: str):
+                return self.values.get(reference)
+
+            def delete_url(self, reference: str) -> None:
+                self.values.pop(reference, None)
+
+        set_default_secret_store_for_testing(_FakeStore())
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        base = Path(self.temp_dir.name)
+        self.originals = {
+            "BASE_DIR": main.BASE_DIR,
+            "DATA_DIR": main.DATA_DIR,
+            "UPLOAD_DIR": main.UPLOAD_DIR,
+            "DB_PATH": main.DB_PATH,
+        }
+        main.BASE_DIR = base
+        main.DATA_DIR = base / "data"
+        main.UPLOAD_DIR = main.DATA_DIR / "uploads"
+        main.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        main.DB_PATH = main.DATA_DIR / "test.db"
+        main.initialize_database()
+
+        self.main = main
+        self.HEADER_NAME = HEADER_NAME
+        self.client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+
+    def tearDown(self) -> None:
+        from services.calendar.secrets import set_default_secret_store_for_testing
+
+        set_default_secret_store_for_testing(None)
+        for k, v in self.originals.items():
+            setattr(self.main, k, v)
+        self.temp_dir.cleanup()
+
+    def _seed_overdue_cards(self, count: int) -> None:
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+        with db.get_db() as conn:
+            for _ in range(count):
+                conn.execute(
+                    "INSERT INTO srs_cards (id, front, back, due_date) VALUES (?, ?, ?, ?)",
+                    (str(uuid.uuid4()), "front", "back", yesterday),
+                )
+            conn.commit()
+
+    def test_rebalance_appears_in_plan_response_with_normalized_score(self) -> None:
+        self._seed_overdue_cards(coach.CATCHUP_OVERDUE_THRESHOLD + 3)
+
+        response = self.client.get("/api/plan")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+
+        codes = [s["reason_code"] for s in body["suggestions"]]
+        self.assertIn(
+            "rebalance_on_miss", codes, f"expected rebalance suggestion, got: {codes}"
+        )
+
+        rebalance = next(
+            s for s in body["suggestions"] if s["reason_code"] == "rebalance_on_miss"
+        )
+        self.assertEqual(rebalance["kind"], "catchup")
+        self.assertIsNotNone(rebalance["score"])
+        # Score is normalized against batch max. Rebalance carries the
+        # highest raw score in the batch, so it lands at 1.0.
+        self.assertGreaterEqual(rebalance["score"], 0.0)
+        self.assertLessEqual(rebalance["score"], 1.0)
+        self.assertAlmostEqual(rebalance["score"], 1.0)
+
+    def test_no_rebalance_below_threshold(self) -> None:
+        self._seed_overdue_cards(coach.CATCHUP_OVERDUE_THRESHOLD)
+
+        response = self.client.get("/api/plan")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+
+        codes = [s["reason_code"] for s in body["suggestions"]]
+        self.assertNotIn("rebalance_on_miss", codes)
+
+
 if __name__ == "__main__":
     unittest.main()

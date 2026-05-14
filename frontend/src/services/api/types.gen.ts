@@ -2599,7 +2599,7 @@ export interface components {
              * Reason Code
              * @enum {string}
              */
-            reason_code: "free_block_overdue_srs" | "deadline_imminent" | "low_recent_review" | "gap_between_classes";
+            reason_code: "free_block_overdue_srs" | "deadline_imminent" | "low_recent_review" | "gap_between_classes" | "rebalance_on_miss";
             /** Reason Text */
             reason_text: string;
             /** Score */
