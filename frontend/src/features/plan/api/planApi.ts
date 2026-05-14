@@ -45,8 +45,20 @@ export interface PlanResponse {
   is_freshening: boolean;
 }
 
+/** Self-reported stress + energy snapshot. Backend caps each at 1..5
+ *  via Pydantic AND the DB CHECK constraint, so out-of-range payloads
+ *  surface as a 422 from the API helper. */
+export type CheckInRequest = components["schemas"]["CheckInRequest"];
+export type CheckInResponse = components["schemas"]["CheckInResponse"];
+
 export const planApi = {
   get: () => api<PlanResponse>("/api/plan"),
+
+  checkIn: (payload: CheckInRequest) =>
+    api<CheckInResponse>("/api/plan/check-in", {
+      method: "POST",
+      body: payload,
+    }),
 
   accept: (suggestionId: string) =>
     api<{ status: string }>(

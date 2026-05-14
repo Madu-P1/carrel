@@ -3,6 +3,7 @@ import { useState } from "preact/hooks";
 import { Stack, Text, showToast, toast } from "@/design-system";
 import { browserTimeZone } from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
+import { CheckInWidget } from "./components/CheckInWidget";
 import { EmptyPlanState } from "./components/EmptyPlanState";
 import { FeedList } from "./components/FeedList";
 import { WeekTimeGrid } from "./components/WeekTimeGrid";
@@ -149,13 +150,16 @@ export function PlanView() {
       {feeds.length === 0 && !loading ? (
         <EmptyPlanState onAddFeed={() => setAddOpen(true)} />
       ) : (
-        <WeekTimeGrid
-          events={events}
-          suggestions={suggestions}
-          feeds={feeds}
-          onAcceptSuggestion={handleAcceptSuggestion}
-          onDismissSuggestion={handleDismissSuggestion}
-        />
+        <>
+          <CheckInWidget />
+          <WeekTimeGrid
+            events={events}
+            suggestions={suggestions}
+            feeds={feeds}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onDismissSuggestion={handleDismissSuggestion}
+          />
+        </>
       )}
 
       <AddFeedDialog
