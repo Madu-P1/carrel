@@ -25,6 +25,8 @@ from fastapi import APIRouter, HTTPException
 import db
 from api_models import (
     CalendarEventRow,
+    CheckInRequest,
+    CheckInResponse,
     PlanResponse,
     StudySuggestionRow,
 )
@@ -139,6 +141,23 @@ def get_plan() -> PlanResponse:
         feeds=[_row_to_response(f) for f in feeds],
         is_freshening=len(stale_feeds) > 0,
     )
+
+
+@router.post("/api/plan/check-in", response_model=CheckInResponse)
+def create_check_in(payload: CheckInRequest) -> CheckInResponse:
+    """Coach Phase 2.B first signal: self-reported stress + energy.
+
+    Two-layer validation: Pydantic on CheckInRequest catches out-of-range
+    values at 422; the CHECK constraint on session_check_ins enforces
+    the same contract at write time so any future caller can't bypass.
+    """
+    with db.get_db() as conn:
+        check_in_id = repository.insert_check_in(
+            conn,
+            stress_level=payload.stress_level,
+            energy_level=payload.energy_level,
+        )
+    return CheckInResponse(id=check_in_id, status="recorded")
 
 
 @router.post("/api/plan/suggestions/{suggestion_id}/accept")

@@ -527,6 +527,24 @@ class PlanResponse(BaseModel):
     is_freshening: bool
 
 
+class CheckInRequest(BaseModel):
+    """POST /api/plan/check-in payload — Coach Phase 2.B first signal.
+
+    Self-reported stress + energy snapshot, 1..5 each. The DB enforces
+    the same range via CHECK constraints in migration 0020, so a
+    misconfigured client gets rejected at write time even if it
+    bypasses this validator.
+    """
+
+    stress_level: int = Field(ge=1, le=5)
+    energy_level: int = Field(ge=1, le=5)
+
+
+class CheckInResponse(BaseModel):
+    id: str
+    status: Literal["recorded"]
+
+
 class SyncFeedResponse(BaseModel):
     feed: CalendarFeedRow
     items_seen: int

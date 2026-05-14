@@ -15,7 +15,7 @@ import hashlib
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional
 
 from services.calendar.secrets import CalendarSecretStore, default_secret_store
@@ -95,6 +95,22 @@ class SuggestionRow:
     score: Optional[float]
     accepted_at: Optional[str]
     dismissed_at: Optional[str]
+    created_at: str
+
+
+@dataclass
+class CheckInRow:
+    """Coach Phase 2.B self-reported stress + energy snapshot.
+
+    Populated by POST /api/plan/check-in. Read by the stress-aware
+    coach rules that land in follow-up commits. The CHECK constraint
+    in migration 0020 enforces stress/energy in [1, 5].
+    """
+
+    id: str
+    user_id: str
+    stress_level: int
+    energy_level: int
     created_at: str
 
 
@@ -774,6 +790,75 @@ def expire_past_pending_suggestions(
 
 def _row_or_none(row) -> Optional[SuggestionRow]:
     return _suggestion_from_row(row) if row else None
+
+
+# ---------------------------------------------------------------------
+# Session check-ins (Coach Phase 2.B)
+# ---------------------------------------------------------------------
+
+
+def insert_check_in(
+    conn: sqlite3.Connection,
+    *,
+    stress_level: int,
+    energy_level: int,
+    user_id: str = DEFAULT_USER,
+) -> str:
+    """Persist a stress + energy snapshot. Returns the new row id.
+
+    Range validation lives in two places: the Pydantic CheckInRequest
+    (rejects out-of-range at the API boundary, 422) and the SQLite
+    CHECK constraint in migration 0020 (rejects at write time, surfaces
+    as sqlite3.IntegrityError). The API layer is the friendly gate;
+    the DB is the unbypassable one.
+    """
+    check_in_id = _new_id()
+    conn.execute(
+        """
+        INSERT INTO session_check_ins (id, user_id, stress_level, energy_level, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (check_in_id, user_id, stress_level, energy_level, _now_iso()),
+    )
+    conn.commit()
+    return check_in_id
+
+
+def list_recent_check_ins(
+    conn: sqlite3.Connection,
+    *,
+    hours: int = 24,
+    user_id: str = DEFAULT_USER,
+) -> List[CheckInRow]:
+    """Recent check-ins, newest first. Used by stress-aware rules.
+
+    Default 24h window matches the coach's LOOKAHEAD_HOURS so the rule
+    only weights signals that are still relevant to the next day's
+    recommendations.
+    """
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=hours)
+    ).isoformat().replace("+00:00", "Z")
+    rows = conn.execute(
+        """
+        SELECT id, user_id, stress_level, energy_level, created_at
+        FROM session_check_ins
+        WHERE user_id = ? AND created_at >= ?
+        ORDER BY created_at DESC
+        """,
+        (user_id, cutoff),
+    ).fetchall()
+    return [_check_in_from_row(r) for r in rows]
+
+
+def _check_in_from_row(row) -> CheckInRow:
+    return CheckInRow(
+        id=row["id"],
+        user_id=row["user_id"],
+        stress_level=row["stress_level"],
+        energy_level=row["energy_level"],
+        created_at=row["created_at"],
+    )
 
 
 def _suggestion_from_row(row) -> SuggestionRow:

@@ -1625,6 +1625,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/check-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Check In
+         * @description Coach Phase 2.B first signal: self-reported stress + energy.
+         *
+         *     Two-layer validation: Pydantic on CheckInRequest catches out-of-range
+         *     values at 422; the CHECK constraint on session_check_ins enforces
+         *     the same contract at write time so any future caller can't bypass.
+         */
+        post: operations["create_check_in_api_plan_check_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plan/suggestions/{suggestion_id}/accept": {
         parameters: {
             query?: never;
@@ -2019,6 +2043,31 @@ export interface components {
              * @default custom
              */
             card_type: string;
+        };
+        /**
+         * CheckInRequest
+         * @description POST /api/plan/check-in payload — Coach Phase 2.B first signal.
+         *
+         *     Self-reported stress + energy snapshot, 1..5 each. The DB enforces
+         *     the same range via CHECK constraints in migration 0020, so a
+         *     misconfigured client gets rejected at write time even if it
+         *     bypasses this validator.
+         */
+        CheckInRequest: {
+            /** Stress Level */
+            stress_level: number;
+            /** Energy Level */
+            energy_level: number;
+        };
+        /** CheckInResponse */
+        CheckInResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "recorded";
         };
         /** CompareRequest */
         CompareRequest: {
@@ -5869,6 +5918,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanResponse"];
+                };
+            };
+        };
+    };
+    create_check_in_api_plan_check_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckInRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckInResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
