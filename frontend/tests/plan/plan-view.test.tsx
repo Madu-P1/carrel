@@ -92,6 +92,57 @@ test("Coach suggestion renders inline with its reason text", async () => {
   expect(screen.getByRole("button", { name: /^Dismiss$/i })).toBeDefined();
 });
 
+test("rebalance_on_miss suggestion renders the urgent variant", async () => {
+  registerFetchHandler((url, init) => {
+    if (url.pathname === "/api/plan" && init.method === "GET") {
+      return jsonResponse({
+        events: [],
+        suggestions: [
+          {
+            id: "sugg-rebalance",
+            kind: "catchup",
+            status: "pending",
+            start_at: NOON_TODAY,
+            end_at: ONE_PM_TODAY,
+            due_at: null,
+            reason_code: "rebalance_on_miss",
+            reason_text: "8 cards overdue. Block 90 minutes today to catch up.",
+            score: 1.0,
+          },
+        ],
+        feeds: [
+          {
+            id: "feed-1",
+            label: "Personal",
+            url: "https://example.com/***",
+            color: null,
+            is_enabled: true,
+            last_synced_at: new Date().toISOString(),
+            last_successful_sync_at: new Date().toISOString(),
+            consecutive_failures: 0,
+            last_error: null,
+          },
+        ],
+        is_freshening: false,
+      });
+    }
+    return undefined;
+  });
+
+  render(<PlanView />);
+
+  // Eyebrow shifts from "Coach" to "Catch up" for urgent variant.
+  expect(await screen.findByText(/^Catch up$/)).toBeDefined();
+  // Aria-label carries the urgency for screen readers.
+  expect(
+    screen.getByRole("article", { name: /Urgent catch-up suggestion/i })
+  ).toBeDefined();
+  // Reason text still renders.
+  expect(
+    screen.getByText(/8 cards overdue\. Block 90 minutes today to catch up\./i)
+  ).toBeDefined();
+});
+
 test("Dismissing a coach suggestion offers Undo and restores it", async () => {
   let dismissed = false;
   let restoreCalls = 0;

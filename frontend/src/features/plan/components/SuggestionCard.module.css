@@ -103,3 +103,29 @@
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+
+/*
+ * Urgent variant: amber border + fill + eyebrow + accept button.
+ * Routes/plan.py is the source of truth for which reason_codes trigger
+ * urgency; SuggestionCard.tsx mirrors via URGENT_REASON_CODES. Tokens
+ * pulled from --color-warning (DESIGN.md). No motion treatment yet by
+ * design — color shift alone is the signal, the rule itself adjusts
+ * recommended block depth so motion would be redundant noise.
+ */
+.card.urgent {
+  border-color: color-mix(in srgb, var(--color-warning) 65%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-bg-elevated));
+}
+
+.card.urgent .eyebrow {
+  color: var(--color-warning);
+}
+
+.card.urgent .accept {
+  border-color: var(--color-warning);
+  background: var(--color-warning);
+}
+
+.card.urgent .accept:hover {
+  background: color-mix(in srgb, var(--color-warning) 86%, white);
+}

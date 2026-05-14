@@ -39,7 +39,8 @@ export interface PlanSuggestion {
     | "free_block_overdue_srs"
     | "deadline_imminent"
     | "low_recent_review"
-    | "gap_between_classes";
+    | "gap_between_classes"
+    | "rebalance_on_miss";
   reason_text: string;
   score: number | null;
 }
