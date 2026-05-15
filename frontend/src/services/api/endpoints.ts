@@ -721,6 +721,10 @@ export interface SaveNotePayload {
   doc_id?: string;
   concept_id?: string;
   note_type?: string;
+  /** Phase 2 — optional folder assignment for the global Notes page.
+   *  When set, the folder's subject overrides the document's subject in
+   *  the rail counts and the note tile. */
+  folder_id?: string | null;
 }
 
 export interface SavedNote {
@@ -731,7 +735,12 @@ export interface SavedNote {
 
 /** Full note row returned by `GET /api/notes` (services/tutor.py::fetch_notes).
  *  document_name / concept_name are JOINed in for display and are null when
- *  the note is not anchored to a document / concept. */
+ *  the note is not anchored to a document / concept.
+ *
+ *  `subject` is the resolved subject the global Notes page renders against:
+ *  folder.subject_name > document.subject_name > "Unfiled". `folder_id` /
+ *  `folder_name` are present when the note has been filed; both are null
+ *  for unfoldered notes (reader notes default here). */
 export interface NoteRecord {
   id: string;
   doc_id: string | null;
@@ -742,17 +751,55 @@ export interface NoteRecord {
   note_type: string;
   goal_id: string | null;
   session_id: string | null;
+  folder_id: string | null;
+  folder_name: string | null;
+  subject: string;
   created_at: string;
   updated_at: string;
   document_name: string | null;
   concept_name: string | null;
 }
 
+export interface NoteFolderRecord {
+  id: string;
+  name: string;
+  subject_name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Response from `GET /api/notes/organization`. The global Notes page
+ *  uses this for the left rail: it shows every subject that has at
+ *  least one note, plus the folders that live under each subject. */
+export interface NoteOrganizationSubject {
+  name: string;
+  note_count: number;
+  folders: Array<{
+    id: string;
+    name: string;
+    sort_order: number;
+    note_count: number;
+  }>;
+}
+
+export interface NotesListParams {
+  doc_id?: string;
+  concept_id?: string;
+  /** Concrete folder id, or the literal string "none" to fetch only
+   *  unfoldered notes. Mirrors the server's IS NULL handling. */
+  folder_id?: string;
+  subject_name?: string;
+  limit?: number;
+}
+
 export const notes = {
-  list: (params: { doc_id?: string; concept_id?: string; limit?: number } = {}) => {
+  list: (params: NotesListParams = {}) => {
     const query = new URLSearchParams();
     if (params.doc_id) query.set("doc_id", params.doc_id);
     if (params.concept_id) query.set("concept_id", params.concept_id);
+    if (params.folder_id) query.set("folder_id", params.folder_id);
+    if (params.subject_name) query.set("subject_name", params.subject_name);
     if (params.limit != null) query.set("limit", String(params.limit));
     const suffix = query.toString();
     return api<{ notes: NoteRecord[] }>(`/api/notes${suffix ? `?${suffix}` : ""}`);
@@ -770,6 +817,7 @@ export const notes = {
         note_type: payload.note_type ?? "session_note",
         goal_id: null,
         session_id: payload.session_id ?? null,
+        folder_id: payload.folder_id ?? null,
         evidence_reference_ids: []
       }
     }),
@@ -778,6 +826,41 @@ export const notes = {
       method: "POST",
       body: payload,
       timeoutMs: 90_000
+    }),
+  organization: () =>
+    api<{ subjects: NoteOrganizationSubject[] }>("/api/notes/organization"),
+  folders: {
+    list: (subject_name?: string) => {
+      const query = new URLSearchParams();
+      if (subject_name) query.set("subject_name", subject_name);
+      const suffix = query.toString();
+      return api<{ folders: NoteFolderRecord[] }>(
+        `/api/notes/folders${suffix ? `?${suffix}` : ""}`
+      );
+    },
+    create: (payload: { name: string; subject_name: string }) =>
+      api<{ folder: NoteFolderRecord }>("/api/notes/folders", {
+        method: "POST",
+        body: payload
+      }),
+    update: (folderId: string, payload: { name?: string; subject_name?: string }) =>
+      api<{ folder: NoteFolderRecord }>(`/api/notes/folders/${encodeURIComponent(folderId)}`, {
+        method: "PATCH",
+        body: payload
+      }),
+    remove: (folderId: string) =>
+      api<{ deleted: boolean; folder_id: string }>(
+        `/api/notes/folders/${encodeURIComponent(folderId)}`,
+        { method: "DELETE" }
+      )
+  },
+  /** Move a note into a folder, or pass `null` to unfile it. Lighter
+   *  than `save` for the global page's "move to folder" dropdown — we
+   *  don't have to round-trip the note's title/content just to refile. */
+  move: (noteId: string, folderId: string | null) =>
+    api<{ note: NoteRecord }>(`/api/notes/${encodeURIComponent(noteId)}/folder`, {
+      method: "PATCH",
+      body: { folder_id: folderId }
     })
 };
 

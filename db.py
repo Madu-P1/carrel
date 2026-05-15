@@ -331,6 +331,11 @@ def _mark_legacy_baseline_if_needed(
         # rather than re-running ALTER TABLE (which would fail with
         # "duplicate column name").
         17: _has_columns(conn, "srs_cards", ["kind"]),
+        # Same pattern for the two more recent ADD COLUMN migrations.
+        # If the column is already present we mark them applied;
+        # otherwise the normal migration loop runs them.
+        19: _has_columns(conn, "srs_cards", ["doc_id"]),
+        20: _has_columns(conn, "notes", ["folder_id"]) and table_exists(conn, "note_folders"),
     }
 
     for version, satisfied in checks.items():

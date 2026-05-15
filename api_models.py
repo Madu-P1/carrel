@@ -198,7 +198,37 @@ class NoteUpsertRequest(BaseModel):
     note_type: str = Field(default="saved_insight", max_length=64)
     goal_id: Optional[str] = Field(default=None, max_length=128)
     session_id: Optional[str] = Field(default=None, max_length=128)
+    # Optional folder assignment for the global Notes page. When set,
+    # the folder's subject wins over the document's subject in the UI.
+    folder_id: Optional[str] = Field(default=None, max_length=128)
     evidence_reference_ids: Optional[List[str]] = None
+
+
+class NoteFolderCreateRequest(BaseModel):
+    """POST /api/notes/folders. The global Notes page posts this from
+    inline "New folder" on each subject. subject_name is required so a
+    folder always knows which subject group it belongs to; it defaults
+    to the document's subject the user is filing from."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    subject_name: str = Field(..., min_length=1, max_length=160)
+
+
+class NoteFolderUpdateRequest(BaseModel):
+    """PATCH /api/notes/folders/{id}. Both fields are optional; the
+    service patches only what's provided so rename and re-classify can
+    travel independently."""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    subject_name: Optional[str] = Field(default=None, min_length=1, max_length=160)
+
+
+class NoteMoveRequest(BaseModel):
+    """PATCH /api/notes/{id}/folder. `folder_id=None` removes the note
+    from any folder; it then falls back to its document's subject. A
+    folder_id pointing at a non-existent row returns 400."""
+
+    folder_id: Optional[str] = Field(default=None, max_length=128)
 
 
 class NoteTransformRequest(BaseModel):

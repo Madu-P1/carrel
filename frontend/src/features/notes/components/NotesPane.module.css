@@ -1,0 +1,211 @@
+.pane {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.selectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.selectionTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.tile {
+  /*
+   * Tile carries one note. Border + soft background + small padding —
+   * matches Library doc rows so the page feels like a sibling, not
+   * a separate aesthetic. min-width:0 lets long words wrap rather
+   * than blow the grid.
+   */
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-4);
+  border: 1px solid var(--hairline);
+  background: var(--color-bg-base);
+  min-width: 0;
+}
+
+.tileHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tileTitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: var(--weight-medium);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.tileSubject {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.tileBody {
+  /*
+   * Body excerpt: clamp to 3 lines to keep tiles short. Full-text view
+   * is a follow-up (probably as an expand-to-modal on click).
+   */
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.tileFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.tileMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  min-width: 0;
+}
+
+.tileMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moveLabel {
+  display: inline-flex;
+  align-items: center;
+}
+
+.moveSelect {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-3);
+  border: 1px solid var(--hairline);
+  background: var(--color-bg-muted);
+  color: var(--text-secondary);
+}
+
+.moveSelect:focus {
+  outline: 2px solid var(--color-accent, var(--hairline));
+  outline-offset: 1px;
+}
+
+.tileError {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger, var(--text-tertiary));
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-4);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: var(--weight-medium);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.emptyBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 460px;
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.skeletonTile {
+  min-height: 96px;
+  border-radius: var(--radius-4);
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-bg-muted),
+      color-mix(in srgb, var(--color-bg-hover) 70%, transparent),
+      var(--color-bg-muted)
+    );
+  background-size: 200% 100%;
+  animation: notes-shimmer 1.6s linear infinite;
+}
+
+@keyframes notes-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonTile {
+    animation: none;
+  }
+}

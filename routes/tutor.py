@@ -8,6 +8,9 @@ from api_models import (
     DialogueMessageRequest,
     DialogueStartRequest,
     NoteExpandRequest,
+    NoteFolderCreateRequest,
+    NoteFolderUpdateRequest,
+    NoteMoveRequest,
     NoteTransformRequest,
     NoteUpsertRequest,
     TutorExchangeCreateRequest,
@@ -19,6 +22,7 @@ from ai.providers import get_default_provider
 from services import adaptive_tutor as adaptive_tutor_service
 from services import dialogue as dialogue_service
 from services import mastery_engine
+from services import note_folders as note_folders_service
 from services import provenance_service
 from services import tutor as tutor_service
 from services.app_state import fetch_recent_events, fetch_workspace_state, log_study_event
@@ -71,14 +75,93 @@ def evaluate_tutor_exchange(
 def get_notes(
     doc_id: Optional[str] = None,
     concept_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    subject_name: Optional[str] = None,
     limit: int = 8,
 ) -> Dict[str, List[Dict[str, Any]]]:
+    """List notes for the Reader's Notes tab AND the global Notes page.
+
+    The global Notes page passes `subject_name` (one of the resolved
+    subjects from `/api/notes/organization`) or `folder_id` (a
+    concrete folder id, or the literal string "none" for unfoldered
+    notes). The Reader keeps using `doc_id`. All three filters compose.
+    """
+
     with db.get_db() as conn:
         return {
             "notes": tutor_service.fetch_notes(
-                conn, doc_id=doc_id, concept_id=concept_id, limit=limit
+                conn,
+                doc_id=doc_id,
+                concept_id=concept_id,
+                folder_id=folder_id,
+                subject_name=subject_name,
+                limit=limit,
             )
         }
+
+
+@router.get("/api/notes/organization")
+def get_notes_organization() -> Dict[str, Any]:
+    """Composite rail payload for the global Notes page.
+
+    Returns subjects (auto-derived from notes' folders/documents) plus
+    each subject's folders with note counts. One round-trip on page
+    open beats N parallel fetches.
+    """
+
+    with db.get_db() as conn:
+        return note_folders_service.fetch_organization(conn)
+
+
+@router.get("/api/notes/folders")
+def list_note_folders(subject_name: Optional[str] = None) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        return {"folders": note_folders_service.list_folders(conn, subject_name=subject_name)}
+
+
+@router.post("/api/notes/folders")
+def create_note_folder(payload: NoteFolderCreateRequest) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        folder = note_folders_service.create_folder(
+            conn, name=payload.name, subject_name=payload.subject_name
+        )
+        return {"folder": folder}
+
+
+@router.patch("/api/notes/folders/{folder_id}")
+def update_note_folder(folder_id: str, payload: NoteFolderUpdateRequest) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        folder = note_folders_service.update_folder(
+            conn,
+            folder_id,
+            name=payload.name,
+            subject_name=payload.subject_name,
+        )
+        return {"folder": folder}
+
+
+@router.delete("/api/notes/folders/{folder_id}")
+def delete_note_folder(folder_id: str) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        ok = note_folders_service.delete_folder(conn, folder_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+        return {"deleted": True, "folder_id": folder_id}
+
+
+@router.patch("/api/notes/{note_id}/folder")
+def move_note(note_id: str, payload: NoteMoveRequest) -> Dict[str, Any]:
+    """Move a note into a folder (or remove it from its folder).
+
+    Lighter than the full upsert because the client doesn't need to
+    re-send title/content/etc. just to refile. The response carries
+    the same shape `GET /api/notes` returns so the client can swap the
+    row in place.
+    """
+
+    with db.get_db() as conn:
+        note = tutor_service.move_note_to_folder(conn, note_id, payload.folder_id)
+        return {"note": note}
 
 
 @router.post("/api/notes")
@@ -95,6 +178,7 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
             payload.note_type,
             payload.goal_id,
             payload.session_id,
+            folder_id=payload.folder_id,
         )
         if payload.evidence_reference_ids:
             provenance_service.attach_evidence_to_note(

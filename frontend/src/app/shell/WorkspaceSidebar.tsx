@@ -10,7 +10,17 @@ export interface SidebarNavItem {
   commandHint: string;
   icon: "library" | "doc" | "ask" | "study" | "dashboard" | "sparkle" | "command" | "search" | "graph";
   path: string;
-  key: "dashboard" | "session" | "library" | "reader" | "ask" | "study" | "search" | "concepts" | "plan";
+  key:
+    | "dashboard"
+    | "session"
+    | "library"
+    | "reader"
+    | "ask"
+    | "study"
+    | "search"
+    | "concepts"
+    | "plan"
+    | "notes";
 }
 
 interface WorkspaceSidebarProps {
@@ -59,7 +69,7 @@ export function WorkspaceSidebar({
     {
       label: "Study",
       items: items.filter((item) =>
-        ["session", "study", "library", "reader", "ask"].includes(item.key)
+        ["session", "study", "library", "reader", "ask", "notes"].includes(item.key)
       )
     },
     {

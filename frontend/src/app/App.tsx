@@ -5,6 +5,7 @@ import { AskView } from "@/features/ask/AskView";
 import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
+import { NotesPage } from "@/features/notes/NotesPage";
 import { NotFoundView } from "@/features/NotFoundView";
 import { PlanView } from "@/features/plan/PlanView";
 import { ReaderView } from "@/features/reader/ReaderView";
@@ -122,6 +123,10 @@ function renderBundledRoute(rawPath: string) {
     return <PlanView />;
   }
 
+  if (path.startsWith("/notes")) {
+    return <NotesPage />;
+  }
+
   // Default landing is the Dashboard — the legacy home the user asked for,
   // rebuilt on the new frontend.
   return <DashboardView />;
@@ -153,6 +158,7 @@ export function App() {
           <Route component={SearchView} path="/search" />
           <Route component={ConceptGraphView} path="/concepts" />
           <Route component={PlanView} path="/plan" />
+          <Route component={NotesPage} path="/notes" />
           <Route component={NotFoundView} default />
         </Router>
       </AppShell>

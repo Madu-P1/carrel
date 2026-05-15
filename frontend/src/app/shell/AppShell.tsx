@@ -57,6 +57,11 @@ const navLinks: SidebarNavItem[] = [
   { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
   { key: "session", label: "Sessions", commandHint: "⌘2", icon: "sparkle", path: "/session" },
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
+  // Notes sits right after Library: when a user thinks "where are my
+  // notes?" the mental path is Library → my notes about library items.
+  // No ⌘ hotkey for now — the 1-9 slots are taken; adding ⌘⇧N is a
+  // polish follow-up that also touches keyboard-shortcut registration.
+  { key: "notes", label: "Notes", commandHint: "", icon: "doc", path: "/notes" },
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
   { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
   { key: "study", label: "Review Queue", commandHint: "⌘6", icon: "study", path: "/study" },
@@ -100,6 +105,10 @@ function routeLabel(path: string): string {
     return "Plan";
   }
 
+  if (path.startsWith("/notes")) {
+    return "Notes";
+  }
+
   return "Workspace";
 }
 
@@ -107,13 +116,17 @@ function routeMotionIndex(path: string): number {
   if (path === "/") return 0;
   if (path.startsWith("/session")) return 1;
   if (path.startsWith("/library")) return 2;
-  if (path.startsWith("/reader")) return 3;
-  if (path.startsWith("/ask")) return 4;
-  if (path.startsWith("/study")) return 5;
-  if (path.startsWith("/search")) return 6;
-  if (path.startsWith("/concepts")) return 7;
-  if (path.startsWith("/plan")) return 8;
-  return 9;
+  // Notes lives next to Library in the sidebar; pin its motion index
+  // there too so forward/back transitions read as "moving along the
+  // study row" rather than across the app.
+  if (path.startsWith("/notes")) return 3;
+  if (path.startsWith("/reader")) return 4;
+  if (path.startsWith("/ask")) return 5;
+  if (path.startsWith("/study")) return 6;
+  if (path.startsWith("/search")) return 7;
+  if (path.startsWith("/concepts")) return 8;
+  if (path.startsWith("/plan")) return 9;
+  return 10;
 }
 
 function useRouteMotion(pathname: string): "backward" | "forward" | "none" {

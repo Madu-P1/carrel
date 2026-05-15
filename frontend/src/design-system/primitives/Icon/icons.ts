@@ -90,7 +90,14 @@ export const icons = {
   // duplicates). Lid overhang + body + two internal ribs. Thin-weight
   // so it sits quietly next to text labels.
   trash:
-    "M3 4.5 h10 M6 4.5 V3 a1 1 0 0 1 1 -1 h2 a1 1 0 0 1 1 1 V4.5 M4.5 4.5 l0.8 8.3 a1 1 0 0 0 1 0.9 h3.4 a1 1 0 0 0 1 -0.9 l0.8 -8.3 M6.75 7 v4.5 M9.25 7 v4.5"
+    "M3 4.5 h10 M6 4.5 V3 a1 1 0 0 1 1 -1 h2 a1 1 0 0 1 1 1 V4.5 M4.5 4.5 l0.8 8.3 a1 1 0 0 0 1 0.9 h3.4 a1 1 0 0 0 1 -0.9 l0.8 -8.3 M6.75 7 v4.5 M9.25 7 v4.5",
+
+  // edit: pencil tilted into the lower-left corner of an editable
+  // surface. Tip points down-left so it reads as "writing on this
+  // row." Used by the global Notes page for folder rename affordance;
+  // any future inline-edit cue can reuse it.
+  edit:
+    "M11.5 2.5 l2 2 -8 8 H3.5 v-2 z M10 4 l2 2"
 } as const;
 
 export type IconName = keyof typeof icons;
