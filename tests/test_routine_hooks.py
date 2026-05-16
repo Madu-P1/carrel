@@ -641,6 +641,51 @@ class DebateTriggerFalsePositiveTests(unittest.TestCase):
         out = json.loads(stdout)
         self.assertIn("hookSpecificOutput", out)
 
+    def test_verb_in_heredoc_body_does_not_fire(self) -> None:
+        # Real recurring false-positive: a Python snippet piped via heredoc
+        # contains the literal text `pnpm add`, which the verb regex would
+        # otherwise match. Mirrors the audit-gate heredoc-strip fix.
+        cmd = (
+            "cat << 'PY' | python\n"
+            "import json\n"
+            'cmd = "pnpm add lodash"\n'
+            'print(detect("Bash", {"command": cmd}))\n'
+            "PY"
+        )
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "", "verb inside heredoc body must not fire")
+
+    def test_real_verb_after_heredoc_still_fires(self) -> None:
+        cmd = (
+            "cat > /tmp/note.txt << 'EOF'\n"
+            "draft note about pnpm add for context\n"
+            "EOF\n"
+            "pnpm add lodash"
+        )
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        out = json.loads(stdout)
+        self.assertIn("hookSpecificOutput", out)
+        self.assertIn("debate trigger", out["hookSpecificOutput"]["additionalContext"].lower())
+
+    def test_unclosed_heredoc_falls_through_and_fires(self) -> None:
+        # Safe-fail direction: a malformed/unclosed heredoc preserves its
+        # body; a real verb inside still fires. Over-fire is acceptable;
+        # under-fire would let architectural changes ship undebated.
+        cmd = "cat > /tmp/x.txt << EOF\npnpm add lodash\n"
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        out = json.loads(stdout)
+        self.assertIn("hookSpecificOutput", out)
+
 
 if __name__ == "__main__":
     unittest.main()

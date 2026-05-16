@@ -81,9 +81,9 @@ def _strip_heredocs(cmd: str) -> str:
     bodies and `cat > file.json << EOF` writes, neither of which executes
     the heredoc body as commands.
 
-    See also: `.claude/hooks/debate-trigger.py` has the same class of
-    false positive on its `ARCH_BASH_VERBS` regexes. Tracked separately;
-    apply the same helper there when consolidating.
+    See also: `.claude/hooks/debate-trigger.py` carries an identical
+    HEREDOC_PATTERN + `_strip_heredocs` (intentional duplication — both
+    hooks must remain importable as standalone scripts).
     """
     if not cmd:
         return cmd
