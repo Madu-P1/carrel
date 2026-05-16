@@ -38,6 +38,7 @@ without cross-file imports. Resist the urge to split prematurely.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -57,6 +58,20 @@ MIN_FREE_BLOCK_MINUTES = 60
 # Look-ahead window for the v1 rule. Suggestions for "study Wednesday"
 # made on Friday lose the user's trust; cap at 24h ahead.
 LOOKAHEAD_HOURS = 24
+
+# Look-ahead window for the deadline-imminent rule. Phase 2 v1 keeps a
+# two-week horizon: longer than v1's 24h (so a midterm next Monday
+# surfaces on Thursday) but short enough that the "imminent" framing
+# stays honest. Beyond 14d the calendar feed sync hasn't reliably
+# expanded recurrences either.
+DEADLINE_LOOKAHEAD_DAYS = 14
+
+# Word-boundary, case-insensitive match against the four strongest
+# academic-deadline signals. Kept narrow on purpose: false positives
+# ("driver's exam", "Cup Final") erode trust faster than missed
+# matches. The user can dismiss; a noisy panel is worse than a quiet
+# one.
+DEADLINE_KEYWORD_PATTERN = re.compile(r"\b(midterm|final|exam|quiz)\b", re.IGNORECASE)
 
 
 @dataclass
@@ -99,8 +114,8 @@ def synthesize_suggestions(
     """
     rules = [
         _rule_free_block_overdue_srs,
-        # Phase 2 plug points:
-        # _rule_deadline_imminent,
+        _rule_deadline_imminent,
+        # Phase 2 plug points (still pending):
         # _rule_low_recent_review,
         # _rule_gap_between_classes,
     ]
@@ -210,6 +225,143 @@ def _rule_free_block_overdue_srs(
             score=1.0,
         )
     ]
+
+
+def _rule_deadline_imminent(conn: sqlite3.Connection, *, user_id: str) -> List[CandidateSuggestion]:
+    """Phase 2 rule. One suggestion per upcoming calendar event whose
+    summary names an academic deadline (`midterm` / `final` / `exam`
+    / `quiz`, case-insensitive, word-boundary). Anchors the suggested
+    study block to the chronologically first free 60-min window
+    between now and the deadline. Skips the event if no free block
+    fits.
+
+    Scoring buckets (higher rises above the v1
+    `free_block_overdue_srs` baseline of 1.0):
+      ≤ 24h  -> 3.0  (urgent)
+      ≤ 72h  -> 2.5  (this week)
+      ≤ 168h -> 2.0  (next week)
+      ≤ 14d  -> 1.5  (early heads-up)
+
+    Reason text examples:
+      "Calculus midterm tomorrow."        (≤ 36h)
+      "Spanish final in 4 days."          (otherwise)
+
+    Phase 2 v1 deliberately omits the longer-arc "3-session study
+    plan" sketched in the module docstring; one anchored block per
+    deadline keeps the surface small and avoids stepping on the
+    `low_recent_review` plug point that lands next.
+    """
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(days=DEADLINE_LOOKAHEAD_DAYS)
+
+    deadline_events = _find_deadline_events(
+        conn,
+        user_id=user_id,
+        window_start=now,
+        window_end=horizon,
+    )
+    if not deadline_events:
+        return []
+
+    candidates: List[CandidateSuggestion] = []
+    for event in deadline_events:
+        try:
+            deadline_at = _parse_iso(event["start_at"])
+        except ValueError:
+            continue
+        if deadline_at <= now or deadline_at > horizon:
+            continue
+
+        # Prefer the chronologically first free block so the user can
+        # start preparing as soon as possible. Spaced practice beats
+        # cramming; "study tonight" beats "study tomorrow night."
+        free_blocks = _find_free_blocks(
+            conn,
+            window_start=now,
+            window_end=deadline_at,
+            min_minutes=MIN_FREE_BLOCK_MINUTES,
+            user_id=user_id,
+        )
+        if not free_blocks:
+            continue
+
+        block = free_blocks[0]
+        suggested_end = _iso_add_minutes(block.start_at, MIN_FREE_BLOCK_MINUTES)
+        hours_until = (deadline_at - now).total_seconds() / 3600.0
+        summary = (event["summary"] or "").strip()
+
+        candidates.append(
+            CandidateSuggestion(
+                kind="study_block",
+                start_at=block.start_at,
+                end_at=suggested_end,
+                reason_code="deadline_imminent",
+                reason_text=_reason_text_for_deadline(summary, hours_until),
+                due_at=event["start_at"],
+                source_event_id=event["id"],
+                score=_score_for_deadline(hours_until),
+            )
+        )
+
+    return candidates
+
+
+def _find_deadline_events(
+    conn: sqlite3.Connection,
+    *,
+    user_id: str,
+    window_start: datetime,
+    window_end: datetime,
+) -> List[sqlite3.Row]:
+    """Calendar events in [window_start, window_end) whose summary
+    matches `DEADLINE_KEYWORD_PATTERN`. Cancelled events are
+    excluded; all-day events are kept (a "Midterm Day" entry is a
+    legitimate deadline anchor even if all_day=1).
+    """
+    start_iso = window_start.isoformat().replace("+00:00", "Z")
+    end_iso = window_end.isoformat().replace("+00:00", "Z")
+
+    rows = conn.execute(
+        """
+        SELECT id, summary, start_at FROM calendar_events
+        WHERE user_id = ?
+          AND status != 'cancelled'
+          AND start_at >= ?
+          AND start_at < ?
+          AND summary IS NOT NULL
+        ORDER BY start_at ASC
+        """,
+        (user_id, start_iso, end_iso),
+    ).fetchall()
+
+    return [row for row in rows if DEADLINE_KEYWORD_PATTERN.search(row["summary"])]
+
+
+def _score_for_deadline(hours_until: float) -> float:
+    """Higher score for sooner deadlines so the panel ranks an
+    imminent exam above the `free_block_overdue_srs` baseline.
+    """
+    if hours_until <= 24:
+        return 3.0
+    if hours_until <= 72:
+        return 2.5
+    if hours_until <= 168:  # 7 days
+        return 2.0
+    return 1.5
+
+
+def _reason_text_for_deadline(summary: str, hours_until: float) -> str:
+    """User-facing copy. Three buckets keep the panel readable: hours
+    for same-day, "tomorrow" for next-day, days for the rest.
+    """
+    if hours_until < 12:
+        # round to nearest hour; clamp to >= 1 so we never say "in 0h"
+        hours = max(1, int(hours_until + 0.5))
+        return f"{summary} in {hours}h."
+    if hours_until < 36:
+        return f"{summary} tomorrow."
+    days = max(2, int(hours_until / 24 + 0.5))
+    return f"{summary} in {days} days."
 
 
 def _count_overdue_srs(conn: sqlite3.Connection) -> int:
