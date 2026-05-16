@@ -68,6 +68,12 @@
   border-color: var(--np-card-border);
 }
 
+.topbarRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .savedIndicator {
   display: inline-flex;
   align-items: center;
@@ -90,10 +96,81 @@
   animation: editor-pulse 1.2s ease-in-out infinite;
 }
 
+/* Dirty: amber dot signals "you have unsaved work, hit Save". The color
+   shift is deliberate (green = synced, amber = pending) so a glance at
+   the topbar tells the user where they stand without reading text. */
+.savedDotDirty {
+  background: oklch(0.78 0.16 75);
+  box-shadow: 0 0 6px oklch(0.78 0.16 75 / 0.5);
+}
+
 .savedErr {
   color: oklch(0.55 0.18 25);
   font-family: var(--np-font-mono);
   font-size: 11px;
+}
+
+.topbarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--np-btn-primary-bg);
+  color: var(--np-btn-primary-fg);
+  border: 1px solid var(--np-btn-primary-border);
+  border-radius: 8px;
+  font-family: var(--np-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--np-btn-primary-shadow);
+  transition:
+    filter 0.12s,
+    opacity 0.12s;
+}
+
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.saveBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.deleteBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--np-ink-soft);
+  border: 1px solid var(--np-card-border);
+  border-radius: 8px;
+  font-family: var(--np-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  color: oklch(0.55 0.2 25);
+  border-color: oklch(0.55 0.2 25 / 0.55);
+  background: oklch(0.55 0.2 25 / 0.06);
+}
+
+.deleteBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 @keyframes editor-pulse {

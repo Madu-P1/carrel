@@ -426,6 +426,29 @@ def move_note_to_folder(
     return item
 
 
+def delete_note_record(conn: sqlite3.Connection, note_id: str) -> bool:
+    """Hard-delete a note row by id.
+
+    Returns True if a row was removed, False if no row matched. The route
+    layer turns False into a 404 so the operator gets a clear signal when
+    they try to delete something already gone.
+
+    Cascades: the `notes` schema declares ON DELETE CASCADE for child
+    rows (evidence references, etc.), so a single DELETE is enough. We
+    do *not* try to be clever and soft-delete because the UI promises
+    the row is gone for good — a tombstone column would just be a
+    half-feature that leaks into list queries later.
+    """
+
+    cur = conn.execute("SELECT id FROM notes WHERE id = ?", (note_id,))
+    if cur.fetchone() is None:
+        return False
+
+    conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.commit()
+    return True
+
+
 def _normalized_subject_name(subject_name: str | None) -> str | None:
     if not subject_name:
         return None

@@ -715,6 +715,15 @@ export const sessions = {
  *               summary, key ideas, organized notes, review prompts
  */
 export interface SaveNotePayload {
+  /** ID of an existing note to UPDATE. Omit for CREATE.
+   *
+   *  Critical: the server's upsert_note_record branches on note_id —
+   *  truthy → UPDATE WHERE id=note_id, falsy → INSERT a new row. Until
+   *  this field was added, every save call from the editor hardcoded
+   *  null and silently created a duplicate note per autosave tick.
+   *  See the fix commit for the screenshot of garbage rows that
+   *  exposed it. */
+  note_id?: string;
   title: string;
   content: string;
   session_id?: string;
@@ -808,7 +817,7 @@ export const notes = {
     api<{ note: SavedNote }>("/api/notes", {
       method: "POST",
       body: {
-        note_id: null,
+        note_id: payload.note_id ?? null,
         doc_id: payload.doc_id ?? null,
         concept_id: payload.concept_id ?? null,
         title: payload.title,
@@ -861,7 +870,15 @@ export const notes = {
     api<{ note: NoteRecord }>(`/api/notes/${encodeURIComponent(noteId)}/folder`, {
       method: "PATCH",
       body: { folder_id: folderId }
-    })
+    }),
+  /** Hard-delete a note. The backend cascades evidence rows; the row
+   *  is gone for good. The editor and the tile context menu both
+   *  call this with an explicit user confirmation upstream. */
+  remove: (noteId: string) =>
+    api<{ deleted: boolean; note_id: string }>(
+      `/api/notes/${encodeURIComponent(noteId)}`,
+      { method: "DELETE" }
+    )
 };
 
 export const tutor = {

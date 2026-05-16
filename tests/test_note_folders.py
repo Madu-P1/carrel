@@ -27,6 +27,7 @@ from api_models import (
 )
 from routes.tutor import (
     create_note_folder,
+    delete_note,
     delete_note_folder,
     get_notes,
     get_notes_organization,
@@ -254,6 +255,78 @@ class NoteFoldersTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             move_note("nope", NoteMoveRequest(folder_id=None))
         self.assertEqual(404, ctx.exception.status_code)
+
+    # ---- delete --------------------------------------------------
+
+    def test_delete_note_removes_row_and_returns_payload(self) -> None:
+        """The 2026-05-16 fix added DELETE /api/notes/:id so the editor's
+        Delete button has a real backend to call. Verify the row is
+        actually gone after a successful delete, not just status-flagged.
+
+        Anchors the bug: when the user reported "garbage notes I can't
+        get rid of", the only way to clear them out was opening sqlite3
+        and DELETE-ing by hand. That's not a feature gap, that's a bug."""
+
+        bio_doc = self._seed_document("bio.pdf", "Biology")
+        note_id = self._save_note("Will be deleted", doc_id=bio_doc)
+
+        # Sanity: it exists before delete.
+        self.assertEqual(1, len(get_notes(limit=50)["notes"]))
+
+        result = delete_note(note_id)
+        self.assertTrue(result["deleted"])
+        self.assertEqual(note_id, result["note_id"])
+
+        # Row is truly gone (not soft-deleted, not tombstoned).
+        self.assertEqual(0, len(get_notes(limit=50)["notes"]))
+        with main.get_db() as conn:
+            row = conn.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
+            self.assertIsNone(row)
+
+    def test_delete_note_404_on_unknown_id(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            delete_note("does-not-exist")
+        self.assertEqual(404, ctx.exception.status_code)
+
+    def test_delete_note_404_on_second_delete(self) -> None:
+        """Idempotency check: a successful delete plus a re-click should
+        surface 404, not 500. The UI uses the 404 as the cue to navigate
+        back to /notes and refresh the list."""
+
+        note_id = self._save_note("Delete-twice probe")
+        delete_note(note_id)
+        with self.assertRaises(HTTPException) as ctx:
+            delete_note(note_id)
+        self.assertEqual(404, ctx.exception.status_code)
+
+    # ---- save: update path ---------------------------------------
+
+    def test_save_note_with_existing_id_updates_in_place(self) -> None:
+        """The 2026-05-16 root-cause fix: when the editor sends a
+        truthy note_id, the server must UPDATE that row instead of
+        INSERT-ing a new one. Without this guarantee, every keystroke
+        debounced into a duplicate note (see the "Untitled / S / Sm /
+        Smo / Smok" screenshot)."""
+
+        note_id = self._save_note("first version")
+
+        # Re-save with the same id and a new title + content.
+        response = save_note(
+            NoteUpsertRequest(
+                note_id=note_id,
+                title="second version",
+                content="updated content",
+                note_type="reader_note",
+            )
+        )
+        self.assertEqual(note_id, response["note"]["id"])
+        self.assertEqual("second version", response["note"]["title"])
+        self.assertEqual("updated content", response["note"]["content"])
+
+        # And critically there's still only ONE row in the DB.
+        rows = get_notes(limit=50)["notes"]
+        self.assertEqual(1, len(rows))
+        self.assertEqual(note_id, rows[0]["id"])
 
     def test_save_note_rejects_invalid_folder_id(self) -> None:
         with self.assertRaises(HTTPException) as ctx:

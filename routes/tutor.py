@@ -223,6 +223,24 @@ def move_note(note_id: str, payload: NoteMoveRequest) -> Dict[str, Any]:
         return {"note": note}
 
 
+@router.delete("/api/notes/{note_id}")
+def delete_note(note_id: str) -> Dict[str, Any]:
+    """Hard-delete a note by id.
+
+    The NoteEditor's "Delete" button calls this after a window.confirm,
+    so the route does not gate again on the server side. Returns
+    `{deleted: True, note_id}` on success; 404 when the note is gone
+    (idempotent: a second click after a successful delete reports 404
+    so the client can navigate back to the list and refresh).
+    """
+
+    with db.get_db() as conn:
+        ok = tutor_service.delete_note_record(conn, note_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Note not found.")
+        return {"deleted": True, "note_id": note_id}
+
+
 @router.post("/api/notes")
 def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
     with db.get_db() as conn:
