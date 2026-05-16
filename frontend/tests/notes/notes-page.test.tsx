@@ -1,24 +1,23 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { expect, test } from "vitest";
 
 import { NotesPage } from "../../src/features/notes/NotesPage";
+import { SubjectRail } from "../../src/features/notes/components/SubjectRail";
+import { setNotesSelection } from "../../src/features/notes/state";
 import { jsonResponse, mockJson, registerFetchHandler } from "../support/mockFetch";
 
 /**
  * Smoke tests for the Phase 2 global Notes page.
  *
- * Three things absolutely need to work or the feature is broken:
- *   1. The rail renders subjects with their counts from the organization
- *      endpoint.
- *   2. Selecting a subject in the rail triggers a re-fetch of notes
- *      filtered by subject_name so the user only sees that subject's
- *      notes.
- *   3. Creating a folder POSTs to /api/notes/folders and the rail
- *      refetches so the new folder shows up.
+ * Architecture note: the Notes-specific rail used to live inside
+ * NotesPage. As of the May 16 redesign it lives in the AppShell's
+ * WorkspaceSidebar slot (one Carrel logo across the app, content
+ * swaps on /notes). Tests that need to exercise the rail mount
+ * <SubjectRail /> directly alongside <NotesPage /> — both subscribe
+ * to the same module-level signals so behavior is identical.
  *
  * Render-once-and-assert-twice patterns are deliberately avoided —
- * each test mounts the page fresh, then awaits the network it
- * actually exercises.
+ * each test mounts fresh, then awaits the network it exercises.
  */
 
 const ORG_PAYLOAD = {
@@ -55,34 +54,49 @@ const NOTE_ROW = {
   concept_name: null
 };
 
+function PageWithRail() {
+  // Render both surfaces so the rail can be exercised. In production
+  // the rail lives inside the AppShell sidebar — for unit tests this
+  // co-mount keeps the shared signals subscribed by both consumers.
+  return (
+    <div data-stillwater="true">
+      <SubjectRail />
+      <NotesPage />
+    </div>
+  );
+}
+
 test("Rail renders subjects with their note counts from /api/notes/organization", async () => {
+  // Reset selection between tests since it's module-scoped.
+  setNotesSelection({ kind: "all" });
   mockJson("GET", "/api/notes/organization", ORG_PAYLOAD);
   mockJson("GET", "/api/notes", { notes: [NOTE_ROW] });
 
-  render(<NotesPage />);
+  render(<PageWithRail />);
 
-  // Scope to the rail because both the rail's "All notes" button and
-  // the pane's "All notes" selection header use the same literal text.
-  const rail = await screen.findByLabelText("Notes navigation");
-
-  // Wait for the organization fetch to land. The "All notes" row
-  // mounts at 0 (subjects array is empty) and updates when the data
-  // arrives. Biology(2) + Math(3) = 5.
+  // Wait for the organization fetch to land. "All notes" badge is in
+  // the rail; Biology(2) + Math(3) = 5.
   await waitFor(() => {
-    const allButton = within(rail).getByText("All notes").closest("button");
-    expect(allButton?.textContent ?? "").toContain("5");
+    const allButtons = screen.getAllByText("All notes");
+    const railAll = allButtons.find((el) =>
+      el.closest("button")?.textContent?.includes("5")
+    );
+    expect(railAll).toBeDefined();
   });
 
-  // Each subject's row is present with its count.
-  expect(within(rail).getByText("Biology")).toBeDefined();
-  expect(within(rail).getByText("Math")).toBeDefined();
+  // "Biology" and "Math" appear in BOTH the rail (as subject rows)
+  // AND the pane (as subject-block h2s when notes exist for that
+  // subject). Assert presence, not uniqueness.
+  expect(screen.getAllByText("Biology").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText("Math").length).toBeGreaterThanOrEqual(1);
 
-  // Folder under Biology renders. (Math has no folders so we don't
-  // assert one — that would couple the test to render order.)
-  expect(within(rail).getByText("Lectures")).toBeDefined();
+  // Folder under Biology renders in the rail AND in any note tile's
+  // "Move to folder" dropdown options. Assert presence, not uniqueness.
+  expect(screen.getAllByText("Lectures").length).toBeGreaterThanOrEqual(1);
 });
 
 test("Selecting a subject refetches /api/notes with subject_name set", async () => {
+  setNotesSelection({ kind: "all" });
   let lastNotesUrl: URL | null = null;
   registerFetchHandler((url) => {
     if (url.pathname === "/api/notes/organization") {
@@ -95,18 +109,15 @@ test("Selecting a subject refetches /api/notes with subject_name set", async () 
     return undefined;
   });
 
-  render(<NotesPage />);
+  render(<PageWithRail />);
 
-  // Wait for the initial "all notes" fetch.
   await waitFor(() => {
     if (lastNotesUrl === null) throw new Error("Initial notes fetch has not fired yet.");
   });
   expect(lastNotesUrl!.searchParams.get("subject_name")).toBeNull();
 
-  // Click the Math subject row — scoped to the rail so we don't pick
-  // up an h2 in the pane that says "Math" once the selection changes.
-  const rail = await screen.findByLabelText("Notes navigation");
-  const mathRow = await within(rail).findByText("Math");
+  // Click the Math subject row in the rail.
+  const mathRow = await screen.findByText("Math");
   fireEvent.click(mathRow);
 
   await waitFor(() => {
@@ -115,6 +126,7 @@ test("Selecting a subject refetches /api/notes with subject_name set", async () 
 });
 
 test("Creating a folder POSTs to /api/notes/folders and refetches the organization", async () => {
+  setNotesSelection({ kind: "all" });
   let organizationCallCount = 0;
   let postedBody: unknown = null;
   registerFetchHandler((url, init) => {
@@ -141,18 +153,13 @@ test("Creating a folder POSTs to /api/notes/folders and refetches the organizati
     return undefined;
   });
 
-  render(<NotesPage />);
+  render(<PageWithRail />);
 
-  // Wait for the initial render so the New folder button is visible.
   const newFolderButtons = await screen.findAllByRole("button", { name: /new folder/i });
-  // Click the New folder button under Math (the second subject in the
-  // payload, which has no existing folders so its New-folder trigger
-  // is the only one in that section).
-  // The Biology subject also has a New-folder button, so we find the
-  // one that appears after Math by matching the label position.
+  // The last "New folder" button is under Math (the second subject in
+  // the payload, which has no existing folders).
   fireEvent.click(newFolderButtons[newFolderButtons.length - 1]);
 
-  // Inline input appears, type the name and submit with Enter.
   const input = await screen.findByRole("textbox", {
     name: /new folder name for/i
   });
@@ -167,26 +174,26 @@ test("Creating a folder POSTs to /api/notes/folders and refetches the organizati
   });
   const sent = postedBody as { name: string; subject_name: string };
   expect(sent.name).toBe("Exam prep");
-  // The New-folder button we clicked was the LAST one (under Math),
-  // so subject_name should be Math.
   expect(sent.subject_name).toBe("Math");
 
-  // Refetch fires: the organization endpoint was called once on mount
-  // and at least once more after the create.
   await waitFor(() => {
     expect(organizationCallCount).toBeGreaterThanOrEqual(2);
   });
 });
 
 test("Empty state renders when there are no notes anywhere", async () => {
+  setNotesSelection({ kind: "all" });
   mockJson("GET", "/api/notes/organization", { subjects: [] });
   mockJson("GET", "/api/notes", { notes: [] });
 
-  render(<NotesPage />);
+  render(<PageWithRail />);
 
-  // Both the rail (when subjects is empty) and the pane render an
-  // "All notes" empty state. Two matches is the correct count — the
-  // user sees the message in two places, which is intentional.
-  const empties = await screen.findAllByText(/no notes yet/i);
-  expect(empties.length).toBeGreaterThanOrEqual(1);
+  // The pane's empty hero shows "No notes yet." once the fetches
+  // settle. The rail shows "No subjects yet." which is a different
+  // string; both surfaces should be distinct now.
+  const noNotes = await screen.findByText(/no notes yet/i);
+  expect(noNotes).toBeDefined();
+
+  const noSubjects = await screen.findByText(/no subjects yet/i);
+  expect(noSubjects).toBeDefined();
 });

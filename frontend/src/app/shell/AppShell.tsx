@@ -205,6 +205,12 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   const theme = appShell.theme.value;
   const pathname = pathnameFromRoute(path);
   const isReaderFocusMode = pathname.startsWith("/reader") && readerState.focusMode.value;
+  // Notes-page rail-mode: the AppShell rail stays visible; its middle
+  // nav section swaps to the Notes Workspace+Subjects content via
+  // WorkspaceSidebar. The wrapper gets data-stillwater="true" so the
+  // Notes token palette (--np-*) cascades to the slotted content.
+  const isNotesRailMode =
+    pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
   const activeLabel = routeLabel(pathname);
   const routeMotion = useRouteMotion(pathname);
   const panelContent = appShell.rightPanelContent.value;
@@ -507,6 +513,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
             .filter(Boolean)
             .join(" ")}
           data-collapsed={!isLeftOpen ? "true" : "false"}
+          data-stillwater={isNotesRailMode ? "true" : "false"}
           data-testid="left-sidebar"
         >
           <div className={styles.leftRailInner}>

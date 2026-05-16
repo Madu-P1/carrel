@@ -1,210 +1,318 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
-import { Icon, Text } from "@/design-system";
+import { navigateTo } from "@/app/shell/useAppShell";
 import {
   notes as notesApi,
   type NoteOrganizationSubject
 } from "@/services/api/endpoints";
 
+import {
+  notesOrganizationQuery,
+  notesSelection,
+  refreshNotesOrganization,
+  setNotesSelection,
+  type RailSelection
+} from "../state";
+import { Ic } from "./NotesIcons";
 import styles from "./SubjectRail.module.css";
 
-export type RailSelection =
-  | { kind: "all" }
-  | { kind: "subject"; subject: string }
-  | { kind: "folder"; folder: string; subject: string; name: string }
-  | { kind: "unsorted"; subject: string }
-  | { kind: "orphan" };
+/**
+ * Notes-rail content body (no wrapper aside, no brand mark).
+ *
+ * Renders inside the AppShell's WorkspaceSidebar slot when the user is
+ * on /notes — the AppShell provides the brand mark above and the
+ * TodayPanel + ProviderFooter below. This component owns only the
+ * middle: Workspace virtual filters + Subjects + folder CRUD.
+ *
+ * State is read from the module-level notes signals so the same
+ * selection is shared with NotesPage's main pane.
+ */
+export function SubjectRail() {
+  const subjects = notesOrganizationQuery.data.value?.subjects ?? [];
+  const loading = notesOrganizationQuery.loading.value ?? false;
+  const selection = notesSelection.value;
 
-interface SubjectRailProps {
-  subjects: NoteOrganizationSubject[];
+  // Subscribe + fetch once when this component mounts (the rail lives
+  // in the AppShell so it only mounts when /notes is the active route).
+  useEffect(() => {
+    const unsubscribe = notesOrganizationQuery.subscribe();
+    void notesOrganizationQuery.refetch();
+    return unsubscribe;
+  }, []);
+
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const totalNotes = subjects.reduce((sum, s) => sum + s.note_count, 0);
+  const inboxCount = subjects.reduce(
+    (sum, s) =>
+      sum + (s.note_count - s.folders.reduce((a, f) => a + f.note_count, 0)),
+    0
+  );
+
+  const railSubjects = subjects.filter(
+    (s) => s.note_count > 0 || s.folders.length > 0
+  );
+
+  const onChanged = refreshNotesOrganization;
+
+  return (
+    <div className={styles.rail}>
+      {/* WORKSPACE section ─────────────────────────────────────── */}
+      <nav className={styles.section}>
+        <div className={styles.label}>Workspace</div>
+        <ul className={styles.list}>
+          <RailItem
+            icon={<Ic.note className={styles.itemIc} />}
+            label="All notes"
+            count={totalNotes > 0 ? totalNotes : null}
+            active={selection.kind === "all"}
+            onSelect={() => setNotesSelection({ kind: "all" })}
+          />
+          <RailItem
+            icon={
+              <Ic.star
+                className={[
+                  styles.itemIc,
+                  inboxCount > 0 ? styles.itemIcStar : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              />
+            }
+            label="Unsorted"
+            count={inboxCount > 0 ? inboxCount : null}
+            countAccent
+            active={selection.kind === "inbox"}
+            onSelect={() => setNotesSelection({ kind: "inbox" })}
+          />
+          <RailItem
+            icon={<Ic.clock className={styles.itemIc} />}
+            label="This week"
+            count={null}
+            active={selection.kind === "this-week"}
+            onSelect={() => setNotesSelection({ kind: "this-week" })}
+          />
+        </ul>
+      </nav>
+
+      {/* SUBJECTS section ──────────────────────────────────────── */}
+      <nav className={styles.section}>
+        <div className={[styles.label, styles.labelRow].join(" ")}>
+          <span>Subjects</span>
+        </div>
+
+        {loading && railSubjects.length === 0 ? (
+          <div className={styles.skeleton} aria-hidden>
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+          </div>
+        ) : null}
+
+        <ul className={styles.list}>
+          {railSubjects.map((subject) => (
+            <SubjectGroup
+              key={subject.name}
+              subject={subject}
+              selection={selection}
+              collapsed={collapsed[subject.name] ?? false}
+              onToggleCollapsed={() =>
+                setCollapsed((prev) => ({
+                  ...prev,
+                  [subject.name]: !(prev[subject.name] ?? false)
+                }))
+              }
+              onChanged={onChanged}
+            />
+          ))}
+        </ul>
+
+        {!loading && railSubjects.length === 0 ? (
+          <div className={styles.empty}>
+            <p className={styles.emptyHead}>No subjects yet.</p>
+            <p>
+              Subjects appear here once you save a note tied to a document.
+              They group by the document's subject — Cardiology, Tort law,
+              and so on.
+            </p>
+            <button
+              type="button"
+              className={styles.emptyAction}
+              onClick={() => navigateTo("/library")}
+            >
+              Go to Library →
+            </button>
+          </div>
+        ) : null}
+      </nav>
+    </div>
+  );
+}
+
+interface RailItemProps {
+  icon: preact.JSX.Element;
+  label: string;
+  count: number | null;
+  countAccent?: boolean;
+  active: boolean;
+  onSelect: () => void;
+}
+
+function RailItem({
+  icon,
+  label,
+  count,
+  countAccent = false,
+  active,
+  onSelect
+}: RailItemProps) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={[styles.item, active ? styles.itemActive : ""]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={onSelect}
+        aria-current={active ? "page" : undefined}
+      >
+        {icon}
+        <span>{label}</span>
+        {count !== null ? (
+          <span
+            className={[styles.count, countAccent ? styles.countAccent : ""]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {count}
+          </span>
+        ) : null}
+      </button>
+    </li>
+  );
+}
+
+interface SubjectGroupProps {
+  subject: NoteOrganizationSubject;
   selection: RailSelection;
-  loading: boolean;
-  onSelect: (next: RailSelection) => void;
-  /** Called after any folder mutation so the parent can refetch the
-   *  organization payload and the notes list together. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   onChanged: () => void;
 }
 
-/**
- * The left rail of the global Notes page.
- *
- * Renders an "All notes" entry, then a section per subject. Each
- * subject section can be expanded to show its folders + an inline
- * "+ New folder" affordance + an "Unsorted" entry (notes whose
- * resolved subject is this one but aren't assigned to any folder).
- *
- * Rename and delete on folders are accessible via small icon
- * buttons that appear on hover (and via the keyboard always — they're
- * focusable, not display:none).
- */
-export function SubjectRail({
-  subjects,
+function SubjectGroup({
+  subject,
   selection,
-  loading,
-  onSelect,
+  collapsed,
+  onToggleCollapsed,
   onChanged
-}: SubjectRailProps) {
-  // Expanded state is local: collapsing/expanding a subject group is a
-  // pure UI concern and doesn't need to persist or round-trip. We
-  // default every subject to expanded so the rail's organization is
-  // visible without an extra click.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const totalNotes = subjects.reduce((sum, s) => sum + s.note_count, 0);
+}: SubjectGroupProps) {
+  const subjectActive =
+    (selection.kind === "subject" && selection.subject === subject.name) ||
+    (selection.kind === "folder" && selection.subject === subject.name);
+  const folderedTotal = subject.folders.reduce(
+    (sum, f) => sum + f.note_count,
+    0
+  );
+  const unsortedCount = Math.max(0, subject.note_count - folderedTotal);
 
   return (
-    <aside aria-label="Notes navigation" className={styles.rail}>
+    <li className={styles.subj}>
       <button
         type="button"
         className={[
-          styles.allRow,
-          selection.kind === "all" ? styles.allRowActive : ""
+          styles.subjHead,
+          subjectActive && selection.kind === "subject"
+            ? styles.subjHeadActive
+            : ""
         ]
           .filter(Boolean)
           .join(" ")}
-        onClick={() => onSelect({ kind: "all" })}
-        aria-current={selection.kind === "all" ? "page" : undefined}
+        onClick={() => {
+          if (subject.name === "Unfiled") {
+            setNotesSelection({ kind: "orphan" });
+          } else {
+            setNotesSelection({ kind: "subject", subject: subject.name });
+          }
+        }}
+        aria-current={
+          subjectActive && selection.kind === "subject" ? "page" : undefined
+        }
       >
-        <span className={styles.allLabel}>All notes</span>
-        <span className={styles.count}>{totalNotes}</span>
+        <span
+          className={styles.chevWrap}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapsed();
+          }}
+          role="button"
+          tabIndex={-1}
+          aria-label={`Toggle ${subject.name} folders`}
+        >
+          {collapsed ? (
+            <Ic.chevronR className={styles.chev} />
+          ) : (
+            <Ic.chevron className={styles.chev} />
+          )}
+        </span>
+        <span className={styles.subjName}>{subject.name}</span>
+        <span className={styles.count}>{subject.note_count}</span>
       </button>
 
-      {loading && subjects.length === 0 ? (
-        <div className={styles.skeleton} aria-hidden>
-          <div className={styles.skeletonRow} />
-          <div className={styles.skeletonRow} />
-        </div>
-      ) : null}
-
-      {subjects.map((subject) => {
-        const isCollapsed = collapsed[subject.name] ?? false;
-        const subjectActive =
-          (selection.kind === "subject" && selection.subject === subject.name) ||
-          (selection.kind === "unsorted" && selection.subject === subject.name) ||
-          (selection.kind === "folder" && selection.subject === subject.name);
-        const folderedTotal = subject.folders.reduce(
-          (sum, folder) => sum + folder.note_count,
-          0
-        );
-        const unsortedCount = Math.max(0, subject.note_count - folderedTotal);
-
-        return (
-          <section className={styles.subjectGroup} key={subject.name}>
-            <div className={styles.subjectHeader}>
-              <button
-                type="button"
-                aria-expanded={!isCollapsed}
-                aria-label={`Toggle ${subject.name} folders`}
-                className={styles.disclosure}
-                onClick={() =>
-                  setCollapsed((prev) => ({
-                    ...prev,
-                    [subject.name]: !isCollapsed
-                  }))
-                }
-              >
-                {/*
-                 * Icon primitive doesn't accept className, so we apply
-                 * the rotation to a wrapping span. The span is
-                 * inline-flex so it doesn't add extra layout slack
-                 * around the 12×12 glyph.
-                 */}
-                <span
-                  className={isCollapsed ? "" : styles.disclosureOpen}
-                  style={{ display: "inline-flex" }}
-                >
-                  <Icon name="chevron-right" size={12} />
-                </span>
-              </button>
+      {!collapsed && subject.name !== "Unfiled" ? (
+        <ul className={styles.folders}>
+          {subject.folders.map((folder) => (
+            <FolderRow
+              key={folder.id}
+              folder={folder}
+              subjectName={subject.name}
+              active={
+                selection.kind === "folder" && selection.folder === folder.id
+              }
+              onSelect={() =>
+                setNotesSelection({
+                  kind: "folder",
+                  folder: folder.id,
+                  subject: subject.name,
+                  name: folder.name
+                })
+              }
+              onChanged={onChanged}
+            />
+          ))}
+          {unsortedCount > 0 ? (
+            <li>
               <button
                 type="button"
                 className={[
-                  styles.subjectRow,
-                  subjectActive && selection.kind === "subject"
-                    ? styles.subjectRowActive
+                  styles.folder,
+                  selection.kind === "unsorted" &&
+                  selection.subject === subject.name
+                    ? styles.folderActive
                     : ""
                 ]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() =>
-                  onSelect(
-                    subject.name === "Unfiled"
-                      ? { kind: "orphan" }
-                      : { kind: "subject", subject: subject.name }
-                  )
-                }
-                aria-current={
-                  subjectActive && selection.kind === "subject" ? "page" : undefined
+                  setNotesSelection({ kind: "unsorted", subject: subject.name })
                 }
               >
-                <span className={styles.subjectName}>{subject.name}</span>
-                <span className={styles.count}>{subject.note_count}</span>
+                <Ic.folder className={styles.folderIc} />
+                <span>
+                  <em>Unsorted</em>
+                </span>
+                <span className={styles.count}>{unsortedCount}</span>
               </button>
-            </div>
-
-            {!isCollapsed && subject.name !== "Unfiled" ? (
-              <ul className={styles.folderList}>
-                {subject.folders.map((folder) => (
-                  <FolderRow
-                    key={folder.id}
-                    folder={folder}
-                    subjectName={subject.name}
-                    active={
-                      selection.kind === "folder" && selection.folder === folder.id
-                    }
-                    onSelect={() =>
-                      onSelect({
-                        kind: "folder",
-                        folder: folder.id,
-                        subject: subject.name,
-                        name: folder.name
-                      })
-                    }
-                    onChanged={onChanged}
-                  />
-                ))}
-                {unsortedCount > 0 ? (
-                  <li>
-                    <button
-                      type="button"
-                      className={[
-                        styles.folderRow,
-                        selection.kind === "unsorted" &&
-                        selection.subject === subject.name
-                          ? styles.folderRowActive
-                          : ""
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      onClick={() =>
-                        onSelect({ kind: "unsorted", subject: subject.name })
-                      }
-                    >
-                      <span className={styles.folderLabel}>
-                        <em>Unsorted</em>
-                      </span>
-                      <span className={styles.count}>{unsortedCount}</span>
-                    </button>
-                  </li>
-                ) : null}
-                <li>
-                  <NewFolderRow
-                    subjectName={subject.name}
-                    onChanged={onChanged}
-                  />
-                </li>
-              </ul>
-            ) : null}
-          </section>
-        );
-      })}
-
-      {!loading && subjects.length === 0 ? (
-        <Text tone="tertiary" variant="caption">
-          No notes yet. Save a note from the Reader and it will appear
-          here, grouped by its source's subject.
-        </Text>
+            </li>
+          ) : null}
+          <li>
+            <NewFolderRow
+              subjectName={subject.name}
+              onChanged={onChanged}
+            />
+          </li>
+        </ul>
       ) : null}
-    </aside>
+    </li>
   );
 }
 
@@ -245,9 +353,6 @@ function FolderRow({
   };
 
   const handleDelete = async () => {
-    // Confirmation lives in window.confirm for v1 — a dedicated
-    // confirm dialog is on the polish list but a Mac-native confirm
-    // is good enough to keep us from cutting a Dialog for one button.
     if (
       typeof window !== "undefined" &&
       !window.confirm(
@@ -267,10 +372,7 @@ function FolderRow({
   return (
     <li>
       <div
-        className={[
-          styles.folderRow,
-          active ? styles.folderRowActive : ""
-        ]
+        className={[styles.folderRow, active ? styles.folderActive : ""]
           .filter(Boolean)
           .join(" ")}
       >
@@ -297,10 +399,12 @@ function FolderRow({
         ) : (
           <button
             type="button"
-            className={styles.folderLabelBtn}
+            className={styles.folder}
             onClick={onSelect}
+            onDblClick={() => setRenaming(true)}
             aria-current={active ? "page" : undefined}
           >
+            <Ic.folder className={styles.folderIc} />
             <span className={styles.folderLabel}>{folder.name}</span>
             <span className={styles.count}>{folder.note_count}</span>
           </button>
@@ -312,7 +416,7 @@ function FolderRow({
             className={styles.folderIconBtn}
             onClick={() => setRenaming(true)}
           >
-            <Icon name="edit" size={12} />
+            <Ic.edit />
           </button>
           <button
             type="button"
@@ -320,7 +424,7 @@ function FolderRow({
             className={styles.folderIconBtn}
             onClick={() => void handleDelete()}
           >
-            <Icon name="trash" size={12} />
+            <Ic.trash />
           </button>
         </div>
       </div>
@@ -370,17 +474,17 @@ function NewFolderRow({
     return (
       <button
         type="button"
-        className={styles.newFolderTrigger}
+        className={[styles.folder, styles.folderNew].join(" ")}
         onClick={() => setEditing(true)}
       >
-        <Icon name="plus" size={12} />
+        <Ic.plus className={styles.folderIc} />
         <span>New folder</span>
       </button>
     );
   }
 
   return (
-    <div className={styles.newFolderRow}>
+    <div className={styles.newFolderEditor}>
       <input
         aria-label={`New folder name for ${subjectName}`}
         className={styles.renameInput}

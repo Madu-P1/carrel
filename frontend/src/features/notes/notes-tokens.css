@@ -1,47 +1,38 @@
 /*
- * Carrel /notes — Stillwater + Liquid Glass (Phase A).
+ * Carrel /notes — Stillwater + Liquid Glass tokens.
  *
- * Two-column grid: rail (260px) | main (fills). Tokens defined on the
- * .page root so child components read via var(). Light + dark switch
- * via html.theme-light / html.theme-dark.
+ * Global (not a CSS Module) because the rail content lives in TWO
+ * places: inside NotesPage's main pane (the AppShell content area)
+ * AND inside the AppShell's sidebar (the WorkspaceSidebar slot when
+ * isNotesRailActive). Both ancestors get a `data-stillwater="true"`
+ * attribute so child components can read --np-* via simple var() refs
+ * regardless of where they render.
  *
- * Liquid Glass aesthetic (macOS 26 Sequoia/Tahoe pattern):
- *   - Translucent panel surfaces (rgba / color-mix with transparent)
- *   - backdrop-filter: blur on rails, cards, tiles
- *   - Subtle inner highlights at the top edge (specular)
- *   - Soft drop shadows that read as floating glass, not flat paper
- *   - Saturate boost on backdrop to keep colors lively through blur
- *
- * The native macOS WKWebView is already transparent under Carrel's
- * Swift shell (see themes.css notes about "native macOS glass sits
- * behind WKWebView"), so these translucent surfaces sample the real
- * desktop / wallpaper at runtime. In the Vite dev server preview the
- * background is solid, so glass reads as "frosted on tinted paper."
+ * Light + dark switch via the existing html.theme-light /
+ * html.theme-dark global. Tokens reference the design-system fonts
+ * directly so the serif/mono stays in sync with the rest of the app.
  */
-.page {
-  /* Shared layout ------------------------------------------------- */
+
+[data-stillwater="true"] {
+  /* Shared layout knobs */
   --np-rail-w: 260px;
   --np-tile-radius: 14px;
   --np-gap-row: 18px;
   --np-content-w: 1100px;
 
-  /* Typography (inherits design-system) -------------------------- */
+  /* Typography */
   --np-font-serif: var(--font-serif);
   --np-font-sans: var(--font-sans);
   --np-font-body: var(--font-sans);
   --np-font-mono: var(--font-mono);
 
-  /* Light defaults — Stillwater + Liquid Glass ------------------- */
+  /* Light defaults — Stillwater "cool slate paper" */
   --np-bg: oklch(0.97 0.005 220);
   --np-ink: #14171a;
   --np-ink-soft: #3c434b;
   --np-ink-dim: #5a6068;
   --np-ink-faint: #8b9098;
 
-  /* Page surface gets a soft cool-slate radial wash so the glass
-     panels above have something to refract. The wash is anchored
-     top-left so the hero area reads as the brightest part of the
-     room — same trick the Reader uses. */
   --np-page-gradient:
     radial-gradient(
       ellipse 110% 90% at 20% 0%,
@@ -54,7 +45,7 @@
       transparent 60%
     );
 
-  /* Glass surfaces — translucent + backdrop blur ---------------- */
+  /* Glass surfaces */
   --np-glass-rail: color-mix(in srgb, #ffffff 60%, transparent);
   --np-glass-rail-strong: color-mix(in srgb, #ffffff 78%, transparent);
   --np-glass-card: color-mix(in srgb, #ffffff 72%, transparent);
@@ -64,7 +55,6 @@
   --np-glass-blur: saturate(180%) blur(22px);
   --np-glass-blur-soft: saturate(160%) blur(14px);
 
-  /* Borders + highlights — thin specular edge on glass ---------- */
   --np-rail-border: rgba(255, 255, 255, 0.32);
   --np-rail-hover: rgba(255, 255, 255, 0.55);
   --np-rail-active: rgba(20, 23, 26, 0.06);
@@ -110,33 +100,10 @@
   --np-accent-faint-border: oklch(0.58 0.10 195 / 0.35);
   --np-accent-warm: oklch(0.66 0.13 65);
   --np-accent-warm-faint: oklch(0.66 0.13 65 / 0.16);
-
-  /* Layout — single column. The rail lives in the AppShell sidebar. */
-  display: block;
-  min-height: 100%;
-  font-family: var(--np-font-sans);
-  color: var(--np-ink);
-  background: var(--np-page-gradient), var(--np-bg);
-  background-attachment: fixed;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: "kern", "liga", "calt";
 }
 
-.page * {
-  box-sizing: border-box;
-}
-
-/*
- * Dark mode — Liquid Glass on near-black slate.
- *
- * Glass surfaces in dark are inverted: the panel is a dark translucent
- * fill that lets the desktop wallpaper bleed through. The specular
- * highlight at the top edge is a 1px white-at-low-alpha inset shadow,
- * NOT a colored border, so the edge reads as light catching the rim of
- * a piece of glass.
- */
-:global(html.theme-dark) .page {
+/* Dark mode — Liquid Glass on near-black slate. */
+html.theme-dark [data-stillwater="true"] {
   --np-bg: oklch(0.10 0.012 220);
   --np-ink: oklch(0.95 0 0 / 0.95);
   --np-ink-soft: oklch(0.78 0.012 220);
@@ -219,15 +186,4 @@
   --np-accent-faint-border: oklch(0.82 0.13 175 / 0.40);
   --np-accent-warm: oklch(0.78 0.12 70);
   --np-accent-warm-faint: oklch(0.78 0.12 70 / 0.18);
-}
-
-/*
- * The page lives inside AppShell, which already provides the global
- * sidebar. The Notes-specific rail sits to the right of that. On
- * narrow viewports we collapse to a single column (rail stacks above).
- */
-@media (max-width: 900px) {
-  .page {
-    grid-template-columns: 1fr;
-  }
 }

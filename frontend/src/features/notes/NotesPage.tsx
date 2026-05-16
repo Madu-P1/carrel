@@ -1,54 +1,64 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
 
-import { Text } from "@/design-system";
+import { enterNotesRailMode } from "@/app/shell/useAppShell";
 import { createQuery } from "@/lib/query";
-import { notes as notesApi, type NoteRecord } from "@/services/api/endpoints";
+import {
+  notes as notesApi,
+  type NoteRecord,
+  type SavedNote
+} from "@/services/api/endpoints";
 
-import { SubjectRail, type RailSelection } from "./components/SubjectRail";
 import { NotesPane } from "./components/NotesPane";
+import {
+  notesOrganizationQuery,
+  notesPendingExpandId,
+  notesSelection,
+  refreshNotesOrganization,
+  setNotesSelection,
+  setPendingExpandId,
+  type RailSelection
+} from "./state";
 import styles from "./NotesPage.module.css";
 
 /**
- * Global Notes page.
+ * Global Notes page — Stillwater (Phase A).
  *
- * Layout: header above, then a two-column body: SubjectRail on the
- * left (subject groups, folders, counts, folder CRUD) and NotesPane on
- * the right (the actual note tiles for whatever the rail has selected).
+ * Now a single-column page: the rail content lives in the AppShell's
+ * WorkspaceSidebar slot (one Carrel brand mark across the whole app,
+ * smoothly swapping rail content on /notes). This component owns only
+ * the main pane: hero, action bar, Unsorted Inbox, subject blocks,
+ * note tiles, footer.
  *
- * State here is intentionally thin: one selection object the rail
- * controls, two queries (organization for the rail, notes for the
- * pane) that refetch on every mutation. The "always-refetch" pattern
- * costs one extra round-trip per move/create but it keeps counts and
- * subject-resolution honest without us re-implementing the COALESCE
- * rule on the client.
- *
- * Selection model:
- *   { kind: "all" }                        all notes, default
- *   { kind: "subject", subject: "Math" }   any note resolved to Math
- *   { kind: "folder",  folder: <id>,
- *     subject: "Math", name: "Lectures" }  notes inside the folder
- *   { kind: "unsorted", subject: "Math" }  Math notes with no folder
- *   { kind: "orphan" }                     notes with no folder + no doc
+ * State is shared with the rail via module-level signals in `./state`:
+ * the selection, the organization query, and the pending-expand id.
+ * Both consumers subscribe independently; refreshes refetch the same
+ * underlying query.
  */
 export function NotesPage() {
-  const [selection, setSelection] = useState<RailSelection>({ kind: "all" });
+  const selection = notesSelection.value;
+  const pendingExpandId = notesPendingExpandId.value;
 
-  const organizationQuery = useMemo(
-    () => createQuery(() => notesApi.organization()),
-    []
-  );
+  // Subscribe to the organization query so NotesPage stays
+  // re-rendering when subjects/folders change. SubjectRail (rendered
+  // in the AppShell) subscribes independently.
   useEffect(() => {
-    const unsubscribe = organizationQuery.subscribe();
-    void organizationQuery.refetch();
+    const unsubscribe = notesOrganizationQuery.subscribe();
+    void notesOrganizationQuery.refetch();
     return unsubscribe;
-  }, [organizationQuery]);
+  }, []);
 
-  // Notes query is keyed by selection so switching subjects/folders
-  // creates a fresh signal and the user doesn't briefly see the
-  // previous selection's rows while the new fetch is in flight.
-  // Selection identity changes on every setState, which is exactly
-  // what we want here: any selection change triggers a refetch via
-  // the dep on `notesQuery` in the useEffect below.
+  // Reset rail-replacement to "Notes content" every time NotesPage
+  // mounts. Without this, a user who tapped the brand mark to surface
+  // the global nav, navigated away, then navigated back to /notes
+  // would land in workspace-nav mode instead of the Notes-rail mode
+  // they'd expect by default.
+  useEffect(() => {
+    enterNotesRailMode();
+  }, []);
+
+  // The notes list query is keyed by selection — switching subjects
+  // creates a fresh query so the user doesn't briefly see stale rows
+  // from the previous bucket.
   const notesQuery = useMemo(
     () => createQuery(() => notesApi.list(notesListParams(selection))),
     [selection]
@@ -59,51 +69,50 @@ export function NotesPage() {
     return unsubscribe;
   }, [notesQuery]);
 
-  const subjects = organizationQuery.data.value?.subjects ?? [];
+  const subjects = notesOrganizationQuery.data.value?.subjects ?? [];
   const notes: NoteRecord[] = notesQuery.data.value?.notes ?? [];
 
   const refreshAll = () => {
-    void organizationQuery.refetch();
+    refreshNotesOrganization();
     void notesQuery.refetch();
   };
 
-  return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.headerCopy}>
-          <span className={styles.eyebrow}>Notes</span>
-          <h1 className={styles.heading}>Your notes.</h1>
-          <Text tone="secondary" variant="body">
-            Grouped by subject. Folders are yours to organize within
-            each subject. Notes you make in the Reader land here too.
-          </Text>
-        </div>
-      </header>
+  const handleNewNote = async () => {
+    // "+ New note": create a doc-less workspace note. The server's
+    // NoteUpsertRequest enforces content min_length=1, so we seed a
+    // single newline — the textarea renders empty (just a caret at the
+    // start of line 1) and the row is valid.
+    try {
+      const created: { note: SavedNote } = await notesApi.save({
+        title: "Untitled note",
+        content: "\n",
+        note_type: "workspace_note"
+      });
+      setNotesSelection({ kind: "all" });
+      setPendingExpandId(created.note.id);
+      refreshAll();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("New note failed:", err);
+    }
+  };
 
-      <div className={styles.body}>
-        <SubjectRail
-          subjects={subjects}
-          selection={selection}
-          loading={organizationQuery.loading.value ?? false}
-          onSelect={setSelection}
-          onChanged={refreshAll}
-        />
-        <NotesPane
-          notes={notes}
-          subjects={subjects}
-          selection={selection}
-          loading={notesQuery.loading.value ?? false}
-          onChanged={refreshAll}
-        />
-      </div>
+  return (
+    <div className={styles.page} data-stillwater="true">
+      <NotesPane
+        notes={notes}
+        subjects={subjects}
+        selection={selection}
+        loading={notesQuery.loading.value ?? false}
+        onChanged={refreshAll}
+        onNewNote={() => void handleNewNote()}
+        initialExpandedId={pendingExpandId}
+      />
     </div>
   );
 }
 
 function notesListParams(selection: RailSelection) {
-  // The page only ever asks for one "bucket" at a time. limit is
-  // bumped to a high enough ceiling that we don't surprise a power
-  // user; v2 will add pagination + search.
   switch (selection.kind) {
     case "all":
       return { limit: 500 };
@@ -112,14 +121,14 @@ function notesListParams(selection: RailSelection) {
     case "folder":
       return { folder_id: selection.folder, limit: 500 };
     case "unsorted":
-      // Unsorted-in-a-subject: notes in this subject's pool that
-      // aren't assigned to any folder. The server filters subject
-      // first; we further drop foldered notes on the client because
-      // composing folder_id=none AND subject_name on the server
-      // would be a fourth code path I don't want to maintain yet.
       return { subject_name: selection.subject, limit: 500 };
     case "orphan":
       return { subject_name: "Unfiled", limit: 500 };
+    case "inbox":
+      return { folder_id: "none", limit: 500 };
+    case "this-week":
+      // Backend `this_week=1` filter ships with the FTS5 endpoint
+      // (Phase A migration 0021); until then we fall back to all-notes.
+      return { limit: 500 };
   }
 }
-

@@ -5,6 +5,11 @@ import { markAppBootedAfterInteractive } from "./app/shell/boot";
 import { appShell, initializeTheme } from "./app/shell/useAppShell";
 import { reportInteractive } from "./services/native/telemetry";
 import "./main.css";
+// Stillwater tokens are loaded globally because the Notes rail content
+// renders in two places (NotesPage's main pane + the AppShell sidebar
+// when isNotesRailActive). Both ancestors set data-stillwater="true"
+// to load these vars.
+import "./features/notes/notes-tokens.css";
 
 const bootWindow = window as typeof window & {
   nativeTelemetry?: { emit: (event: string, payload?: Record<string, unknown>) => void };
