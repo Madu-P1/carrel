@@ -143,7 +143,7 @@ Zero runtime motion libraries. CSS + WAAPI only.
 
 ## Open debts tracked
 
-- Swift-side menu dispatch test coverage is informal. XCTest scaffold added 2026-05-16 (`macos-app/Tests/EinsteinDesktopTests/`, first target covers `UploadMimeTypes.swift`); follow-up tests for `MainMenuBuilder`, `LocalApiToken`, `LaunchTelemetry` should land in the same target.
+- Swift-side menu dispatch test coverage is informal. XCTest scaffold added 2026-05-16 (`macos-app/Tests/EinsteinDesktopTests/`, covers `UploadMimeTypes.swift` and `LocalApiToken.swift`); follow-up tests for `MainMenuBuilder` and `LaunchTelemetry` should land in the same target.
 - Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
 - FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
 - **Toast primitive doesn't accept action buttons.** Suggestion dismiss has a `restoreSuggestion` API + endpoint ready (`POST /api/plan/suggestions/{id}/restore`) but no Undo button on the toast. Small primitive extension; documented in the Phase 2 plan in `docs/notes/2026-04-29-session-handoff.md`.
