@@ -37,16 +37,25 @@ def root() -> FileResponse:
 
 @router.get("/api/health")
 def health() -> Dict[str, object]:
-    with db.get_db() as conn:
-        return {
-            "status": "ok",
-            "mode": "local",
-            "documents": len(fetch_documents(conn)),
-            "paths": {
-                "base_dir": str(db.BASE_DIR),
-                "db_path": str(db.DB_PATH),
-            },
-        }
+    # Liveness probe only. MUST stay cheap and DB-free.
+    #
+    # Contract (also asserted in BackendSupervisor.swift): probes complete
+    # in <50ms. The Swift supervisor uses a 3s timeout; the frontend's
+    # BackendBootCheck uses a 5s timeout and auto-polls every 2s. A
+    # previous version of this endpoint called fetch_documents(conn),
+    # which does N+1 queries (one per document for summary/concept_count).
+    # Under load that pinned Python at 75% CPU thrashing the GIL and
+    # made every probe time out, surfacing "Couldn't connect to local
+    # backend" even though uvicorn was up. Don't add DB work here.
+    # If you need a readiness check with DB state, add /api/ready.
+    return {
+        "status": "ok",
+        "mode": "local",
+        "paths": {
+            "base_dir": str(db.BASE_DIR),
+            "db_path": str(db.DB_PATH),
+        },
+    }
 
 
 @router.get("/api/bootstrap")
