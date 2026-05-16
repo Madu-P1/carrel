@@ -250,6 +250,17 @@ def _rule_deadline_imminent(conn: sqlite3.Connection, *, user_id: str) -> List[C
     plan" sketched in the module docstring; one anchored block per
     deadline keeps the surface small and avoids stepping on the
     `low_recent_review` plug point that lands next.
+
+    Known v1 limitation (rule layer is fine; downstream caller is
+    the one to fix later): the rule itself emits one candidate per
+    deadline event, but `refresh_active_suggestions` dedupes by
+    `(kind, start_at)`. Two deadline events whose first-free-block
+    lands on the same minute will, on a later refresh after one
+    has already persisted, see the second silently dropped. The
+    rule layer is correct (a fresh-context test asserts both
+    candidates surface here); fixing the dedupe key to also
+    include `source_event_id` is a behavior change to the refresh
+    path and is deferred to its own PR.
     """
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(days=DEADLINE_LOOKAHEAD_DAYS)

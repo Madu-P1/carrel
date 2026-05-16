@@ -267,6 +267,85 @@ class DeadlineImminentRuleTests(unittest.TestCase):
         ids = sorted(c.source_event_id for c in result if c.source_event_id)
         self.assertEqual(ids, ["ev-1", "ev-2"])
 
+    def test_matches_all_day_deadline_event(self) -> None:
+        # The rule docstring endorses all-day "Midterm Day" entries
+        # as legitimate deadline anchors. Confirm `all_day=1` doesn't
+        # cause an exclusion in the SELECT (only the busy-overlap
+        # `_find_free_blocks` filter excludes all-day events).
+        future = datetime.now(timezone.utc) + timedelta(days=4)
+        with db.get_db() as conn:
+            self._insert_event(
+                conn,
+                event_id="ev-1",
+                summary="Calc midterm",
+                start_at=future,
+                all_day=1,
+            )
+        result = self._run()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].source_event_id, "ev-1")
+
+    def test_skips_event_with_null_summary(self) -> None:
+        # The rule SQL already filters `summary IS NOT NULL`; this
+        # locks the contract in so a future regex-only refactor that
+        # removes the NULL guard would surface as a failing test.
+        future = datetime.now(timezone.utc) + timedelta(days=4)
+        with db.get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO calendar_events (
+                    id, user_id, feed_id, uid, occurrence_key,
+                    summary, start_at, end_at, all_day, status
+                ) VALUES ('ev-null', 'local', 'feed-1', 'ev-null', 'ev-null',
+                          NULL, ?, ?, 0, 'confirmed')
+                """,
+                (_iso(future), _iso(future + timedelta(hours=1))),
+            )
+            conn.commit()
+        self.assertEqual(self._run(), [])
+
+    def test_two_deadlines_at_same_first_free_block_both_surface_from_rule(
+        self,
+    ) -> None:
+        # The rule layer emits one candidate per matching event even
+        # when two events share the chronologically first free block.
+        # The downstream `refresh_active_suggestions` dedupes on
+        # `(kind, start_at)`, which is a known v1 limitation
+        # documented in `_rule_deadline_imminent`'s docstring; the
+        # fix (extend dedupe key to include `source_event_id`) is
+        # deferred to its own PR. This test pins the rule-layer
+        # behavior so a regression there shows up here.
+        base = datetime.now(timezone.utc) + timedelta(days=3)
+        with db.get_db() as conn:
+            self._insert_event(conn, event_id="ev-1", summary="Calc midterm", start_at=base)
+            self._insert_event(
+                conn,
+                event_id="ev-2",
+                summary="Physics final",
+                start_at=base + timedelta(hours=2),
+            )
+        result = self._run()
+        self.assertEqual(len(result), 2)
+        # Both candidates anchor to the same first free block (no
+        # busy events seeded between now and the deadlines).
+        self.assertEqual(result[0].start_at, result[1].start_at)
+        # Different source events, different reason text, proving
+        # the rule didn't collapse them.
+        source_ids = sorted(c.source_event_id for c in result if c.source_event_id)
+        self.assertEqual(source_ids, ["ev-1", "ev-2"])
+
+    def test_preserves_verbatim_summary_casing_in_reason_text(self) -> None:
+        # v1 design decision: the panel surfaces the user's summary
+        # verbatim, including SHOUTED casing. Pin it so a future
+        # title-case normalization is a deliberate change, not a
+        # silent drift from a future contributor.
+        future = datetime.now(timezone.utc) + timedelta(days=3)
+        with db.get_db() as conn:
+            self._insert_event(conn, event_id="ev-1", summary="HISTORY EXAM", start_at=future)
+        result = self._run()
+        self.assertEqual(len(result), 1)
+        self.assertIn("HISTORY EXAM", result[0].reason_text)
+
     def test_skips_match_when_no_free_block_before_deadline(self) -> None:
         # Deadline 90 minutes from now, but a "Class" event covers the
         # entire intervening time. No free 60-min slot → no suggestion.
@@ -316,6 +395,19 @@ class DeadlineImminentRuleTests(unittest.TestCase):
         with db.get_db() as conn:
             self._insert_event(conn, event_id="ev-1", summary="Exam later", start_at=future)
         self.assertAlmostEqual(self._run()[0].score, 1.5)
+
+    def test_score_at_exact_24h_boundary_still_resolves_to_3_0(self) -> None:
+        # The score buckets use `<=` so 24h exactly sits in the
+        # urgent bucket. A regression to `<` would silently slip a
+        # tomorrow-morning exam into the 2.5 bucket. Note: real-world
+        # time elapses between `_insert_event` and `_run`, so 24h-1s
+        # is what the rule sees by the time it reads `now` again.
+        future = datetime.now(timezone.utc) + timedelta(hours=24) - timedelta(seconds=1)
+        with db.get_db() as conn:
+            self._insert_event(
+                conn, event_id="ev-1", summary="Midterm at the boundary", start_at=future
+            )
+        self.assertAlmostEqual(self._run()[0].score, 3.0)
 
     def test_score_ranks_imminent_above_v1_baseline(self) -> None:
         # The v1 rule scores 1.0; every deadline bucket beats it so the
