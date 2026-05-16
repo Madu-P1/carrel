@@ -10,7 +10,21 @@ import styles from "./WorkspaceSidebar.module.css";
 export interface SidebarNavItem {
   label: string;
   commandHint: string;
-  icon: "library" | "doc" | "ask" | "study" | "dashboard" | "sparkle" | "command" | "search" | "graph";
+  icon:
+    | "library"
+    | "doc"
+    | "ask"
+    | "study"
+    | "dashboard"
+    | "sparkle"
+    | "command"
+    | "search"
+    | "graph"
+    | "reader"
+    | "notes"
+    | "flashcards"
+    | "session"
+    | "plan";
   path: string;
   key:
     | "dashboard"

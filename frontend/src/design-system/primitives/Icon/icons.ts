@@ -38,10 +38,12 @@ export const icons = {
   settings:
     "M8 2.5 9.2 3l1-.5 1 1-.5 1 1.1 1H13v2h-1.2l-1.1 1 .5 1-1 1-1-.5-1 .5-1-1 .5-1-1.1-1H3v-2h1.2l1.1-1-.5-1 1-1 1 .5L8 2.5Z M8 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",
 
-  // dashboard: 2x2 grid of small rounded squares. Classic "overview"
-  // idiom — panels of content arranged on a board. Reads as "home /
-  // multi-widget page" at 16×16.
-  dashboard: "M2.5 2.5 h4.5 v4.5 h-4.5 z M9 2.5 h4.5 v4.5 h-4.5 z M2.5 9 h4.5 v4.5 h-4.5 z M9 9 h4.5 v4.5 h-4.5 z",
+  // dashboard: 2x2 grid of rounded squares. Refreshed from the
+  // straight-corner original to match the softer aesthetic the rest
+  // of the nav set is moving toward. Reads as "home / multi-widget
+  // overview" at 16x16.
+  dashboard:
+    "M3.5 2.5 h2.5 a1 1 0 0 1 1 1 v2.5 a1 1 0 0 1 -1 1 h-2.5 a1 1 0 0 1 -1 -1 v-2.5 a1 1 0 0 1 1 -1 z M10 2.5 h2.5 a1 1 0 0 1 1 1 v2.5 a1 1 0 0 1 -1 1 h-2.5 a1 1 0 0 1 -1 -1 v-2.5 a1 1 0 0 1 1 -1 z M3.5 9 h2.5 a1 1 0 0 1 1 1 v2.5 a1 1 0 0 1 -1 1 h-2.5 a1 1 0 0 1 -1 -1 v-2.5 a1 1 0 0 1 1 -1 z M10 9 h2.5 a1 1 0 0 1 1 1 v2.5 a1 1 0 0 1 -1 1 h-2.5 a1 1 0 0 1 -1 -1 v-2.5 a1 1 0 0 1 1 -1 z",
 
   // graph: three small nodes connected by lines — concept-graph cue.
   // Top node centered, two on the lower row. Lines connect top-down to
@@ -71,6 +73,40 @@ export const icons = {
   // old clipboard — a book is the universal symbol for study/reading and
   // matches the "study room at night" thesis better than a to-do list.
   study: "M2 3.5 h4.5 a1.5 1.5 0 0 1 1.5 1.5 v8.5 a1.25 1.25 0 0 0 -1.25 -1.25 H2 z M14 3.5 h-4.5 a1.5 1.5 0 0 0 -1.5 1.5 v8.5 a1.25 1.25 0 0 1 1.25 -1.25 H14 z",
+
+  // reader: open book with text-line marks on each page. Distinct
+  // from `study` (the generic open-book primitive, no text) by the
+  // page-content strokes. Signals "this is what you're currently
+  // reading" vs. "study session" semantics.
+  reader:
+    "M2 3.5 h4.5 a1.5 1.5 0 0 1 1.5 1.5 v8.5 a1.25 1.25 0 0 0 -1.25 -1.25 H2 z M14 3.5 h-4.5 a1.5 1.5 0 0 0 -1.5 1.5 v8.5 a1.25 1.25 0 0 1 1.25 -1.25 H14 z M3 6.5 h3 M3 8.5 h3 M3 10.5 h2 M10 6.5 h3 M10 8.5 h3 M10 10.5 h2",
+
+  // notes: rounded document with three content lines and a small
+  // pencil emerging from the lower-right corner. Differentiated from
+  // the generic `doc` icon (dog-eared, no pencil) by the pencil
+  // mark; reads as "writing notes on a page".
+  notes:
+    "M3.5 2 h5.5 a0.5 0.5 0 0 1 0.5 0.5 v10 a0.5 0.5 0 0 1 -0.5 0.5 H3.5 a0.5 0.5 0 0 1 -0.5 -0.5 V2.5 a0.5 0.5 0 0 1 0.5 -0.5 z M5 5.5 h3 M5 7.5 h3 M5 9.5 h2 M10.5 14 l3 -3 a0.4 0.4 0 0 0 0 -0.6 l-0.4 -0.4 a0.4 0.4 0 0 0 -0.6 0 l-3 3 z",
+
+  // flashcards: SRS card / credit-card shape. Rounded outer rect, a
+  // top stripe band reading as the card's color strip, and two short
+  // interior lines hinting at the front-face content. Replaces the
+  // open-book on /study, which is the spaced-repetition queue.
+  flashcards:
+    "M2 4.5 a1 1 0 0 1 1 -1 h10 a1 1 0 0 1 1 1 v7 a1 1 0 0 1 -1 1 H3 a1 1 0 0 1 -1 -1 z M2 6.5 h12 M4.5 10 h3 M4.5 11.5 h1.5",
+
+  // session: hourglass. A single zig-zag traces top bar, right
+  // diagonal, waist, bottom-right diagonal, bottom bar, left bottom
+  // diagonal, waist, left top diagonal. Two short interior bars read
+  // as sand grains. Signals timed focus / study session without the
+  // clock-rainbow connotation of a generic timer.
+  session: "M5 3 L11 3 L8 8 L11 13 L5 13 L8 8 L5 3 M7 11 L9 11 M7.5 5 L8.5 5",
+
+  // plan: clipboard with a check on the first line and two pending
+  // task lines below. Replaces the misplaced `command` (⌘) icon
+  // that was acting as a placeholder on /plan.
+  plan:
+    "M3 4.5 a1 1 0 0 1 1 -1 h8 a1 1 0 0 1 1 1 v9 a1 1 0 0 1 -1 1 H4 a1 1 0 0 1 -1 -1 z M6 2.5 h4 v2 H6 z M5 8 l1 1 l2 -2 M5.5 11 h5 M5.5 13 h3",
 
   // --- Accent glyphs ---
   // command: proper ⌘ (four open loops connected by a square). The old

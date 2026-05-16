@@ -55,19 +55,19 @@ interface ShellFrameProps extends AppShellProps {
 
 const navLinks: SidebarNavItem[] = [
   { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
-  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "sparkle", path: "/session" },
+  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "session", path: "/session" },
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
   // Notes sits right after Library: when a user thinks "where are my
   // notes?" the mental path is Library → my notes about library items.
   // No ⌘ hotkey for now — the 1-9 slots are taken; adding ⌘⇧N is a
   // polish follow-up that also touches keyboard-shortcut registration.
-  { key: "notes", label: "Notes", commandHint: "", icon: "doc", path: "/notes" },
-  { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
+  { key: "notes", label: "Notes", commandHint: "", icon: "notes", path: "/notes" },
+  { key: "reader", label: "Reader", commandHint: "⌘4", icon: "reader", path: "/reader" },
   { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  { key: "study", label: "Review Queue", commandHint: "⌘6", icon: "study", path: "/study" },
+  { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
-  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "command", path: "/plan" }
+  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "plan", path: "/plan" }
 ];
 
 const FIRST_LAUNCH_EVENT_KEY = "carrel.metrics.first-launch-recorded";
@@ -86,7 +86,7 @@ function routeLabel(path: string): string {
   }
 
   if (path.startsWith("/study")) {
-    return "Study";
+    return "Flashcards";
   }
 
   if (path.startsWith("/library")) {
