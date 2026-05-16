@@ -47,6 +47,7 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./script/build_and_run.sh --verify
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
 bash /Users/madu/Desktop/Codex/tests/test_watchdog_kill.sh
+swift test --package-path /Users/madu/Desktop/Codex/macos-app
 ```
 
 Every PR lands green on the full chain or it does not land.
@@ -142,8 +143,7 @@ Zero runtime motion libraries. CSS + WAAPI only.
 
 ## Open debts tracked
 
-- ESLint 9 still on `.eslintrc.cjs` legacy config path. Flat-config migration pending.
-- Swift-side menu dispatch test coverage is informal; XCTest coverage pending.
+- Swift-side menu dispatch test coverage is informal. XCTest scaffold added 2026-05-16 (`macos-app/Tests/EinsteinDesktopTests/`, first target covers `UploadMimeTypes.swift`); follow-up tests for `MainMenuBuilder`, `LocalApiToken`, `LaunchTelemetry` should land in the same target.
 - Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
 - FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
 - **Toast primitive doesn't accept action buttons.** Suggestion dismiss has a `restoreSuggestion` API + endpoint ready (`POST /api/plan/suggestions/{id}/restore`) but no Undo button on the toast. Small primitive extension; documented in the Phase 2 plan in `docs/notes/2026-04-29-session-handoff.md`.
