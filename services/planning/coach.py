@@ -17,16 +17,18 @@ Phase 2 ships in waves; each rule is its own commit:
   60-min study_block at the first free window before the deadline,
   scores by urgency in four buckets (3.0/2.5/2.0/1.5).
 
-  Rule "low_recent_review" (shipped this commit): emits one
+  Rule "low_recent_review" (shipped b12359d2 / 87b94897): emits one
   review_block when at least MIN_STALE_CARDS cards have
   last_review < now - REVIEW_STALE_DAYS AND are not currently
   overdue. Partition with the v1 free_block_overdue_srs rule is
   intentional (this rule covers proactive refresh, v1 covers
   reactive catchup).
 
-  Rule "gap_between_classes" (still pending): when two events are
-  <2h apart and the user is on campus (location overlap), suggest
-  a tight focused micro-session.
+  Rule "gap_between_classes" (shipped this commit): when two
+  adjacent calendar events at the same location are 30-120 minutes
+  apart, anchor a catchup micro-session at the first event's end
+  with duration `gap - GAP_TRANSITION_BUFFER_MINUTES` capped at
+  GAP_MAX_SESSION_MINUTES. Score 1.2.
 
 Each future rule is a function that takes the same `CoachInputs`
 dataclass and returns a list of candidate suggestions; `synthesize`
@@ -93,6 +95,20 @@ REVIEW_STALE_DAYS = 7
 # for users who only have a handful of cards.
 MIN_STALE_CARDS = 5
 
+# Bounds for the gap_between_classes rule. Gaps shorter than the lower
+# bound aren't worth a context switch; gaps at or above the upper bound
+# are big enough that the user probably already has plans (lunch, study
+# at home, etc.) so the suggestion would feel presumptuous.
+GAP_MIN_MINUTES = 30
+GAP_MAX_MINUTES = 120
+
+# Buffer subtracted from the suggested micro-session's duration so the
+# user has time to pack up + walk + settle. The remaining session is
+# capped at 30 minutes because the rule is about focused micro-work,
+# not a full study block.
+GAP_TRANSITION_BUFFER_MINUTES = 5
+GAP_MAX_SESSION_MINUTES = 30
+
 
 @dataclass
 class CandidateSuggestion:
@@ -136,8 +152,7 @@ def synthesize_suggestions(
         _rule_free_block_overdue_srs,
         _rule_deadline_imminent,
         _rule_low_recent_review,
-        # Phase 2 plug points (still pending):
-        # _rule_gap_between_classes,
+        _rule_gap_between_classes,
     ]
     candidates: List[CandidateSuggestion] = []
     for rule in rules:
@@ -496,6 +511,136 @@ def _count_stale_review_cards(conn: sqlite3.Connection) -> int:
         (cutoff_iso, today_iso),
     ).fetchone()
     return int(row["n"]) if row else 0
+
+
+def _rule_gap_between_classes(
+    conn: sqlite3.Connection, *, user_id: str
+) -> List[CandidateSuggestion]:
+    """Phase 2 rule. When two upcoming calendar events at the same
+    location are 30-120 minutes apart, emit a focused micro-session
+    suggestion anchored at the first event's end. The "same location"
+    proxy assumes the user is already on-site for both classes, so a
+    brief session is friction-free.
+
+    Suggested duration: `gap_minutes - GAP_TRANSITION_BUFFER_MINUTES`,
+    capped at `GAP_MAX_SESSION_MINUTES`. The transition buffer leaves
+    time to walk + settle into the next room; the cap keeps the
+    session feel micro rather than block-sized.
+
+    Score: 1.2. Above the v1 `free_block_overdue_srs` baseline of
+    1.0 so a panel that sees both signals surfaces this first, but
+    below `low_recent_review` (1.5) and `deadline_imminent` (1.5+)
+    so urgent SRS / exam signals stay on top.
+
+    Location comparison: case-insensitive whitespace-trim match. The
+    user's calendar entries from one feed (e.g. Apple Calendar)
+    usually format locations consistently. Substring or fuzzy match
+    is a future PR if the false-negative rate from format drift
+    proves real.
+
+    Skips an event pair when:
+      - Either event is cancelled.
+      - Either event has a NULL or empty location.
+      - The locations don't match after normalization.
+      - The gap falls outside [GAP_MIN_MINUTES, GAP_MAX_MINUTES).
+    """
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=LOOKAHEAD_HOURS)
+    pairs = _find_back_to_back_event_pairs(
+        conn, user_id=user_id, window_start=now, window_end=horizon
+    )
+
+    candidates: List[CandidateSuggestion] = []
+    for first, second, gap_minutes in pairs:
+        session_minutes = min(gap_minutes - GAP_TRANSITION_BUFFER_MINUTES, GAP_MAX_SESSION_MINUTES)
+        if session_minutes < GAP_TRANSITION_BUFFER_MINUTES:
+            # Defensive: gap_minutes >= 30 and buffer = 5 means
+            # session >= 25, so this branch is unreachable today.
+            # Kept for forgiveness if either constant is ever
+            # retuned.
+            continue
+        start_at = first["end_at"]
+        end_at = _iso_add_minutes(start_at, session_minutes)
+        location = (first["location"] or "").strip()
+        candidates.append(
+            CandidateSuggestion(
+                kind="catchup",
+                start_at=start_at,
+                end_at=end_at,
+                reason_code="gap_between_classes",
+                reason_text=(f"{int(gap_minutes)}-min gap between {location} sessions."),
+                source_event_id=first["id"],
+                score=1.2,
+            )
+        )
+
+    return candidates
+
+
+def _find_back_to_back_event_pairs(
+    conn: sqlite3.Connection,
+    *,
+    user_id: str,
+    window_start: datetime,
+    window_end: datetime,
+) -> List[tuple[sqlite3.Row, sqlite3.Row, float]]:
+    """Returns `(first, second, gap_minutes)` triples for non-
+    cancelled, same-location event pairs whose between-gap is in
+    `[GAP_MIN_MINUTES, GAP_MAX_MINUTES)`. Iterates events in
+    chronological order and only checks the immediately-next event
+    (single pass; O(n) instead of O(n^2) pairwise), which is the
+    intended semantic anyway — "back to back" means adjacent in the
+    user's schedule, not "any two events on the same day."
+    """
+    start_iso = window_start.isoformat().replace("+00:00", "Z")
+    end_iso = window_end.isoformat().replace("+00:00", "Z")
+
+    rows = list(
+        conn.execute(
+            """
+            SELECT id, summary, start_at, end_at, location FROM calendar_events
+            WHERE user_id = ?
+              AND status != 'cancelled'
+              AND start_at >= ?
+              AND start_at < ?
+              AND location IS NOT NULL
+              AND TRIM(location) != ''
+            ORDER BY start_at ASC
+            """,
+            (user_id, start_iso, end_iso),
+        ).fetchall()
+    )
+
+    pairs: List[tuple[sqlite3.Row, sqlite3.Row, float]] = []
+    for first, second in zip(rows, rows[1:]):
+        if not _locations_match(first["location"], second["location"]):
+            continue
+        try:
+            first_end = _parse_iso(first["end_at"])
+            second_start = _parse_iso(second["start_at"])
+        except ValueError:
+            continue
+        if second_start <= first_end:
+            continue  # overlapping / immediately back-to-back; no gap to fill
+        gap_minutes = (second_start - first_end).total_seconds() / 60.0
+        if gap_minutes < GAP_MIN_MINUTES or gap_minutes >= GAP_MAX_MINUTES:
+            continue
+        pairs.append((first, second, gap_minutes))
+    return pairs
+
+
+def _locations_match(a: str | None, b: str | None) -> bool:
+    """Case-insensitive whitespace-trim equality. Returns False when
+    either input is None/empty after trim so callers can rely on
+    "match implies non-empty location" downstream.
+    """
+    if a is None or b is None:
+        return False
+    aa = a.strip().lower()
+    bb = b.strip().lower()
+    if not aa or not bb:
+        return False
+    return aa == bb
 
 
 def _count_overdue_srs(conn: sqlite3.Connection) -> int:
