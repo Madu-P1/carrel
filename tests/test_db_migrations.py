@@ -108,8 +108,8 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (16, "0016_nodes_typed.sql"),
                 (17, "0017_srs_cards_kind.sql"),
                 (18, "0018_srs_cards_kind_drop_check_and_card_pairs.sql"),
-                (19, "0019_srs_cards_doc_id.sql"),
-                (20, "0020_note_folders.sql"),
+                (22, "0022_srs_cards_doc_id.sql"),
+                (23, "0023_note_folders.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -153,7 +153,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
         # 0016_nodes_typed, 0017_srs_cards_kind,
         # 0018_srs_cards_kind_drop_check_and_card_pairs,
-        # 0019_srs_cards_doc_id, and 0020_note_folders. All unconditional,
+        # 0022_srs_cards_doc_id, and 0023_note_folders. All unconditional,
         # no runtime gate like sqlite-vec.
         expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 11
         self.assertEqual(expected_total, total)
@@ -193,8 +193,8 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0016_nodes_typed.sql",
                 "0017_srs_cards_kind.sql",
                 "0018_srs_cards_kind_drop_check_and_card_pairs.sql",
-                "0019_srs_cards_doc_id.sql",
-                "0020_note_folders.sql",
+                "0022_srs_cards_doc_id.sql",
+                "0023_note_folders.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

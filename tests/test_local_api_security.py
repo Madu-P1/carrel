@@ -12,11 +12,13 @@ import unittest
 
 from starlette.requests import Request
 
+from services import local_api_security
 from services.local_api_security import (
     EXEMPT_PATHS,
     get_local_api_token,
     has_valid_local_api_token,
     is_mutating_api_request,
+    is_open_mode,
     requires_local_api_token,
 )
 
@@ -133,6 +135,40 @@ class HasValidLocalApiTokenTests(unittest.TestCase):
     def test_rejects_missing_token(self) -> None:
         request = _make_request("POST", "/api/goal")
         self.assertFalse(has_valid_local_api_token(request))
+
+
+class OpenModeTests(unittest.TestCase):
+    """CARREL_API_OPEN_MODE is the dev-mode escape hatch for Vite-dev
+    work where Swift can't inject the local-API token. When on, every
+    /api/* path skips the gate. Default is off — production stays
+    gated by the bundled .app's WKUserScript token injection."""
+
+    def setUp(self) -> None:
+        self._previous = local_api_security._OPEN_MODE
+
+    def tearDown(self) -> None:
+        local_api_security._OPEN_MODE = self._previous
+
+    def test_default_off(self) -> None:
+        # is_open_mode() reflects the module-level constant; with no
+        # env override the default is False.
+        local_api_security._OPEN_MODE = False
+        self.assertFalse(is_open_mode())
+
+    def test_open_mode_skips_gate_for_post(self) -> None:
+        local_api_security._OPEN_MODE = True
+        request = _make_request("POST", "/api/notes")
+        self.assertFalse(requires_local_api_token(request))
+
+    def test_open_mode_skips_gate_for_get(self) -> None:
+        local_api_security._OPEN_MODE = True
+        request = _make_request("GET", "/api/workspace")
+        self.assertFalse(requires_local_api_token(request))
+
+    def test_open_mode_off_still_gates(self) -> None:
+        local_api_security._OPEN_MODE = False
+        request = _make_request("POST", "/api/notes")
+        self.assertTrue(requires_local_api_token(request))
 
 
 if __name__ == "__main__":

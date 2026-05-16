@@ -331,11 +331,13 @@ def _mark_legacy_baseline_if_needed(
         # rather than re-running ALTER TABLE (which would fail with
         # "duplicate column name").
         17: _has_columns(conn, "srs_cards", ["kind"]),
-        # Same pattern for the two more recent ADD COLUMN migrations.
-        # If the column is already present we mark them applied;
-        # otherwise the normal migration loop runs them.
-        19: _has_columns(conn, "srs_cards", ["doc_id"]),
-        20: _has_columns(conn, "notes", ["folder_id"]) and table_exists(conn, "note_folders"),
+        # Notes Phase A ADD COLUMN migrations. Renumbered from 0019/0020
+        # to 0022/0023 mid-development to clear a version collision with
+        # the coach feature's session-check-ins + study-suggestions
+        # migrations on main. If the column / table is already present
+        # we mark these applied so a re-apply doesn't ALTER twice.
+        22: _has_columns(conn, "srs_cards", ["doc_id"]),
+        23: _has_columns(conn, "notes", ["folder_id"]) and table_exists(conn, "note_folders"),
     }
 
     for version, satisfied in checks.items():

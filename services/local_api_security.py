@@ -17,12 +17,34 @@ EXEMPT_PATHS = {"/api/health"}
 
 _LOCAL_API_TOKEN = os.getenv("CARREL_LOCAL_API_TOKEN") or secrets.token_urlsafe(32)
 
+# Dev-mode escape hatch. The bundled macOS app injects the local-API
+# token into the WKWebView via WKUserScript before any JS runs, so
+# production stays gated. The Vite dev server (port 5173, browser) has
+# no Swift to inject a token, so every write would 403 — invisibly,
+# unless the UI surfaces the error. Setting CARREL_API_OPEN_MODE=true
+# lets dev-mode work end-to-end without a token. Same idiom as the
+# IAF project's IAF_API_OPEN_MODE: explicit opt-in, default closed.
+#
+# Never set this in production. The bundled .app does NOT need it
+# because the token chain works correctly there.
+_OPEN_MODE = os.getenv("CARREL_API_OPEN_MODE", "").lower() in {"1", "true", "yes"}
+
 
 def get_local_api_token() -> str:
     return _LOCAL_API_TOKEN
 
 
+def is_open_mode() -> bool:
+    """Whether the local-API token gate is currently off via the dev
+    escape hatch. Exposed so callers (and tests) can observe the
+    configuration without re-reading the env var directly."""
+
+    return _OPEN_MODE
+
+
 def requires_local_api_token(request: Request) -> bool:
+    if _OPEN_MODE:
+        return False
     path = request.url.path
     if not path.startswith("/api/"):
         return False

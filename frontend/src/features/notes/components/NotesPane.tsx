@@ -18,6 +18,11 @@ interface NotesPaneProps {
   loading: boolean;
   onChanged: () => void;
   onNewNote: () => void;
+  /** Visible error from the parent's "+ New note" handler. Renders
+   *  inline below the action bar so the user can see what went wrong
+   *  (e.g. 403 from the local-API token gate in Vite dev). */
+  newNoteError?: string | null;
+  onDismissNewNoteError?: () => void;
 }
 
 /**
@@ -41,7 +46,9 @@ export function NotesPane({
   selection,
   loading,
   onChanged,
-  onNewNote
+  onNewNote,
+  newNoteError = null,
+  onDismissNewNoteError
 }: NotesPaneProps) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -97,6 +104,22 @@ export function NotesPane({
       <Hero />
 
       <ActionBar onNewNote={onNewNote} searchInputRef={searchInputRef} />
+
+      {newNoteError ? (
+        <div className={styles.errorBanner} role="alert">
+          <span className={styles.errorBannerText}>{newNoteError}</span>
+          {onDismissNewNoteError ? (
+            <button
+              type="button"
+              className={styles.errorBannerDismiss}
+              onClick={onDismissNewNoteError}
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {showInbox ? (
         <UnsortedInbox

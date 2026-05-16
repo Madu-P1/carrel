@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { enterNotesRailMode, navigateTo } from "@/app/shell/useAppShell";
 import { createQuery } from "@/lib/query";
@@ -33,6 +33,12 @@ import styles from "./NotesPage.module.css";
  */
 export function NotesPage() {
   const selection = notesSelection.value;
+  // Visible error state for "+ New note" so a failure (e.g. 403 from
+  // the token gate when running in Vite dev without a matching
+  // CARREL_LOCAL_API_TOKEN) surfaces in the UI instead of silently
+  // logging to the console. Karpathy lesson learned: do not swallow
+  // errors that block the user's primary action.
+  const [newNoteError, setNewNoteError] = useState<string | null>(null);
 
   // Subscribe to the organization query so NotesPage stays
   // re-rendering when subjects/folders change. SubjectRail (rendered
@@ -78,6 +84,7 @@ export function NotesPage() {
     // the full-page editor at /notes/:id. The server enforces
     // content.min_length=1, so we seed with "\n"; NoteEditor clears
     // it visually on mount so the user sees an empty page.
+    setNewNoteError(null);
     try {
       const created: { note: SavedNote } = await notesApi.save({
         title: "Untitled note",
@@ -87,8 +94,16 @@ export function NotesPage() {
       refreshNotesOrganization();
       navigateTo(`/notes/${encodeURIComponent(created.note.id)}`);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("New note failed:", err);
+      // Visible error. The most common cause in dev is a missing/
+      // mismatched local API token between Vite (frontend) and the
+      // Python backend; the bundled macOS app handles this via
+      // WKUserScript injection. Surface the real message so the user
+      // can diagnose without opening the browser console.
+      const message = (err as Error).message || "Could not create the note.";
+      const hint = /token/i.test(message)
+        ? " (Vite dev: set VITE_CARREL_LOCAL_API_TOKEN in frontend/.env to match the backend's CARREL_LOCAL_API_TOKEN, or use the bundled app.)"
+        : "";
+      setNewNoteError(`${message}${hint}`);
     }
   };
 
@@ -101,6 +116,8 @@ export function NotesPage() {
         loading={notesQuery.loading.value ?? false}
         onChanged={refreshAll}
         onNewNote={() => void handleNewNote()}
+        newNoteError={newNoteError}
+        onDismissNewNoteError={() => setNewNoteError(null)}
       />
     </div>
   );
