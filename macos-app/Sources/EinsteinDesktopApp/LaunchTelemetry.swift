@@ -35,7 +35,21 @@ enum LaunchTelemetry {
         }
     }
 
-    private static func format(milliseconds: Double) -> String {
+    /// Pure formatter for the duration values in the `launch-start`
+    /// and `app-interactive` log lines. Two decimal places,
+    /// locale-independent (no thousands separator). Exposed as
+    /// `nonisolated` + internal so `@testable` can exercise it
+    /// without forcing tests onto the main actor.
+    nonisolated static func format(milliseconds: Double) -> String {
         String(format: "%.2f", milliseconds)
+    }
+
+    /// Test seam: read or override the `launchUptimeNanoseconds`
+    /// field. Production code never touches this — it's exposed only
+    /// so XCTest can reset between cases or seed a known anchor
+    /// timestamp before calling `markInteractive`. Underscore prefix
+    /// signals "internal-use only".
+    static func _setLaunchUptimeForTesting(_ value: UInt64?) {
+        launchUptimeNanoseconds = value
     }
 }
