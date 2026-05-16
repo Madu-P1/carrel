@@ -162,18 +162,28 @@ def refresh_active_suggestions(
     Called from GET /api/plan after expiring past-due pending ones.
     Strategy: keep already-pending suggestions (so an open dialog or a
     suggestion the user is mid-decision on doesn't disappear under
-    them), and only insert new ones whose (kind, start_at) tuple
-    isn't already represented in the pending set. Past-start_at
-    pending suggestions are expired by the caller before this runs.
+    them), and only insert new ones whose (kind, start_at,
+    reason_code) tuple isn't already represented in the pending set.
+    Past-start_at pending suggestions are expired by the caller
+    before this runs.
+
+    The `reason_code` component of the dedupe key is load-bearing
+    now that Phase 2 ships `low_recent_review`: both that rule and
+    the v1 `free_block_overdue_srs` emit `kind="review_block"` at
+    `_find_free_blocks(...)[0]`, so two rules can produce candidates
+    with the same `(kind, start_at)` but different reason_codes.
+    Dedupe on the triple keeps each rule's distinct signal visible
+    on subsequent refreshes; dedupe on the pair would silently
+    swallow whichever rule landed second.
     """
     repository.expire_past_pending_suggestions(conn, user_id=user_id)
 
     existing = repository.list_active_suggestions(conn, user_id=user_id)
-    existing_keys = {(s.kind, s.start_at) for s in existing}
+    existing_keys = {(s.kind, s.start_at, s.reason_code) for s in existing}
 
     candidates = synthesize_suggestions(conn, user_id=user_id)
     for candidate in candidates:
-        key = (candidate.kind, candidate.start_at)
+        key = (candidate.kind, candidate.start_at, candidate.reason_code)
         if key in existing_keys:
             continue
         repository.insert_suggestion(
@@ -449,7 +459,10 @@ def _rule_low_recent_review(conn: sqlite3.Connection, *, user_id: str) -> List[C
             start_at=block.start_at,
             end_at=suggested_end,
             reason_code="low_recent_review",
-            reason_text=(f"{stale_count} cards haven't seen review in {REVIEW_STALE_DAYS}+ days."),
+            reason_text=(
+                f"{stale_count} card{'s' if stale_count != 1 else ''} "
+                f"haven't seen review in {REVIEW_STALE_DAYS}+ days."
+            ),
             score=1.5,
         )
     ]
@@ -468,8 +481,9 @@ def _count_stale_review_cards(conn: sqlite3.Connection) -> int:
     excludes cards that have already crossed the due threshold
     (those belong to the v1 rule's domain).
     """
-    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=REVIEW_STALE_DAYS)).isoformat()
-    today_iso = datetime.now(timezone.utc).date().isoformat()
+    now = datetime.now(timezone.utc)
+    cutoff_iso = (now - timedelta(days=REVIEW_STALE_DAYS)).isoformat()
+    today_iso = now.date().isoformat()
     row = conn.execute(
         """
         SELECT COUNT(*) AS n

@@ -296,6 +296,97 @@ class LowRecentReviewRuleTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].reason_code, "low_recent_review")
 
+    def test_excludes_cards_due_today_at_the_boundary(self) -> None:
+        # SQLite TEXT comparison: `'2026-05-16' > '2026-05-16'` is
+        # FALSE, so cards whose due_date equals today fall to the
+        # v1 overdue rule's domain (which uses `due_date <= today`)
+        # and not this one. Pins the boundary.
+        with db.get_db() as conn:
+            old_review = datetime.now(timezone.utc) - timedelta(days=30)
+            today_iso = datetime.now(timezone.utc).date().isoformat()
+            for i in range(coach.MIN_STALE_CARDS + 5):
+                self._insert_card(
+                    conn,
+                    card_id=f"due-today-{i}",
+                    last_review=old_review,
+                    due_date=today_iso,
+                )
+        self.assertEqual(self._run(), [])
+
+    def test_excludes_cards_with_null_due_date(self) -> None:
+        # `due_date IS NULL` cards (never scheduled, e.g. new cards
+        # the user hasn't seen yet) belong to v1's domain via its
+        # `due_date IS NULL OR due_date <= today` clause. This
+        # rule's `due_date IS NOT NULL` guard skips them.
+        with db.get_db() as conn:
+            old_review = datetime.now(timezone.utc) - timedelta(days=30)
+            for i in range(coach.MIN_STALE_CARDS + 5):
+                self._insert_card(
+                    conn,
+                    card_id=f"null-due-{i}",
+                    last_review=old_review,
+                    due_date=None,
+                )
+        self.assertEqual(self._run(), [])
+
+    def test_emitted_start_at_is_inside_the_24h_lookahead_window(self) -> None:
+        # Sanity: the suggested block starts at or after `now` and
+        # ends at or before `now + LOOKAHEAD_HOURS`. Catches a
+        # regression where the rule accidentally lifted the
+        # `_find_free_blocks` window to something longer (the
+        # deadline_imminent rule uses a different window; this one
+        # must stay on the 24h v1 horizon).
+        with db.get_db() as conn:
+            self._seed_stale_cards(conn, count=10)
+        candidate = self._run()[0]
+        now = datetime.now(timezone.utc)
+        horizon = now + timedelta(hours=coach.LOOKAHEAD_HOURS)
+        start_dt = coach._parse_iso(candidate.start_at)
+        end_dt = coach._parse_iso(candidate.end_at)
+        # 2s slack for the elapsed time between _run() and now()
+        self.assertGreaterEqual(start_dt, now - timedelta(seconds=2))
+        self.assertLessEqual(end_dt, horizon + timedelta(seconds=2))
+
+    def test_refresh_persists_both_v1_and_low_recent_review_signals(self) -> None:
+        # End-to-end: when BOTH rules fire (overdue cards + stale-
+        # but-not-overdue cards), `refresh_active_suggestions`
+        # persists both signals. Under the new triple-key dedupe
+        # `(kind, start_at, reason_code)`, two distinct rule outputs
+        # with the same `(kind, start_at)` and different reason_codes
+        # do NOT collide on subsequent refreshes; the pair-key it
+        # replaced would have silently swallowed whichever rule
+        # landed second.
+        with db.get_db() as conn:
+            # 6 overdue cards (v1 territory)
+            old_review = datetime.now(timezone.utc) - timedelta(days=30)
+            past_due = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+            for i in range(6):
+                self._insert_card(
+                    conn,
+                    card_id=f"overdue-{i}",
+                    last_review=old_review,
+                    due_date=past_due,
+                )
+            # 6 stale-not-overdue cards (this rule's territory)
+            self._seed_stale_cards(conn, count=6)
+
+            # First refresh inserts both signals.
+            first = coach.refresh_active_suggestions(conn, user_id="local")
+            # Second refresh exercises the dedupe path; both
+            # existing rows must be recognized so neither rule
+            # double-inserts and neither signal is silently dropped.
+            second = coach.refresh_active_suggestions(conn, user_id="local")
+
+        self.assertEqual(
+            sorted(s.reason_code for s in first),
+            ["free_block_overdue_srs", "low_recent_review"],
+        )
+        self.assertEqual(
+            sorted(s.reason_code for s in second),
+            ["free_block_overdue_srs", "low_recent_review"],
+            "Both signals must survive the second refresh through the triple-key dedupe",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
