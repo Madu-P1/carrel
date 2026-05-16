@@ -129,6 +129,17 @@ while true; do
 
   echo
   echo "$(date '+%F %T'): session #$attempt ended. sleeping ${RETRY_SECONDS}s before relaunch."
-  echo "                  ctrl-c now to abort the watchdog."
-  sleep "$RETRY_SECONDS"
+  echo "                  ctrl-c now, or touch .claude/HALT for graceful stop."
+
+  # HALT-aware retry sleep: poll the HALT file every 5s so a graceful stop
+  # takes effect within seconds, not the full RETRY_SECONDS window.
+  slept=0
+  while [ "$slept" -lt "$RETRY_SECONDS" ]; do
+    if [ -f "$REPO_ROOT/.claude/HALT" ]; then
+      echo "$(date '+%F %T'): .claude/HALT detected during retry sleep. Watchdog exiting."
+      exit 0
+    fi
+    sleep 5
+    slept=$((slept + 5))
+  done
 done

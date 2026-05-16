@@ -68,6 +68,41 @@ The hook is committed to the repo so it's identical for every
 contributor. Bypass with `--no-verify` only for genuine emergencies;
 the full CI chain still runs against the push regardless.
 
+## Running the autonomous routine
+
+Two scripts at `script/` arm and supervise unattended `/carrel-build`
+sessions:
+
+```bash
+./script/start-autonomous.sh /carrel-build          # one armed session
+./script/autonomous-watchdog.sh                     # relaunch loop
+nohup ./script/autonomous-watchdog.sh > /tmp/carrel-watchdog.log 2>&1 &
+```
+
+`start-autonomous.sh` exports `CARREL_AUTONOMOUS=true` so the four
+hooks at `.claude/hooks/` (`route-task`, `audit-gate`, `debate-trigger`,
+`score-loop`) actually fire, and passes `--permission-mode bypassPermissions`
+so claude doesn't deadlock on its own UI prompts — the `audit-gate.py`
+hook is the actual safety net. Without `CARREL_AUTONOMOUS=true` the
+hooks exit silently so ad-hoc edits don't trigger the auditor + rater.
+
+`autonomous-watchdog.sh` relaunches after rate-limit freezes using
+idleness-primary detection (log growth < 512 B in 10 min ⇒ kill) with
+a tight `LIMIT_PATTERN` regex fast-path gated on idleness ≥ 60s so
+prose mentioning "rate limit" cannot false-positive. Each relaunch is
+safe because `/carrel-build` reads `TODOS.md` + the active plan at the
+top of every iteration; state lives in the filesystem, not the session.
+
+Halt the routine with:
+
+```bash
+touch .claude/HALT       # graceful — finishes current cycle and exits
+```
+
+The HALT file is checked at the top of every watchdog iteration, inside
+the poller, and during the retry sleep, so a graceful stop registers
+within seconds.
+
 ## Benchmarks + budgets
 
 - **Cold launch:** p50 ≤ 800ms target, current 465ms p50, warm 200-250ms. Gate: `script/measure_cold_launch.sh` + `benchmarks/cold_launch_diff.py`.
