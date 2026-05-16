@@ -29,7 +29,11 @@ enum LaunchTelemetry {
     }
 
     private static func emit(_ message: String) {
-        logger.info("\(message, privacy: .public)")
+        if let sink = _osLogSinkForTesting {
+            sink(message)
+        } else {
+            logger.info("\(message, privacy: .public)")
+        }
         if let data = "\(message)\n".data(using: .utf8) {
             FileHandle.standardError.write(data)
         }
@@ -37,11 +41,17 @@ enum LaunchTelemetry {
 
     /// Pure formatter for the duration values in the `launch-start`
     /// and `app-interactive` log lines. Two decimal places,
-    /// locale-independent (no thousands separator). Exposed as
-    /// `nonisolated` + internal so `@testable` can exercise it
-    /// without forcing tests onto the main actor.
+    /// locale-independent (no thousands separator). Non-finite
+    /// inputs (NaN, ±Infinity) render as `n/a` so downstream log
+    /// scrapers parsing `\d+\.\d{2}` aren't broken by edge-case
+    /// callers — the marker functions don't produce non-finite
+    /// values today, but `markInteractive(performanceNowMilliseconds:)`
+    /// passes user-controllable numbers through the JS bridge.
+    /// Exposed as `nonisolated` + internal so `@testable` can
+    /// exercise it without forcing tests onto the main actor.
     nonisolated static func format(milliseconds: Double) -> String {
-        String(format: "%.2f", milliseconds)
+        guard milliseconds.isFinite else { return "n/a" }
+        return String(format: "%.2f", milliseconds)
     }
 
     /// Test seam: read or override the `launchUptimeNanoseconds`
@@ -52,4 +62,11 @@ enum LaunchTelemetry {
     static func _setLaunchUptimeForTesting(_ value: UInt64?) {
         launchUptimeNanoseconds = value
     }
+
+    /// Test seam: replace the OSLog side of `emit(_:)` with a spy.
+    /// When set, `logger.info` is bypassed and the closure is called
+    /// with the exact message string instead. The stderr side
+    /// (visible to log scrapers) always runs. Production code never
+    /// sets this. Tests must reset to `nil` in `tearDown`.
+    static var _osLogSinkForTesting: ((String) -> Void)?
 }

@@ -12,6 +12,7 @@ import XCTest
 private final class StderrCapture {
     private let pipe: Pipe
     private let savedStderr: Int32
+    private var finished = false
 
     init() {
         pipe = Pipe()
@@ -24,23 +25,48 @@ private final class StderrCapture {
         // travel to the real terminal, not into the soon-closed pipe.
         dup2(savedStderr, STDERR_FILENO)
         close(savedStderr)
+        finished = true
         // Close write end so the read side observes EOF.
         try? pipe.fileHandleForWriting.close()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         try? pipe.fileHandleForReading.close()
         return String(data: data, encoding: .utf8) ?? ""
     }
+
+    /// Safety net: if a test throws before `finish()` was called,
+    /// stderr would otherwise stay dup'd to the closed pipe for the
+    /// rest of the suite and silently corrupt every later test's
+    /// log output. The deinit restores fd 2 in that case.
+    deinit {
+        if !finished {
+            dup2(savedStderr, STDERR_FILENO)
+            close(savedStderr)
+        }
+    }
 }
 
 @MainActor
 final class LaunchTelemetryTests: XCTestCase {
+    // `setUp`/`tearDown` are inherited as `nonisolated` from
+    // `XCTestCase` even though the class is `@MainActor`, so plain
+    // calls to the main-actor-isolated test seams emit Swift 6
+    // concurrency warnings. `MainActor.assumeIsolated` is the
+    // canonical "I know we're on the main actor here" assertion —
+    // XCTest runs both hooks on the main thread for `@MainActor`
+    // test classes, so the assumption holds.
     override func setUp() {
         super.setUp()
-        LaunchTelemetry._setLaunchUptimeForTesting(nil)
+        MainActor.assumeIsolated {
+            LaunchTelemetry._setLaunchUptimeForTesting(nil)
+            LaunchTelemetry._osLogSinkForTesting = nil
+        }
     }
 
     override func tearDown() {
-        LaunchTelemetry._setLaunchUptimeForTesting(nil)
+        MainActor.assumeIsolated {
+            LaunchTelemetry._setLaunchUptimeForTesting(nil)
+            LaunchTelemetry._osLogSinkForTesting = nil
+        }
         super.tearDown()
     }
 
@@ -92,6 +118,21 @@ final class LaunchTelemetryTests: XCTestCase {
         // count.
         XCTAssertEqual(LaunchTelemetry.format(milliseconds: 465.0), "465.00")
         XCTAssertEqual(LaunchTelemetry.format(milliseconds: 799.99), "799.99")
+    }
+
+    func test_format_renders_n_slash_a_for_nan() {
+        // `String(format: "%.2f", .nan)` returns "nan" — would break
+        // downstream scrapers that expect `\d+\.\d{2}`. The
+        // production guard renders "n/a" instead.
+        XCTAssertEqual(LaunchTelemetry.format(milliseconds: .nan), "n/a")
+    }
+
+    func test_format_renders_n_slash_a_for_positive_infinity() {
+        XCTAssertEqual(LaunchTelemetry.format(milliseconds: .infinity), "n/a")
+    }
+
+    func test_format_renders_n_slash_a_for_negative_infinity() {
+        XCTAssertEqual(LaunchTelemetry.format(milliseconds: -.infinity), "n/a")
     }
 
     // MARK: - markLaunch()
@@ -200,5 +241,87 @@ final class LaunchTelemetryTests: XCTestCase {
 
         XCTAssertTrue(output.contains("app-interactive"), "Expected app-interactive prefix, got: \(output)")
         XCTAssertTrue(output.hasSuffix("\n"), "Expected trailing newline, got: \(output)")
+    }
+
+    func test_markInteractive_renders_n_slash_a_for_nan_perf_now() {
+        // `performanceNowMilliseconds.map(format(milliseconds:))`
+        // funnels NaN through `format(...)`, which the production
+        // guard renders as "n/a". Locks the log-scraper contract:
+        // perf_now_ms is always parseable as `\d+\.\d{2}` OR the
+        // literal string "n/a".
+        LaunchTelemetry._setLaunchUptimeForTesting(0)
+        let capture = StderrCapture()
+        LaunchTelemetry.markInteractive(route: "/r", performanceNowMilliseconds: .nan)
+        let output = capture.finish()
+
+        XCTAssertTrue(
+            output.contains("perf_now_ms=n/a"),
+            "Expected perf_now_ms=n/a for NaN, got: \(output)"
+        )
+        XCTAssertFalse(
+            output.lowercased().contains("nan"),
+            "Output must not leak 'nan' substring (would break scrapers), got: \(output)"
+        )
+    }
+
+    func test_markInteractive_renders_n_slash_a_for_positive_infinity_perf_now() {
+        LaunchTelemetry._setLaunchUptimeForTesting(0)
+        let capture = StderrCapture()
+        LaunchTelemetry.markInteractive(route: "/r", performanceNowMilliseconds: .infinity)
+        let output = capture.finish()
+
+        XCTAssertTrue(
+            output.contains("perf_now_ms=n/a"),
+            "Expected perf_now_ms=n/a for +Inf, got: \(output)"
+        )
+        XCTAssertFalse(
+            output.lowercased().contains("inf"),
+            "Output must not leak 'inf' substring, got: \(output)"
+        )
+    }
+
+    func test_markInteractive_renders_n_slash_a_for_negative_infinity_perf_now() {
+        LaunchTelemetry._setLaunchUptimeForTesting(0)
+        let capture = StderrCapture()
+        LaunchTelemetry.markInteractive(route: "/r", performanceNowMilliseconds: -.infinity)
+        let output = capture.finish()
+
+        XCTAssertTrue(
+            output.contains("perf_now_ms=n/a"),
+            "Expected perf_now_ms=n/a for -Inf, got: \(output)"
+        )
+    }
+
+    // MARK: - emit() OSLog branch
+
+    func test_markLaunch_invokes_oslog_sink_with_launch_start_prefix() {
+        var captured: [String] = []
+        LaunchTelemetry._osLogSinkForTesting = { captured.append($0) }
+        defer { LaunchTelemetry._osLogSinkForTesting = nil }
+
+        let stderr = StderrCapture()
+        LaunchTelemetry.markLaunch()
+        _ = stderr.finish() // drain pipe; the OSLog assertion below is what we care about
+
+        XCTAssertEqual(captured.count, 1, "Expected one OSLog emit, got: \(captured)")
+        XCTAssertTrue(
+            captured.first?.hasPrefix("launch-start uptime_ms=") ?? false,
+            "Expected `launch-start uptime_ms=…`, got: \(captured)"
+        )
+    }
+
+    func test_markInteractive_invokes_oslog_sink_with_app_interactive_prefix() {
+        var captured: [String] = []
+        LaunchTelemetry._osLogSinkForTesting = { captured.append($0) }
+        defer { LaunchTelemetry._osLogSinkForTesting = nil }
+
+        let stderr = StderrCapture()
+        LaunchTelemetry.markInteractive(route: "/library", performanceNowMilliseconds: 12.5)
+        _ = stderr.finish()
+
+        XCTAssertEqual(captured.count, 1, "Expected one OSLog emit, got: \(captured)")
+        let message = captured.first ?? ""
+        XCTAssertTrue(message.hasPrefix("app-interactive route=/library "), "got: \(message)")
+        XCTAssertTrue(message.contains("perf_now_ms=12.50"), "got: \(message)")
     }
 }
