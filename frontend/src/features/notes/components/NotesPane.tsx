@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 
 import {
   type NoteOrganizationSubject,
@@ -18,7 +18,6 @@ interface NotesPaneProps {
   loading: boolean;
   onChanged: () => void;
   onNewNote: () => void;
-  initialExpandedId: string | null;
 }
 
 /**
@@ -42,21 +41,9 @@ export function NotesPane({
   selection,
   loading,
   onChanged,
-  onNewNote,
-  initialExpandedId
+  onNewNote
 }: NotesPaneProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Sync expanded state to the prop on remount (e.g. "+ New note"
-  // sets a new expanded id from the parent). useEffect, not useMemo —
-  // this is a side effect, not a memo.
-  useEffect(() => {
-    if (initialExpandedId && initialExpandedId !== expandedId) {
-      setExpandedId(initialExpandedId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialExpandedId]);
 
   // ⌘K from anywhere on the page focuses the search input. Matches
   // the kbd hint shown next to the search field. Limited to keydown
@@ -153,8 +140,6 @@ export function NotesPane({
                 key={note.id}
                 note={note}
                 subjects={subjects}
-                expanded={note.id === expandedId}
-                onExpand={(next) => setExpandedId(next ? note.id : null)}
                 onChanged={onChanged}
               />
             ))}

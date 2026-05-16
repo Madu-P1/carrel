@@ -5,6 +5,7 @@ import { AskView } from "@/features/ask/AskView";
 import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
+import { NoteEditor } from "@/features/notes/NoteEditor";
 import { NotesPage } from "@/features/notes/NotesPage";
 import { NotFoundView } from "@/features/NotFoundView";
 import { PlanView } from "@/features/plan/PlanView";
@@ -82,6 +83,11 @@ function BrowserReaderRoute({ id }: { id?: string }) {
   );
 }
 
+function BrowserNoteEditorRoute({ id }: { id?: string }) {
+  if (!id) return <NotesPage />;
+  return <NoteEditor id={id} />;
+}
+
 function renderBundledRoute(rawPath: string) {
   const path = parseBundledRoute(rawPath).pathname;
 
@@ -124,6 +130,18 @@ function renderBundledRoute(rawPath: string) {
   }
 
   if (path.startsWith("/notes")) {
+    // /notes/:id renders the full-page Note Editor; /notes renders the
+    // list view. We split here in bundled mode (no preact-iso router).
+    const noteIdMatch = parseBundledRoute(path).pathname.match(
+      /^\/notes\/([^/?#]+)/
+    );
+    if (noteIdMatch?.[1]) {
+      try {
+        return <NoteEditor id={decodeURIComponent(noteIdMatch[1])} />;
+      } catch {
+        return <NoteEditor id={noteIdMatch[1]} />;
+      }
+    }
     return <NotesPage />;
   }
 
@@ -159,6 +177,7 @@ export function App() {
           <Route component={ConceptGraphView} path="/concepts" />
           <Route component={PlanView} path="/plan" />
           <Route component={NotesPage} path="/notes" />
+          <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
           <Route component={NotFoundView} default />
         </Router>
       </AppShell>

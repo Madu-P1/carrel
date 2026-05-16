@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "preact/hooks";
 
-import { enterNotesRailMode } from "@/app/shell/useAppShell";
+import { enterNotesRailMode, navigateTo } from "@/app/shell/useAppShell";
 import { createQuery } from "@/lib/query";
 import {
   notes as notesApi,
@@ -11,11 +11,8 @@ import {
 import { NotesPane } from "./components/NotesPane";
 import {
   notesOrganizationQuery,
-  notesPendingExpandId,
   notesSelection,
   refreshNotesOrganization,
-  setNotesSelection,
-  setPendingExpandId,
   type RailSelection
 } from "./state";
 import styles from "./NotesPage.module.css";
@@ -36,7 +33,6 @@ import styles from "./NotesPage.module.css";
  */
 export function NotesPage() {
   const selection = notesSelection.value;
-  const pendingExpandId = notesPendingExpandId.value;
 
   // Subscribe to the organization query so NotesPage stays
   // re-rendering when subjects/folders change. SubjectRail (rendered
@@ -78,19 +74,18 @@ export function NotesPage() {
   };
 
   const handleNewNote = async () => {
-    // "+ New note": create a doc-less workspace note. The server's
-    // NoteUpsertRequest enforces content min_length=1, so we seed a
-    // single newline — the textarea renders empty (just a caret at the
-    // start of line 1) and the row is valid.
+    // "+ New note": create a doc-less workspace note and navigate to
+    // the full-page editor at /notes/:id. The server enforces
+    // content.min_length=1, so we seed with "\n"; NoteEditor clears
+    // it visually on mount so the user sees an empty page.
     try {
       const created: { note: SavedNote } = await notesApi.save({
         title: "Untitled note",
         content: "\n",
         note_type: "workspace_note"
       });
-      setNotesSelection({ kind: "all" });
-      setPendingExpandId(created.note.id);
-      refreshAll();
+      refreshNotesOrganization();
+      navigateTo(`/notes/${encodeURIComponent(created.note.id)}`);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("New note failed:", err);
@@ -106,7 +101,6 @@ export function NotesPage() {
         loading={notesQuery.loading.value ?? false}
         onChanged={refreshAll}
         onNewNote={() => void handleNewNote()}
-        initialExpandedId={pendingExpandId}
       />
     </div>
   );
