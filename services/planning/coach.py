@@ -10,18 +10,23 @@ V1 (Phase 1, this file): one rule, end-to-end.
   Score: 1.0 (single rule means no ranking needed yet; preserved for
   Phase 2's multi-rule pipeline).
 
-Phase 2 hooks (sketched, intentionally NOT implemented):
-  Rule "deadline_imminent": parse event summaries with the existing
-  Library subject taxonomy to detect "X midterm" / "Y exam" patterns,
-  back-solve from due_at, propose a 3-session study plan anchored in
-  the matching subject's strongest weak concept.
+Phase 2 ships in waves; each rule is its own commit:
 
-  Rule "low_recent_review": detect subjects where SRS hasn't been
-  practiced in N days; suggest a short refresh block.
+  Rule "deadline_imminent" (shipped 940966bf / fb2dc9fc): parses
+  calendar event summaries for midterm/final/exam/quiz, anchors a
+  60-min study_block at the first free window before the deadline,
+  scores by urgency in four buckets (3.0/2.5/2.0/1.5).
 
-  Rule "gap_between_classes": when two events are <2h apart and the
-  user is on campus (location overlap), suggest a tight focused
-  micro-session.
+  Rule "low_recent_review" (shipped this commit): emits one
+  review_block when at least MIN_STALE_CARDS cards have
+  last_review < now - REVIEW_STALE_DAYS AND are not currently
+  overdue. Partition with the v1 free_block_overdue_srs rule is
+  intentional (this rule covers proactive refresh, v1 covers
+  reactive catchup).
+
+  Rule "gap_between_classes" (still pending): when two events are
+  <2h apart and the user is on campus (location overlap), suggest
+  a tight focused micro-session.
 
 Each future rule is a function that takes the same `CoachInputs`
 dataclass and returns a list of candidate suggestions; `synthesize`
@@ -73,6 +78,21 @@ DEADLINE_LOOKAHEAD_DAYS = 14
 # one.
 DEADLINE_KEYWORD_PATTERN = re.compile(r"\b(midterm|final|exam|quiz)\b", re.IGNORECASE)
 
+# Staleness threshold for the proactive-refresh rule. Cards last
+# reviewed before now - REVIEW_STALE_DAYS qualify as "abandoned" when
+# they aren't already overdue. Seven days matches a common SRS
+# weekly-touch rhythm; the v1 free_block_overdue_srs rule already
+# handles cards that crossed the due_date threshold, so the
+# low_recent_review rule's filter excludes overdue cards to avoid
+# double-firing on the same population.
+REVIEW_STALE_DAYS = 7
+
+# Minimum stale-card count below which the low_recent_review rule
+# stays quiet. A single forgotten card isn't worth a panel slot;
+# pushing the threshold prevents the suggestion from feeling chatty
+# for users who only have a handful of cards.
+MIN_STALE_CARDS = 5
+
 
 @dataclass
 class CandidateSuggestion:
@@ -115,8 +135,8 @@ def synthesize_suggestions(
     rules = [
         _rule_free_block_overdue_srs,
         _rule_deadline_imminent,
+        _rule_low_recent_review,
         # Phase 2 plug points (still pending):
-        # _rule_low_recent_review,
         # _rule_gap_between_classes,
     ]
     candidates: List[CandidateSuggestion] = []
@@ -373,6 +393,95 @@ def _reason_text_for_deadline(summary: str, hours_until: float) -> str:
         return f"{summary} tomorrow."
     days = max(2, int(hours_until / 24 + 0.5))
     return f"{summary} in {days} days."
+
+
+def _rule_low_recent_review(conn: sqlite3.Connection, *, user_id: str) -> List[CandidateSuggestion]:
+    """Phase 2 rule. Emits one `review_block` suggestion when at
+    least `MIN_STALE_CARDS` cards have `last_review < now -
+    REVIEW_STALE_DAYS` AND are not currently overdue. Anchors the
+    block at the chronologically first free 60-min window in the
+    next 24h.
+
+    Partition rationale: the v1 `free_block_overdue_srs` rule
+    already covers overdue cards. This rule covers the "abandoned
+    but not yet stale" pattern, which is a distinct user signal
+    (proactive refresh rather than reactive catchup).
+
+    Score: 1.5. Above the v1 baseline of 1.0 so a panel that has
+    both signals surfaces this first; below `deadline_imminent`'s
+    bottom bucket of 1.5 by tying, then `deadline_imminent` lands
+    earlier in the rules list so the sort-stable order keeps it
+    visually above. (If tie-breaking ever needs to be explicit,
+    bump this to 1.4.)
+
+    Skips silently when:
+      - No cards satisfy the staleness predicate.
+      - No 60-min free block exists in the next 24h window.
+
+    Same `(kind, start_at)` dedupe limitation as
+    `_rule_deadline_imminent`; the rule layer emits one candidate,
+    the downstream `refresh_active_suggestions` dedupes against
+    existing pending suggestions with the same key.
+    """
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=LOOKAHEAD_HOURS)
+
+    stale_count = _count_stale_review_cards(conn)
+    if stale_count < MIN_STALE_CARDS:
+        return []
+
+    free_blocks = _find_free_blocks(
+        conn,
+        window_start=now,
+        window_end=horizon,
+        min_minutes=MIN_FREE_BLOCK_MINUTES,
+        user_id=user_id,
+    )
+    if not free_blocks:
+        return []
+
+    block = free_blocks[0]
+    suggested_end = _iso_add_minutes(block.start_at, MIN_FREE_BLOCK_MINUTES)
+
+    return [
+        CandidateSuggestion(
+            kind="review_block",
+            start_at=block.start_at,
+            end_at=suggested_end,
+            reason_code="low_recent_review",
+            reason_text=(f"{stale_count} cards haven't seen review in {REVIEW_STALE_DAYS}+ days."),
+            score=1.5,
+        )
+    ]
+
+
+def _count_stale_review_cards(conn: sqlite3.Connection) -> int:
+    """Cards reviewed at least once but not in the last
+    `REVIEW_STALE_DAYS` days AND not currently overdue.
+
+    `last_review` is stored by `services.review_scheduler` as
+    `datetime.now(timezone.utc).isoformat()` (with `+00:00` suffix,
+    not `Z`), so the cutoff uses the same format for lexicographic
+    comparison correctness.
+
+    `due_date` is stored as a YYYY-MM-DD date string; `> today`
+    excludes cards that have already crossed the due threshold
+    (those belong to the v1 rule's domain).
+    """
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=REVIEW_STALE_DAYS)).isoformat()
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM srs_cards
+        WHERE last_review IS NOT NULL
+          AND last_review < ?
+          AND due_date IS NOT NULL
+          AND due_date > ?
+        """,
+        (cutoff_iso, today_iso),
+    ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def _count_overdue_srs(conn: sqlite3.Connection) -> int:
