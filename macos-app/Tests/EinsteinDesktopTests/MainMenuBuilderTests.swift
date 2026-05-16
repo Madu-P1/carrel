@@ -6,6 +6,16 @@ import XCTest
 @MainActor
 final class MainMenuBuilderTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        MenuCommandDispatcher._dispatchSinkForTesting = nil
+    }
+
+    override func tearDown() {
+        MenuCommandDispatcher._dispatchSinkForTesting = nil
+        super.tearDown()
+    }
+
     // MARK: - escapeForJSStringLiteral
 
     func test_escape_passes_plain_text_unchanged() {
@@ -358,6 +368,67 @@ final class MainMenuBuilderTests: XCTestCase {
         WebViewRegistry.register(webView)
         XCTAssertTrue(WebViewRegistry.current === webView)
     }
+
+    // MARK: - dispatch(command:) guard branch
+
+    func test_dispatch_returns_false_when_no_webview_registered_and_no_key_window() {
+        // dispatch(command:) tries `NSApp.keyWindow.contentView`'s
+        // first WKWebView, then falls back to `WebViewRegistry.current`.
+        // In an XCTest bundle `NSApp` is an implicitly-unwrapped nil
+        // until first reference; force-init via `.shared` so the
+        // keyWindow check doesn't crash. There's still no key window,
+        // and we clear the registry, so the guard
+        // `let webView = resolveWebView() else { return false }`
+        // is what fires.
+        _ = NSApplication.shared
+
+        let prior = WebViewRegistry.current
+        defer {
+            if let prior {
+                WebViewRegistry.register(prior)
+            }
+        }
+        if let prior {
+            WebViewRegistry.unregister(prior)
+        }
+
+        XCTAssertFalse(
+            WebViewBridgeDispatcher.dispatch(command: "nav.dashboard"),
+            "dispatch must return false when no WKWebView is reachable"
+        )
+    }
+
+    // MARK: - MenuCommandDispatcher.dispatchCommand(_:)
+
+    func test_dispatchCommand_is_no_op_when_representedObject_is_not_a_string() {
+        var sinkCalls = 0
+        MenuCommandDispatcher._dispatchSinkForTesting = { _ in
+            sinkCalls += 1
+            return true
+        }
+        let item = NSMenuItem(title: "x", action: nil, keyEquivalent: "")
+        item.representedObject = nil
+
+        MenuCommandDispatcher.shared.dispatchCommand(item)
+
+        XCTAssertEqual(sinkCalls, 0, "Dispatcher must early-return when representedObject is nil")
+    }
+
+    func test_dispatchCommand_invokes_dispatch_sink_with_command_string() {
+        var captured: [String] = []
+        MenuCommandDispatcher._dispatchSinkForTesting = { command in
+            captured.append(command)
+            return true
+        }
+        let item = NSMenuItem(title: "Library", action: nil, keyEquivalent: "")
+        item.representedObject = "nav.library"
+
+        MenuCommandDispatcher.shared.dispatchCommand(item)
+
+        XCTAssertEqual(captured, ["nav.library"], "Dispatcher must forward the command string verbatim")
+    }
+
+    // MARK: - WebViewRegistry (cont.)
 
     func test_webViewRegistry_unregister_only_clears_matching_webview() {
         let prior = WebViewRegistry.current

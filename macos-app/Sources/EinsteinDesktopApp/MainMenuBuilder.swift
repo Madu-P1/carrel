@@ -228,12 +228,21 @@ enum MainMenuBuilder {
 final class MenuCommandDispatcher: NSObject {
     static let shared = MenuCommandDispatcher()
 
+    /// Test seam: replace the `WebViewBridgeDispatcher.dispatch` call
+    /// with a spy that returns its own success/failure verdict. When
+    /// set, the closure receives the command string and its return
+    /// value decides whether `NSSound.beep()` fires. Production code
+    /// never sets it; tearDown resets to nil.
+    static var _dispatchSinkForTesting: ((String) -> Bool)?
+
     @objc func dispatchCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else {
             return
         }
 
-        if !WebViewBridgeDispatcher.dispatch(command: command) {
+        let dispatched = MenuCommandDispatcher._dispatchSinkForTesting?(command)
+            ?? WebViewBridgeDispatcher.dispatch(command: command)
+        if !dispatched {
             NSSound.beep()
         }
     }
