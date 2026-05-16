@@ -1,9 +1,13 @@
+import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 import db
+from ai.streaming import stream_claude_text
 from api_models import (
     DialogueMessageRequest,
     DialogueStartRequest,
@@ -41,6 +45,61 @@ def tutor_query(payload: TutorQueryRequest) -> Dict[str, Any]:
             log_study_event=log_study_event,
             fetch_recent_events=fetch_recent_events,
         )
+
+
+class TutorStreamRequest(BaseModel):
+    """Pattern endpoint payload: raw prompt streaming, no RAG or citations.
+
+    Carrel's primary tutor endpoint (``/api/tutor/query``) returns a
+    citation-validated envelope. This streaming variant is for
+    chat-style follow-ups where the user has already accepted the
+    grounded answer and wants to expand, rephrase, or chat. Token-by-
+    token streaming keeps the UI responsive on long completions.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    system: str = Field(
+        "You are a helpful study companion. Be concise and concrete.",
+        max_length=2000,
+    )
+    max_tokens: int = Field(1600, ge=64, le=4096)
+
+
+@router.post("/api/tutor/query/stream")
+def tutor_query_stream(payload: TutorStreamRequest) -> StreamingResponse:
+    """Stream raw Claude tokens as Server-Sent Events.
+
+    Each event: ``data: {"text": "<delta>"}\\n\\n``. On failure, one
+    event of the shape ``data: {"error": "<message>"}\\n\\n`` is
+    emitted before the stream closes. The stream is terminated by
+    ``data: [DONE]\\n\\n``. Errors are surfaced, not swallowed, per
+    Carrel's "no silent AI fallbacks" rule.
+
+    The client at ``frontend/src/services/api/streaming.ts`` parses
+    this shape via ``streamTextDeltas``.
+    """
+
+    def event_stream() -> Iterator[str]:
+        try:
+            for delta in stream_claude_text(
+                system=payload.system,
+                prompt=payload.prompt,
+                max_tokens=payload.max_tokens,
+            ):
+                yield f"data: {json.dumps({'text': delta})}\n\n"
+        except Exception as exc:  # noqa: BLE001 - surface, don't swallow
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/api/tutor/exchanges")

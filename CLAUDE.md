@@ -114,6 +114,53 @@ Zero runtime motion libraries. CSS + WAAPI only.
 - **Calendar feed URLs stored plaintext-at-rest.** Bounded threat model: URLs are revocable secrets, redacted at every emission point via `services/calendar/validators.py::mask_url`. macOS Keychain is v2 work, planned alongside Gmail OAuth tokens (which are NOT trivially revocable).
 - **`preact/compat lazy() + Suspense` is fragile under file://.** Verified failure mode: chunk loads, Suspense never re-renders the tree. Don't use render-time Suspense for code-splitting the bundled WKWebView app. Trigger code splits via user-click `await import(...)` instead. See `docs/notes/2026-04-29-session-handoff.md` § preact/compat.
 
+## Imported conventions from Next.js AGENTS.md (2026-05-16)
+
+After reading Vercel's `AGENTS.md` (mirrored at `CLAUDE.md` in their repo), the following habits are now in force for Carrel sessions. Each maps onto a real Carrel constraint, not blind copying.
+
+### Context-efficient workflows
+
+- **Grep before Read.** Find line numbers first, then Read with `offset`/`limit`. Don't re-read sections you already saw without intervening edits. Treat `dist/`, `node_modules/`, `frontend/src/services/api/types.gen.ts`, and `data/` as search-only.
+- **Capture once, analyze repeatedly.** For slow runs (`./script/build_and_run.sh`, the verify chain, eval suites, phase0 benchmarks), tee to `/tmp/<name>.log` and grep the log. Re-running burns minutes and the prompt cache.
+- **Batch edits before validating.** Group related edits across files, then run the smallest sufficient check: `pnpm typecheck` is ~seconds; the full verify chain is minutes. Only escalate to the full chain when batches are coherent.
+
+### Read local context before editing
+
+Carrel has no nested `README.md` files, but `docs/notes/` and `docs/adr/` carry the equivalent. Before editing under `services/<slice>/` or `frontend/src/features/<slice>/`, check `docs/notes/` for any recent entry that names the slice. The Apr 28+29 notes contain non-obvious gotchas (route-split Suspense, FLIP edge cases, calendar URL plaintext) that the code alone doesn't reveal.
+
+### Secrets and env safety
+
+- Never print or paste secret values (`ANTHROPIC_API_KEY`, the local-API token, future Apple Developer credentials, calendar feed URLs) in chat, commits, or shared logs.
+- Mirror CI env names and modes exactly. Do not inline literal secret values in shell commands.
+- If a required secret is missing locally, stop and ask the user rather than inventing placeholders.
+- The local-API token is injected via `WKUserScript` at runtime. Never commit it; never log it.
+
+### Commit and PR style
+
+- Do not add "Generated with Claude Code" or co-author footers to commits or PRs. Carrel is shipped by a human; assistant context stays out of the git log.
+- Keep commit titles concise; put rationale in the body.
+- Default PRs to draft. Do not `gh pr ready` unless the user says so.
+
+### Task decomposition and verification
+
+Sharpening Carrel's existing "Test-gated, additive PRs" rule with AGENTS.md framing: every step produces an independently checkable result before the next step begins. Choose the smallest verification that proves the change is correct, not the largest. The verify chain is slow; respect it.
+
+## Primitives and helpers added with the AGENTS.md import (2026-05-16)
+
+These ship as additive utilities. Existing call sites are unchanged. Use them rather than hand-rolling new ones.
+
+| Surface | Path | Use it when |
+|---|---|---|
+| `ErrorBoundary` | `frontend/src/design-system/primitives/ErrorBoundary/` | Wrap any subtree so a render throw can't blank the whole app. Class component using `componentDidCatch`. No Suspense. |
+| `LoadingBoundary` | `frontend/src/design-system/primitives/LoadingBoundary/` | Show a fallback (Skeleton, Spinner) while a `loading` flag is true. Pure props. No Suspense. |
+| `Markdown` | `frontend/src/design-system/primitives/Markdown/` | Render notes, citations, grounded answers as rich text. Outputs VNodes directly (no `innerHTML`). Accepts a `components` prop for MDX-style overrides (citation chips, custom code blocks). Zero new deps. |
+| `streamSse<T>`, `streamTextDeltas` | `frontend/src/services/api/streaming.ts` | Consume Server-Sent Events from the backend. Uses fetch + `ReadableStream` so the local-API token still travels by header. Use this, not `EventSource`. |
+| `uploadWithProgress<T>` | `frontend/src/services/upload/withProgress.ts` | Upload a file with `xhr.upload.onprogress`. `fetch` cannot report upload progress; the dropzone UX needs XHR. |
+| `stream_claude_text` | `ai/streaming.py` | Yield Claude text deltas for prompt streaming. Pattern endpoint; the citation-validated path stays in `services/tutor.py`. |
+| `POST /api/tutor/query/stream` | `routes/tutor.py` | Frontend-facing SSE endpoint demoing the pattern. Emits `{text: "..."}` chunks. Not yet wired into `AskView`; that's a separate design call (streaming with citation validation is non-trivial). |
+
+Patterns deliberately not imported: full `@next/mdx` (heavy; we hand-rolled a minimal subset), Suspense-driven streaming (broken under `file://`), App Router parallel routes (Preact router has no equivalent).
+
 ## Handoff context
 
 If you are a new Claude session opening this repo, read **`HANDOFF.md`** first. It points at every other doc in the right order.

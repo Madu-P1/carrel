@@ -1,5 +1,6 @@
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
+import { ErrorBoundary } from "@/design-system";
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
 import { AskView } from "@/features/ask/AskView";
 import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
@@ -150,6 +151,38 @@ function renderBundledRoute(rawPath: string) {
   return <DashboardView />;
 }
 
+/*
+ * BoundedRoutes wraps the preact-iso Router in an ErrorBoundary keyed by
+ * the current path, so a render throw inside one feature does not blank
+ * the AppShell chrome (sidebar, header, etc. stay alive). The boundary
+ * auto-resets when the user navigates, so a broken Reader doesn't trap
+ * the user on the error screen forever.
+ *
+ * Per the preact/compat Suspense/lazy gotcha (see CLAUDE.md), this is a
+ * plain class-component boundary, not a Suspense boundary.
+ */
+function BoundedRoutes() {
+  const { path } = useLocation();
+  return (
+    <ErrorBoundary resetKey={path}>
+      <Router>
+        <Route component={DashboardView} path="/" />
+        <Route component={SessionView} path="/session" />
+        <Route component={LibraryView} path="/library" />
+        <Route component={BrowserReaderRoute} path="/reader/:id?" />
+        <Route component={AskView} path="/ask" />
+        <Route component={StudyView} path="/study" />
+        <Route component={SearchView} path="/search" />
+        <Route component={ConceptGraphView} path="/concepts" />
+        <Route component={PlanView} path="/plan" />
+        <Route component={NotesPage} path="/notes" />
+        <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
+        <Route component={NotFoundView} default />
+      </Router>
+    </ErrorBoundary>
+  );
+}
+
 export function App() {
   const params = new URLSearchParams(window.location.search);
   const isDemo = params.get("design") === "1";
@@ -160,26 +193,20 @@ export function App() {
   }
 
   if (isBundledMode) {
-    return <BundledAppShell>{renderBundledRoute(appShell.currentRoute.value)}</BundledAppShell>;
+    const route = appShell.currentRoute.value;
+    return (
+      <BundledAppShell>
+        <ErrorBoundary resetKey={route}>
+          {renderBundledRoute(route)}
+        </ErrorBoundary>
+      </BundledAppShell>
+    );
   }
 
   return (
     <LocationProvider>
       <AppShell>
-        <Router>
-          <Route component={DashboardView} path="/" />
-          <Route component={SessionView} path="/session" />
-          <Route component={LibraryView} path="/library" />
-          <Route component={BrowserReaderRoute} path="/reader/:id?" />
-          <Route component={AskView} path="/ask" />
-          <Route component={StudyView} path="/study" />
-          <Route component={SearchView} path="/search" />
-          <Route component={ConceptGraphView} path="/concepts" />
-          <Route component={PlanView} path="/plan" />
-          <Route component={NotesPage} path="/notes" />
-          <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
-          <Route component={NotFoundView} default />
-        </Router>
+        <BoundedRoutes />
       </AppShell>
     </LocationProvider>
   );
