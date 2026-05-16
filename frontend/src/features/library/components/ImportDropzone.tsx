@@ -128,7 +128,7 @@ function OutcomeSummary({
 
 export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
   const [dragging, setDragging] = useState(false);
-  const { uploadFiles, loading, outcomes, clearOutcomes, retryFailed } = useUploadDocument();
+  const { uploadFiles, loading, progress, outcomes, clearOutcomes, retryFailed } = useUploadDocument();
 
   const handleUpload = async (files: FileList | File[]) => {
     const results = await uploadFiles(files);
@@ -199,7 +199,16 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
         >
           Or choose files
         </Button>
-        {loading.value ? <Spinner size={16} /> : null}
+        {loading.value ? (
+          <Stack direction="horizontal" gap={2}>
+            <Spinner size={16} />
+            {progress.value.filename ? (
+              <Text variant="caption" tone="secondary">
+                Uploading {progress.value.filename} ({Math.round(progress.value.fraction * 100)}%)
+              </Text>
+            ) : null}
+          </Stack>
+        ) : null}
       </div>
 
       <input

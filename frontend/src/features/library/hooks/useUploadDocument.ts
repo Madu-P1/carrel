@@ -1,8 +1,9 @@
 import { useSignal } from "@preact/signals";
 
 import { ApiError } from "@/services/api/client";
-import { jobs } from "@/services/api/endpoints";
+import { type IngestionJob } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
+import { uploadWithProgress } from "@/services/upload/withProgress";
 
 /**
  * Outcome shape for a single file in a batch upload.
@@ -58,16 +59,31 @@ function extractDuplicate(body: unknown): DuplicateDetail | null {
   return (body as { detail: DuplicateDetail }).detail;
 }
 
+/**
+ * Per-file upload progress. `filename` is null between files; while a
+ * file is in flight, `fraction` advances 0..1 from XHR upload progress
+ * events. Read this in the dropzone to render a live progress line;
+ * ignore it if you only care about completion.
+ */
+export interface UploadProgressState {
+  filename: string | null;
+  fraction: number;
+}
+
+const PROGRESS_IDLE: UploadProgressState = { filename: null, fraction: 0 };
+
 export function useUploadDocument() {
   const loading = useSignal(false);
   /** Legacy fatal-error signal, kept for callers that only care about the
    * last hard failure. New callers should read `outcomes` instead. */
   const error = useSignal<Error | null>(null);
   const outcomes = useSignal<UploadOutcome[]>([]);
+  const progress = useSignal<UploadProgressState>(PROGRESS_IDLE);
 
   const uploadFiles = async (files: FileList | File[], subjectName = "General"): Promise<UploadOutcome[]> => {
     loading.value = true;
     error.value = null;
+    progress.value = PROGRESS_IDLE;
     const batch = Array.from(files);
     void events.track("import.started", { file_count: batch.length }, "library");
     const results: UploadOutcome[] = [];
@@ -77,13 +93,23 @@ export function useUploadDocument() {
           bytes: file.size,
           file_type: file.type || file.name.split(".").pop()?.toLowerCase() || "unknown"
         }, "library");
+        progress.value = { filename: file.name, fraction: 0 };
         try {
-          const response = await jobs.import(file, subjectName);
+          const response = await uploadWithProgress<{ job: IngestionJob }>(
+            "/api/jobs/import",
+            file,
+            {
+              fields: { subject_name: subjectName },
+              onProgress: ({ fraction }) => {
+                progress.value = { filename: file.name, fraction };
+              }
+            }
+          );
           results.push({
             kind: "ok",
             filename: file.name,
-            docId: response.job.document_id ?? "",
-            jobId: response.job.id
+            docId: response.body.job.document_id ?? "",
+            jobId: response.body.job.id
           });
         } catch (caught) {
           if (caught instanceof ApiError && caught.status === 409) {
@@ -133,12 +159,14 @@ export function useUploadDocument() {
       return results;
     } finally {
       loading.value = false;
+      progress.value = PROGRESS_IDLE;
     }
   };
 
   const clearOutcomes = () => {
     outcomes.value = [];
     error.value = null;
+    progress.value = PROGRESS_IDLE;
   };
 
   /**
@@ -157,5 +185,5 @@ export function useUploadDocument() {
     return uploadFiles(retriable, subjectName);
   };
 
-  return { uploadFiles, loading, error, outcomes, clearOutcomes, retryFailed };
+  return { uploadFiles, loading, error, outcomes, progress, clearOutcomes, retryFailed };
 }
