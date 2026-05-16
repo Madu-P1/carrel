@@ -795,6 +795,29 @@ class RouteTaskRoutingTests(unittest.TestCase):
         self.assertIn("/investigate", out["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("/cso", out["hookSpecificOutput"]["additionalContext"])
 
+    def test_remaining_rules_route_correctly(self) -> None:
+        # Parameterized coverage for the seven rules not exercised individually
+        # above. The order-pin test catches list reorders; this test catches
+        # in-rule regex tightening that would silently drop a previously-routed
+        # phrase (e.g. narrowing the a11y pattern to drop "screen reader").
+        cases = [
+            ("run an adversarial review on this change", "/codex challenge"),
+            ("can we do an a11y review of the new modal", "design:accessibility-review"),
+            ("do some visual polish on the reader", "/design-review"),
+            ("QA the import flow end-to-end", "/qa"),
+            ("review this PR before I merge", "/review"),
+            ("write a weekly retrospective for the team", "/retro"),
+            ("update CLAUDE.md with the new conventions", "engineering:documentation"),
+        ]
+        for prompt, expected in cases:
+            with self.subTest(prompt=prompt):
+                out = self._route(prompt)
+                self.assertIn(
+                    expected,
+                    out["hookSpecificOutput"]["additionalContext"],
+                    f"expected {expected!r} suggestion for prompt {prompt!r}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
