@@ -52,7 +52,20 @@ RETRY_SECONDS="${RETRY_SECONDS:-900}"
 IDLE_THRESHOLD="${IDLE_THRESHOLD:-600}"
 IDLE_GROWTH_BYTES="${IDLE_GROWTH_BYTES:-512}"
 POLL_SECONDS="${POLL_SECONDS:-20}"
-LIMIT_PATTERN="${LIMIT_PATTERN:-5.hour limit reached|usage limit reached|approaching.{0,15}usage limit|reached your.{0,15}limit|account.{0,15}rate.?limit}"
+
+# Default LIMIT_PATTERN assigned in its own block: ${VAR:-default} terminates
+# at the FIRST `}` in default, which would butcher our `.{0,15}` quantifiers
+# into invalid regex. Single quotes pass through literally to grep -iE.
+if [ -z "${LIMIT_PATTERN:-}" ]; then
+  LIMIT_PATTERN='5.hour limit reached|usage limit reached|approaching.{0,15}usage limit|reached your.{0,15}limit|account.{0,15}rate.?limit'
+fi
+
+# Path where the routine writes its graceful-halt memo. If this file is
+# touched DURING a session, the session ended cleanly (plan exhausted /
+# voluntary halt), not because of a rate-limit hang. We exit the watchdog
+# instead of churning relaunches. Override to disable graceful detection:
+#   GRACEFUL_HALT_FILE=""
+GRACEFUL_HALT_FILE="${GRACEFUL_HALT_FILE-$REPO_ROOT/.claude/logs/status.md}"
 
 LOG_DIR="$REPO_ROOT/.claude/logs/watchdog"
 mkdir -p "$LOG_DIR"
@@ -66,12 +79,23 @@ while true; do
 
   attempt=$((attempt + 1))
   session_log="$LOG_DIR/session-$(date +%Y%m%d-%H%M%S).log"
+
+  # Capture pre-session mtime of the graceful-halt memo so we can tell
+  # whether THIS session wrote it (clean halt) or it's left over from
+  # a previous run.
+  if [ -n "$GRACEFUL_HALT_FILE" ] && [ -f "$GRACEFUL_HALT_FILE" ]; then
+    halt_mtime_before=$(stat -f %m "$GRACEFUL_HALT_FILE" 2>/dev/null || echo 0)
+  else
+    halt_mtime_before=0
+  fi
+
   echo
   echo "================================================================"
   echo "$(date '+%F %T'): launching session #$attempt"
   echo "  session log:    $session_log"
   echo "  idle threshold: ${IDLE_THRESHOLD}s (kill if log frozen)"
   echo "  retry sleep:    ${RETRY_SECONDS}s after each session ends"
+  echo "  graceful halt:  $GRACEFUL_HALT_FILE"
   echo "================================================================"
   echo
 
@@ -127,8 +151,21 @@ while true; do
   kill -TERM "$poller_pid" 2>/dev/null || true
   wait "$poller_pid" 2>/dev/null || true
 
+  # Did /carrel-build voluntarily halt by writing its status memo during
+  # THIS session? If yes, the loop reached its designed exit point —
+  # don't churn relaunches.
+  if [ -n "$GRACEFUL_HALT_FILE" ] && [ -f "$GRACEFUL_HALT_FILE" ]; then
+    halt_mtime_after=$(stat -f %m "$GRACEFUL_HALT_FILE" 2>/dev/null || echo 0)
+    if [ "$halt_mtime_after" -gt "$halt_mtime_before" ]; then
+      echo
+      echo "$(date '+%F %T'): session #$attempt voluntarily halted (wrote $GRACEFUL_HALT_FILE)."
+      echo "                  watchdog exiting cleanly — re-run this script to continue."
+      exit 0
+    fi
+  fi
+
   echo
-  echo "$(date '+%F %T'): session #$attempt ended. sleeping ${RETRY_SECONDS}s before relaunch."
+  echo "$(date '+%F %T'): session #$attempt ended (no graceful halt detected). sleeping ${RETRY_SECONDS}s before relaunch."
   echo "                  ctrl-c now, or touch .claude/HALT for graceful stop."
 
   # HALT-aware retry sleep: poll the HALT file every 5s so a graceful stop
