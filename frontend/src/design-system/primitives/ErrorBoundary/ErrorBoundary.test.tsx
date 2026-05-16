@@ -3,7 +3,11 @@ import { expect, test, vi } from "vitest";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
-function Bomb({ message }: { message: string }) {
+// `: never` is load-bearing. Bomb only throws, never returns; without the
+// annotation TS infers `void`, which fails the JSX-component contract
+// (`ComponentChildren`). vitest passes either way because esbuild strips
+// types, but `pnpm typecheck` and `build:macos` reject it.
+function Bomb({ message }: { message: string }): never {
   throw new Error(message);
 }
 
