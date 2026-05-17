@@ -179,6 +179,13 @@ final class BackendSupervisor {
         if let localApiToken {
             environment["CARREL_LOCAL_API_TOKEN"] = localApiToken
         }
+        // Tell Python where to find the bundled Swift sidecar binaries
+        // (EinsteinIngestionBridge for Vision OCR, EinsteinAFMBridge
+        // for Apple Foundation Models). ai/native_bridge_paths.py
+        // checks this env var first; without it a DMG-distributed user
+        // has no .build/debug fallback and both bridges fail to launch.
+        environment["CARREL_BUNDLE_MACOS"] = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS").path
         proc.environment = environment
 
         // Append all output to the same log file the bash launcher
