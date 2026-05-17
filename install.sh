@@ -72,6 +72,46 @@ else
   ok "macOS $macos_version"
 fi
 
+# ──────────────────────────────────────────────────────────────────
+# 1b. Detect Apple Foundation Models eligibility
+# ──────────────────────────────────────────────────────────────────
+# AFM is the on-device LLM that ships with macOS 26+ on Apple Silicon,
+# gated on Apple Intelligence being enabled and the primary locale
+# being English (US). When eligible, fresh installs land on AFM by
+# default (EINSTEIN_AI_PROVIDER stays "auto" in .env, which
+# ai/providers.py:304-342 resolves to AFM when _afm_available()
+# returns true). When not eligible, install falls through to Ollama
+# exactly as before. Runtime is already fail-closed: AFMClient returns
+# error_code="apple_intelligence_not_enabled" when AI is disabled, and
+# the UI deep-links to System Settings rather than silently failing.
+
+step "Checking Apple Foundation Models eligibility"
+
+mac_arch="$(uname -m)"
+mac_locale="$(defaults read NSGlobalDomain AppleLocale 2>/dev/null || echo "")"
+
+AFM_ELIGIBLE=false
+AFM_REASON=""
+
+if [[ "$mac_arch" != "arm64" ]]; then
+  AFM_REASON="non-Apple-Silicon Mac ($mac_arch)"
+elif (( macos_major < 26 )); then
+  AFM_REASON="macOS $macos_version (need 26+)"
+elif [[ ! "$mac_locale" =~ ^en[_-]US ]]; then
+  AFM_REASON="locale is '$mac_locale' (need en_US: open System Settings, General, Language & Region, then set Primary Language to English (US))"
+else
+  AFM_ELIGIBLE=true
+fi
+
+if [[ "$AFM_ELIGIBLE" == "true" ]]; then
+  ok "Apple Silicon + macOS $macos_version + locale '$mac_locale' detected. Apple Foundation Models supported."
+  note "After install, make sure Apple Intelligence is enabled in System Settings, Apple Intelligence & Siri."
+  note "First-time enable triggers a 1 to 30 minute model download from Apple's CDN; this is normal."
+else
+  note "Apple Foundation Models unavailable: $AFM_REASON"
+  note "Carrel will fall back to Ollama (install separately from https://ollama.com) unless you provide an Anthropic API key."
+fi
+
 if xcode-select -p >/dev/null 2>&1; then
   ok "Xcode Command Line Tools installed at $(xcode-select -p)"
 else
@@ -290,6 +330,16 @@ text = re.sub(r"^ANTHROPIC_API_KEY=.*$",
 with open(path, "w") as f: f.write(text)
 PY
       ok "Anthropic API key written to .env"
+    elif [[ "$AFM_ELIGIBLE" == "true" ]]; then
+      # User pressed Enter on an eligible Mac. Leave the .env default
+      # (EINSTEIN_AI_PROVIDER=auto from .env.example) in place; runtime
+      # auto-resolution in ai/providers.py:304-342 will pick AFM via
+      # _afm_available(). The AFM client backs grounded answers with
+      # Apple's @Generable constrained decoding (ai/afm_grounded.py),
+      # so structured output works without the legacy nested-claims
+      # tool schema in services/tutor.py.
+      ok "Leaving EINSTEIN_AI_PROVIDER=auto. Runtime will resolve to Apple Foundation Models."
+      note "Carrel runs entirely on-device; no API key needed. The first grounded answer may take 1 to 10 seconds while Apple Intelligence warms the model."
     else
       python3 - <<'PY'
 import re
@@ -300,13 +350,21 @@ text = re.sub(r"^EINSTEIN_AI_PROVIDER=.*$",
               text, count=1, flags=re.MULTILINE)
 with open(path, "w") as f: f.write(text)
 PY
-      ok "Set EINSTEIN_AI_PROVIDER=ollama in .env"
+      ok "Set EINSTEIN_AI_PROVIDER=ollama in .env (AFM unavailable: $AFM_REASON)"
       warn "Start Ollama with 'ollama serve' before launching Carrel, or the tutor will refuse every question."
     fi
+  elif [[ "$AFM_ELIGIBLE" == "true" ]]; then
+    # Non-interactive (curl | bash) on an eligible Mac: leave the
+    # .env default (auto) in place and let build_and_run.sh launch.
+    # AFM resolves at runtime; if Apple Intelligence is disabled, the
+    # UI surfaces the System Settings deep-link rather than failing
+    # silently.
+    ok "Running non-interactively. Leaving EINSTEIN_AI_PROVIDER=auto. Runtime will resolve to Apple Foundation Models."
+    note "Add an Anthropic API key to .env at $REPO_DIR/.env later if you want the paid Claude tier."
   else
     warn "Running non-interactively (curl | bash). Edit .env manually before launching:"
     note "  open -a TextEdit $REPO_DIR/.env"
-    note "  Either fill ANTHROPIC_API_KEY=... or set EINSTEIN_AI_PROVIDER=ollama"
+    note "  Either fill ANTHROPIC_API_KEY=... or set EINSTEIN_AI_PROVIDER=ollama (AFM unavailable: $AFM_REASON)"
     SKIP_LAUNCH=true
   fi
 else
