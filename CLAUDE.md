@@ -48,6 +48,12 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
 ```
 
+Optional pre-release step (skipped on CI and on machines without Apple Foundation Models). Requires macOS 26+ Apple Silicon, Apple Intelligence enabled, en_US primary locale, and a built bridge under `macos-app/.build` or a packaged `.app`:
+
+```bash
+CARREL_RUN_AFM_INTEGRATION=1 ./.venv/bin/python -m unittest tests.integration.test_afm_real_bridge -v
+```
+
 Every PR lands green on the full chain or it does not land.
 
 ## Benchmarks + budgets
