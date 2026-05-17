@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
   EINSTEIN_AI_PROVIDER=ollama bash
 ```
 
-On macOS 26+ Apple Silicon with Apple Intelligence enabled and en_US primary locale, no key is needed. `install.sh` detects the eligibility and selects Apple's on-device 3B model:
+On macOS 26+ Apple Silicon with en_US primary locale, no key is needed. `install.sh` checks the three install-time conditions (architecture, OS version, primary locale) and selects Apple's on-device 3B model when they hold. The fourth condition, Apple Intelligence enabled in **System Settings, Apple Intelligence & Siri**, is a runtime check; the installer reminds you to confirm it before first launch.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
@@ -57,7 +57,7 @@ Carrel routes LLM calls through a provider abstraction at `ai/providers.py`. The
 2. **Apple Foundation Models** (free, on-device) on macOS 26+ Apple Silicon with Apple Intelligence enabled and `en_US` primary locale.
 3. **Ollama** as legacy fallback for macOS 14/15 or Intel.
 
-Override with `EINSTEIN_AI_PROVIDER=claude|afm|ollama|off` in `.env`.
+Override with `EINSTEIN_AI_PROVIDER=claude|afm|ollama|off` in `.env` (or `CARREL_AI_PROVIDER`, the canonical post-rename name; both are honored until the deferred-rename pass migrates the rest of the system identifiers).
 
 The free tier uses Apple's on-device 3B model via the `EinsteinAFMBridge` Swift sidecar. Model weights ship with macOS 26; first enable in System Settings can stream a model variant from Apple's CDN (1-30 min one-time), after which subsequent launches are instant.
 

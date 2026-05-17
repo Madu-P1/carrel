@@ -19,19 +19,22 @@ need:
 - Primary language set to **English (US)**
 - Apple Intelligence enabled in **System Settings → Apple Intelligence & Siri**
 
-`install.sh` detects all four conditions and selects AFM
-automatically; you do not need to set `EINSTEIN_AI_PROVIDER=afm` by
-hand. On a Mac that meets the bar, the install command is just:
+`install.sh` checks the three install-time conditions (Apple Silicon,
+macOS 26+, en_US locale) and selects AFM automatically when all three
+hold; you do not need to set `EINSTEIN_AI_PROVIDER=afm` by hand. The
+fourth condition, Apple Intelligence enabled, is a runtime check the
+installer cannot perform; install.sh reminds you to confirm it in
+**System Settings, Apple Intelligence & Siri** before launching. On a
+Mac that meets the install-time bar, the install command is just:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
 ```
 
-If your Mac is not eligible (older OS, Intel chip, non-en_US locale,
-or Apple Intelligence disabled), Carrel falls back to Ollama or
-Claude; install Ollama separately and run `ollama serve` before
-launching Carrel, or pass an Anthropic key as the one-paste path
-below shows.
+If your Mac is not eligible:
+
+- **Apple Intelligence disabled** (most common): enable it in **System Settings, Apple Intelligence & Siri** and relaunch. No reinstall needed.
+- **Older OS, Intel chip, or non-en_US locale**: Carrel falls back to Ollama or Claude. Install Ollama separately and run `ollama serve` before launching Carrel, or pass an Anthropic key as the one-paste path below shows.
 
 ## What you need
 
