@@ -1,13 +1,15 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 
 import { Stack, Text, showToast, toast } from "@/design-system";
-import { browserTimeZone } from "./utils/timezone";
+import { browserTimeZone, shiftDaysLocal, todayMidnightLocal } from "./utils/timezone";
 import { AddFeedDialog } from "./components/AddFeedDialog";
 import { EmptyPlanState } from "./components/EmptyPlanState";
+import { EventDetailDialog } from "./components/EventDetailDialog";
 import { FeedList } from "./components/FeedList";
 import { WeekTimeGrid } from "./components/WeekTimeGrid";
 import { usePlan } from "./hooks/usePlan";
 import type { CalendarFeed } from "./api/calendarApi";
+import type { PlanEvent } from "./api/planApi";
 import styles from "./PlanView.module.css";
 
 /**
@@ -41,6 +43,16 @@ export function PlanView() {
   } = usePlan();
 
   const [addOpen, setAddOpen] = useState(false);
+  // Click-to-view event detail. Null = dialog closed.
+  const [selectedEvent, setSelectedEvent] = useState<PlanEvent | null>(null);
+  // Anchor the rendered window 7 days before today so the user can
+  // scroll left into last week. WeekTimeGrid auto-scrolls horizontally
+  // to today's column on mount, so the default view still lands on
+  // today even though it's no longer column 1.
+  const weekStart = useMemo(
+    () => shiftDaysLocal(todayMidnightLocal(), -7),
+    [],
+  );
 
   const handleSync = async (feedId: string) => {
     try {
@@ -155,6 +167,9 @@ export function PlanView() {
           feeds={feeds}
           onAcceptSuggestion={handleAcceptSuggestion}
           onDismissSuggestion={handleDismissSuggestion}
+          onSelectEvent={setSelectedEvent}
+          weekStart={weekStart}
+          dayCount={21}
         />
       )}
 
@@ -162,6 +177,12 @@ export function PlanView() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSubmit={addFeed}
+      />
+
+      <EventDetailDialog
+        event={selectedEvent}
+        feeds={feeds}
+        onClose={() => setSelectedEvent(null)}
       />
     </div>
   );
