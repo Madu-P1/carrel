@@ -20,7 +20,13 @@ curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | \
   EINSTEIN_AI_PROVIDER=ollama bash
 ```
 
-Either form clones the repo, installs `uv` (which brings standalone Python 3.12), creates a venv, installs deps, fetches `pnpm` + Node, writes the credential to `.env`, builds, and launches the app. ~5-10 minutes the first run.
+On macOS 26+ Apple Silicon with en_US primary locale, no key is needed. `install.sh` checks the three install-time conditions (architecture, OS version, primary locale) and selects Apple's on-device 3B model when they hold. The fourth condition, Apple Intelligence enabled in **System Settings, Apple Intelligence & Siri**, is a runtime check; the installer reminds you to confirm it before first launch.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
+```
+
+Any of the three forms clones the repo, installs `uv` (which brings standalone Python 3.12), creates a venv, installs deps, fetches `pnpm` + Node, writes the credential to `.env`, builds, and launches the app. ~5-10 minutes the first run.
 
 Without the env var, install runs fine but stops short of launching and tells you to edit `.env` and run `./script/build_and_run.sh` yourself. Full walkthrough + troubleshooting: [`docs/install-beta.md`](docs/install-beta.md).
 
@@ -43,12 +49,24 @@ python3 -m uvicorn main:app --reload
 
 Useful for iterating on routes, ingestion, or the legacy web shell without rebuilding the Swift app.
 
+## AI provider
+
+Carrel routes LLM calls through a provider abstraction at `ai/providers.py`. The `auto` (default) resolution order is:
+
+1. **Claude** (paid Pro tier) when `ANTHROPIC_API_KEY` is set.
+2. **Apple Foundation Models** (free, on-device) on macOS 26+ Apple Silicon with Apple Intelligence enabled and `en_US` primary locale.
+3. **Ollama** as legacy fallback for macOS 14/15 or Intel.
+
+Override with `EINSTEIN_AI_PROVIDER=claude|afm|ollama|off` in `.env` (or `CARREL_AI_PROVIDER`, the canonical post-rename name; both are honored until the deferred-rename pass migrates the rest of the system identifiers).
+
+The free tier uses Apple's on-device 3B model via the `EinsteinAFMBridge` Swift sidecar. Model weights ship with macOS 26; first enable in System Settings can stream a model variant from Apple's CDN (1-30 min one-time), after which subsequent launches are instant.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and fill in:
 
 - `ANTHROPIC_API_KEY` — required for grounded tutor answers via Claude.
-- `EINSTEIN_AI_PROVIDER` — `auto` (default), `claude`, `ollama`, or `off`. Picks the LLM backend used by `ai/providers.py`. Ollama runs the Einstein tier on `llama3.2:3b` (fast) and `llama3.1:8b` (balanced) by default.
+- `EINSTEIN_AI_PROVIDER` — `auto` (default), `claude`, `afm`, `ollama`, or `off`. Picks the LLM backend used by `ai/providers.py`. See **AI provider** above for the `auto` resolution order. Ollama runs the Einstein tier on `llama3.2:3b` (fast) and `llama3.1:8b` (balanced) by default.
 - `EINSTEIN_BASE_DIR`, `EINSTEIN_DB_PATH`, `EINSTEIN_SCHEMA_PATH` — optional path overrides.
 
 Never commit `.env`. The gitignore excludes it; treat any past leak as a key to rotate.

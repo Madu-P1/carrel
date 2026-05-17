@@ -238,11 +238,22 @@ prepare_frontend_resources
 "$ROOT_DIR/script/generate-icon.sh" || true
 
 swift build --package-path "$PROJECT_DIR"
-BUILD_BINARY="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)/$APP_NAME"
+BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
+BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
+
+# Bundle the Swift sidecar binaries beside the main executable so a
+# DMG-distributed .app finds them via CARREL_BUNDLE_MACOS (set in
+# BackendSupervisor.swift, read by ai/native_bridge_paths.py). Without
+# these copies dev mode still works (the helper falls through to
+# .build/debug), but Vision OCR and Apple Foundation Models both break
+# the moment a user lacks a Codex checkout.
+cp "$BUILD_DIR/EinsteinIngestionBridge" "$APP_MACOS/EinsteinIngestionBridge"
+cp "$BUILD_DIR/EinsteinAFMBridge" "$APP_MACOS/EinsteinAFMBridge"
+chmod +x "$APP_MACOS/EinsteinIngestionBridge" "$APP_MACOS/EinsteinAFMBridge"
 if [[ -f "$PROJECT_DIR/Resources/app.new.html" ]]; then
   cp "$PROJECT_DIR/Resources/app.new.html" "$APP_RESOURCES/app.new.html"
 fi

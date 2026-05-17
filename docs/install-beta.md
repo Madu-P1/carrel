@@ -8,6 +8,34 @@
 > Five-to-ten minutes for the first install. One second for every
 > launch after that.
 
+## Free tier — Apple Foundation Models (macOS 26+)
+
+Carrel's free tier runs on Apple's on-device 3B model via the
+FoundationModels framework. To use it without an Anthropic key you
+need:
+
+- macOS 26 (Tahoe) or newer
+- An Apple Silicon Mac (M1 or later)
+- Primary language set to **English (US)**
+- Apple Intelligence enabled in **System Settings → Apple Intelligence & Siri**
+
+`install.sh` checks the three install-time conditions (Apple Silicon,
+macOS 26+, en_US locale) and selects AFM automatically when all three
+hold; you do not need to set `EINSTEIN_AI_PROVIDER=afm` by hand. The
+fourth condition, Apple Intelligence enabled, is a runtime check the
+installer cannot perform; install.sh reminds you to confirm it in
+**System Settings, Apple Intelligence & Siri** before launching. On a
+Mac that meets the install-time bar, the install command is just:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash
+```
+
+If your Mac is not eligible:
+
+- **Apple Intelligence disabled** (most common): enable it in **System Settings, Apple Intelligence & Siri** and relaunch. No reinstall needed.
+- **Older OS, Intel chip, or non-en_US locale**: Carrel falls back to Ollama or Claude. Install Ollama separately and run `ollama serve` before launching Carrel, or pass an Anthropic key as the one-paste path below shows.
+
 ## What you need
 
 - macOS 14 (Sonoma) or later

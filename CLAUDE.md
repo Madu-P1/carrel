@@ -9,7 +9,7 @@ Local-first, source-grounded AI study and research workspace for macOS. Native S
 - **Frontend:** `frontend/` — Preact 10, TypeScript strict, Vite 6, CSS Modules + design tokens. Pinned via pnpm 9.12.0. Builds to `macos-app/Resources/app.new.html` via `frontend/scripts/build-macos.mjs`.
 - **Backend:** FastAPI + Pydantic. `main.py` is 71 LOC of wiring only. Real logic in `routes/*` and `services/*`. `services/ingestion/` and `services/extraction/` are packages, not monoliths.
 - **DB:** SQLite with WAL + FTS5 + sqlite-vec. Versioned migrations in `migrations/NNNN_*.sql` applied by `db.py::apply_migrations`. Schema is migrations-sourced; `schema.sql` is legacy.
-- **AI:** Claude API via `ai/router.py`. Models: `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (deep). Structured output via `request_tool_call` with forced tool use. All calls return typed `ClaudeCallResult` with latency + token + cache metrics. Silent fallback to heuristic is forbidden; failures are visible.
+- **AI:** Claude API via `ai/router.py`. Models: `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (deep). Local default on macOS 26+ Apple Silicon with Apple Intelligence enabled and en_US locale: Apple Foundation Models via `ai/afm_client.py` and the `EinsteinAFMBridge` Swift sidecar. Ollama (`ai/ollama.py`) is the legacy fallback for macOS 14/15 or Intel Macs. Provider auto-resolution lives in `ai/providers.py`. Structured output via `request_tool_call` with forced tool use on Claude; system-prompt enforcement + post-hoc JSON parse on AFM and Ollama (neither has runtime guided-generation as of their respective public APIs). All calls return typed `ClaudeCallResult` with latency + token + cache metrics. Silent fallback to heuristic is forbidden; failures are visible.
 - **Retrieval:** Hybrid FTS5 + vector via `services/retrieval/hybrid.py` with Reciprocal Rank Fusion. Quote validation at citation resolve time.
 
 ## Key directories
@@ -46,6 +46,12 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded tests.test_retrieval_hybrid tests.test_retrieval_vector tests.test_retrieval_fts tests.test_db_migrations tests.test_phase0_foundation tests.test_phase0_batch_b tests.test_einstein_tutor tests.test_learning_os tests.test_evals_runner -v
 ./script/build_and_run.sh --verify
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
+```
+
+Optional pre-release step (skipped on CI and on machines without Apple Foundation Models). Requires macOS 26+ Apple Silicon, Apple Intelligence enabled, en_US primary locale, and a built bridge under `macos-app/.build` or a packaged `.app`:
+
+```bash
+CARREL_RUN_AFM_INTEGRATION=1 ./.venv/bin/python -m unittest tests.integration.test_afm_real_bridge -v
 ```
 
 Every PR lands green on the full chain or it does not land.
