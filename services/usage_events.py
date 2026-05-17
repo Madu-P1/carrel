@@ -35,6 +35,13 @@ ALLOWED_EVENT_NAMES = {
     #   rating: again|hard|good|easy.
     # Used to decide whether PRs 5/6 (citation, cloze) ship in week 3.
     "srs.card_rated",
+    # PR 6.3 — emitted when the user defers a card to the end of the
+    # session queue (different from "Again", which records an SRS
+    # rating). Properties:
+    #   card_id: string, the SRS card id.
+    #   remaining: int, cards remaining in the session after the
+    #     defer (excluding the just-deferred card).
+    "srs.card_deferred",
     # PR 0a — emitted once per install when auto-card-creation on
     # upload has been disabled, so the dashboard can confirm the
     # migration flipped.

@@ -83,7 +83,9 @@ Order is: bug-first (PR 1), visual-truth (PR 2-3), Carrel's wedge made real (PR 
 2. Same chip changes label across phases: `[ Space ]` to reveal → `[ 1 2 3 4 ]` to rate.
 3. Add a tiny "Show question" link in the bottom-left of the back-face card *if* PR 1 didn't make this discoverable enough (test with the user before adding — might be redundant).
 
-### PR 4 — Citation reveal on the back face (~half day)
+### PR 4 — Citation reveal on the back face (~half day) — **SHIPPED 2026-05-12**
+
+Shipped as: backend `services/study.py::fetch_due_cards` LEFT JOINs `anchors` keyed on `srs_card_id`, surfacing `document_id`, `chunk_id`, `page_num`, `quote_text` (most-recent anchor wins). New `SourceCitation` component renders on the answer face when both `document_id` and `chunk_id` are present; whole row is a single button deep-linking to `/reader/{document_id}?chunk={chunk_id}` via the existing `buildReaderChunkPath` helper. Tests: 4 backend + 6 component + 2 view-integration. Header reads "From {doc}, page N" (page hidden when null); excerpt italic, truncated to ~40 words; existing anchor index (`idx_anchors_srs_card`) keeps the per-card subquery O(1).
 
 **Why this is the real value moment.** Carrel's wedge is "verbatim source-grounding, never fabricates." But the SRS loop today exposes none of that. The user reviews a card and never sees the underlying chunk, the page, or the source — they just see Q + A. That's the same product as Anki + ChatGPT.
 
@@ -102,9 +104,7 @@ Order is: bug-first (PR 1), visual-truth (PR 2-3), Carrel's wedge made real (PR 
 **Currently:** every card is a Q-front, A-back pair.
 
 **Add:**
-1. **Cloze deletion** (Anki-style): a sentence with one term blanked out. The blank is the question; the term is the answer.
-    - Schema change: `srs_cards.kind ∈ {"qa", "cloze"}` (default qa for back-compat).
-    - For cloze, both faces render the same sentence; the back fills in the blanked term in accent colour.
+1. **Cloze deletion** (Anki-style) — **PR 5.1 SHIPPED 2026-05-13.** Sentence with one term blanked out via the Anki `{{cN::term}}` marker. Schema: `srs_cards.kind ∈ {"qa", "cloze"}` (default 'qa' so legacy rows back-compat). Both faces store the same source; front face renders the term as a placeholder, back face reveals it in accent color. Architecture documented in [ADR 0002](../decisions/0002-pr-5-1-cloze-cards-schema.md). Mandatory scope additions folded in from the adversary leg: (a) `list_cards` search projection strips cloze markers (SQLite UDF), (b) `_normalize_card_text` skips cloze marker spans so a concept named `"c1"` doesn't corrupt markers. Tests: 15 backend + 9 frontend rendering.
 2. **Reverse cards**: for any AI-drafted Q/A card with a single-term answer, auto-generate the reverse direction (term → definition).
     - Toggle in card creation: "Also create a reverse card."
     - Stored as a separate `srs_cards` row linked via `paired_card_id`.
@@ -114,10 +114,10 @@ Order is: bug-first (PR 1), visual-truth (PR 2-3), Carrel's wedge made real (PR 
 ### PR 6 — Session-level pacing + signal (~half day)
 
 **Add to the session experience:**
-1. **Estimated time remaining**: based on the user's median time-per-card from past sessions × cards left. Render in the focus-mode header subtly: "~4 min left."
-2. **Per-card timing telemetry**: record `seconds_to_reveal` and `seconds_to_rate` on every review event. Don't display yet; this is data for future tuning of FSRS parameters.
-3. **"Defer this card" affordance**: a small button next to the rating row that pushes the card to the end of the session queue without recording a rating. Sometimes you need to think about it after seeing other cards. Different from "Again."
-4. **Streak indicator**: small chip in the focus-mode header showing consecutive Good+Easy ratings within this session — a positive feedback loop without being gamified.
+1. **Estimated time remaining** — **SHIPPED 2026-05-13.** Running median of this session's (reveal + rate) per-card seconds × cards remaining, rendered in the focus-mode header as "~Nm left" (or "~Ns left" under 60s, with a 5s floor). Hidden until 3 samples land so an outlier first card doesn't anchor a misleading estimate. Pure client-side; reuses PR 7's per-card timing refs. Tests: 6 unit cases on `formatEta` + 2 overlay-render cases.
+2. **Per-card timing telemetry** — **SHIPPED 2026-05-11** (commit `2f9e248d`; author date 2026-05-10, committer date 2026-05-11 — SHIPPED tracks the landed (committer) date; commit subject reads "PR 7" — historical renumbering before this item moved to PR 6 item 2). Records `seconds_to_first_reveal` and `seconds_to_rate` on every review event. Don't display yet; this is data for future tuning of FSRS parameters.
+3. **"Defer this card" affordance** — **SHIPPED 2026-05-13.** Small ghost button next to the rating row that splice-out-and-appends the current card to the end of the session queue without calling `study.review`. Visible only in `phase === "back"` (after reveal) and only when there's at least one card to defer past. Emits `srs.card_deferred` with `{card_id, remaining}` so the dashboard can measure usage. Session-local reorder only — the card still sits on whatever SRS schedule the backend would otherwise give it. Tests: 2 view-integration cases (defer pushes A behind B; defer hidden on last card) + 1 backend-allowlist case.
+4. **Streak indicator** — **SHIPPED 2026-05-13.** Small chip in the focus-mode header showing consecutive Good+Easy ratings within the current session. Resets to 0 on Again or Hard. Hidden until the streak reaches 2 (a "1 in a row" chip is noise). Format: "N in a row" — no flame emoji, no leaderboard, no color shift, just a subdued tertiary-text chip matching the ETA's quiet treatment. Reuses the overlay's 200ms fade-in animation (throttled by `prefers-reduced-motion`). Tests: 3 `formatStreak` unit cases + 2 overlay-render cases + 1 view-integration case driving the chip end-to-end through rateCard.
 
 ---
 

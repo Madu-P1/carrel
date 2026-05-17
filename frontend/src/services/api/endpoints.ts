@@ -781,6 +781,25 @@ export interface SrsDueCard {
   document_name: string;
   subject_name: string | null;
   raw_concept?: string;
+  /** Source document id. Null for orphan cards with no concept binding.
+   *  When present, click-through on the citation row deep-links to
+   *  `/reader/{document_id}?chunk={chunk_id}`. */
+  document_id?: string | null;
+  /** Chunk id of the most-recent anchor bound to this card. Null when no
+   *  anchor exists; the citation row is hidden in that case. */
+  chunk_id?: string | null;
+  /** 1-indexed page number from the bound anchor. Null when paginating
+   *  source doesn't apply (plain-text feeds, manual cards). */
+  page_num?: number | null;
+  /** Verbatim quote text from the bound anchor. Rendered as the citation
+   *  excerpt below the answer body, truncated to ~40 words. */
+  quote_text?: string | null;
+  /** PR 5.1 (ADR 0002) — render-mode discriminator. "qa" for the legacy
+   *  question/answer pair. "cloze" for a sentence with one
+   *  `{{cN::term}}` marker shared across both faces (front hides the
+   *  term; back reveals it in accent color). PR 5.2 (ADR 0003) — "reverse"
+   *  is the swapped twin of a paired qa card; renders identically to qa. */
+  kind?: "qa" | "cloze" | "reverse";
 }
 
 export type SrsRating = "again" | "hard" | "good" | "easy";
@@ -816,6 +835,8 @@ export interface SrsCard {
   document_id: string | null;
   document_name: string | null;
   subject_name: string | null;
+  /** PR 5.1 (ADR 0002) — render-mode discriminator; see SrsDueCard.kind. */
+  kind?: "qa" | "cloze" | "reverse";
 }
 
 export interface CardCreatePayload {
@@ -825,6 +846,24 @@ export interface CardCreatePayload {
   conceptId?: string;
   /** Optional override. Defaults to "custom" on the server. */
   cardType?: string;
+  /** PR 5.1 — render mode. Omit for legacy qa cards (default). */
+  kind?: "qa" | "cloze" | "reverse";
+}
+
+export interface CardPairCreatePayload {
+  front: string;
+  back: string;
+  /** Optional. Omit to create an orphan pair (shows up in "All subjects"). */
+  conceptId?: string;
+  /** Optional override. Defaults to "custom" on the server. */
+  cardType?: string;
+}
+
+export interface CardPairCreateResponse {
+  primary: SrsCard;
+  reverse: SrsCard;
+  primary_id: string;
+  reverse_id: string;
 }
 
 export interface CardAiDraftPayload {
@@ -921,6 +960,23 @@ export const study = {
    */
   createCard: (payload: CardCreatePayload) =>
     api<{ card: SrsCard }>("/api/srs/cards", {
+      method: "POST",
+      body: {
+        front: payload.front,
+        back: payload.back,
+        concept_id: payload.conceptId ?? null,
+        card_type: payload.cardType ?? "custom",
+        kind: payload.kind ?? "qa"
+      }
+    }),
+  /**
+   * Create a reverse-pair from one front/back input. Server inserts a
+   * primary qa card AND its swapped reverse twin AND a card_pairs row
+   * in one transaction. Each card has independent FSRS state. PR 5.2
+   * (ADR 0003).
+   */
+  createCardPair: (payload: CardPairCreatePayload) =>
+    api<CardPairCreateResponse>("/api/srs/cards/pair", {
       method: "POST",
       body: {
         front: payload.front,

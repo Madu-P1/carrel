@@ -103,6 +103,8 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (12, "0012_calendar_feed_secret_refs.sql"),
                 (14, "0014_calendar_local_feed_kind.sql"),
                 (16, "0016_nodes_typed.sql"),
+                (17, "0017_srs_cards_kind.sql"),
+                (18, "0018_srs_cards_kind_drop_check_and_card_pairs.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -120,6 +122,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertIn("nodes", tables)
         self.assertIn("node_fts", tables)
         self.assertTrue({"nodes_fts_insert", "nodes_fts_delete", "nodes_fts_update"} <= triggers)
+        # PR 5.2 (ADR 0003) — card_pairs join table from 0018.
+        self.assertIn("card_pairs", tables)
         if db.sqlite_vec_runtime_supported():
             self.assertIn("chunks_vec", tables)
             self.assertIn("node_embeddings", tables)
@@ -136,12 +140,13 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "total"
                 ]
 
-        # +7 for 0008_anchors, 0009_calendar_and_planning,
+        # +9 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
         # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
-        # and 0016_nodes_typed — all unconditional (no runtime gate
-        # like sqlite-vec).
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 7
+        # 0016_nodes_typed, 0017_srs_cards_kind, and
+        # 0018_srs_cards_kind_drop_check_and_card_pairs — all
+        # unconditional (no runtime gate like sqlite-vec).
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 9
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -177,6 +182,8 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0012_calendar_feed_secret_refs.sql",
                 "0014_calendar_local_feed_kind.sql",
                 "0016_nodes_typed.sql",
+                "0017_srs_cards_kind.sql",
+                "0018_srs_cards_kind_drop_check_and_card_pairs.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

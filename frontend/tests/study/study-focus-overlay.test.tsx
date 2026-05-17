@@ -74,4 +74,45 @@ describe("StudyFocusOverlay (S-2)", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  // PR 6.1: ETA chip lives in the focus header, alongside progress
+  // and scope. Pin both the show-when-supplied and hide-when-null
+  // shapes so a future header refactor can't silently drop the chip.
+  test("renders the eta chip when an eta string is provided", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} eta="~4m left">
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.getByText("~4m left")).toBeDefined();
+  });
+
+  test("hides the eta chip when eta is null", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} eta={null}>
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.queryByText(/~.+left/)).toBeNull();
+  });
+
+  // PR 6.4: streak chip mirrors the ETA chip's contract — show when
+  // the parent supplies a string, hide when it's null.
+  test("renders the streak chip when a streak string is provided", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} streak="3 in a row">
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.getByText("3 in a row")).toBeDefined();
+  });
+
+  test("hides the streak chip when streak is null", () => {
+    render(
+      <StudyFocusOverlay open={true} onClose={() => {}} streak={null}>
+        <div>body</div>
+      </StudyFocusOverlay>,
+    );
+    expect(screen.queryByText(/in a row/)).toBeNull();
+  });
 });

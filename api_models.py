@@ -21,12 +21,42 @@ class CardCreateRequest(BaseModel):
     the New Card dialog. concept_id is optional; orphan cards are allowed
     and surface in the "All" filter via LEFT JOIN. card_type defaults to
     "custom" so we can distinguish user-authored cards from those that
-    the ingestion pipeline produced."""
+    the ingestion pipeline produced.
+
+    PR 5.1 (ADR 0002) — `kind` is the render-mode discriminator. For
+    `kind='qa'` (the default), front carries the question and back the
+    answer. For `kind='cloze'`, both fields carry the same source
+    sentence containing one `{{cN::term}}` marker — the client sends
+    them mirrored so the schema invariant "both columns non-empty"
+    holds without server-side mirroring. The service rejects cloze
+    requests without a marker.
+    """
 
     front: str = Field(..., min_length=1, max_length=4000)
     back: str = Field(..., min_length=1, max_length=4000)
     concept_id: Optional[str] = None
     card_type: str = Field(default="custom", max_length=64)
+    kind: Literal["qa", "cloze", "reverse"] = "qa"
+
+
+class CardPairCreateRequest(BaseModel):
+    """POST /api/srs/cards/pair payload. The "Reverse pair" mode of the
+    New Card dialog sends a single front/back pair; the server inserts
+    two srs_cards (the primary Q→A and the reverse A→Q) plus one
+    card_pairs row in a single transaction. Both ids come back so the
+    client can drop both rows into its cached list. concept_id +
+    card_type behave the same as CardCreateRequest. PR 5.2 / ADR 0003.
+    """
+
+    front: str = Field(..., min_length=1, max_length=4000)
+    back: str = Field(..., min_length=1, max_length=4000)
+    concept_id: Optional[str] = None
+    card_type: str = Field(default="custom", max_length=64)
+
+
+class CardPairCreateResponse(BaseModel):
+    primary_id: str
+    reverse_id: str
 
 
 class CardAiDraftRequest(BaseModel):

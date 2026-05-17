@@ -77,7 +77,12 @@ async function normalizeOutline(
   );
 }
 
-function deriveOutlineFromChunks(chunks: ReaderChunk[]): PdfOutlineNode[] {
+// Exported for tests. The fallback that gives every PDF a navigable outline
+// even when pdf.getOutline() returns null (most academic and scanned PDFs
+// have no embedded TOC). Adjacent same-section runs collapse to one node;
+// non-adjacent same sections stay separate so the rail reflects the
+// document's actual reading order.
+export function deriveOutlineFromChunks(chunks: ReaderChunk[]): PdfOutlineNode[] {
   const nodes: PdfOutlineNode[] = [];
   let lastKey = "";
   for (const chunk of chunks) {

@@ -23,7 +23,12 @@ export type UsageEventName =
   // PR 7 of flashcards-focus — per-card timing telemetry. Properties:
   // rating, seconds_to_first_reveal, seconds_to_rate. Backend
   // allowlist mirror at services/usage_events.py.
-  | "srs.card_rated";
+  | "srs.card_rated"
+  // PR 6.3 of flashcards-focus — emitted when the user defers a card
+  // to the end of the session queue (different from "Again"). Backend
+  // allowlist mirror at services/usage_events.py. Properties:
+  // card_id (string), remaining (number).
+  | "srs.card_deferred";
 
 type UsageEventPrimitive = boolean | number | string | null;
 type UsageEventProperties = Record<string, UsageEventPrimitive | undefined>;

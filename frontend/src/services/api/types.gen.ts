@@ -603,6 +603,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/srs/cards/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Card Pair
+         * @description Create a reverse-pair: one Q→A card plus its swapped A→Q twin
+         *     and a card_pairs link. Both cards land in srs_cards as separate
+         *     rows with independent FSRS state. The response includes both
+         *     fully-hydrated card rows so the client can drop them straight
+         *     into its cached list. PR 5.2 / ADR 0003.
+         */
+        post: operations["create_card_pair_api_srs_cards_pair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/srs/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -1490,6 +1514,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendar/ics-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Ics File
+         * @description Import an Apple Calendar `.ics` export as a local calendar source.
+         *
+         *     We parse the file and upsert events immediately, but we do not keep
+         *     the uploaded bytes, local path, or filename. The feed row stores a
+         *     stable content hash for duplicate detection plus a non-secret display
+         *     label.
+         */
+        post: operations["upload_ics_file_api_calendar_ics_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/feeds/{feed_id}": {
         parameters: {
             query?: never;
@@ -1523,6 +1572,32 @@ export interface paths {
          *     else, blocking on the response so the user gets immediate feedback.
          */
         post: operations["sync_feed_api_calendar_feeds__feed_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/local/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Local Calendar
+         * @description Receive an Apple Calendar (EventKit) sync from the macOS shell.
+         *
+         *     The macOS bridge calls this on launch and again on every
+         *     EKEventStoreChanged notification. The body carries one EKCalendar's
+         *     events; this handler upserts them through the same code path that
+         *     HTTP feeds use, so downstream consumers (planner, coach, dashboard)
+         *     don't care which kind of feed produced an event.
+         */
+        post: operations["sync_local_calendar_api_calendar_local_sync_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1606,6 +1681,34 @@ export interface paths {
          *     UX concern. Backend just allows the transition.
          */
         post: operations["restore_suggestion_api_plan_suggestions__suggestion_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Plan Events
+         * @description Server-Sent Events stream — emits when the plan should refresh.
+         *
+         *     The companion alarm + dashboard insertions hook subscribe via
+         *     `EventSource(...)`. Each `calendar-changed` event is the signal to
+         *     refetch downstream views.
+         *
+         *     Trigger: `study_events.event_type = 'local_calendar_synced'` rows
+         *     landing — emitted when a Calendar.app change reaches the backend.
+         *     1 s polling cadence against an indexed table.
+         */
+        get: operations["stream_plan_events_api_plan_events_stream_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1705,6 +1808,15 @@ export interface components {
              */
             subject_name: string;
         };
+        /** Body_upload_ics_file_api_calendar_ics_upload_post */
+        Body_upload_ics_file_api_calendar_ics_upload_post: {
+            /** Label */
+            label: string;
+            /** Color */
+            color?: string | null;
+            /** File */
+            file: string;
+        };
         /**
          * BulkDeleteCardsRequest
          * @description Used by POST /api/srs/cards/bulk-delete. The frontend posts up to a
@@ -1795,6 +1907,25 @@ export interface components {
             /** Last Error */
             last_error?: string | null;
         };
+        /**
+         * CalendarIcsUploadResponse
+         * @description Response for local .ics uploads.
+         *
+         *     The uploaded file is parsed immediately and not retained on disk.
+         *     `raw_url_echo` is a display label for compatibility with the feed
+         *     dialog, never a local path or filename.
+         */
+        CalendarIcsUploadResponse: {
+            feed: components["schemas"]["CalendarFeedRow"];
+            /** Raw Url Echo */
+            raw_url_echo: string;
+            /** Items Seen */
+            items_seen: number;
+            /** Items Upserted */
+            items_upserted: number;
+            /** Items Deleted */
+            items_deleted: number;
+        };
         /** CardAiDraftItem */
         CardAiDraftItem: {
             /** Front */
@@ -1839,8 +1970,44 @@ export interface components {
          *     and surface in the "All" filter via LEFT JOIN. card_type defaults to
          *     "custom" so we can distinguish user-authored cards from those that
          *     the ingestion pipeline produced.
+         *
+         *     PR 5.1 (ADR 0002) — `kind` is the render-mode discriminator. For
+         *     `kind='qa'` (the default), front carries the question and back the
+         *     answer. For `kind='cloze'`, both fields carry the same source
+         *     sentence containing one `{{cN::term}}` marker — the client sends
+         *     them mirrored so the schema invariant "both columns non-empty"
+         *     holds without server-side mirroring. The service rejects cloze
+         *     requests without a marker.
          */
         CardCreateRequest: {
+            /** Front */
+            front: string;
+            /** Back */
+            back: string;
+            /** Concept Id */
+            concept_id?: string | null;
+            /**
+             * Card Type
+             * @default custom
+             */
+            card_type: string;
+            /**
+             * Kind
+             * @default qa
+             * @enum {string}
+             */
+            kind: "qa" | "cloze" | "reverse";
+        };
+        /**
+         * CardPairCreateRequest
+         * @description POST /api/srs/cards/pair payload. The "Reverse pair" mode of the
+         *     New Card dialog sends a single front/back pair; the server inserts
+         *     two srs_cards (the primary Q→A and the reverse A→Q) plus one
+         *     card_pairs row in a single transaction. Both ids come back so the
+         *     client can drop both rows into its cached list. concept_id +
+         *     card_type behave the same as CardCreateRequest. PR 5.2 / ADR 0003.
+         */
+        CardPairCreateRequest: {
             /** Front */
             front: string;
             /** Back */
@@ -2146,6 +2313,68 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LocalCalendarEventInput
+         * @description One EKEvent rendered for transport. Field bounds match what
+         *     EventKit can return plus generous slack — a 4 KB title would be
+         *     pathological but isn't impossible if a script writes one.
+         */
+        LocalCalendarEventInput: {
+            /** Uid */
+            uid: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Start At */
+            start_at: string;
+            /** End At */
+            end_at: string;
+            /** Timezone */
+            timezone?: string | null;
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /** Location */
+            location?: string | null;
+            /**
+             * Status
+             * @default confirmed
+             * @enum {string}
+             */
+            status: "confirmed" | "cancelled" | "tentative";
+        };
+        /**
+         * LocalCalendarSyncRequest
+         * @description POST /api/calendar/local/sync body — one EKCalendar's worth of
+         *     events. The macOS shell sends one of these per local calendar
+         *     after EventKit grants access, and on every EKEventStoreChanged
+         *     notification.
+         */
+        LocalCalendarSyncRequest: {
+            /** Calendar Identifier */
+            calendar_identifier: string;
+            /** Label */
+            label: string;
+            /** Color */
+            color?: string | null;
+            /** Events */
+            events?: components["schemas"]["LocalCalendarEventInput"][];
+        };
+        /** LocalCalendarSyncResponse */
+        LocalCalendarSyncResponse: {
+            /** Feed Id */
+            feed_id: string;
+            /** Items Seen */
+            items_seen: number;
+            /** Items Upserted */
+            items_upserted: number;
+            /** Items Deleted */
+            items_deleted: number;
         };
         /** NoteExpandRequest */
         NoteExpandRequest: {
@@ -3660,6 +3889,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardAiDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_pair_api_srs_cards_pair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardPairCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5424,6 +5688,39 @@ export interface operations {
             };
         };
     };
+    upload_ics_file_api_calendar_ics_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_ics_file_api_calendar_ics_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarIcsUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_feed_api_calendar_feeds__feed_id__delete: {
         parameters: {
             query?: never;
@@ -5510,6 +5807,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncFeedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_local_calendar_api_calendar_local_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalCalendarSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalCalendarSyncResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5629,6 +5959,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_plan_events_api_plan_events_stream_get: {
+        parameters: {
+            query?: {
+                after_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

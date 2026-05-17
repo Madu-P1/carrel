@@ -149,6 +149,114 @@ class NullProviderContractTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "ai_disabled")
 
+    def test_null_provider_request_grounded_answer_accepts_temperature(self) -> None:
+        """Pin the post-Bug-3 protocol contract: callers can pass
+        `temperature=` to any provider's `request_grounded_answer`,
+        including stub providers that short-circuit. Regression-guards
+        the protocol-widening fix in HANDOFF Bug 3 — if a refactor
+        drops the kwarg from NullProvider, this test fails before
+        the latent runtime TypeError can reach production."""
+        null = NullProvider()
+        result = null.request_grounded_answer(
+            request_kind="test",
+            system="",
+            question="",
+            chunks=[],
+            temperature=0.0,
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "ai_disabled")
+
+    def test_claude_router_request_grounded_answer_accepts_temperature(self) -> None:
+        """Same regression guard for the ClaudeRouter stub. The
+        services/tutor.py call site passes temperature; this pins
+        that contract."""
+        router = ClaudeRouter()
+        result = router.request_grounded_answer(
+            request_kind="test",
+            system="",
+            question="",
+            chunks=[],
+            temperature=0.0,
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "grounded_unsupported")
+
+
+class ClaudeRouterFallbackContractTests(unittest.TestCase):
+    """HANDOFF Bug 4: ClaudeRouter.request_json must accept a `fallback`
+    kwarg per the AIProvider protocol. Pre-fix, the method was missing
+    `fallback` entirely and mypy refused to consider ClaudeRouter an
+    AIProvider. Post-fix, the router honors `fallback` symmetrically
+    with NullProvider: on a failed call, json_payload is replaced with
+    `fallback` while ok stays False so callers retain failure
+    visibility."""
+
+    def test_request_json_returns_fallback_when_no_api_key(self) -> None:
+        """No ANTHROPIC_API_KEY → request_text fails fast with
+        missing_api_key → request_json's fallback path stamps the
+        provided fallback into json_payload while keeping ok=False."""
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            router = ClaudeRouter()
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+                fallback={"safe": "default"},
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.json_payload, {"safe": "default"})
+
+    def test_request_json_no_fallback_returns_none_payload(self) -> None:
+        """fallback=None (the default) preserves the pre-Bug-4
+        behavior: failed call returns json_payload=None."""
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            router = ClaudeRouter()
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+            )
+        self.assertFalse(result.ok)
+        self.assertIsNone(result.json_payload)
+
+    def test_request_json_invalid_json_returns_fallback(self) -> None:
+        """The second failure branch (request_text succeeds but the
+        returned text is not valid JSON) must also honor fallback.
+        Bug 4's fix changed both branches; this pins the
+        `invalid_json` branch so a refactor that drops the fallback
+        stamp from that path trips a named test."""
+        router = ClaudeRouter()
+        ok_text_result = ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-haiku-4-5",
+            request_kind="test",
+            text="not valid json {{{",
+            json_payload=None,
+            error_code=None,
+            error_message=None,
+            latency_ms=0.0,
+            input_tokens=None,
+            output_tokens=None,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier=None,
+            stop_reason=None,
+            request_id=None,
+        )
+        with mock.patch.object(ClaudeRouter, "request_text", return_value=ok_text_result):
+            result = router.request_json(
+                request_kind="test",
+                system="",
+                prompt="",
+                fallback={"safe": "json"},
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "invalid_json")
+        self.assertEqual(result.json_payload, {"safe": "json"})
+
 
 class ProviderProtocolTests(unittest.TestCase):
     """Structural check: every backend satisfies AIProvider at runtime."""
@@ -193,6 +301,113 @@ class DefaultProviderSingletonTests(unittest.TestCase):
             third = get_default_provider()
         self.assertIsNot(first, third)
         self.assertIsInstance(third, NullProvider)
+
+
+class DefaultProviderSignatureInvalidationTests(unittest.TestCase):
+    """PR-P3: ``get_default_provider`` now auto-invalidates when the
+    env vars that drive ``select_provider`` change. Tests pin the new
+    contract so a future refactor that re-introduces a lifetime cache
+    (the pre-PR-P3 behavior the audit flagged) fails loudly."""
+
+    def setUp(self) -> None:
+        reset_default_provider()
+
+    def tearDown(self) -> None:
+        reset_default_provider()
+
+    def test_env_change_invalidates_without_explicit_reset(self) -> None:
+        # The audit's exact scenario: settings UI writes
+        # CARREL_AI_PROVIDER, the next call must see the new provider
+        # WITHOUT the caller having to remember to call
+        # reset_default_provider.
+        from ai.providers import NullProvider
+
+        with mock.patch.dict(
+            os.environ,
+            {"CARREL_AI_PROVIDER": "off"},
+            clear=False,
+        ):
+            first = get_default_provider()
+            self.assertIsInstance(first, NullProvider)
+
+        # No reset; just change the env. Next call must re-select.
+        with mock.patch.dict(
+            os.environ,
+            {"CARREL_AI_PROVIDER": "ollama", "OLLAMA_BASE_URL": "http://127.0.0.1:11434"},
+            clear=False,
+        ):
+            second = get_default_provider()
+            self.assertIsInstance(second, OllamaClient)
+
+        # Sanity: the cache returned a different object.
+        self.assertIsNot(first, second)
+
+    def test_same_env_returns_cached_instance(self) -> None:
+        # The signature check is presence-based, so two calls with the
+        # same env state still hit the cache. No spurious re-selects.
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["EINSTEIN_AI_PROVIDER"] = "off"
+        with mock.patch.dict(os.environ, env, clear=True):
+            first = get_default_provider()
+            second = get_default_provider()
+            third = get_default_provider()
+        self.assertIs(first, second)
+        self.assertIs(second, third)
+
+    def test_signature_does_not_leak_api_key_value(self) -> None:
+        # The signature must reflect ANTHROPIC_API_KEY *presence*, not
+        # the key itself. A leaked log/trace of the signature should
+        # not expose the key.
+        from ai.providers import _provider_selection_signature
+
+        with mock.patch.dict(
+            os.environ,
+            {"ANTHROPIC_API_KEY": "sk-supersecret-FAKE"},
+            clear=True,
+        ):
+            sig = _provider_selection_signature()
+        self.assertNotIn("supersecret", sig)
+        self.assertNotIn("FAKE", sig)
+        self.assertNotIn("sk-", sig)
+        # But it does reflect presence — a non-empty marker is in.
+        self.assertIn("claude", sig)
+
+    def test_signature_changes_when_claude_key_appears(self) -> None:
+        # Power user adds ANTHROPIC_API_KEY mid-session. The auto path
+        # should now pick Claude over previously-selected NullProvider.
+        from ai.providers import ClaudeRouter, NullProvider
+
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["CARREL_AI_PROVIDER"] = "auto"
+        env.pop("OLLAMA_BASE_URL", None)
+
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
+            first = get_default_provider()
+            self.assertIsInstance(first, NullProvider)
+
+        env["ANTHROPIC_API_KEY"] = "sk-real-key-now"
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+        ):
+            second = get_default_provider()
+            self.assertIsInstance(second, ClaudeRouter)
+
+    def test_explicit_reset_still_works(self) -> None:
+        # reset_default_provider continues to function for test
+        # fixtures and settings-write paths that want explicit
+        # invalidation even when no env var changed.
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env["CARREL_AI_PROVIDER"] = "off"
+        with mock.patch.dict(os.environ, env, clear=True):
+            first = get_default_provider()
+            reset_default_provider()
+            second = get_default_provider()
+        # Same signature, but reset forced a new instance.
+        self.assertIsNot(first, second)
 
 
 if __name__ == "__main__":

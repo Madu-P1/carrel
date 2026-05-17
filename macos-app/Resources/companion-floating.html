@@ -231,9 +231,13 @@ body.drop-ready .face {
 }
 
 .face.active-face {
-  box-shadow:
-    inset 0 0 0 1px var(--color-teal-30),
-    0 0 32px var(--color-teal-15);
+  /* Inset accent only. The 32px outer glow that used to live here
+   * stacked with each .cell.teal-bright's 12px box-shadow and traced
+   * a visible ring around the cube silhouette. A true unified-cube
+   * glow would need filter: drop-shadow() on a 3D-transformed parent,
+   * which collapses preserve-3d in WebKit. Accepting the trade: crisp
+   * outline + bright cells > faux halo + visible ring. */
+  box-shadow: inset 0 0 0 1px var(--color-teal-30);
 }
 
 /* Half-edge = 50px (face is 100x100) */
@@ -266,7 +270,9 @@ body.drop-ready .face {
 .cell.teal-bright {
   background: var(--color-teal);
   border-color: transparent;
-  box-shadow: 0 0 12px var(--color-teal-50);
+  /* Per-cell halo removed: stacked with the active-face glow into a
+   * visible square ring around the cube silhouette. Bright teal fill
+   * alone reads as "lit" without bleeding past the face. */
 }
 .cell.teal-dim { background: rgba(94, 234, 212, 0.04); border-color: rgba(94, 234, 212, 0.08); }
 

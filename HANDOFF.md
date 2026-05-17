@@ -176,6 +176,123 @@ hell. The session notes capture this in detail.
 
 ## What is NOT done
 
+### Type-check findings (5 latent bugs, plus a verify-chain gap)
+
+Running `mypy --ignore-missing-imports --follow-imports=silent ai services routes`
+with `--config-file /dev/null` (so the typed-island exclude in `mypy.ini`
+doesn't apply) finds **70 errors in 27 of 120 files** non-strict,
+**185 errors in 58 files** strict. Current `mypy.ini` gate is clean on
+the 8 typed-island files; this is the debt outside that gate.
+
+Five of the 70 are real latent bugs sitting in the codebase today,
+not annotation noise. Fix these first regardless of any decision
+about expanding the verify chain.
+
+**1. `services/local_api_security.py:42` — `compare_digest` receives `str | None`. — FIXED 2026-05-12.**
+
+Resolved in commit `d5441bcd` by guarding upstream: `provided is None
+or expected is None` returns `False` before `hmac.compare_digest`
+sees either arg. Pattern shipped:
+
+```python
+if provided is None or expected is None:
+    return False
+if not hmac.compare_digest(provided, expected):
+    return False
+```
+
+**2. `routes/calendar.py:126, 217, 269` — `FeedRow | None` assigned to `FeedRow`. — FIXED 2026-05-12.**
+
+Resolved in commit `3c15a23f`. Deviated from the literal HANDOFF spec
+(HTTPException(404)) because the failing path is a post-write
+bookkeeping refresh — the caller has already observed a successful
+insert/upload/sync, so a 404 would misrepresent the operation's
+outcome. Fix logs a `LOGGER.warning(...)` and falls back to the
+pre-write row at each of the three sites. Three regression tests
+in `tests/test_calendar_feedrow_fallback.py` pin each fallback path.
+
+**3. `services/tutor.py:1074` — `request_grounded_answer` called with unsupported `temperature=` kwarg. — FIXED 2026-05-12.**
+
+Resolved by widening the `AIProvider` protocol to declare
+`temperature: float = 0.0` and threading the same parameter through
+the `NullProvider` and `ClaudeRouter` stubs (accept-and-ignore via
+`del temperature`). AFM and Ollama implementations already honored it.
+The call site is now type-correct; mypy delta on the broad sweep
+(`mypy --config-file /dev/null --ignore-missing-imports
+--follow-imports=silent ai services`): 56 → 54 errors.
+
+**4. `ai/providers.py:329, 337` — `ClaudeRouter` does not satisfy the `AIProvider` protocol it is returned as. — FIXED 2026-05-12.**
+
+Resolved by widening `ClaudeRouter.request_json` to accept
+`fallback: Any = None`, mirroring the protocol declaration and
+`NullProvider`'s behavior: on a failed call, `json_payload` is
+replaced with the supplied fallback while `ok` stays `False` so
+callers retain failure visibility. The `task: ClaudeTask` Literal
+input was deemed acceptable (mypy treats it as compatible with the
+protocol's `task: Any`; the older error notes were diagnostic
+context, not the failing check). Three regression tests
+(`ClaudeRouterFallbackContractTests` in `tests/test_ai_providers.py`)
+pin the fallback-on-failure contract across the missing-API-key,
+default-no-fallback, and `invalid_json` branches. mypy delta on the broad sweep:
+54 → 52 errors; both Bug-4 conformance errors gone.
+
+**5. `services/extraction/parsers/pdf.py:342-343` — `elements` and `warnings` redefined inside the same function. — FIXED 2026-05-12.**
+
+Verified benign: the bridge branch above (lines 271-339) always exits
+via `return build_asset(...)`, so reaching the PyPDF fall-through at
+line 341 implies the bridge branch never executed. Re-init is correct
+behavior. Resolved the mypy `[no-redef]` noise by dropping the type
+annotations on the re-init (`elements = []` / `warnings = []`). The
+earlier annotated declaration in the bridge branch does NOT carry
+across because that branch always returns; instead, mypy infers
+correct types at the usage sites — `elements.extend` consumes
+`_pdf_page_elements`' typed return, `warnings.append` only sees
+string literals, and `build_asset`'s typed parameters pin both lists
+at the final call. mypy broad sweep delta: 52 → 50 errors; both
+Bug-5 redef errors gone. No behavior change, ruff clean,
+`tests/test_pdf_scanned_detection.py` green (7/7).
+
+#### Verify-chain gap
+
+The verify chain runs `ruff` on `ai services evals tests main.py db.py
+routes api_models.py` but does not run `mypy` on the broader backend.
+Only `app_runtime.py`, `app_logging.py`, `ai/router.py`, `benchmarks/*`,
+and `evals/*` are mypy-gated today (the typed islands in `mypy.ini`).
+
+After the 5 bugs above land, add this single line to the verify chain
+in `CLAUDE.md` and to whatever script gates PRs:
+
+```bash
+./.venv/bin/python -m mypy --ignore-missing-imports --follow-imports=silent ai services routes
+```
+
+That run currently produces ~65 remaining errors after the 5 bug fixes.
+Breakdown:
+
+- ~8 Literal/enum mismatches in `services/anchors.py` and `routes/plan.py`
+  (half a day to align producers with the declared Literals)
+- ~10 optional-import shadowing in `services/extraction/parsers/*.py`
+  (`docx`, `html`, `epub`, `pptx` use the `try: import X; except: X = None`
+  pattern, which mypy reads as "Cannot assign to a type"; half a day
+  with targeted `# type: ignore[assignment, misc]` or a small
+  `Optional[type[X]]` restructure)
+- ~25 `object` propagation through `services/ingestion/*` and
+  `services/documents.py` (real typing work, 1 to 2 days; the root
+  cause is dict values typed as `object` at the boundary, which then
+  flow into call sites that need `str`, `int`, or richer types)
+- ~5 mechanical (float assigned to int-typed variable, missing list
+  annotations); 30 minutes
+
+Total to zero on the broader gate and lock it in: roughly 1 to 2
+engineer-days after the bug-fix PR lands.
+
+**Do not pursue full `--strict` on this scope yet.** Strict adds another
+~115 errors (185 total) that are mostly `[no-untyped-def]` on legacy
+modules. Promote files into strict one at a time, the same way
+`app_runtime.py`, `app_logging.py`, and `ai/router.py` were promoted
+into the strict list in `mypy.ini`. The typed-island pattern is the
+right discipline; just widen the perimeter.
+
 ### Coach Phase 2 — make the coach feel real
 
 Phase 1 ships ONE rule (`free_block_overdue_srs`). The reason
@@ -216,41 +333,27 @@ hook (`restoreSuggestion`) are wired and tested. The blocker:
 with an optional `{ action: { label, onClick } }` field is the
 fix. Small primitive change.
 
-### Reader outline rail empty for most PDFs
+### ~~Reader outline rail empty for most PDFs~~ — SHIPPED
 
-Symptom: open a freshly ingested PDF in the Reader and the left
-outline rail is the collapsed-empty state with the disabled book
-icon. Looks like a bug; isn't. `usePdfDocument.ts:120` calls
-`pdf.getOutline()` (PDF.js's API for the document's bookmark
-tree), which returns `null` for any PDF whose publisher didn't
-embed a TOC. Defaults to `[]`, and `OutlineRail.tsx` renders the
-empty state. Most academic PDFs and almost every scanned PDF hit
-this path.
+Implementation landed in `frontend/src/features/reader/hooks/usePdfDocument.ts`:
+`deriveOutlineFromChunks()` (line 80) is wired as the fallback when
+`pdf.getOutline()` returns null/empty (line 154). Adjacent
+same-section + same-page runs collapse to one node; non-adjacent
+same sections stay separate so the rail reflects reading order.
 
-The fix is a fallback, not a replacement. We already have the
-data: `services/extraction/` tags every chunk with a `section`
-and `page_num`. When `pdf.getOutline()` returns empty, derive an
-outline from chunks:
+Test coverage: `frontend/src/features/reader/hooks/usePdfDocument.test.ts`
+(7 tests, all green) pins the contract — empty input, adjacent
+dedup, non-adjacent kept separate, page-aware dedup key, empty
+section fallback to "Source section", null page_num preservation,
+flat-leaf node structure.
 
-1. Pull chunks from the existing `/api/documents/{id}/chunks`
-   payload the Reader already loads
-2. Group by `section`, dedup adjacent same-section runs
-3. Map to `PdfOutlineNode[]` with the section as title and the
-   first chunk's `page_num` as the destination
-4. Pass through to `OutlineRail` unchanged — the rail doesn't
-   care whether the tree came from PDF.js or from chunks
-
-Files to touch:
-- `frontend/src/features/reader/hooks/usePdfDocument.ts` — when
-  `rawOutline.length === 0`, run the chunk-section fallback
-- `frontend/src/features/reader/components/OutlineRail.tsx` — no
-  changes needed; the data shape is the same
-- Optionally surface a `outlineSource: "embedded" | "derived"`
-  field so the rail can show a small "auto-derived" hint
-
-~30 minutes, ~30 lines. The user benefit is large: every PDF
-gets a navigable outline regardless of how the publisher prepped
-it. Without this, the rail is dead weight on most documents.
+NOT done from the original plan: the optional `outlineSource:
+"embedded" | "derived"` field that would let `OutlineRail` show
+a subtle "auto-derived" hint to the user. Skipped because every
+academic PDF would surface the hint, which is noise; if the rail
+is reliable the user doesn't need to know which path produced it.
+Re-add this only if the derived outlines turn out to be visibly
+worse than embedded ones.
 
 ### Carry-overs from before this session
 

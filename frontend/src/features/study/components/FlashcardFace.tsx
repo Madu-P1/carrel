@@ -33,6 +33,13 @@ export interface FlashcardFaceProps {
    * `.hint` class which keeps the same anchoring.
    */
   hint?: ComponentChildren;
+  /**
+   * Optional footer block rendered above the hint (typically the
+   * `<SourceCitation>` on the answer face). Sits in the natural
+   * flex flow so the body shrinks above it; the hint floats below
+   * via its own `margin-top: auto`.
+   */
+  footer?: ComponentChildren;
 }
 
 /**
@@ -56,6 +63,7 @@ export function FlashcardFace({
   eyebrowSecondary,
   body,
   hint,
+  footer,
 }: FlashcardFaceProps) {
   const bodyClass = [
     styles.body,
@@ -68,6 +76,7 @@ export function FlashcardFace({
         <span className={styles.eyebrowSecondary}>{eyebrowSecondary}</span>
       ) : null}
       <p className={bodyClass}>{body}</p>
+      {footer ?? null}
       {hint == null
         ? null
         : typeof hint === "string"

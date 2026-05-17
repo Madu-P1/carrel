@@ -5,7 +5,16 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+# 500 MB — sized for textbook-scale PDFs (most run 50-300 MB; some
+# scanned/figure-heavy texts push 400+). Bumped from 100 MB after a
+# real 266 MB Biology textbook was rejected with status=413. The
+# upload itself streams in 1 MB chunks (UPLOAD_CHUNK_BYTES below) so
+# raising this does not increase peak memory at upload time; the
+# downstream cost is extraction (parser loads the full PDF), which
+# can take 1-2 min and a few GB RAM on the largest accepted file.
+# If we ever see RAM pressure on small Macs, lower this OR move
+# extraction off the request thread (it's already on a worker pool).
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 ALLOWED_SUFFIXES = {".pdf", ".txt", ".md", ".docx", ".pptx"}
 

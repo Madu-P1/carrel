@@ -339,8 +339,16 @@ def parse_pdf(path: Path, *, suffix: str, mime_type: str, context: ParserContext
         )
 
     reader = PdfReader(str(path))
-    elements: list[ExtractedElement] = []
-    warnings: list[str] = []
+    # The native-bridge branch above always returns, so we reach this
+    # PyPDF fall-through only when the bridge failed. Re-init `elements`
+    # and `warnings` to fresh empty lists for this path. Annotations
+    # are intentionally dropped on the re-init to satisfy mypy's
+    # `no-redef` rule. The element types stay pinned: `elements.extend`
+    # consumes `_pdf_page_elements`' typed return, `warnings.append`
+    # only sees string literals, and `build_asset`'s typed parameters
+    # constrain both lists at the call site.
+    elements = []
+    warnings = []
     empty_pages = 0
     for index, page in enumerate(reader.pages, start=1):
         text = normalize_space(page.extract_text() or "")

@@ -77,6 +77,25 @@ class UsageEventsRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual("invalid_usage_event", response.json()["detail"]["code"])
 
+    def test_event_route_accepts_srs_card_deferred(self) -> None:
+        """PR 6.3: card defer is its own event so the dashboard can
+        measure how often the affordance gets used. This test pins
+        the allowlist entry so a future ALLOWED_EVENT_NAMES refactor
+        can't silently drop the event."""
+        response = self.client.post(
+            "/api/usage-events",
+            json={
+                "event_name": "srs.card_deferred",
+                "surface": "study",
+                "properties": {"card_id": "card-xyz", "remaining": 4},
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["event_name"], "srs.card_deferred")
+        self.assertEqual(body["properties"]["card_id"], "card-xyz")
+        self.assertEqual(body["properties"]["remaining"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()

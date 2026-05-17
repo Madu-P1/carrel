@@ -11,10 +11,12 @@ import { friendlyError } from "@/services/api/errorMessages";
 import { events } from "@/services/metrics/events";
 import { useQuery } from "@/lib/query";
 
+import { renderClozeBody } from "./cloze";
 import { FlashcardFace } from "./components/FlashcardFace";
 import { FlipCard } from "./components/FlipCard";
 import { KeyChip } from "./components/KeyChip";
 import { RatingRow } from "./components/RatingRow";
+import { SourceCitation } from "./components/SourceCitation";
 import { SrsSubjectScopePill } from "./components/SrsSubjectScopePill";
 import { StudyFocusOverlay } from "./components/StudyFocusOverlay";
 import { ManageCardsView } from "./ManageCardsView";
@@ -88,6 +90,47 @@ function _persistFocusMode(value: boolean): void {
   }
 }
 
+// PR 6.1 — Estimated time remaining for the focus-mode header.
+// MIN_SAMPLES guards against the early-session noise: a single
+// fast-or-slow card would otherwise project a wildly misleading
+// estimate. Three is a small enough threshold to surface the chip
+// quickly without overfitting to one outlier.
+const ETA_MIN_SAMPLES = 3;
+
+function _median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+// PR 6.4 — Streak threshold: a chip reading "1 in a row" is noise,
+// so the streak surfaces only once the user has chained at least two
+// Good+Easy ratings. Two is the smallest count where "in a row"
+// carries any signal at all.
+const STREAK_MIN_TO_SHOW = 2;
+
+export function formatStreak(count: number): string | null {
+  if (count < STREAK_MIN_TO_SHOW) return null;
+  return `${count} in a row`;
+}
+
+export function formatEta(samples: readonly number[], remaining: number): string | null {
+  if (remaining <= 0) return null;
+  if (samples.length < ETA_MIN_SAMPLES) return null;
+  const totalSeconds = _median(samples) * remaining;
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
+  // Always round UP — the chip must never under-promise a finish line
+  // that hasn't arrived. Sub-60s shows seconds (with a 5s floor so the
+  // chip never reads "~0s left" right before the session ends), and
+  // 60s+ ceils to the nearest minute.
+  if (totalSeconds < 60) return `~${Math.max(5, Math.ceil(totalSeconds))}s left`;
+  const minutes = Math.max(1, Math.ceil(totalSeconds / 60));
+  return `~${minutes}m left`;
+}
+
 export function StudyView() {
   // Subject scope persists across sessions so the user's "Biology only"
   // preference survives reloads. Read it once on mount; future changes
@@ -105,6 +148,12 @@ export function StudyView() {
   const [phase, setPhase] = useState<Phase>("intro");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
+  // PR 6.4 — session-local streak of consecutive Good+Easy ratings.
+  // Resets on Again/Hard. Surfaced as a quiet chip in the focus-mode
+  // header once the count crosses STREAK_MIN_TO_SHOW. The plan calls
+  // for "a positive feedback loop without being gamified" — no flame
+  // emoji, no leaderboard, just a number with a label.
+  const [streak, setStreak] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   // Focus mode persists across sessions on the same machine — same
@@ -127,6 +176,15 @@ export function StudyView() {
   const cardShownAtRef = useRef<number>(0);
   const firstRevealAtRef = useRef<number | null>(null);
 
+  // PR 6.1 of flashcards-focus: estimated time remaining. We keep a
+  // session-local rolling list of `secondsToRate` deltas (PR 7 already
+  // computes these per card). After >=MIN_SAMPLES rated cards, the
+  // running median × remaining-card count drives the "~Nm left" chip
+  // rendered in the focus-mode overlay header. Held in a ref so push
+  // happens outside React's render cycle; the derived chip text is
+  // memoized off `completedCount`.
+  const secondsPerCardRef = useRef<number[]>([]);
+
   // When the user switches to Manage and back, we re-fetch due so any cards
   // they deleted disappear from the next review session. Also refetch the
   // subjects roll-up so the chip counts stay honest after a delete.
@@ -137,19 +195,74 @@ export function StudyView() {
     void subjectsQuery.refetch();
   };
 
-  const cards = data.value?.cards ?? [];
+  // PR 6.3 — session-local card ordering. Seeded from the API response
+  // when a new session starts; the user can then reorder via the
+  // "Defer" affordance which pushes the current card to the end of
+  // the queue. While `sessionCards` is null, we fall through to the
+  // raw API list, so existing flows (manage mode, error, empty queue)
+  // behave identically.
+  const [sessionCards, setSessionCards] = useState<SrsDueCard[] | null>(null);
+  const cards = sessionCards ?? data.value?.cards ?? [];
   const currentCard: SrsDueCard | undefined = cards[currentIndex];
+
+  // PR 6.1 ETA: median seconds-per-card × cards remaining. Computed
+  // here (above any early returns below) so React's rules-of-hooks
+  // see the same hook order on every render. Re-evaluates when a
+  // card is rated (completedCount ticks) or when the queue size
+  // changes (cards.length on refetch).
+  const eta = useMemo(
+    () => formatEta(secondsPerCardRef.current, cards.length - completedCount),
+    [completedCount, cards.length],
+  );
+  // PR 6.4 — streak chip text. Null while the streak is below the
+  // surface threshold; the overlay hides the slot in that case.
+  const streakText = useMemo(() => formatStreak(streak), [streak]);
 
   const startSession = async () => {
     setCompletedCount(0);
     setCurrentIndex(0);
     setLastError(null);
+    setStreak(0);
+    secondsPerCardRef.current = [];
     await refetch();
-    const count = data.value?.cards.length ?? 0;
-    if (count > 0) {
-      void events.track("srs.review_started", { card_count: count }, "study");
+    const fetched = data.value?.cards ?? [];
+    setSessionCards(fetched.length > 0 ? [...fetched] : null);
+    if (fetched.length > 0) {
+      void events.track("srs.review_started", { card_count: fetched.length }, "study");
     }
-    setPhase(count === 0 ? "done" : "front");
+    setPhase(fetched.length === 0 ? "done" : "front");
+  };
+
+  // PR 6.3 — defer the current card to the end of the session queue.
+  // Splice-out-then-append leaves the next card at the same
+  // `currentIndex` so we don't have to bump it. Resets phase to
+  // "front" so the new card opens with the question. Does NOT call
+  // `study.review` (defer is explicitly not a rating). The deferred
+  // card still shows up later in the session, on the same SRS
+  // schedule the backend would have given it if untouched.
+  const deferCurrentCard = () => {
+    if (!currentCard) return;
+    // PR 6.3 polish — also bail while a rating is in flight. Without
+    // this guard, a "d" keypress racing a rateCard roundtrip would
+    // splice the queue under the in-flight advance and emit a stale
+    // srs.card_deferred event. Belt-and-braces with the call-site
+    // gating on canDefer.
+    if (submitting) return;
+    const cardsRemaining = cards.length - currentIndex;
+    if (cardsRemaining <= 1) return; // only one card left — nothing to defer past
+    setSessionCards((prev) => {
+      const source = prev ?? cards;
+      const next = [...source];
+      const [picked] = next.splice(currentIndex, 1);
+      next.push(picked);
+      return next;
+    });
+    void events.track(
+      "srs.card_deferred",
+      { card_id: currentCard.id, remaining: cardsRemaining - 1 },
+      "study",
+    );
+    setPhase("front");
   };
 
   // Bidirectional flip: front <-> back. The original `revealAnswer` was
@@ -201,6 +314,23 @@ export function StudyView() {
           seconds_to_rate: secondsToRate,
         },
         "study",
+      );
+      // PR 6.1: feed the ETA chip's running-median estimator. Use the
+      // total seconds-on-card (reveal + rate) so the prediction tracks
+      // real wall time, not just decision time after reveal. Skip the
+      // push when either timing leg is null — that would be a sample
+      // with no real shownAt baseline (e.g. a card rated without
+      // entering phase=front), which would skew the median downward.
+      if (secondsToRate !== null && secondsToFirstReveal !== null) {
+        secondsPerCardRef.current.push(secondsToRate + secondsToFirstReveal);
+      }
+      // PR 6.4 — feed the streak chip. Good+Easy extend the streak;
+      // Again+Hard reset it. Mirrors the FSRS semantics: the first
+      // two ratings mean "I struggled or forgot", the latter two mean
+      // "I remembered well", which is exactly the binary the streak
+      // is meant to celebrate.
+      setStreak((prev) =>
+        rating === "good" || rating === "easy" ? prev + 1 : 0,
       );
       const nextIndex = currentIndex + 1;
       const reviewedCount = completedCount + 1;
@@ -258,13 +388,27 @@ export function StudyView() {
         if (hit) {
           event.preventDefault();
           void rateCard(hit.rating);
+          return;
+        }
+        // PR 6.3 — "d" defers the current card without recording a
+        // rating. Same gating as the Defer button: there must be a
+        // downstream card to defer past AND no rating roundtrip can
+        // be in flight (otherwise a stale defer would race the
+        // submit).
+        if (
+          (event.key === "d" || event.key === "D")
+          && currentIndex < cards.length - 1
+          && !submitting
+        ) {
+          event.preventDefault();
+          deferCurrentCard();
         }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, phase, currentIndex, cards.length]);
+  }, [mode, phase, currentIndex, cards.length, submitting]);
 
   // Subjects roll-up; memoised so identity is stable across renders
   // when the payload didn't change. Used both by the cleanup effect
@@ -480,8 +624,17 @@ export function StudyView() {
   const frontHint = (
     <KeyChip keys={["Space"]} dimmed={hintDimmed} />
   );
+  // PR 6.3 — surface the "d" keyboard shortcut for defer only while
+  // it's actionable. Mirrors the Defer button's gating exactly
+  // (downstream card exists AND no rating roundtrip in flight) so
+  // the hint and the button live and die together — no stale chip
+  // teasing a key that wouldn't fire.
+  const canDeferOnBack = currentIndex < cards.length - 1 && !submitting;
   const backHint = (
-    <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
+    <>
+      <KeyChip keys={["1", "2", "3", "4"]} label="rate" dimmed={hintDimmed} />
+      {canDeferOnBack ? <KeyChip keys={["d"]} label="defer" dimmed={hintDimmed} /> : null}
+    </>
   );
 
   const flipBody = (
@@ -494,7 +647,11 @@ export function StudyView() {
           kind="question"
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
-          body={currentCard.front}
+          body={
+            currentCard.kind === "cloze"
+              ? renderClozeBody(currentCard.front, "front")
+              : currentCard.front
+          }
           hint={frontHint}
         />
       }
@@ -503,20 +660,53 @@ export function StudyView() {
           kind="answer"
           eyebrow={currentCard.concept}
           eyebrowSecondary={currentCard.document_name}
-          body={currentCard.back}
+          body={
+            currentCard.kind === "cloze"
+              ? renderClozeBody(currentCard.back, "back")
+              : currentCard.back
+          }
           hint={backHint}
+          footer={
+            currentCard.document_id && currentCard.chunk_id ? (
+              <SourceCitation
+                documentId={currentCard.document_id}
+                documentName={currentCard.document_name}
+                chunkId={currentCard.chunk_id}
+                pageNum={currentCard.page_num}
+                quoteText={currentCard.quote_text}
+              />
+            ) : null
+          }
         />
       }
     />
   );
 
+  // PR 6.3 — "Defer" only appears when there's something to defer past.
+  // Hidden on the last card of the session.
+  const canDefer = phase === "back" && currentIndex < cards.length - 1 && !submitting;
+
   const ratingsRow =
     phase === "back" ? (
-      <RatingRow
-        ratings={RATINGS}
-        submitting={submitting}
-        onSelect={(rating) => void rateCard(rating)}
-      />
+      <div className={styles.ratingsRow}>
+        <RatingRow
+          ratings={RATINGS}
+          submitting={submitting}
+          onSelect={(rating) => void rateCard(rating)}
+        />
+        {canDefer ? (
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={deferCurrentCard}
+            aria-label="Defer this card to the end of the session"
+            aria-keyshortcuts="d"
+            className={styles.deferButton}
+          >
+            Defer
+          </Button>
+        ) : null}
+      </div>
     ) : null;
 
   const sessionContent = (
@@ -571,6 +761,8 @@ export function StudyView() {
         onClose={() => setFocusMode(false)}
         progress={`Card ${currentIndex + 1} of ${total}`}
         scope={cardSubject}
+        eta={eta}
+        streak={streakText}
       >
         {sessionContent}
       </StudyFocusOverlay>

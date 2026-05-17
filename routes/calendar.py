@@ -122,8 +122,18 @@ def create_feed(payload: CalendarFeedCreateRequest) -> CalendarFeedCreatedRespon
         # Initial sync, inline. The user is watching the dialog; they
         # want to see "12 events imported" not a silent success.
         outcome = sync_service.run_one_feed(conn, feed.id)
-        # Re-fetch to get the post-sync bookkeeping fields (last_synced_at, etc.)
-        feed = repository.get_feed(conn, feed.id)
+        # Re-fetch to get the post-sync bookkeeping fields (last_synced_at, etc.).
+        # Fall back to the just-inserted row if a concurrent delete races us —
+        # the caller already saw a successful insert, so swallowing the
+        # bookkeeping refresh is friendlier than a misleading 404.
+        refreshed = repository.get_feed(conn, feed.id)
+        if refreshed is None:
+            LOGGER.warning(
+                "calendar feed %s missing on post-insert re-fetch; falling back to inserted row",
+                feed.id,
+            )
+        else:
+            feed = refreshed
 
     if outcome.status == "error":
         # Feed kept; user can retry. Surface error via the feed row.
@@ -214,7 +224,14 @@ async def upload_ics_file(
             last_modified=None,
             error_message=None,
         )
-        feed = repository.get_feed(conn, feed.id)
+        refreshed = repository.get_feed(conn, feed.id)
+        if refreshed is None:
+            LOGGER.warning(
+                "calendar feed %s missing on post-ICS-upload re-fetch; falling back to inserted row",
+                feed.id,
+            )
+        else:
+            feed = refreshed
 
     return CalendarIcsUploadResponse(
         feed=_row_to_response(feed),
@@ -263,7 +280,16 @@ def sync_feed(feed_id: str) -> SyncFeedResponse:
         if feed is None:
             raise HTTPException(status_code=404, detail="Feed not found.")
         outcome = sync_service.run_one_feed(conn, feed_id)
+        # Concurrent delete after the pre-sync guard would null this out;
+        # the sync did run, so fall back to the pre-sync row rather than
+        # surfacing a confusing 404 on a successful sync response.
         feed_after = repository.get_feed(conn, feed_id)
+        if feed_after is None:
+            LOGGER.warning(
+                "calendar feed %s missing on post-sync re-fetch; falling back to pre-sync row",
+                feed_id,
+            )
+            feed_after = feed
 
     return SyncFeedResponse(
         feed=_row_to_response(feed_after),
