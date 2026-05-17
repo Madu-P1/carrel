@@ -588,9 +588,19 @@ def _find_back_to_back_event_pairs(
     cancelled, same-location event pairs whose between-gap is in
     `[GAP_MIN_MINUTES, GAP_MAX_MINUTES)`. Iterates events in
     chronological order and only checks the immediately-next event
-    (single pass; O(n) instead of O(n^2) pairwise), which is the
-    intended semantic anyway — "back to back" means adjacent in the
-    user's schedule, not "any two events on the same day."
+    (single pass; O(n) instead of O(n^2) pairwise). "Back to back"
+    means adjacent in the user's schedule, not "any two events on
+    the same day."
+
+    Important: the location-non-null filter happens in the Python
+    adjacency check, not in the SQL. Filtering in SQL would
+    silently skip events with no location, letting the rule pair
+    two same-location events that actually have a different
+    (location-less) event between them on the user's calendar.
+    The catchup would then overlap that intervening event.
+    Including every non-cancelled event in `rows` and rejecting
+    pairs with NULL/empty location at adjacency time preserves
+    the "truly adjacent" semantic.
     """
     start_iso = window_start.isoformat().replace("+00:00", "Z")
     end_iso = window_end.isoformat().replace("+00:00", "Z")
@@ -603,8 +613,6 @@ def _find_back_to_back_event_pairs(
               AND status != 'cancelled'
               AND start_at >= ?
               AND start_at < ?
-              AND location IS NOT NULL
-              AND TRIM(location) != ''
             ORDER BY start_at ASC
             """,
             (user_id, start_iso, end_iso),

@@ -192,6 +192,82 @@ class GapBetweenClassesRuleTests(unittest.TestCase):
         self._seed_pair(gap_minutes=45, first_location="   ")
         self.assertEqual(self._run(), [])
 
+    def test_skips_pair_when_second_has_null_location(self) -> None:
+        # Symmetry with the first-NULL-location case. Both events
+        # must have a non-empty location for a pair to match.
+        self._seed_pair(gap_minutes=45, first_location="Math Building")
+        with db.get_db() as conn:
+            conn.execute("UPDATE calendar_events SET location = NULL WHERE id = 'second'")
+            conn.commit()
+        self.assertEqual(self._run(), [])
+
+    def test_intervening_null_location_event_blocks_pairing(self) -> None:
+        # Regression guard: an event with no location sitting between
+        # two same-location events MUST break adjacency. Otherwise
+        # filtering out non-location events at the SQL layer (an
+        # earlier mistake) would let the rule pair A with C and emit
+        # a catchup that overlaps B.
+        now = datetime.now(timezone.utc)
+        with db.get_db() as conn:
+            self._insert_event(
+                conn,
+                event_id="a",
+                summary="Calc",
+                start_at=now + timedelta(hours=2),
+                end_at=now + timedelta(hours=3),
+                location="Math Building",
+            )
+            self._insert_event(
+                conn,
+                event_id="b-no-location",
+                summary="Doctors appointment",
+                start_at=now + timedelta(hours=3, minutes=15),
+                end_at=now + timedelta(hours=3, minutes=45),
+                location=None,
+            )
+            self._insert_event(
+                conn,
+                event_id="c",
+                summary="Linear Algebra",
+                start_at=now + timedelta(hours=4),
+                end_at=now + timedelta(hours=5),
+                location="Math Building",
+            )
+        self.assertEqual(self._run(), [])
+
+    def test_intervening_different_location_event_blocks_pairing(self) -> None:
+        # Same shape as the NULL-intervening case but with a real
+        # location on the middle event. Adjacency-based pairing
+        # rejects (a, b) and (b, c) on location mismatch, so the
+        # rule does NOT pair (a, c) across b.
+        now = datetime.now(timezone.utc)
+        with db.get_db() as conn:
+            self._insert_event(
+                conn,
+                event_id="a",
+                summary="Calc",
+                start_at=now + timedelta(hours=2),
+                end_at=now + timedelta(hours=3),
+                location="Math Building",
+            )
+            self._insert_event(
+                conn,
+                event_id="b-other",
+                summary="Office hours",
+                start_at=now + timedelta(hours=3, minutes=15),
+                end_at=now + timedelta(hours=3, minutes=45),
+                location="Library",
+            )
+            self._insert_event(
+                conn,
+                event_id="c",
+                summary="Linear Algebra",
+                start_at=now + timedelta(hours=4),
+                end_at=now + timedelta(hours=5),
+                location="Math Building",
+            )
+        self.assertEqual(self._run(), [])
+
     def test_skips_pair_with_gap_below_min_threshold(self) -> None:
         # GAP_MIN_MINUTES is 30; a 25-min gap is too short.
         self._seed_pair(gap_minutes=25)
