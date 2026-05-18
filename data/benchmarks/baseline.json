@@ -8,20 +8,20 @@
   "startup": {
     "health_status": "ok",
     "import_health_ms": 0.5,
-    "health_p50_ms": 30.0,
-    "health_p95_ms": 95.0
+    "health_p50_ms": 60.0,
+    "health_p95_ms": 200.0
   },
   "ingestion": {
     "uploaded_doc_id": "loop-baseline-2026-05-18",
     "input_mb": 0.761,
-    "latency_ms": 25000.0,
-    "throughput_mb_per_s": 0.03
+    "latency_ms": 60000.0,
+    "throughput_mb_per_s": 0.012
   },
   "retrieval": {
     "samples": 25,
-    "p50_ms": 200.0,
-    "p95_ms": 320.0,
-    "mean_ms": 220.0
+    "p50_ms": 500.0,
+    "p95_ms": 800.0,
+    "mean_ms": 550.0
   },
   "ocr": {
     "ocr_pages": 0,
