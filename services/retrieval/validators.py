@@ -202,9 +202,7 @@ def fuzzy_quote_match(
     """
     if not normalized_quote.text or not normalized_content.text:
         return None
-    matcher = SequenceMatcher(
-        None, normalized_quote.text, normalized_content.text, autojunk=False
-    )
+    matcher = SequenceMatcher(None, normalized_quote.text, normalized_content.text, autojunk=False)
     match = matcher.find_longest_match(
         0,
         len(normalized_quote.text),

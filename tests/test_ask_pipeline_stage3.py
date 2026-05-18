@@ -205,9 +205,7 @@ def test_enforce_verbatim_substring_rejects_case_mismatch():
     """`metaphase` (lowercase) is NOT a verbatim substring of `Metaphase
     chromosomes align`. The validator preserves case and rejects, unlike
     `validated_citation_quote` which would lowercase and accept."""
-    node = _FakeNode(
-        verbatim_text="Metaphase chromosomes align at the cell equator."
-    )
+    node = _FakeNode(verbatim_text="Metaphase chromosomes align at the cell equator.")
     citation = NodeCitation(node_id=1, quote="metaphase chromosomes align")
 
     result = enforce_verbatim_substring(citation, node)
@@ -217,9 +215,7 @@ def test_enforce_verbatim_substring_rejects_case_mismatch():
 
 def test_enforce_verbatim_substring_accepts_exact_substring():
     """Exact-case substring quote returns the citation unchanged."""
-    node = _FakeNode(
-        verbatim_text="Metaphase chromosomes align at the cell equator."
-    )
+    node = _FakeNode(verbatim_text="Metaphase chromosomes align at the cell equator.")
     citation = NodeCitation(node_id=1, quote="Metaphase chromosomes align")
 
     result = enforce_verbatim_substring(citation, node)
@@ -231,9 +227,7 @@ def test_enforce_verbatim_substring_normalizes_non_breaking_space():
     """Quote uses normal space; source uses non-breaking space. NFKC +
     whitespace collapse on both sides aligns them; the substring check
     succeeds without losing case strictness on the rest of the string."""
-    node = _FakeNode(
-        verbatim_text="Metaphase chromosomes align at the cell equator."
-    )
+    node = _FakeNode(verbatim_text="Metaphase chromosomes align at the cell equator.")
     citation = NodeCitation(node_id=1, quote="Metaphase chromosomes align")
 
     result = enforce_verbatim_substring(citation, node)
