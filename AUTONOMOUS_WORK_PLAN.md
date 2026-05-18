@@ -79,7 +79,7 @@ Conventions per task:
 ## T03 — Phase 3 slice β.3: port 3 fallback queries to nodes
 
 **Plan ref:** Phase 3 task 1, fallback queries at old lines 655, 671, 686.
-**Status:** in_progress
+**Status:** done (PR #54, commit 419b1651, rated 100/100 on 2026-05-18 against staging/loop-batch-2-2026-05-18 per loop-isolated override)
 **Deps:** T02
 **Effort:** 1 iteration
 **Acceptance:** `_fallback_contexts_from_scope` queries `FROM nodes` for the concept-scoped, doc-scoped, and subject-scoped fallback paths. `concepts.source_chunks` column is read as before (semantic links to old chunks); the lookup translates chunk_ids to node_ids via a join on shared `doc_id` + `page_num` (the chunks table has no `char_start` column — see migration 0001 — so page-level granularity is the canonical translation key). If translation fails, the path returns empty.
