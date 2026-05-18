@@ -223,8 +223,8 @@ class GroundedTutorTests(unittest.TestCase):
 
         self.assertTrue(response.ok)
         self.assertEqual(2, len(response.claims))
-        self.assertEqual("chunk-1", response.claims[0].citations[0].chunk_id)
-        self.assertEqual("chunk-2", response.claims[1].citations[0].chunk_id)
+        self.assertEqual("chunk-1", response.claims[0].citations[0].node_id)
+        self.assertEqual("chunk-2", response.claims[1].citations[0].node_id)
         self.assertTrue(response.summary.startswith("Mitosis and meiosis differ"))
 
     def test_citation_index_out_of_range_moves_claim_to_unsupported(self) -> None:
@@ -313,7 +313,7 @@ class GroundedTutorTests(unittest.TestCase):
 
         self.assertEqual(1, len(response.claims))
         self.assertEqual(1, len(response.claims[0].citations))
-        self.assertEqual("chunk-1", response.claims[0].citations[0].chunk_id)
+        self.assertEqual("chunk-1", response.claims[0].citations[0].node_id)
 
     def test_quote_validation_replaces_model_quote_with_actual_source_span(self) -> None:
         with main.get_db() as conn:
@@ -444,7 +444,7 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertEqual("claude_call_failed", response.error)
         self.assertEqual("", response.summary)
         self.assertEqual(1, len(response.claims))
-        self.assertEqual("chunk-1", response.claims[0].citations[0].chunk_id)
+        self.assertEqual("chunk-1", response.claims[0].citations[0].node_id)
 
     def test_grounded_tutor_off_skips_claude_and_returns_fallback(self) -> None:
         with main.get_db() as conn:
