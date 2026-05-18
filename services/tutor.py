@@ -555,19 +555,35 @@ def _hydrate_from_nodes(
         doc_ids,
     ).fetchall()
     by_doc = {str(row["id"]): str(row["filename"]) for row in rows}
-    return [
-        HydratedNodeContext(
-            node_id=hit.node_id,
-            doc_id=hit.doc_id,
-            document_name=by_doc.get(hit.doc_id, "Source"),
-            section=hit.heading_path or None,
-            page_num=hit.page,
-            verbatim_text=strip_extraction_artifacts(hit.verbatim_text),
-            snippet=strip_extraction_artifacts(hit.snippet),
-            score=float(hit.score),
+    contexts: list[HydratedNodeContext] = []
+    for hit in hits:
+        document_name = by_doc.get(hit.doc_id)
+        if document_name is None:
+            # CLAUDE.md "no silent fallbacks": make the orphaned-hit
+            # case visible rather than quietly relabeling. A node should
+            # not exist without its document (FK cascade in 0016), so
+            # this is a data-integrity signal, not a normal path.
+            log_event(
+                LOGGER,
+                "warning",
+                "tutor_hydrate_orphaned_node",
+                node_id=hit.node_id,
+                doc_id=hit.doc_id,
+            )
+            document_name = "Source"
+        contexts.append(
+            HydratedNodeContext(
+                node_id=hit.node_id,
+                doc_id=hit.doc_id,
+                document_name=document_name,
+                section=hit.heading_path or None,
+                page_num=hit.page,
+                verbatim_text=strip_extraction_artifacts(hit.verbatim_text),
+                snippet=strip_extraction_artifacts(hit.snippet),
+                score=float(hit.score),
+            )
         )
-        for hit in hits
-    ]
+    return contexts
 
 
 def _hydrate_from_chunks(

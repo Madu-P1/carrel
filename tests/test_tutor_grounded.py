@@ -812,6 +812,67 @@ class HydrateNodeContextDispatchTests(unittest.TestCase):
         with main.get_db() as conn:
             self.assertEqual(tutor_service._hydrate_node_context([], conn), [])
 
+    def test_nodes_branch_strips_extraction_artifacts_from_verbatim_text(self) -> None:
+        from services.retrieval.typed_hybrid import RetrievedNode
+
+        with main.get_db() as conn:
+            conn.execute("DELETE FROM documents")
+            conn.execute(
+                """
+                INSERT INTO documents (id, filename, file_type, subject_name, status)
+                VALUES (?, ?, 'txt', ?, 'ready')
+                """,
+                ("doc-artifact-1", "math.md", "Math"),
+            )
+            # PUA U+E001 and empty-parens are the canonical PDF extraction
+            # artifacts that `strip_extraction_artifacts` removes.
+            hit = RetrievedNode(
+                node_id=99,
+                doc_id="doc-artifact-1",
+                node_type="body",
+                heading_path="Equations",
+                page=1,
+                char_start=0,
+                char_end=40,
+                verbatim_text="Euler's identity: e(i pi) + 1 = 0 ()",
+                snippet="Euler's identity: e(i pi) + 1 = 0 ()",
+                score=0.5,
+            )
+            contexts = tutor_service._hydrate_node_context([hit], conn)
+
+        self.assertEqual(len(contexts), 1)
+        ctx = contexts[0]
+        self.assertNotIn("", ctx.verbatim_text)
+        self.assertNotIn("()", ctx.verbatim_text)
+        self.assertNotIn("", ctx.snippet)
+
+    def test_nodes_branch_warns_and_falls_back_on_orphaned_node(self) -> None:
+        from services.retrieval.typed_hybrid import RetrievedNode
+
+        with main.get_db() as conn:
+            conn.execute("DELETE FROM documents")
+            hit = RetrievedNode(
+                node_id=77,
+                doc_id="doc-missing",
+                node_type="body",
+                heading_path="Stub",
+                page=None,
+                char_start=0,
+                char_end=10,
+                verbatim_text="Orphaned text.",
+                snippet="Orphaned text.",
+                score=0.1,
+            )
+            with mock.patch.object(tutor_service, "log_event") as logged:
+                contexts = tutor_service._hydrate_node_context([hit], conn)
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].document_name, "Source")
+        self.assertTrue(
+            any(call.args[2] == "tutor_hydrate_orphaned_node" for call in logged.call_args_list),
+            "expected tutor_hydrate_orphaned_node log_event for orphaned RetrievedNode",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
