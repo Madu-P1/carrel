@@ -69,7 +69,7 @@ Conventions per task:
 ## T02 — Phase 3 slice β.2: port _hydrate_chunk_context to nodes
 
 **Plan ref:** Phase 3 task 1, the primary `FROM chunks` query at the old line 560.
-**Status:** pending
+**Status:** in_progress — branch `feat/loop-restart-2026-05-18` (same branch as T01 lands; T02 continues directly on top of T01 commits per the bundled-PR pattern).
 **Deps:** T01
 **Effort:** 1 iteration
 **Acceptance:** `_hydrate_chunk_context` (renamed `_hydrate_node_context`) queries `FROM nodes JOIN documents` instead of `FROM chunks JOIN documents`. Returns a list of `HydratedNodeContext` with `verbatim_text` populated from `nodes.verbatim_text`. `services.retrieval.search_hybrid` callers continue to work; if `RETRIEVAL_USE_NODES=true`, they get nodes; if false, they fall back through the legacy `ScoredHit` shape (already supported).
