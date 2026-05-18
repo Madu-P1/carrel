@@ -59,7 +59,7 @@ Conventions per task:
 ## T01 — Phase 3 slice β.1: rename Citation chunk_id → node_id
 
 **Plan ref:** Phase 3 task 1 + 2 (the dataclass rename, type change str → int).
-**Status:** pending
+**Status:** in_progress — branch `feat/loop-restart-2026-05-18`, restarted 2026-05-18 (T01 WIP stash applied on clean off-main; prior `feat/t01-citation-node-id` abandoned as pre-#51 stale).
 **Deps:** none (main has the validators module from #46 + slice α from #48)
 **Effort:** 1 iteration
 **Acceptance:** `services/tutor.py` `Citation` dataclass uses `node_id: int` (was `chunk_id: str`). `HydratedChunkContext` renamed to `HydratedNodeContext` with `node_id: int` + `verbatim_text: str` (was `chunk_id: str` + `content: str`). All internal references updated. tutor.py compiles + `tests/test_tutor_grounded.py` updated to use new names and passes.
