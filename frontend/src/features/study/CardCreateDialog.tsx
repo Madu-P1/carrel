@@ -11,6 +11,9 @@ interface CardCreateDialogProps {
    *  dialog as context but not sent to the server — v1 creates orphan cards;
    *  a later iteration will let users pick a concept under this subject. */
   activeSubject: string | null;
+  /** Optional document linkage. Set by the Reader so the new card
+   *  remembers which PDF it was authored from. */
+  docId?: string;
   onClose: () => void;
   onCreated: (card: SrsCard) => void;
 }
@@ -29,7 +32,7 @@ interface CardCreateDialogProps {
  * Enter in the Front field drops to Back; ⌘Enter submits from either field.
  * Esc is handled by the Dialog primitive itself.
  */
-export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: CardCreateDialogProps) {
+export function CardCreateDialog({ open, activeSubject, docId, onClose, onCreated }: CardCreateDialogProps) {
   const frontId = useId();
   const backId = useId();
   // PR 5.1 (ADR 0002) — kind toggle. "qa" keeps the legacy two-textarea
@@ -70,14 +73,14 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
     setError(null);
     try {
       if (kind === "reverse") {
-        const { primary, reverse } = await study.createCardPair({ front, back });
+        const { primary, reverse } = await study.createCardPair({ front, back, docId });
         onCreated(primary);
         onCreated(reverse);
       } else {
         const payload =
           kind === "cloze"
-            ? { front, back: front, kind: "cloze" as const }
-            : { front, back, kind: "qa" as const };
+            ? { front, back: front, kind: "cloze" as const, docId }
+            : { front, back, kind: "qa" as const, docId };
         const { card } = await study.createCard(payload);
         onCreated(card);
       }
@@ -130,9 +133,11 @@ export function CardCreateDialog({ open, activeSubject, onClose, onCreated }: Ca
         </Stack>
       }
       description={
-        activeSubject
-          ? `The card will appear under "All subjects". Subject linking is coming next.`
-          : "A blank flashcard. Add the prompt on the front and the answer on the back."
+        docId
+          ? "This card will be linked to the source you're reading."
+          : activeSubject
+            ? `The card will appear under "All subjects". Subject linking is coming next.`
+            : "A blank flashcard. Add the prompt on the front and the answer on the back."
       }
       onClose={onClose}
       open={open}

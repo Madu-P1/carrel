@@ -223,14 +223,14 @@ test("mode cards form a radiogroup with single selection", async () => {
   await screen.findByRole("radiogroup", { name: /session mode/i });
 
   const pomodoro = screen.getByRole("radio", { name: /pomodoro/i });
-  const notes = screen.getByRole("radio", { name: /notes/i });
+  const flashcards = screen.getByRole("radio", { name: /flashcards/i });
 
   // Default selection is pomodoro.
   expect(pomodoro.getAttribute("aria-checked")).toBe("true");
-  expect(notes.getAttribute("aria-checked")).toBe("false");
+  expect(flashcards.getAttribute("aria-checked")).toBe("false");
 
-  fireEvent.click(notes);
-  expect(notes.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(flashcards);
+  expect(flashcards.getAttribute("aria-checked")).toBe("true");
   expect(pomodoro.getAttribute("aria-checked")).toBe("false");
 });
 

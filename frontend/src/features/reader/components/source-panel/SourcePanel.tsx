@@ -1,6 +1,8 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 
 import type { DocumentDetail, EvidenceResolution } from "@/services/api/endpoints";
+import { notes as notesApi } from "@/services/api/endpoints";
+import { createQuery } from "@/lib/query";
 import { Button, Icon, Stack, Tabs } from "@/design-system";
 import type { TabItem } from "@/design-system";
 
@@ -10,6 +12,7 @@ import { ChunksList } from "./ChunksList";
 import { ConceptsList } from "./ConceptsList";
 import { EmptyState } from "./EmptyState";
 import { MetadataStripe } from "./MetadataStripe";
+import { NoteComposer } from "./NoteComposer";
 import { NotesList } from "./NotesList";
 import { EvidenceInspector } from "./EvidenceInspector";
 import { AnchorColumn } from "./AnchorColumn";
@@ -22,6 +25,9 @@ interface SourcePanelProps {
   detail: DocumentDetail;
   docId: string;
   selectedEvidence?: EvidenceResolution | null;
+  /** Opens the manual New Card dialog (mounted by the Reader). Omitted
+   *  for non-PDF sources, which hides the New Card button. */
+  onCreateCard?: () => void;
 }
 
 /**
@@ -43,15 +49,24 @@ interface SourcePanelProps {
  * Scripted empty states per tab (no blank voids allowed). "Related"
  * always renders the empty state for now — the feature ships later.
  */
-export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePanelProps) {
+export function SourcePanel({ detail, docId, selectedEvidence = null, onCreateCard }: SourcePanelProps) {
   const chunks = detail.chunks ?? [];
   const concepts = detail.concepts ?? [];
-  const notes = Array.isArray((detail as Record<string, unknown>).notes)
-    ? ((((detail as Record<string, unknown>).notes) as unknown[]) as Array<{
-        content?: string;
-        title?: string;
-      }>)
-    : [];
+
+  // Notes are fetched per-document, not carried on `detail`: the Notes
+  // tab both writes and views, so it needs an independently
+  // refetchable list (write a note -> refetch -> it appears). The old
+  // `detail.notes` cast read a field the backend never populated.
+  const notesQuery = useMemo(
+    () => createQuery(() => notesApi.list({ doc_id: docId, limit: 100 })),
+    [docId]
+  );
+  useEffect(() => {
+    const unsubscribe = notesQuery.subscribe();
+    void notesQuery.refetch();
+    return unsubscribe;
+  }, [notesQuery]);
+  const noteRecords = notesQuery.data.value?.notes ?? [];
 
   const [tab, setTab] = useState<TabId>(selectedEvidence ? "related" : "chunks");
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
@@ -67,7 +82,7 @@ export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePa
     { id: "chunks", label: "Chunks", count: chunks.length },
     { id: "concepts", label: "Concepts", count: concepts.length },
     { id: "anchors", label: "Anchors", count: 0 },
-    { id: "notes", label: "Notes", count: notes.length },
+    { id: "notes", label: "Notes", count: noteRecords.length },
     { id: "related", label: selectedEvidence ? "Evidence" : "Related", count: selectedEvidence ? 1 : 0 }
   ];
 
@@ -81,6 +96,11 @@ export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePa
         /api/srs/cards/ai-draft); no tier check today.
       */}
       <Stack direction="horizontal" gap={2}>
+        {onCreateCard ? (
+          <Button onClick={onCreateCard} variant="secondary">
+            New card
+          </Button>
+        ) : null}
         <Button
           leadingIcon={<Icon name="sparkle" />}
           onClick={() => setAiDraftOpen(true)}
@@ -112,7 +132,16 @@ export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePa
         {tab === "chunks" ? <ChunksList chunks={chunks} docId={docId} /> : null}
         {tab === "concepts" ? <ConceptsList concepts={concepts} /> : null}
         {tab === "anchors" ? <AnchorColumn docId={docId} pageNum={currentPage} /> : null}
-        {tab === "notes" ? <NotesList notes={notes} /> : null}
+        {tab === "notes" ? (
+          <Stack gap={3}>
+            <NoteComposer
+              docId={docId}
+              documentName={detail.document?.filename ?? undefined}
+              onSaved={() => void notesQuery.refetch()}
+            />
+            <NotesList notes={noteRecords} />
+          </Stack>
+        ) : null}
         {tab === "related" && selectedEvidence ? (
           <EvidenceInspector evidence={selectedEvidence} />
         ) : null}

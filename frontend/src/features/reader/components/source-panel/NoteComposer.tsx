@@ -3,33 +3,35 @@ import { useState } from "preact/hooks";
 import { Icon } from "@/design-system";
 import { notes } from "@/services/api/endpoints";
 
-import styles from "./NotesWorkspace.module.css";
+import styles from "./NoteComposer.module.css";
 
-interface NotesWorkspaceProps {
-  sessionId: string;
-  sessionObjective: string;
+interface NoteComposerProps {
+  docId: string;
+  documentName?: string;
+  /** Called after a note saves successfully so the parent can refetch
+   *  the notes list — write + view live in the same tab. */
+  onSaved: () => void;
 }
 
 /**
- * Notes mode content. Textarea for the user to write in, plus two actions:
- *   - Save note    → persists to /api/notes with session_id bound
- *   - Expand with AI → calls /api/notes/expand; response replaces the
- *                      textarea content with structured markdown
- *                      (summary + key ideas + organized notes + review
- *                       prompts)
+ * Doc-bound note composer for the Reader's Notes tab. Title + body, plus
+ * Save (persists to /api/notes bound to doc_id) and Expand with AI
+ * (rewrites the body into structured markdown via /api/notes/expand).
  *
- * Explicitly ephemeral by design — the textarea does NOT auto-save. The
- * user decides when what they've written is worth saving. This beats a
- * "you lost your draft" surprise any day.
- *
- * Error states: inline below the textarea; no toasts, per the brief.
+ * Not auto-saved by design: the user decides when a draft is worth
+ * keeping. Relocated here from the session view, which had no business
+ * owning note-writing.
  */
-export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspaceProps) {
+export function NoteComposer({ docId, documentName, onSaved }: NoteComposerProps) {
+  const [title, setTitle] = useState("");
   const [draft, setDraft] = useState("");
   const [expanding, setExpanding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const textareaId = `session-notes-${sessionId}`;
+  const textareaId = `note-composer-body-${docId}`;
+  const titleId = `note-composer-title-${docId}`;
+
+  const resolvedTitle = () => title.trim() || documentName || "Note";
 
   const saveNote = async () => {
     const content = draft.trim();
@@ -37,9 +39,16 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
     setSaving(true);
     setStatus(null);
     try {
-      const title = sessionObjective || "Session note";
-      await notes.save({ title, content, session_id: sessionId });
+      await notes.save({
+        title: resolvedTitle(),
+        content,
+        doc_id: docId,
+        note_type: "reader_note"
+      });
       setStatus({ kind: "ok", text: "Saved." });
+      setTitle("");
+      setDraft("");
+      onSaved();
     } catch (caught) {
       setStatus({ kind: "err", text: (caught as Error).message });
     } finally {
@@ -53,10 +62,9 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
     setExpanding(true);
     setStatus(null);
     try {
-      const title = sessionObjective || "Session note";
-      const { expanded_markdown } = await notes.expand({ title, content });
+      const { expanded_markdown } = await notes.expand({ title: resolvedTitle(), content });
       setDraft(expanded_markdown);
-      setStatus({ kind: "ok", text: "Expanded — review and save when ready." });
+      setStatus({ kind: "ok", text: "Expanded. Review and save when ready." });
     } catch (caught) {
       setStatus({ kind: "err", text: (caught as Error).message });
     } finally {
@@ -67,19 +75,27 @@ export function NotesWorkspace({ sessionId, sessionObjective }: NotesWorkspacePr
   return (
     <div className={styles.wrap}>
       <div className={styles.eyebrow}>
-        <span>Notes</span>
-        <span className={styles.eyebrowMeta}>session-bound · not auto-saved</span>
+        <span>New note</span>
+        <span className={styles.eyebrowMeta}>saved to this source · not auto-saved</span>
       </div>
+      <label htmlFor={titleId} className={styles.srOnly}>
+        Note title
+      </label>
+      <input
+        id={titleId}
+        className={styles.titleInput}
+        value={title}
+        onInput={(event) => setTitle((event.currentTarget as HTMLInputElement).value)}
+        placeholder={documentName ? `Title (defaults to "${documentName}")` : "Title (optional)"}
+      />
       <label htmlFor={textareaId} className={styles.srOnly}>
-        Session notes
+        Note body
       </label>
       <textarea
         id={textareaId}
         className={styles.textarea}
         value={draft}
-        onInput={(event) =>
-          setDraft((event.currentTarget as HTMLTextAreaElement).value)
-        }
+        onInput={(event) => setDraft((event.currentTarget as HTMLTextAreaElement).value)}
         placeholder="Write what you're learning. Press Expand to grow the draft from your sources."
       />
       <div className={styles.actions}>

@@ -1,13 +1,20 @@
+import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 import db
+from ai.streaming import stream_claude_text
 from api_models import (
     DialogueMessageRequest,
     DialogueStartRequest,
     NoteExpandRequest,
+    NoteFolderCreateRequest,
+    NoteFolderUpdateRequest,
+    NoteMoveRequest,
     NoteTransformRequest,
     NoteUpsertRequest,
     TutorExchangeCreateRequest,
@@ -19,6 +26,7 @@ from ai.providers import get_default_provider
 from services import adaptive_tutor as adaptive_tutor_service
 from services import dialogue as dialogue_service
 from services import mastery_engine
+from services import note_folders as note_folders_service
 from services import provenance_service
 from services import tutor as tutor_service
 from services.app_state import fetch_recent_events, fetch_workspace_state, log_study_event
@@ -37,6 +45,61 @@ def tutor_query(payload: TutorQueryRequest) -> Dict[str, Any]:
             log_study_event=log_study_event,
             fetch_recent_events=fetch_recent_events,
         )
+
+
+class TutorStreamRequest(BaseModel):
+    """Pattern endpoint payload: raw prompt streaming, no RAG or citations.
+
+    Carrel's primary tutor endpoint (``/api/tutor/query``) returns a
+    citation-validated envelope. This streaming variant is for
+    chat-style follow-ups where the user has already accepted the
+    grounded answer and wants to expand, rephrase, or chat. Token-by-
+    token streaming keeps the UI responsive on long completions.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    system: str = Field(
+        "You are a helpful study companion. Be concise and concrete.",
+        max_length=2000,
+    )
+    max_tokens: int = Field(1600, ge=64, le=4096)
+
+
+@router.post("/api/tutor/query/stream")
+def tutor_query_stream(payload: TutorStreamRequest) -> StreamingResponse:
+    """Stream raw Claude tokens as Server-Sent Events.
+
+    Each event: ``data: {"text": "<delta>"}\\n\\n``. On failure, one
+    event of the shape ``data: {"error": "<message>"}\\n\\n`` is
+    emitted before the stream closes. The stream is terminated by
+    ``data: [DONE]\\n\\n``. Errors are surfaced, not swallowed, per
+    Carrel's "no silent AI fallbacks" rule.
+
+    The client at ``frontend/src/services/api/streaming.ts`` parses
+    this shape via ``streamTextDeltas``.
+    """
+
+    def event_stream() -> Iterator[str]:
+        try:
+            for delta in stream_claude_text(
+                system=payload.system,
+                prompt=payload.prompt,
+                max_tokens=payload.max_tokens,
+            ):
+                yield f"data: {json.dumps({'text': delta})}\n\n"
+        except Exception as exc:  # noqa: BLE001 - surface, don't swallow
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/api/tutor/exchanges")
@@ -71,14 +134,111 @@ def evaluate_tutor_exchange(
 def get_notes(
     doc_id: Optional[str] = None,
     concept_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    subject_name: Optional[str] = None,
     limit: int = 8,
 ) -> Dict[str, List[Dict[str, Any]]]:
+    """List notes for the Reader's Notes tab AND the global Notes page.
+
+    The global Notes page passes `subject_name` (one of the resolved
+    subjects from `/api/notes/organization`) or `folder_id` (a
+    concrete folder id, or the literal string "none" for unfoldered
+    notes). The Reader keeps using `doc_id`. All three filters compose.
+    """
+
     with db.get_db() as conn:
         return {
             "notes": tutor_service.fetch_notes(
-                conn, doc_id=doc_id, concept_id=concept_id, limit=limit
+                conn,
+                doc_id=doc_id,
+                concept_id=concept_id,
+                folder_id=folder_id,
+                subject_name=subject_name,
+                limit=limit,
             )
         }
+
+
+@router.get("/api/notes/organization")
+def get_notes_organization() -> Dict[str, Any]:
+    """Composite rail payload for the global Notes page.
+
+    Returns subjects (auto-derived from notes' folders/documents) plus
+    each subject's folders with note counts. One round-trip on page
+    open beats N parallel fetches.
+    """
+
+    with db.get_db() as conn:
+        return note_folders_service.fetch_organization(conn)
+
+
+@router.get("/api/notes/folders")
+def list_note_folders(subject_name: Optional[str] = None) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        return {"folders": note_folders_service.list_folders(conn, subject_name=subject_name)}
+
+
+@router.post("/api/notes/folders")
+def create_note_folder(payload: NoteFolderCreateRequest) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        folder = note_folders_service.create_folder(
+            conn, name=payload.name, subject_name=payload.subject_name
+        )
+        return {"folder": folder}
+
+
+@router.patch("/api/notes/folders/{folder_id}")
+def update_note_folder(folder_id: str, payload: NoteFolderUpdateRequest) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        folder = note_folders_service.update_folder(
+            conn,
+            folder_id,
+            name=payload.name,
+            subject_name=payload.subject_name,
+        )
+        return {"folder": folder}
+
+
+@router.delete("/api/notes/folders/{folder_id}")
+def delete_note_folder(folder_id: str) -> Dict[str, Any]:
+    with db.get_db() as conn:
+        ok = note_folders_service.delete_folder(conn, folder_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+        return {"deleted": True, "folder_id": folder_id}
+
+
+@router.patch("/api/notes/{note_id}/folder")
+def move_note(note_id: str, payload: NoteMoveRequest) -> Dict[str, Any]:
+    """Move a note into a folder (or remove it from its folder).
+
+    Lighter than the full upsert because the client doesn't need to
+    re-send title/content/etc. just to refile. The response carries
+    the same shape `GET /api/notes` returns so the client can swap the
+    row in place.
+    """
+
+    with db.get_db() as conn:
+        note = tutor_service.move_note_to_folder(conn, note_id, payload.folder_id)
+        return {"note": note}
+
+
+@router.delete("/api/notes/{note_id}")
+def delete_note(note_id: str) -> Dict[str, Any]:
+    """Hard-delete a note by id.
+
+    The NoteEditor's "Delete" button calls this after a window.confirm,
+    so the route does not gate again on the server side. Returns
+    `{deleted: True, note_id}` on success; 404 when the note is gone
+    (idempotent: a second click after a successful delete reports 404
+    so the client can navigate back to the list and refresh).
+    """
+
+    with db.get_db() as conn:
+        ok = tutor_service.delete_note_record(conn, note_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Note not found.")
+        return {"deleted": True, "note_id": note_id}
 
 
 @router.post("/api/notes")
@@ -95,6 +255,7 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
             payload.note_type,
             payload.goal_id,
             payload.session_id,
+            folder_id=payload.folder_id,
         )
         if payload.evidence_reference_ids:
             provenance_service.attach_evidence_to_note(

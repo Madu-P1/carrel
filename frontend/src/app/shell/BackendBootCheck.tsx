@@ -57,6 +57,24 @@ export function BackendBootCheck() {
     void runCheck();
   }, [runCheck]);
 
+  // Auto-recover from the cold-start race. The Swift BackendSupervisor
+  // spawns Python on app launch; cold start (imports + SQLite migrations
+  // + provider warmup) routinely takes 5–30 seconds. The first probe
+  // runs at app boot and frequently loses the race against a 5-second
+  // timeout. Without this, the overlay sticks indefinitely until the
+  // user notices the "Retry" button — even though the backend is alive
+  // a few seconds later. We silently re-probe every 2s while state is
+  // "error" and flip to "ok" the moment one succeeds. State is left at
+  // "error" between attempts so the overlay doesn't flicker.
+  useEffect(() => {
+    if (state !== "error") return;
+    const interval = window.setInterval(async () => {
+      const ok = await probeBackend();
+      if (ok) setState("ok");
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [state]);
+
   if (state !== "error") {
     return null;
   }

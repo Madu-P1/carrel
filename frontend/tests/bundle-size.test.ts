@@ -93,8 +93,30 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    S-2's FlipCard / RatingRow / StudyFocusOverlay.
  *                    Live size at the bump: ~99.6 KB gz. Headroom
  *                    (~400 bytes) is deliberately tight to keep the
- *                    next addition honest about its weight. */
-const ENTRY_JS_GZIP_BUDGET = 100 * 1024;
+ *                    next addition honest about its weight.
+ *   100 KB → 105 KB: Phase A Notes redesign (Stillwater + Liquid Glass).
+ *                    New components: NoteTile (collapsed + inline-edit
+ *                    expanded with autosave), UnsortedInbox (file-to-folder
+ *                    inline), NotesIcons (Stillwater SVG set), the rebuilt
+ *                    SubjectRail/NotesPane and the NotesPage glass tokens.
+ *                    Adds the appShell.notesRailReplacement signal that
+ *                    swaps the AppShell rail for the page's own rail on
+ *                    /notes. Live size at the bump: ~103.5 KB gz.
+ *   105 KB → 108 KB: Notes Phase A polish + single-rail architecture.
+ *                    Rail content now swaps inside the AppShell sidebar
+ *                    (one Carrel brand mark across the app) — adds
+ *                    notes/state.ts module-level signals so SubjectRail
+ *                    and NotesPage share selection. Polish: ⌘K search
+ *                    focus, Esc to collapse a tile, tile expand
+ *                    animation, autosave race fix, scroll-into-view on
+ *                    expand, zero-count badge hiding, move-select
+ *                    cleanup, empty-state copy. Live: ~106.5 KB gz.
+ * 2026-05-18 (+4 KB): Notes Phase A squash-merge onto main brought
+ *                    over additional Notes editor surface area + the
+ *                    new ErrorBoundary / LoadingBoundary / Markdown
+ *                    primitives + companion-cube updates. Live: ~108
+ *                    KB gz. */
+const ENTRY_JS_GZIP_BUDGET = 112 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
@@ -112,8 +134,26 @@ const ENTRY_JS_GZIP_BUDGET = 100 * 1024;
  *                    WKWebView app surface, not only behind it.
  *    32 KB → 34 KB: current app-shell CSS settled above the old ceiling
  *                    after the Reader panel/focus and first-run surfaces;
- *                    no new route-only styling is hidden in this budget. */
-const ENTRY_CSS_GZIP_BUDGET = 34 * 1024;
+ *                    no new route-only styling is hidden in this budget.
+ *    34 KB → 36 KB: Phase A Notes Stillwater + Liquid Glass styles —
+ *                    NotesPage palette tokens (light + dark), translucent
+ *                    rail / inbox / tile surfaces with backdrop-filter blur,
+ *                    serif tile headers + cite-pill chrome. Plus the
+ *                    AppShell `.bodyNotesRail` rule that collapses the
+ *                    grid when the page owns the left rail.
+ *    36 KB → 38 KB: Phase A polish + global Stillwater token sheet
+ *                    (notes-tokens.css) so the rail content reads the
+ *                    same --np-* vars whether rendered in NotesPage or in
+ *                    the AppShell sidebar's swap slot. Tile expand
+ *                    animation + scroll-into-view styles, move-select
+ *                    chevron pseudo, empty-state action chrome.
+ *    38 KB → 40 KB: Full-page Note Editor (Word-doc-style writing
+ *                    surface) — NoteEditor.module.css ships toolbar
+ *                    chrome, sticky topbar, the 720px "sheet" Liquid
+ *                    Glass panel, contenteditable body type rules
+ *                    (h1/h2/h3/p/ul/ol/blockquote/pre/em/strong), 404
+ *                    state. Adds the /notes/:id route. */
+const ENTRY_CSS_GZIP_BUDGET = 40 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

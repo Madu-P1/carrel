@@ -265,6 +265,30 @@ def _selector_cache_key(doc_id: str) -> str:
     return f"{SELECTOR_CACHE_PREFIX}{doc_id}"
 
 
+def _collapse_repeated_phrase(words: List[str]) -> List[str]:
+    """Collapse a token list that is one phrase repeated 2+ times back
+    to a single copy: "X Y X Y" -> "X Y", "A B A B A B" -> "A B".
+
+    The doubled-phrase shape leaks in when an LLM emits a concept name
+    as "X / X", "X - X", or "X, X" and the separator normalizes to a
+    space. The adjacent-word loop in clean_concept_label only catches
+    "foo foo bar"; it cannot see "foo bar foo bar". Tokens are compared
+    with surrounding punctuation stripped so "Approach," still matches
+    "Approach", and the smallest repeating period wins so "X X X X"
+    collapses all the way to "X".
+    """
+    n = len(words)
+    if n < 2:
+        return words
+    norm = [word.lower().strip(".,:;!?-_/\"'()[]") for word in words]
+    for period in range(1, n // 2 + 1):
+        if n % period != 0:
+            continue
+        if all(norm[i] == norm[i % period] for i in range(n)):
+            return words[:period]
+    return words
+
+
 def clean_concept_label(value: str) -> str:
     cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(value or ""))
     cleaned = re.sub(r"[_/\\-]+", " ", cleaned)
@@ -279,19 +303,10 @@ def clean_concept_label(value: str) -> str:
             deduped_words.append(word)
     # Phrase-level dedup. The adjacent-word loop above only catches
     # "foo foo bar"; it cannot see "foo bar foo bar" as a duplicate
-    # phrase. The doubled-phrase shape leaks in when an LLM emits
-    # "X / X" or "X — X" (separator gets normalized to a space), so we
-    # check whether the second half of the token list mirrors the first
-    # and collapse if so. Only fold an even-length list whose halves
-    # match case-insensitively.
-    n = len(deduped_words)
-    if n >= 2 and n % 2 == 0:
-        half = n // 2
-        first = [w.lower() for w in deduped_words[:half]]
-        second = [w.lower() for w in deduped_words[half:]]
-        if first == second:
-            deduped_words = deduped_words[:half]
-    cleaned = " ".join(deduped_words)
+    # phrase. _collapse_repeated_phrase folds any whole-list repetition
+    # (any period, any repeat count, punctuation-tolerant).
+    deduped_words = _collapse_repeated_phrase(deduped_words)
+    cleaned = " ".join(deduped_words).strip(" .,:;-_")
     return cleaned or "Study concept"
 
 

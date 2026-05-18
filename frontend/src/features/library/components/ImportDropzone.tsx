@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 
 import { Button, Spinner, Stack, Text, toast } from "@/design-system";
 
+import { notePendingImport } from "../hooks/useDocumentsQuery";
 import { useUploadDocument, type UploadOutcome } from "../hooks/useUploadDocument";
 import styles from "./ImportDropzone.module.css";
 
@@ -127,7 +128,7 @@ function OutcomeSummary({
 
 export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
   const [dragging, setDragging] = useState(false);
-  const { uploadFiles, loading, outcomes, clearOutcomes, retryFailed } = useUploadDocument();
+  const { uploadFiles, loading, progress, outcomes, clearOutcomes, retryFailed } = useUploadDocument();
 
   const handleUpload = async (files: FileList | File[]) => {
     const results = await uploadFiles(files);
@@ -136,6 +137,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
     const dupCount = results.filter((r) => r.kind === "duplicate").length;
     if (okCount > 0) {
       onUploaded();
+      notePendingImport();
       const suffix =
         dupCount || errCount
           ? `${dupCount ? ` · ${dupCount} dup${dupCount === 1 ? "" : "s"}` : ""}${errCount ? ` · ${errCount} failed` : ""}`
@@ -158,6 +160,7 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
     const results = await retryFailed();
     if (results && results.some((r) => r.kind === "ok")) {
       onUploaded();
+      notePendingImport();
     }
   };
 
@@ -196,7 +199,16 @@ export function ImportDropzone({ onUploaded }: ImportDropzoneProps) {
         >
           Or choose files
         </Button>
-        {loading.value ? <Spinner size={16} /> : null}
+        {loading.value ? (
+          <Stack direction="horizontal" gap={2}>
+            <Spinner size={16} />
+            {progress.value.filename ? (
+              <Text variant="caption" tone="secondary">
+                Uploading {progress.value.filename} ({Math.round(progress.value.fraction * 100)}%)
+              </Text>
+            ) : null}
+          </Stack>
+        ) : null}
       </div>
 
       <input

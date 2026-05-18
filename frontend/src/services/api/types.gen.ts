@@ -738,6 +738,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tutor/query/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tutor Query Stream
+         * @description Stream raw Claude tokens as Server-Sent Events.
+         *
+         *     Each event: ``data: {"text": "<delta>"}\n\n``. On failure, one
+         *     event of the shape ``data: {"error": "<message>"}\n\n`` is
+         *     emitted before the stream closes. The stream is terminated by
+         *     ``data: [DONE]\n\n``. Errors are surfaced, not swallowed, per
+         *     Carrel's "no silent AI fallbacks" rule.
+         *
+         *     The client at ``frontend/src/services/api/streaming.ts`` parses
+         *     this shape via ``streamTextDeltas``.
+         */
+        post: operations["tutor_query_stream_api_tutor_query_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tutor/exchanges": {
         parameters: {
             query?: never;
@@ -779,12 +808,131 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Notes */
+        /**
+         * Get Notes
+         * @description List notes for the Reader's Notes tab AND the global Notes page.
+         *
+         *     The global Notes page passes `subject_name` (one of the resolved
+         *     subjects from `/api/notes/organization`) or `folder_id` (a
+         *     concrete folder id, or the literal string "none" for unfoldered
+         *     notes). The Reader keeps using `doc_id`. All three filters compose.
+         */
         get: operations["get_notes_api_notes_get"];
         put?: never;
         /** Save Note */
         post: operations["save_note_api_notes_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Notes Organization
+         * @description Composite rail payload for the global Notes page.
+         *
+         *     Returns subjects (auto-derived from notes' folders/documents) plus
+         *     each subject's folders with note counts. One round-trip on page
+         *     open beats N parallel fetches.
+         */
+        get: operations["get_notes_organization_api_notes_organization_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Note Folders */
+        get: operations["list_note_folders_api_notes_folders_get"];
+        put?: never;
+        /** Create Note Folder */
+        post: operations["create_note_folder_api_notes_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/folders/{folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Note Folder */
+        delete: operations["delete_note_folder_api_notes_folders__folder_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Note Folder */
+        patch: operations["update_note_folder_api_notes_folders__folder_id__patch"];
+        trace?: never;
+    };
+    "/api/notes/{note_id}/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Move Note
+         * @description Move a note into a folder (or remove it from its folder).
+         *
+         *     Lighter than the full upsert because the client doesn't need to
+         *     re-send title/content/etc. just to refile. The response carries
+         *     the same shape `GET /api/notes` returns so the client can swap the
+         *     row in place.
+         */
+        patch: operations["move_note_api_notes__note_id__folder_patch"];
+        trace?: never;
+    };
+    "/api/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Note
+         * @description Hard-delete a note by id.
+         *
+         *     The NoteEditor's "Delete" button calls this after a window.confirm,
+         *     so the route does not gate again on the server side. Returns
+         *     `{deleted: True, note_id}` on success; 404 when the note is gone
+         *     (idempotent: a second click after a successful delete reports 404
+         *     so the client can navigate back to the list and refresh).
+         */
+        delete: operations["delete_note_api_notes__note_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1986,6 +2134,8 @@ export interface components {
             back: string;
             /** Concept Id */
             concept_id?: string | null;
+            /** Doc Id */
+            doc_id?: string | null;
             /**
              * Card Type
              * @default custom
@@ -2014,6 +2164,8 @@ export interface components {
             back: string;
             /** Concept Id */
             concept_id?: string | null;
+            /** Doc Id */
+            doc_id?: string | null;
             /**
              * Card Type
              * @default custom
@@ -2383,6 +2535,41 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * NoteFolderCreateRequest
+         * @description POST /api/notes/folders. The global Notes page posts this from
+         *     inline "New folder" on each subject. subject_name is required so a
+         *     folder always knows which subject group it belongs to; it defaults
+         *     to the document's subject the user is filing from.
+         */
+        NoteFolderCreateRequest: {
+            /** Name */
+            name: string;
+            /** Subject Name */
+            subject_name: string;
+        };
+        /**
+         * NoteFolderUpdateRequest
+         * @description PATCH /api/notes/folders/{id}. Both fields are optional; the
+         *     service patches only what's provided so rename and re-classify can
+         *     travel independently.
+         */
+        NoteFolderUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Subject Name */
+            subject_name?: string | null;
+        };
+        /**
+         * NoteMoveRequest
+         * @description PATCH /api/notes/{id}/folder. `folder_id=None` removes the note
+         *     from any folder; it then falls back to its document's subject. A
+         *     folder_id pointing at a non-existent row returns 400.
+         */
+        NoteMoveRequest: {
+            /** Folder Id */
+            folder_id?: string | null;
+        };
         /** NoteTransformRequest */
         NoteTransformRequest: {
             /** Content */
@@ -2415,6 +2602,8 @@ export interface components {
             goal_id?: string | null;
             /** Session Id */
             session_id?: string | null;
+            /** Folder Id */
+            folder_id?: string | null;
             /** Evidence Reference Ids */
             evidence_reference_ids?: string[] | null;
         };
@@ -2824,6 +3013,30 @@ export interface components {
             momentum?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * TutorStreamRequest
+         * @description Pattern endpoint payload: raw prompt streaming, no RAG or citations.
+         *
+         *     Carrel's primary tutor endpoint (``/api/tutor/query``) returns a
+         *     citation-validated envelope. This streaming variant is for
+         *     chat-style follow-ups where the user has already accepted the
+         *     grounded answer and wants to expand, rephrase, or chat. Token-by-
+         *     token streaming keeps the UI responsive on long completions.
+         */
+        TutorStreamRequest: {
+            /** Prompt */
+            prompt: string;
+            /**
+             * System
+             * @default You are a helpful study companion. Be concise and concrete.
+             */
+            system: string;
+            /**
+             * Max Tokens
+             * @default 1600
+             */
+            max_tokens: number;
         };
         /** UsageEventRequest */
         UsageEventRequest: {
@@ -4144,6 +4357,39 @@ export interface operations {
             };
         };
     };
+    tutor_query_stream_api_tutor_query_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     tutor_exchange_api_tutor_exchanges_post: {
         parameters: {
             query?: never;
@@ -4221,6 +4467,8 @@ export interface operations {
             query?: {
                 doc_id?: string | null;
                 concept_id?: string | null;
+                folder_id?: string | null;
+                subject_name?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -4265,6 +4513,236 @@ export interface operations {
                 "application/json": components["schemas"]["NoteUpsertRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notes_organization_api_notes_organization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_note_folders_api_notes_folders_get: {
+        parameters: {
+            query?: {
+                subject_name?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_note_folder_api_notes_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteFolderCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_note_folder_api_notes_folders__folder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_note_folder_api_notes_folders__folder_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteFolderUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_note_api_notes__note_id__folder_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_note_api_notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

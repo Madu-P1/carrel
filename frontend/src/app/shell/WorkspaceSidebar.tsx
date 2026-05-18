@@ -1,16 +1,42 @@
 import { Icon } from "@/design-system";
 
+import { SubjectRail } from "@/features/notes/components/SubjectRail";
+
 import { BrandMark } from "./BrandMark";
-import { toggleLeft } from "./useAppShell";
+import { appShell, toggleLeft, toggleNotesRailMode } from "./useAppShell";
 import { useSidebarSignals } from "./useSidebarSignals";
 import styles from "./WorkspaceSidebar.module.css";
 
 export interface SidebarNavItem {
   label: string;
   commandHint: string;
-  icon: "library" | "doc" | "ask" | "study" | "dashboard" | "sparkle" | "command" | "search" | "graph";
+  icon:
+    | "library"
+    | "doc"
+    | "ask"
+    | "study"
+    | "dashboard"
+    | "sparkle"
+    | "command"
+    | "search"
+    | "graph"
+    | "reader"
+    | "notes"
+    | "flashcards"
+    | "session"
+    | "plan";
   path: string;
-  key: "dashboard" | "session" | "library" | "reader" | "ask" | "study" | "search" | "concepts" | "plan";
+  key:
+    | "dashboard"
+    | "session"
+    | "library"
+    | "reader"
+    | "ask"
+    | "study"
+    | "search"
+    | "concepts"
+    | "plan"
+    | "notes";
 }
 
 interface WorkspaceSidebarProps {
@@ -51,6 +77,15 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const signals = useSidebarSignals();
   const dueCount = signals.dueCount ?? 0;
+
+  // When the user is on /notes AND the rail-replacement signal is on
+  // (default), the rail's middle nav section swaps to the Notes
+  // Workspace+Subjects content. The brand mark, TodayPanel, and
+  // ProviderFooter persist — only the middle section changes. Clicking
+  // the brand mark toggles between the two modes.
+  const isNotesRailActive =
+    pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
+
   const sections = [
     {
       label: "Overview",
@@ -59,7 +94,7 @@ export function WorkspaceSidebar({
     {
       label: "Study",
       items: items.filter((item) =>
-        ["session", "study", "library", "reader", "ask"].includes(item.key)
+        ["session", "study", "library", "reader", "ask", "notes"].includes(item.key)
       )
     },
     {
@@ -77,9 +112,14 @@ export function WorkspaceSidebar({
 
   return (
     <div
-      className={[styles.sidebar, collapsed ? styles.sidebarCollapsed : ""]
+      className={[
+        styles.sidebar,
+        collapsed ? styles.sidebarCollapsed : "",
+        isNotesRailActive ? styles.sidebarNotesMode : ""
+      ]
         .filter(Boolean)
         .join(" ")}
+      data-notes-rail={isNotesRailActive ? "true" : "false"}
     >
       {/*
        * Sidebar brand: icon-only. Clicking it collapses the sidebar —
@@ -95,60 +135,97 @@ export function WorkspaceSidebar({
        */}
       <header className={styles.brand}>
         <BrandMark
-          ariaLabel={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          onClick={() => toggleLeft()}
-          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
+          ariaLabel={
+            pathname.startsWith("/notes")
+              ? isNotesRailActive
+                ? "Show workspace navigation"
+                : "Return to Notes rail"
+              : collapsed
+                ? "Expand sidebar"
+                : "Collapse sidebar"
+          }
+          onClick={() => {
+            // On /notes, the brand mark toggles between two rail
+            // CONTENTS within the same physical rail slot:
+            //   - Notes Workspace+Subjects (default when entering /notes)
+            //   - Global workspace navigation
+            // The logo itself never moves — only what's underneath
+            // swaps with a fade. Off /notes the click reverts to the
+            // existing collapse-toggle behavior.
+            if (pathname.startsWith("/notes")) {
+              toggleNotesRailMode();
+              return;
+            }
+            toggleLeft();
+          }}
+          title={
+            pathname.startsWith("/notes")
+              ? isNotesRailActive
+                ? "Show workspace navigation"
+                : "Return to Notes rail"
+              : collapsed
+                ? "Expand sidebar (⌘B)"
+                : "Collapse sidebar (⌘B)"
+          }
         />
       </header>
 
-      <nav className={styles.nav} aria-label="Workspace navigation">
-        {sections.map((section) => (
-          <div className={styles.navSection} key={section.label}>
-            <span className={styles.sectionLabel}>{section.label}</span>
-            <ul className={styles.navList}>
-              {section.items.map((item) => {
-                const active = isItemActive(item);
-                const badge = item.key === "study" && dueCount > 0 ? dueCount : null;
-                return (
-                  <li key={item.path}>
-                    <button
-                      type="button"
-                      className={[styles.navItem, active ? styles.navItemActive : ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                      onClick={() => onNavigate(item.path)}
-                      aria-current={active ? "page" : undefined}
-                      // Distinct aria-label so the nav entry doesn't collide
-                      // with the feature-level action buttons that share the
-                      // same short label (e.g. the "Ask" submit button on the
-                      // Ask view). "Open Library" is unambiguous navigation.
-                      aria-label={`Open ${item.label}${
-                        item.key === "study" && badge !== null ? `, ${badge} due` : ""
-                      }`}
-                    >
-                      <span className={styles.navIcon} aria-hidden>
-                        <Icon name={item.icon} size={16} />
-                      </span>
-                      <span className={styles.navLabel}>{item.label}</span>
-                      {badge !== null && (
-                        <span
-                          className={styles.navBadge}
-                          aria-label={`${badge} cards due`}
-                        >
-                          {badge}
+      {isNotesRailActive ? (
+        <div className={styles.notesRailSlot} aria-label="Notes navigation">
+          <SubjectRail />
+        </div>
+      ) : (
+        <nav className={styles.nav} aria-label="Workspace navigation">
+          {sections.map((section) => (
+            <div className={styles.navSection} key={section.label}>
+              <span className={styles.sectionLabel}>{section.label}</span>
+              <ul className={styles.navList}>
+                {section.items.map((item) => {
+                  const active = isItemActive(item);
+                  const badge =
+                    item.key === "study" && dueCount > 0 ? dueCount : null;
+                  return (
+                    <li key={item.path}>
+                      <button
+                        type="button"
+                        className={[
+                          styles.navItem,
+                          active ? styles.navItemActive : ""
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() => onNavigate(item.path)}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={`Open ${item.label}${
+                          item.key === "study" && badge !== null
+                            ? `, ${badge} due`
+                            : ""
+                        }`}
+                      >
+                        <span className={styles.navIcon} aria-hidden>
+                          <Icon name={item.icon} size={16} />
                         </span>
-                      )}
-                      <span className={styles.navHint} aria-hidden>
-                        {item.commandHint}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </nav>
+                        <span className={styles.navLabel}>{item.label}</span>
+                        {badge !== null && (
+                          <span
+                            className={styles.navBadge}
+                            aria-label={`${badge} cards due`}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                        <span className={styles.navHint} aria-hidden>
+                          {item.commandHint}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      )}
 
       <TodayPanel
         dueCount={signals.dueCount}
@@ -232,7 +309,7 @@ function ProviderFooter({
         />
         <span
           className={styles.footerText}
-          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure — this should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
+          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure. This should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
         >
           Backend offline
         </span>

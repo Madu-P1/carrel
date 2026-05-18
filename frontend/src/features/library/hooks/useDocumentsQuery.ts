@@ -16,6 +16,29 @@ function anyProcessing(rows: DocumentRow[] | undefined): boolean {
   return rows.some((row) => (row.status ?? "").toLowerCase() === "processing");
 }
 
+/* A freshly-accepted import lands in the jobs pipeline first; its
+ * /api/documents row can lag the job by a few seconds. During that
+ * gap there is no "processing" row to key the poll off, so the list
+ * would otherwise sit on a stale empty state until a manual remount.
+ * notePendingImport() opens a bounded polling window that covers the
+ * gap; once the doc surfaces as "processing", anyProcessing() takes
+ * over and the deadline no longer matters. */
+const IMPORT_SETTLE_WINDOW_MS = 45_000;
+const importSettleDeadline = signal(0);
+
+/** Open the import-settle polling window. Called when an import is
+ *  accepted (Library dropzone or companion-cube drop) so the list
+ *  keeps polling until the new document surfaces in /api/documents. */
+export function notePendingImport(): void {
+  importSettleDeadline.value = Date.now() + IMPORT_SETTLE_WINDOW_MS;
+}
+
+function shouldPoll(): boolean {
+  return (
+    anyProcessing(documentsQuery.data.value) || Date.now() < importSettleDeadline.value
+  );
+}
+
 export function useDocumentsQuery() {
   useEffect(() => {
     const unsubscribe = documentsQuery.subscribe();
@@ -35,19 +58,21 @@ export function useDocumentsQuery() {
     return unsubscribe;
   }, []);
 
-  // SM-4: while any document is in processing state, poll so the UI can
-  // observe the transition to "ready" and trigger the pulse-once animation
-  // on the newly-ready card. Stops polling once every doc has settled.
+  // SM-4: poll while any document is "processing" (so the UI can observe
+  // the transition to "ready" and pulse the newly-ready card) OR while an
+  // import-settle window is open (so a just-accepted import is picked up
+  // even before its /api/documents row exists). Stops once everything has
+  // settled and the window has elapsed.
   useEffect(() => {
     let cancelled = false;
     const tick = () => {
       if (cancelled) return;
-      if (!anyProcessing(documentsQuery.data.value)) return;
+      if (!shouldPoll()) return;
       void documentsQuery.refetch();
     };
     const interval = window.setInterval(() => {
       if (cancelled) return;
-      if (anyProcessing(documentsQuery.data.value)) {
+      if (shouldPoll()) {
         tick();
       }
     }, PROCESSING_POLL_INTERVAL_MS);
@@ -88,6 +113,9 @@ export function resetDocumentsQuery() {
 if (typeof window !== "undefined") {
   (window as unknown as { __carrelRefreshLibrary?: () => void }).__carrelRefreshLibrary =
     () => {
+      // Companion-cube drops hit the same job-pipeline lag as the
+      // dropzone, so open the settle window here too, not just refetch.
+      notePendingImport();
       void documentsQuery.refetch();
     };
 }

@@ -352,3 +352,23 @@
   white-space: nowrap;
   color: var(--text-mono);
 }
+
+/*
+ * Notes-rail mode — the AppShell sidebar's middle slot fills with the
+ * Notes Workspace+Subjects content instead of the global nav. We keep
+ * the brand, TodayPanel, and ProviderFooter exactly where they are, so
+ * the Carrel logo never moves between routes; only the middle swaps.
+ *
+ * The `.sidebarNotesMode` class gets `data-stillwater="true"` so the
+ * Stillwater tokens (--np-*) cascade into the slotted SubjectRail.
+ */
+.sidebarNotesMode {
+  /* No structural change — the swapping happens at the children level. */
+}
+
+.notesRailSlot {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px 8px;
+}

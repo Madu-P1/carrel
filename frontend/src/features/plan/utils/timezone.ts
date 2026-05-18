@@ -89,3 +89,63 @@ export function isSameLocalDay(iso: string, dayIso: string): boolean {
     a.getDate() === b.getDate()
   );
 }
+
+/** Today at midnight, local timezone. The week-navigation state in
+ *  PlanView is built off this. */
+export function todayMidnightLocal(): Date {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+/** Returns 7 ISO timestamps at midnight LOCAL time, starting from `from`
+ *  (which must already be a midnight-local Date). */
+export function sevenDaysFrom(from: Date): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const d = new Date(from);
+    d.setDate(from.getDate() + i);
+    result.push(d.toISOString());
+  }
+  return result;
+}
+
+/** Returns `count` ISO timestamps at midnight LOCAL time, starting from
+ *  `from` (must be midnight-local). Generalizes `sevenDaysFrom` to any
+ *  window size so the calendar can render past 7 days for horizontal
+ *  panning. */
+export function nextNDays(count: number, from: Date): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(from);
+    d.setDate(from.getDate() + i);
+    result.push(d.toISOString());
+  }
+  return result;
+}
+
+/** Shift a midnight-local Date forward (positive) or back (negative) by
+ *  whole days. Returns a new Date; doesn't mutate. */
+export function shiftDaysLocal(from: Date, deltaDays: number): Date {
+  const next = new Date(from);
+  next.setDate(from.getDate() + deltaDays);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+/** Format a week-range header: "May 5 – May 11, 2026". When the week
+ *  spans a month boundary the months show on both sides. */
+export function formatWeekRange(startMidnightIso: string): string {
+  const start = new Date(startMidnightIso);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const monthFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+  const yearFmt = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+  if (sameMonth && sameYear) {
+    const m = new Intl.DateTimeFormat(undefined, { month: "short" }).format(start);
+    return `${m} ${start.getDate()} – ${end.getDate()}, ${yearFmt.format(start)}`;
+  }
+  return `${monthFmt.format(start)} – ${monthFmt.format(end)}, ${yearFmt.format(end)}`;
+}

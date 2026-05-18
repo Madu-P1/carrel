@@ -12,7 +12,7 @@ export function NotesList({ notes }: { notes: NoteLike[] }) {
       <EmptyState
         icon="study"
         title="No notes on this source yet."
-        description="Open a chunk and press N to start a note. Notes you take here show up alongside the chunk they anchor to."
+        description="Write one above. Notes you save here stay with this source."
       />
     );
   }

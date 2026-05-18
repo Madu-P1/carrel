@@ -48,6 +48,15 @@ enum LocalApiToken {
     /// the error.
     static func resolve() throws -> String {
         let url = try tokenFileURL()
+        return try resolveOrCreateToken(at: url)
+    }
+
+    /// Internal seam: read the token at `url` if the file exists,
+    /// otherwise generate, persist with mode 0600, and return it.
+    /// `resolve()` calls this with the default Application Support
+    /// path; tests call it with a temp-directory URL so the suite
+    /// stays out of the user's real Application Support tree.
+    static func resolveOrCreateToken(at url: URL) throws -> String {
         let fm = FileManager.default
 
         if fm.fileExists(atPath: url.path) {
@@ -97,8 +106,17 @@ enum LocalApiToken {
         } catch {
             throw LocalApiTokenError.appSupportUnavailable(underlying: error)
         }
+        return try tokenFileURL(baseDirectory: appSupport)
+    }
 
-        let carrelDir = appSupport.appendingPathComponent("Carrel", isDirectory: true)
+    /// Internal seam: build the `Carrel/local-api-token` URL inside an
+    /// arbitrary base directory, creating the `Carrel/` subdirectory
+    /// on demand. `tokenFileURL()` passes the user's Application
+    /// Support directory; tests pass a temp directory so the suite
+    /// never touches the real Carrel data path.
+    static func tokenFileURL(baseDirectory: URL) throws -> URL {
+        let fm = FileManager.default
+        let carrelDir = baseDirectory.appendingPathComponent("Carrel", isDirectory: true)
         if !fm.fileExists(atPath: carrelDir.path) {
             do {
                 try fm.createDirectory(at: carrelDir, withIntermediateDirectories: true)

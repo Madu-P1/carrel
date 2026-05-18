@@ -1,10 +1,13 @@
 import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
+import { ErrorBoundary } from "@/design-system";
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
 import { AskView } from "@/features/ask/AskView";
 import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
+import { NoteEditor } from "@/features/notes/NoteEditor";
+import { NotesPage } from "@/features/notes/NotesPage";
 import { NotFoundView } from "@/features/NotFoundView";
 import { PlanView } from "@/features/plan/PlanView";
 import { ReaderView } from "@/features/reader/ReaderView";
@@ -81,6 +84,11 @@ function BrowserReaderRoute({ id }: { id?: string }) {
   );
 }
 
+function BrowserNoteEditorRoute({ id }: { id?: string }) {
+  if (!id) return <NotesPage />;
+  return <NoteEditor id={id} />;
+}
+
 function renderBundledRoute(rawPath: string) {
   const path = parseBundledRoute(rawPath).pathname;
 
@@ -122,9 +130,57 @@ function renderBundledRoute(rawPath: string) {
     return <PlanView />;
   }
 
+  if (path.startsWith("/notes")) {
+    // /notes/:id renders the full-page Note Editor; /notes renders the
+    // list view. We split here in bundled mode (no preact-iso router).
+    const noteIdMatch = parseBundledRoute(path).pathname.match(
+      /^\/notes\/([^/?#]+)/
+    );
+    if (noteIdMatch?.[1]) {
+      try {
+        return <NoteEditor id={decodeURIComponent(noteIdMatch[1])} />;
+      } catch {
+        return <NoteEditor id={noteIdMatch[1]} />;
+      }
+    }
+    return <NotesPage />;
+  }
+
   // Default landing is the Dashboard — the legacy home the user asked for,
   // rebuilt on the new frontend.
   return <DashboardView />;
+}
+
+/*
+ * BoundedRoutes wraps the preact-iso Router in an ErrorBoundary keyed by
+ * the current path, so a render throw inside one feature does not blank
+ * the AppShell chrome (sidebar, header, etc. stay alive). The boundary
+ * auto-resets when the user navigates, so a broken Reader doesn't trap
+ * the user on the error screen forever.
+ *
+ * Per the preact/compat Suspense/lazy gotcha (see CLAUDE.md), this is a
+ * plain class-component boundary, not a Suspense boundary.
+ */
+function BoundedRoutes() {
+  const { path } = useLocation();
+  return (
+    <ErrorBoundary resetKey={path}>
+      <Router>
+        <Route component={DashboardView} path="/" />
+        <Route component={SessionView} path="/session" />
+        <Route component={LibraryView} path="/library" />
+        <Route component={BrowserReaderRoute} path="/reader/:id?" />
+        <Route component={AskView} path="/ask" />
+        <Route component={StudyView} path="/study" />
+        <Route component={SearchView} path="/search" />
+        <Route component={ConceptGraphView} path="/concepts" />
+        <Route component={PlanView} path="/plan" />
+        <Route component={NotesPage} path="/notes" />
+        <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
+        <Route component={NotFoundView} default />
+      </Router>
+    </ErrorBoundary>
+  );
 }
 
 export function App() {
@@ -137,24 +193,20 @@ export function App() {
   }
 
   if (isBundledMode) {
-    return <BundledAppShell>{renderBundledRoute(appShell.currentRoute.value)}</BundledAppShell>;
+    const route = appShell.currentRoute.value;
+    return (
+      <BundledAppShell>
+        <ErrorBoundary resetKey={route}>
+          {renderBundledRoute(route)}
+        </ErrorBoundary>
+      </BundledAppShell>
+    );
   }
 
   return (
     <LocationProvider>
       <AppShell>
-        <Router>
-          <Route component={DashboardView} path="/" />
-          <Route component={SessionView} path="/session" />
-          <Route component={LibraryView} path="/library" />
-          <Route component={BrowserReaderRoute} path="/reader/:id?" />
-          <Route component={AskView} path="/ask" />
-          <Route component={StudyView} path="/study" />
-          <Route component={SearchView} path="/search" />
-          <Route component={ConceptGraphView} path="/concepts" />
-          <Route component={PlanView} path="/plan" />
-          <Route component={NotFoundView} default />
-        </Router>
+        <BoundedRoutes />
       </AppShell>
     </LocationProvider>
   );

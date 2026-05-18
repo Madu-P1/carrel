@@ -120,7 +120,7 @@ export function AddFeedDialog({ open, onClose, onSubmit }: AddFeedDialogProps) {
             <Text weight="semibold">
               Imported {result.response.feed.consecutive_failures === 0
                 ? "successfully."
-                : "with errors — see below."}
+                : "with errors. See below."}
             </Text>
             <Text tone="tertiary" variant="caption">
               Stored as: {result.response.raw_url_echo}
