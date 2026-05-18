@@ -69,7 +69,7 @@ Conventions per task:
 ## T02 — Phase 3 slice β.2: port _hydrate_chunk_context to nodes
 
 **Plan ref:** Phase 3 task 1, the primary `FROM chunks` query at the old line 560.
-**Status:** in_progress — branch `feat/loop-restart-2026-05-18` (same branch as T01 lands; T02 continues directly on top of T01 commits per the bundled-PR pattern).
+**Status:** done — PR #53 (draft), commits `4786cc34` (dual-shape rename) + `7866e7bd` (rater gap-closure: orphaned-node log + tests + plan-doc), rated 100/100 SHIP on 2026-05-18.
 **Deps:** T01
 **Effort:** 1 iteration
 **Acceptance:** `_hydrate_chunk_context` (renamed `_hydrate_node_context`) sources its `verbatim_text` / `heading_path` / `page` / integer `node_id` from `nodes` rather than from `chunks`. In practice the data arrives pre-populated on the `RetrievedNode` dataclass at retrieval time (see `services/retrieval/typed_hybrid.py:32-54`, which selects `FROM nodes JOIN node_embeddings JOIN node_fts`), so the hydration helper only needs a `SELECT id, filename FROM documents` round-trip for the user-facing citation label. Returns a list of `HydratedNodeContext` with `verbatim_text` populated from `nodes.verbatim_text`. `services.retrieval.search_hybrid` callers continue to work; if `RETRIEVAL_USE_NODES=true`, they get nodes; if false, they fall back through the legacy `ScoredHit` shape (already supported).
