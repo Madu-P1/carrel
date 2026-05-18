@@ -2,6 +2,7 @@
 .codex/
 .codex-debug/
 .claude-flow/
+.gstack/
 .pycache/
 __pycache__/
 dist/
