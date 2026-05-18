@@ -22,6 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
+from services.retrieval.typed_hybrid import RetrievedNode
 from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
@@ -512,12 +513,73 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
     }
 
 
-def _hydrate_chunk_context(
+def _hydrate_node_context(
+    hits: Sequence[ScoredHit] | Sequence[RetrievedNode],
+    conn: sqlite3.Connection,
+) -> list[HydratedNodeContext]:
+    """Hydrate citation context from either retrieval shape.
+
+    Dispatches on hit type so both paths coexist until Phase 4 flips
+    `RETRIEVAL_USE_NODES` to default-on:
+    - `RetrievedNode` (typed-node path) → SELECT FROM documents for the
+      filename only; the rest of the citation context comes from fields
+      retrieval already populated (`verbatim_text`, `heading_path`, `page`).
+    - `ScoredHit` (legacy chunks path) → SELECT FROM chunks JOIN documents.
+      Still the active path at call sites that read `search_hybrid`.
+
+    T01 transitional state is contained to the chunks branch: `node_id`
+    carries a str UUID there until callers move to the nodes branch.
+    """
+    if not hits:
+        return []
+    if isinstance(hits[0], RetrievedNode):
+        return _hydrate_from_nodes(hits, conn)  # type: ignore[arg-type]
+    return _hydrate_from_chunks(hits, conn)  # type: ignore[arg-type]
+
+
+def _hydrate_from_nodes(
+    hits: Sequence[RetrievedNode],
+    conn: sqlite3.Connection,
+) -> list[HydratedNodeContext]:
+    """Nodes-path hydration (RETRIEVAL_USE_NODES=true).
+
+    `RetrievedNode` already carries verbatim_text, heading_path, page,
+    so the SQL only fetches `documents.filename` for the user-facing
+    citation label. Returns `HydratedNodeContext` with the real integer
+    `nodes.id` in `node_id` (no transitional str UUID here).
+    """
+    doc_ids = list({hit.doc_id for hit in hits})
+    placeholders = ",".join("?" * len(doc_ids))
+    rows = conn.execute(
+        f"SELECT id, filename FROM documents WHERE id IN ({placeholders})",
+        doc_ids,
+    ).fetchall()
+    by_doc = {str(row["id"]): str(row["filename"]) for row in rows}
+    return [
+        HydratedNodeContext(
+            node_id=hit.node_id,
+            doc_id=hit.doc_id,
+            document_name=by_doc.get(hit.doc_id, "Source"),
+            section=hit.heading_path or None,
+            page_num=hit.page,
+            verbatim_text=strip_extraction_artifacts(hit.verbatim_text),
+            snippet=strip_extraction_artifacts(hit.snippet),
+            score=float(hit.score),
+        )
+        for hit in hits
+    ]
+
+
+def _hydrate_from_chunks(
     hits: Sequence[ScoredHit],
     conn: sqlite3.Connection,
 ) -> list[HydratedNodeContext]:
-    if not hits:
-        return []
+    """Legacy chunks-path hydration (RETRIEVAL_USE_NODES=false).
+
+    Preserves the T01 transitional state: `hit.chunk_id` is a str UUID
+    that flows through `HydratedNodeContext.node_id` until Phase 4
+    completes the full migration off chunks.
+    """
     chunk_ids = [hit.chunk_id for hit in hits]
     placeholders = ",".join("?" * len(chunk_ids))
     rows = conn.execute(
@@ -536,8 +598,9 @@ def _hydrate_chunk_context(
         contexts.append(
             HydratedNodeContext(
                 # T01 transitional: hit.chunk_id is still a str UUID
-                # sourced from chunks; node_id will become a real int
-                # after T02 ports this query to FROM nodes. Python
+                # sourced from chunks; node_id will carry a real int
+                # after Phase 4 flips RETRIEVAL_USE_NODES default-on
+                # and callers move to the nodes branch. Python
                 # dataclasses don't enforce annotations at runtime, so
                 # the string flows through harmlessly until then.
                 node_id=hit.chunk_id,
@@ -582,7 +645,7 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedNodeContext]) -
 
 
 def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
-    # Codex P2: this path bypassed _hydrate_chunk_context's artifact
+    # Codex P2: this path bypassed _hydrate_node_context's artifact
     # cleanup, so scope-fallback chunks (when retrieval returns nothing
     # and we widen to subject/doc scope) still rendered PUA boxes and
     # empty parens. Run the same strip the primary path does.
@@ -897,7 +960,7 @@ def grounded_citations(
         subject_name=_normalized_subject_name(subject_name),
         limit=limit,
     )
-    contexts = _hydrate_chunk_context(hits, conn)
+    contexts = _hydrate_node_context(hits, conn)
     return [_citation_payload(context) for context in contexts]
 
 
@@ -979,7 +1042,7 @@ def grounded_tutor_response(
         subject_name=_normalized_subject_name(subject_name),
         limit=resolved_top_k,
     )
-    contexts = _hydrate_chunk_context(hits, conn)
+    contexts = _hydrate_node_context(hits, conn)
     scope_fallback_used = False
     if not contexts:
         contexts = _fallback_contexts_from_scope(
@@ -1172,7 +1235,7 @@ def grounded_tutor_envelope(
             seen_node_ids.add(citation.node_id)
             chunk_ids.append(citation.node_id)
     flat_contexts = (
-        _hydrate_chunk_context(
+        _hydrate_node_context(
             [
                 ScoredHit(
                     chunk_id=context_row["id"],
