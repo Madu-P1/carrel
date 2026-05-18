@@ -14,7 +14,7 @@ Run these in parallel:
 1. `cd /Users/madu/Desktop/Codex && git status --short` to confirm clean working tree
 2. `cd /Users/madu/Desktop/Codex && git log --oneline -5` to anchor recent state
 3. `cd /Users/madu/Desktop/Codex && git branch --show-current` to confirm not on main
-4. Read `/Users/madu/Desktop/Codex/CLAUDE.md`, `/Users/madu/Desktop/Codex/TODOS.md`, the latest plan in `/Users/madu/Desktop/Codex/docs/plans/`
+4. Read `/Users/madu/Desktop/Codex/CLAUDE.md`, `/Users/madu/Desktop/Codex/AUTONOMOUS_WORK_PLAN.md` (canonical task queue), `/Users/madu/Desktop/Codex/.claude/RATER_RUBRIC.md` (100-point rubric), `/Users/madu/Desktop/Codex/.claude/AUTONOMOUS_SCOPE.md` (in-scope vs out-of-scope), `/Users/madu/Desktop/Codex/TODOS.md`, the latest plan in `/Users/madu/Desktop/Codex/docs/plans/`
 5. `export CARREL_AUTONOMOUS=true` so the hooks activate
 
 Halt and ask the operator if any of:
@@ -54,7 +54,11 @@ Repeat until a halt condition fires:
 
 ### 1. Pull the next task
 
-Read `TODOS.md` or the active plan. Pick the highest-leverage incomplete task. If both are empty, generate a 3-item shortlist from CLAUDE.md and the strategy memo, pick the highest-leverage item, and record the rationale in `.claude/logs/task-selection.jsonl`.
+**Canonical queue:** `/Users/madu/Desktop/Codex/AUTONOMOUS_WORK_PLAN.md`. Read it top-to-bottom. Pick the lowest-ID `pending` task whose `Deps:` line lists only `done` tasks (or `none`). Mark that task `Status: in_progress` by editing the work plan and committing the status flip on the feature branch before starting the implementation. The work plan's task entry tells you which master-plan section (`docs/plans/everything-to-100-2026-05-17.md`) carries the full implementation contract.
+
+**Fallback:** if every `pending` task is currently `blocked` (e.g., depends on operator action) OR the work plan is exhausted, fall back to `TODOS.md` or the latest plan in `docs/plans/`. Pick the highest-leverage incomplete task. If both are empty, generate a 3-item shortlist from CLAUDE.md and the strategy memo, pick the highest-leverage item, and record the rationale in `.claude/logs/task-selection.jsonl`.
+
+**Task announcement:** announce the chosen task by ID + title (e.g., `T01: Phase 3 slice β.1 — rename Citation chunk_id to node_id`) so the operator-visible log carries the queue reference.
 
 ### 2. Classify the task
 
@@ -119,7 +123,7 @@ Conventional Commits message. Co-authored-by line attributing Claude. The audit 
 
 ### 9. Mark task complete
 
-Update `TODOS.md` or the plan file. Append a one-line summary to `.claude/logs/completed.jsonl`.
+Update `AUTONOMOUS_WORK_PLAN.md`: flip the task's `Status:` from `in_progress` to `done — PR #XX, commit abc1234, rated 100/100 on YYYY-MM-DD`. Commit the status flip as part of the same PR that lands the work (preferred) OR as a follow-up commit on `main` immediately after merge. Also update `TODOS.md` if the plan file references it. Append a one-line summary to `.claude/logs/completed.jsonl`.
 
 ### 10. Halt check
 
