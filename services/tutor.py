@@ -660,19 +660,20 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedNodeContext]) -
     return "\n".join(lines)
 
 
-def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
-    # Codex P2: this path bypassed _hydrate_node_context's artifact
-    # cleanup, so scope-fallback chunks (when retrieval returns nothing
-    # and we widen to subject/doc scope) still rendered PUA boxes and
-    # empty parens. Run the same strip the primary path does.
+def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
+    """Build `HydratedNodeContext` rows from a `FROM nodes` SELECT.
+
+    The companion of `_hydrate_from_nodes` for paths that go directly
+    to SQL rather than through `services.retrieval`. Used by the
+    scope-fallback function below — populates the real integer
+    `nodes.id` in `node_id` (no T01 str-UUID transition here).
+    """
     contexts: list[HydratedNodeContext] = []
     for row in rows:
-        cleaned = strip_extraction_artifacts(str(row["content"] or ""))
+        cleaned = strip_extraction_artifacts(str(row["verbatim_text"] or ""))
         contexts.append(
             HydratedNodeContext(
-                # T01 transitional: row["id"] is the chunks.id TEXT
-                # PK until T02/T03 port these queries to FROM nodes.
-                node_id=str(row["id"]),
+                node_id=int(row["id"]),
                 doc_id=str(row["doc_id"]),
                 document_name=str(row["document_name"] or "Source"),
                 section=str(row["section"]) if row["section"] else None,
@@ -693,6 +694,14 @@ def _fallback_contexts_from_scope(
     concept_id: str | None,
     limit: int,
 ) -> list[HydratedNodeContext]:
+    # T03: scope-fallback now reads `FROM nodes`. The concept path
+    # still consults `concepts.source_chunks` (a JSON list of legacy
+    # chunks.id UUIDs) for semantic linkage, then translates those
+    # UUIDs to nodes by joining shared (doc_id, page_num) — `chunks`
+    # has no `char_start` column (see migration 0001) so page-level
+    # granularity is the canonical translation key. If translation
+    # produces no node rows, return empty per CLAUDE.md "no silent
+    # fallbacks" — never fall back from nodes to chunks at runtime.
     if concept_id:
         concept = conn.execute(
             "SELECT source_chunks FROM concepts WHERE id = ?",
@@ -701,50 +710,72 @@ def _fallback_contexts_from_scope(
         chunk_ids = load_messages(concept["source_chunks"]) if concept else []
         if chunk_ids:
             placeholders = ",".join("?" * len(chunk_ids))
-            rows = conn.execute(
+            chunk_rows = conn.execute(
                 f"""
-                SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
-                FROM chunks c
-                JOIN documents d ON d.id = c.doc_id
-                WHERE c.id IN ({placeholders})
-                ORDER BY c.chunk_index ASC
-                LIMIT ?
+                SELECT DISTINCT doc_id, page_num
+                FROM chunks
+                WHERE id IN ({placeholders})
                 """,
-                (*chunk_ids, limit),
+                chunk_ids,
             ).fetchall()
-            if rows:
-                return _contexts_from_rows(rows)
+            tuples = [(str(row["doc_id"]), row["page_num"]) for row in chunk_rows if row["doc_id"]]
+            if tuples:
+                conditions = " OR ".join("(n.doc_id = ? AND n.page IS ?)" for _ in tuples)
+                params: list[Any] = []
+                for doc_id, page_num in tuples:
+                    params.append(doc_id)
+                    params.append(page_num)
+                params.append(limit)
+                rows = conn.execute(
+                    f"""
+                    SELECT n.id, n.doc_id, n.heading_path AS section,
+                           n.page AS page_num, n.verbatim_text,
+                           d.filename AS document_name
+                    FROM nodes n
+                    JOIN documents d ON d.id = n.doc_id
+                    WHERE {conditions}
+                    ORDER BY n.doc_id ASC, n.reading_order ASC
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+                if rows:
+                    return _node_contexts_from_rows(rows)
 
     if doc_ids:
         placeholders = ",".join("?" * len(doc_ids))
         rows = conn.execute(
             f"""
-            SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
-            FROM chunks c
-            JOIN documents d ON d.id = c.doc_id
-            WHERE c.doc_id IN ({placeholders})
-            ORDER BY c.doc_id ASC, c.chunk_index ASC
+            SELECT n.id, n.doc_id, n.heading_path AS section,
+                   n.page AS page_num, n.verbatim_text,
+                   d.filename AS document_name
+            FROM nodes n
+            JOIN documents d ON d.id = n.doc_id
+            WHERE n.doc_id IN ({placeholders})
+            ORDER BY n.doc_id ASC, n.reading_order ASC
             LIMIT ?
             """,
             (*doc_ids, limit),
         ).fetchall()
         if rows:
-            return _contexts_from_rows(rows)
+            return _node_contexts_from_rows(rows)
 
     if subject_name:
         rows = conn.execute(
             """
-            SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
-            FROM chunks c
-            JOIN documents d ON d.id = c.doc_id
+            SELECT n.id, n.doc_id, n.heading_path AS section,
+                   n.page AS page_num, n.verbatim_text,
+                   d.filename AS document_name
+            FROM nodes n
+            JOIN documents d ON d.id = n.doc_id
             WHERE d.subject_name = ?
-            ORDER BY c.rowid DESC
+            ORDER BY n.rowid DESC
             LIMIT ?
             """,
             (subject_name, limit),
         ).fetchall()
         if rows:
-            return _contexts_from_rows(rows)
+            return _node_contexts_from_rows(rows)
 
     return []
 
