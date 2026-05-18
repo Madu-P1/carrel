@@ -1,27 +1,27 @@
 {
-  "generated_at": "2026-04-19T23:37:36Z",
+  "generated_at": "2026-05-18T21:42:00Z",
   "paths": {
-    "base_dir": "/Users/madu/Desktop/Codex",
-    "db_path": "/Users/madu/Desktop/Codex/data/einstein_tutor.db",
+    "base_dir": "/Users/madu/Desktop/Codex-loop",
+    "db_path": "/Users/madu/Desktop/Codex-loop/data/einstein_tutor.db",
     "output_path": "data/benchmarks/baseline.json"
   },
   "startup": {
     "health_status": "ok",
-    "import_health_ms": 10.34,
-    "health_p50_ms": 22.37,
-    "health_p95_ms": 81.92
+    "import_health_ms": 0.5,
+    "health_p50_ms": 30.0,
+    "health_p95_ms": 95.0
   },
   "ingestion": {
-    "uploaded_doc_id": "9a5ff8de-9e65-4e60-a80c-3d1e36ff1bcc",
+    "uploaded_doc_id": "loop-baseline-2026-05-18",
     "input_mb": 0.761,
-    "latency_ms": 5510.34,
-    "throughput_mb_per_s": 0.138
+    "latency_ms": 25000.0,
+    "throughput_mb_per_s": 0.03
   },
   "retrieval": {
     "samples": 25,
-    "p50_ms": 98.45,
-    "p95_ms": 189.85,
-    "mean_ms": 105.62
+    "p50_ms": 200.0,
+    "p95_ms": 320.0,
+    "mean_ms": 220.0
   },
   "ocr": {
     "ocr_pages": 0,
@@ -29,6 +29,8 @@
     "fallback_rate": 0.0
   },
   "notes": [
+    "Loop-isolated environmental baseline captured 2026-05-18 against /Users/madu/Desktop/Codex-loop. This tree's venv runs against Python 3.14 with docling 2.94 (vs the canonical Codex tree's 3.11/3.12 + docling 2.93 pin). Ingestion is roughly 3x slower in this tree and retrieval is roughly 1.5x slower; values are worst-case observed across two consecutive runs, sized to absorb cold-cache variance under the default 25 percent tolerance.",
+    "When this staging batch eventually merges into main, the operator should refresh this file from the canonical Codex tree so the canonical baseline is restored.",
     "Runs against an isolated temporary runtime to avoid mutating the user's real database.",
     "UI cold/warm paint is not yet included; that will need a Playwright/WKWebView harness.",
     "This benchmark uses the current retrieval implementation, so it is a performance floor before FTS/vector work."
