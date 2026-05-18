@@ -676,7 +676,10 @@ def _flatten_claim_citations(
 ) -> list[Dict[str, Any]]:
     context_by_node_id = {context.node_id: context for context in contexts}
     flattened: list[Dict[str, Any]] = []
-    seen: set[Any] = set()
+    # T01 transitional: node_id is annotated int but transitionally
+    # carries a str UUID until T02. set[str | int] reflects the actual
+    # runtime contents; tightens to set[int] after T02.
+    seen: set[str | int] = set()
     for claim in claims:
         for citation in claim.citations:
             if citation.node_id in seen:
@@ -1160,7 +1163,8 @@ def grounded_tutor_envelope(
     # below joins chunks.id on these values so the legacy str UUID is
     # what we need here; the local name `chunk_ids` reflects that.
     chunk_ids = []
-    seen_node_ids: set[Any] = set()
+    # T01 transitional: see seen-set comment in _flatten_claim_citations.
+    seen_node_ids: set[str | int] = set()
     for claim in grounded.claims:
         for citation in claim.citations:
             if citation.node_id in seen_node_ids:
