@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import sqlite3
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
 from html import escape
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -25,6 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
+from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
 LOGGER = get_logger("tutor")
@@ -174,40 +172,6 @@ class HydratedChunkContext:
     score: float
 
 
-@dataclass(frozen=True)
-class QuoteMatch:
-    quote: str
-    repaired: bool
-
-
-@dataclass(frozen=True)
-class NormalizedText:
-    text: str
-    index_map: tuple[int, ...]
-
-
-_WHITESPACE_RE = re.compile(r"\s+")
-_SMART_QUOTES = str.maketrans(
-    {
-        "“": '"',
-        "”": '"',
-        "„": '"',
-        "‟": '"',
-        "’": "'",
-        "‘": "'",
-        "‚": "'",
-        "‛": "'",
-        "\u00a0": " ",
-        "\u2009": " ",
-        "\u202f": " ",
-        "\u200b": " ",
-        "\r": " ",
-        "\n": " ",
-        "\t": " ",
-    }
-)
-
-
 def fetch_notes(
     conn: sqlite3.Connection,
     doc_id: Optional[str] = None,
@@ -337,137 +301,6 @@ def _clean_strings(values: Sequence[Any]) -> tuple[str, ...]:
         seen.add(key)
         cleaned.append(text)
     return tuple(cleaned)
-
-
-def _normalize_match_text(value: str) -> NormalizedText:
-    """Normalize text for verbatim-quote matching.
-
-    PR-D1: NFKC normalization is applied character by character so the
-    index_map can map each normalized char back to its source index in
-    the ORIGINAL string. When NFKC expands a single source char into
-    multiple chars (the most common case is ligatures: `ﬁ` → `fi`),
-    every expanded normalized char points back to the same source
-    position. `_slice_original_span` then returns the original
-    pre-normalization substring (e.g. the literal `ﬁ` ligature) for
-    rendering, while the comparison runs against the NFKC-normalized
-    form. This lets the validator match an LLM-emitted `"finance"`
-    against a chunk containing `"ﬁnance"`.
-
-    After NFKC, smart quotes are translated and the whitespace-collapse
-    + lowercase pass runs as before.
-    """
-    raw = str(value or "")
-
-    # Pass 1: per-char NFKC + smart-quote translate. Preserve the
-    # mapping from each output char back to its source index.
-    expanded_chars: list[str] = []
-    source_indices: list[int] = []
-    for source_index, char in enumerate(raw):
-        nfkc_expanded = unicodedata.normalize("NFKC", char)
-        translated = nfkc_expanded.translate(_SMART_QUOTES)
-        for output_char in translated:
-            expanded_chars.append(output_char)
-            source_indices.append(source_index)
-
-    # Pass 2: lowercase + whitespace-collapse, carrying source_indices
-    # through unchanged. The index_map preserves the invariant
-    # `_slice_original_span(content, normalized, ...)` returns a
-    # substring of `content` even after NFKC expansion.
-    normalized_chars: list[str] = []
-    index_map: list[int] = []
-    previous_was_space = True
-    for expanded_idx, char in enumerate(expanded_chars):
-        source_idx = source_indices[expanded_idx]
-        lowered = char.lower()
-        if lowered.isspace():
-            if normalized_chars and not previous_was_space:
-                normalized_chars.append(" ")
-                index_map.append(source_idx)
-                previous_was_space = True
-            continue
-        normalized_chars.append(lowered)
-        index_map.append(source_idx)
-        previous_was_space = False
-    if normalized_chars and normalized_chars[-1] == " ":
-        normalized_chars.pop()
-        index_map.pop()
-    return NormalizedText(text="".join(normalized_chars), index_map=tuple(index_map))
-
-
-def _slice_original_span(content: str, normalized: NormalizedText, start: int, size: int) -> str:
-    if size <= 0 or not normalized.index_map:
-        return ""
-    end_position = start + size - 1
-    if start < 0 or end_position >= len(normalized.index_map):
-        return ""
-    start_index = normalized.index_map[start]
-    end_index = normalized.index_map[end_position] + 1
-    return content[start_index:end_index].strip()
-
-
-def _fuzzy_quote_match(
-    raw_quote: str,
-    content: str,
-    normalized_quote: NormalizedText,
-    normalized_content: NormalizedText,
-) -> QuoteMatch | None:
-    """Repair an LLM-emitted quote against the chunk content.
-
-    PR-D1: the similarity floor is raised from 0.7 to 0.95 to honour
-    Carrel's marketing promise that "every cited quote is verbatim".
-    A 70% match was silently accepting paraphrases that read like
-    plausible-but-substituted quotes; the user's mental model
-    ("this is what my source says") survived, but the substituted
-    quote no longer literally backed the claim. After PR-D1 only
-    near-identical spans pass (whitespace/punct/case-only divergence
-    from the original); anything looser is dropped to
-    `unsupported_spans` instead of silently rewritten.
-
-    NFKC normalization in `_normalize_match_text` handles the
-    legitimate near-exact cases this stricter threshold needs to
-    keep accepting — chunk content with `ﬁnance` matching an LLM
-    quote of `"finance"` registers as similarity 1.0 because both
-    sides normalize to the same string.
-    """
-    if not normalized_quote.text or not normalized_content.text:
-        return None
-    matcher = SequenceMatcher(None, normalized_quote.text, normalized_content.text, autojunk=False)
-    match = matcher.find_longest_match(
-        0,
-        len(normalized_quote.text),
-        0,
-        len(normalized_content.text),
-    )
-    if match.size <= 0:
-        return None
-    min_length = min(40, len(normalized_quote.text))
-    similarity = match.size / max(len(normalized_quote.text), 1)
-    if match.size < min_length or similarity < 0.95:
-        return None
-    quote = _slice_original_span(content, normalized_content, match.b, match.size)
-    if not quote:
-        return None
-    return QuoteMatch(quote=quote, repaired=quote != raw_quote)
-
-
-def _validated_citation_quote(raw_quote: str, content: str) -> QuoteMatch | None:
-    quote = str(raw_quote or "").strip()
-    if not quote or not str(content or "").strip():
-        return None
-    normalized_quote = _normalize_match_text(quote)
-    normalized_content = _normalize_match_text(content)
-    if not normalized_quote.text or not normalized_content.text:
-        return None
-
-    exact_position = normalized_content.text.find(normalized_quote.text)
-    if exact_position >= 0:
-        actual = _slice_original_span(
-            content, normalized_content, exact_position, len(normalized_quote.text)
-        )
-        if actual:
-            return QuoteMatch(quote=actual, repaired=actual != quote)
-
-    return _fuzzy_quote_match(quote, content, normalized_quote, normalized_content)
 
 
 def _top_k(value: int | None) -> int:
@@ -837,7 +670,7 @@ def _resolve_grounded_answer(
                 citation_drop_count += 1
                 continue
             context = contexts[chunk_index - 1]
-            matched_quote = _validated_citation_quote(quote, context.content)
+            matched_quote = validated_citation_quote(quote, context.content)
             if matched_quote is None:
                 citation_drop_count += 1
                 continue
