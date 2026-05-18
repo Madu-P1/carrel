@@ -176,8 +176,28 @@ def fetch_notes(
     conn: sqlite3.Connection,
     doc_id: Optional[str] = None,
     concept_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    subject_name: Optional[str] = None,
     limit: int = 8,
 ) -> List[Dict[str, Any]]:
+    """List notes with optional filters and JOIN'd display fields.
+
+    The `subject` field on each returned note is the resolved subject
+    that the global Notes page renders against, following the rule
+
+        subject = COALESCE(folder.subject_name,
+                           document.subject_name,
+                           'Unfiled')
+
+    so the rail counts in `note_folders.fetch_organization` and the
+    notes shown for a tapped subject always agree.
+
+    `folder_id` accepts the sentinel string "none" to mean
+    "unfoldered notes only" — useful for the Notes page's "All
+    unsorted" filter, since SQL `IS NULL` can't ride a normal
+    parameter binding.
+    """
+
     conditions = []
     params: List[Any] = []
     if doc_id:
@@ -186,15 +206,31 @@ def fetch_notes(
     if concept_id:
         conditions.append("n.concept_id = ?")
         params.append(concept_id)
+    if folder_id == "none":
+        conditions.append("n.folder_id IS NULL")
+    elif folder_id:
+        conditions.append("n.folder_id = ?")
+        params.append(folder_id)
+    if subject_name:
+        # Subject filtering follows the COALESCE rule. Unfiled is
+        # special: it means "no folder AND no document".
+        if subject_name == "Unfiled":
+            conditions.append("n.folder_id IS NULL AND n.doc_id IS NULL")
+        else:
+            conditions.append("COALESCE(f.subject_name, d.subject_name, 'Unfiled') = ?")
+            params.append(subject_name)
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = conn.execute(
         f"""
         SELECT n.id, n.doc_id, n.concept_id, n.title, n.content, n.source_snippet, n.note_type, n.goal_id,
-               n.session_id, n.created_at, n.updated_at,
-               d.filename AS document_name, c.name AS concept_name
+               n.session_id, n.folder_id, n.created_at, n.updated_at,
+               d.filename AS document_name, c.name AS concept_name,
+               f.name AS folder_name,
+               COALESCE(f.subject_name, d.subject_name, 'Unfiled') AS subject
         FROM notes n
         LEFT JOIN documents d ON n.doc_id = d.id
         LEFT JOIN concepts c ON n.concept_id = c.id
+        LEFT JOIN note_folders f ON n.folder_id = f.id
         {where_clause}
         ORDER BY n.updated_at DESC
         LIMIT ?
@@ -221,14 +257,22 @@ def upsert_note_record(
     note_type: str = "saved_insight",
     goal_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     clean_title = (title or "").strip() or "Study note"
+    # A bad folder_id from the client is a 400, not a silent FK
+    # violation at commit time. Validate up front so the error message
+    # the user sees actually says "folder not found".
+    if folder_id:
+        cur = conn.execute("SELECT id FROM note_folders WHERE id = ?", (folder_id,))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=400, detail="Folder not found for this note.")
     if note_id:
         conn.execute(
             """
             UPDATE notes
             SET doc_id = ?, concept_id = ?, title = ?, content = ?, source_snippet = ?, note_type = ?,
-                goal_id = ?, session_id = ?, updated_at = ?
+                goal_id = ?, session_id = ?, folder_id = ?, updated_at = ?
             WHERE id = ?
             """,
             (
@@ -240,6 +284,7 @@ def upsert_note_record(
                 note_type,
                 goal_id,
                 session_id,
+                folder_id,
                 datetime.now(timezone.utc).isoformat(),
                 note_id,
             ),
@@ -248,8 +293,8 @@ def upsert_note_record(
         note_id = str(uuid.uuid4())
         conn.execute(
             """
-            INSERT INTO notes (id, doc_id, concept_id, title, content, source_snippet, note_type, goal_id, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO notes (id, doc_id, concept_id, title, content, source_snippet, note_type, goal_id, session_id, folder_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 note_id,
@@ -261,17 +306,21 @@ def upsert_note_record(
                 note_type,
                 goal_id,
                 session_id,
+                folder_id,
             ),
         )
     conn.commit()
     row = conn.execute(
         """
         SELECT n.id, n.doc_id, n.concept_id, n.title, n.content, n.source_snippet, n.note_type, n.goal_id,
-               n.session_id, n.created_at, n.updated_at,
-               d.filename AS document_name, c.name AS concept_name
+               n.session_id, n.folder_id, n.created_at, n.updated_at,
+               d.filename AS document_name, c.name AS concept_name,
+               f.name AS folder_name,
+               COALESCE(f.subject_name, d.subject_name, 'Unfiled') AS subject
         FROM notes n
         LEFT JOIN documents d ON n.doc_id = d.id
         LEFT JOIN concepts c ON n.concept_id = c.id
+        LEFT JOIN note_folders f ON n.folder_id = f.id
         WHERE n.id = ?
         """,
         (note_id,),
@@ -282,6 +331,86 @@ def upsert_note_record(
     if item.get("concept_name"):
         item["concept_name"] = clean_concept_label(item["concept_name"])
     return item
+
+
+def move_note_to_folder(
+    conn: sqlite3.Connection,
+    note_id: str,
+    folder_id: Optional[str],
+) -> Dict[str, Any]:
+    """Move a note into a folder, or unfile it when folder_id is None.
+
+    Validates the folder exists (400 on bad id) and the note exists
+    (404 if not). Returns the note in the same shape `fetch_notes`
+    emits so the client can swap the row in place without a refetch.
+    """
+
+    if folder_id:
+        cur = conn.execute("SELECT id FROM note_folders WHERE id = ?", (folder_id,))
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=400, detail="Folder not found for this note.")
+
+    cur = conn.execute("SELECT id FROM notes WHERE id = ?", (note_id,))
+    if cur.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Note not found.")
+
+    conn.execute(
+        """
+        UPDATE notes
+        SET folder_id = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (folder_id, datetime.now(timezone.utc).isoformat(), note_id),
+    )
+    conn.commit()
+
+    row = conn.execute(
+        """
+        SELECT n.id, n.doc_id, n.concept_id, n.title, n.content, n.source_snippet, n.note_type,
+               n.goal_id, n.session_id, n.folder_id, n.created_at, n.updated_at,
+               d.filename AS document_name, c.name AS concept_name,
+               f.name AS folder_name,
+               COALESCE(f.subject_name, d.subject_name, 'Unfiled') AS subject
+        FROM notes n
+        LEFT JOIN documents d ON n.doc_id = d.id
+        LEFT JOIN concepts c ON n.concept_id = c.id
+        LEFT JOIN note_folders f ON n.folder_id = f.id
+        WHERE n.id = ?
+        """,
+        (note_id,),
+    ).fetchone()
+    if row is None:
+        # Should be impossible — we just confirmed the row exists and
+        # we hold the write lock. If it vanishes it means concurrent
+        # delete, which we surface as 404.
+        raise HTTPException(status_code=404, detail="Note disappeared mid-move.")
+    item = dict(row)
+    if item.get("concept_name"):
+        item["concept_name"] = clean_concept_label(item["concept_name"])
+    return item
+
+
+def delete_note_record(conn: sqlite3.Connection, note_id: str) -> bool:
+    """Hard-delete a note row by id.
+
+    Returns True if a row was removed, False if no row matched. The route
+    layer turns False into a 404 so the operator gets a clear signal when
+    they try to delete something already gone.
+
+    Cascades: the `notes` schema declares ON DELETE CASCADE for child
+    rows (evidence references, etc.), so a single DELETE is enough. We
+    do *not* try to be clever and soft-delete because the UI promises
+    the row is gone for good — a tombstone column would just be a
+    half-feature that leaks into list queries later.
+    """
+
+    cur = conn.execute("SELECT id FROM notes WHERE id = ?", (note_id,))
+    if cur.fetchone() is None:
+        return False
+
+    conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.commit()
+    return True
 
 
 def _normalized_subject_name(subject_name: str | None) -> str | None:

@@ -126,7 +126,7 @@ def fetch_due_cards(
         "       a.chunk_id, a.page_num, a.quote_text",
         "FROM srs_cards s",
         "LEFT JOIN concepts c ON s.concept_id = c.id",
-        "LEFT JOIN documents d ON c.doc_id = d.id",
+        "LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id",
         # Most-recent anchor bound to this card carries the source citation
         # (chunk + page + verbatim quote). LEFT JOIN so cards without an
         # anchor still appear; the citation fields stay NULL and the UI
@@ -140,7 +140,7 @@ def fetch_due_cards(
         sql.append("AND d.subject_name = ?")
         params.append(subject)
     if doc_id is not None:
-        sql.append("AND c.doc_id = ?")
+        sql.append("AND COALESCE(s.doc_id, c.doc_id) = ?")
         params.append(doc_id)
     sql.append("ORDER BY COALESCE(s.due_date, ?) ASC, s.rowid ASC")
     params.append(today)
@@ -204,7 +204,7 @@ def list_cards(
         SELECT COUNT(*) AS total
         FROM srs_cards s
         LEFT JOIN concepts c ON s.concept_id = c.id
-        LEFT JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id
         {where_sql}
         """,
         params,
@@ -221,7 +221,7 @@ def list_cards(
                d.subject_name
         FROM srs_cards s
         LEFT JOIN concepts c ON s.concept_id = c.id
-        LEFT JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id
         {where_sql}
         ORDER BY d.subject_name, d.filename, s.rowid
         LIMIT ? OFFSET ?
@@ -257,7 +257,7 @@ def list_subjects(conn: sqlite3.Connection) -> List[Dict[str, object]]:
                SUM(CASE WHEN s.due_date IS NULL OR s.due_date <= ? THEN 1 ELSE 0 END) AS due_count
         FROM srs_cards s
         LEFT JOIN concepts c ON s.concept_id = c.id
-        LEFT JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id
         GROUP BY d.subject_name
         ORDER BY card_count DESC
         """,
@@ -343,6 +343,7 @@ def create_card(
     front: str,
     back: str,
     concept_id: Optional[str] = None,
+    doc_id: Optional[str] = None,
     card_type: str = "custom",
     kind: str = "qa",
 ) -> Dict[str, Any]:
@@ -390,19 +391,30 @@ def create_card(
             raise ValueError(f"concept_id {concept_id!r} does not exist")
         resolved_concept_id = str(row["id"])
 
+    resolved_doc_id: Optional[str] = None
+    if doc_id:
+        row = conn.execute(
+            "SELECT id FROM documents WHERE id = ?",
+            (doc_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"doc_id {doc_id!r} does not exist")
+        resolved_doc_id = str(row["id"])
+
     conn.execute(
         """
         INSERT INTO srs_cards (
-            id, concept_id, card_type, kind, front, back,
+            id, concept_id, doc_id, card_type, kind, front, back,
             state, stability, difficulty,
             elapsed_days, scheduled_days, reps, lapses,
             due_date, confidence
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
         """,
         (
             card_id,
             resolved_concept_id,
+            resolved_doc_id,
             card_type,
             kind,
             cleaned_front,
@@ -422,7 +434,7 @@ def create_card(
                d.subject_name
         FROM srs_cards s
         LEFT JOIN concepts c ON s.concept_id = c.id
-        LEFT JOIN documents d ON c.doc_id = d.id
+        LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id
         WHERE s.id = ?
         """,
         (card_id,),
@@ -445,6 +457,7 @@ def create_card_pair(
     front: str,
     back: str,
     concept_id: Optional[str] = None,
+    doc_id: Optional[str] = None,
     card_type: str = "custom",
 ) -> Dict[str, Any]:
     """Insert a Q→A card AND its reverse A→Q twin, plus a card_pairs link.
@@ -479,6 +492,16 @@ def create_card_pair(
             raise ValueError(f"concept_id {concept_id!r} does not exist")
         resolved_concept_id = str(row["id"])
 
+    resolved_doc_id: Optional[str] = None
+    if doc_id:
+        row = conn.execute(
+            "SELECT id FROM documents WHERE id = ?",
+            (doc_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"doc_id {doc_id!r} does not exist")
+        resolved_doc_id = str(row["id"])
+
     primary_id = str(uuid.uuid4())
     reverse_id = str(uuid.uuid4())
     today = date.today().isoformat()
@@ -498,16 +521,17 @@ def create_card_pair(
             conn.execute(
                 """
                 INSERT INTO srs_cards (
-                    id, concept_id, card_type, kind, front, back,
+                    id, concept_id, doc_id, card_type, kind, front, back,
                     state, stability, difficulty,
                     elapsed_days, scheduled_days, reps, lapses,
                     due_date, confidence
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'new', 1.0, 0.3, 0, 0, 0, 0, ?, ?)
                 """,
                 (
                     new_id,
                     resolved_concept_id,
+                    resolved_doc_id,
                     card_type,
                     kind,
                     f_text,
@@ -539,7 +563,7 @@ def create_card_pair(
                    d.subject_name
             FROM srs_cards s
             LEFT JOIN concepts c ON s.concept_id = c.id
-            LEFT JOIN documents d ON c.doc_id = d.id
+            LEFT JOIN documents d ON COALESCE(s.doc_id, c.doc_id) = d.id
             WHERE s.id = ?
             """,
             (card_id,),

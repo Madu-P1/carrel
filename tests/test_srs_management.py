@@ -334,6 +334,46 @@ class ManageCardsRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_create_card_with_invalid_doc_id_returns_400(self) -> None:
+        response = self.client.post(
+            "/api/srs/cards",
+            json={
+                "front": "q",
+                "back": "a",
+                "doc_id": "not-a-real-doc-id",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_card_with_doc_id_links_to_the_document(self) -> None:
+        # A card made from the Reader carries a direct doc_id even though
+        # it has no concept. The read queries COALESCE s.doc_id with the
+        # concept-derived doc_id, so document_id / document_name /
+        # subject_name all resolve from the direct linkage.
+        with main.get_db() as conn:
+            doc = conn.execute("SELECT id FROM documents WHERE filename = 'seed.txt'").fetchone()
+        doc_id = doc["id"]
+
+        response = self.client.post(
+            "/api/srs/cards",
+            json={
+                "front": "What is arbitrage?",
+                "back": "Identical assets trading at different prices.",
+                "doc_id": doc_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        new_card = response.json()["card"]
+        self.assertIsNone(new_card["concept_id"])
+        self.assertEqual(new_card["document_id"], doc_id)
+        self.assertEqual(new_card["document_name"], "seed.txt")
+        self.assertEqual(new_card["subject_name"], "Finance")
+
+        # The linkage survives the list_cards round-trip + doc_id filter.
+        listed = self.client.get("/api/srs/cards", params={"doc_id": doc_id}).json()
+        ids = {c["id"] for c in listed["cards"]}
+        self.assertIn(new_card["id"], ids)
+
     def test_ai_draft_happy_path_returns_cleaned_cards(self) -> None:
         """The route routes through the AI provider and returns cleaned cards.
         We mock the provider to avoid a real network call and the flakiness

@@ -641,6 +641,183 @@ class DebateTriggerFalsePositiveTests(unittest.TestCase):
         out = json.loads(stdout)
         self.assertIn("hookSpecificOutput", out)
 
+    def test_verb_in_heredoc_body_does_not_fire(self) -> None:
+        # Real recurring false-positive: a Python snippet piped via heredoc
+        # contains the literal text `pnpm add`, which the verb regex would
+        # otherwise match. Mirrors the audit-gate heredoc-strip fix.
+        cmd = (
+            "cat << 'PY' | python\n"
+            "import json\n"
+            'cmd = "pnpm add lodash"\n'
+            'print(detect("Bash", {"command": cmd}))\n'
+            "PY"
+        )
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.strip(), "", "verb inside heredoc body must not fire")
+
+    def test_real_verb_after_heredoc_still_fires(self) -> None:
+        cmd = (
+            "cat > /tmp/note.txt << 'EOF'\n"
+            "draft note about pnpm add for context\n"
+            "EOF\n"
+            "pnpm add lodash"
+        )
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        out = json.loads(stdout)
+        self.assertIn("hookSpecificOutput", out)
+        self.assertIn("debate trigger", out["hookSpecificOutput"]["additionalContext"].lower())
+
+    def test_unclosed_heredoc_falls_through_and_fires(self) -> None:
+        # Safe-fail direction: a malformed/unclosed heredoc preserves its
+        # body; a real verb inside still fires. Over-fire is acceptable;
+        # under-fire would let architectural changes ship undebated.
+        cmd = "cat > /tmp/x.txt << EOF\npnpm add lodash\n"
+        rc, stdout, _ = run_hook(
+            "debate-trigger.py",
+            {"tool_name": "Bash", "tool_input": {"command": cmd}},
+        )
+        out = json.loads(stdout)
+        self.assertIn("hookSpecificOutput", out)
+
+
+class RouteTaskRoutingTests(unittest.TestCase):
+    """Pin the prompt-pattern → skill mapping in route-task.py.
+
+    Catches regex regressions: a misrouted pattern would suggest the
+    wrong skill, a dropped pattern would fall through silently and
+    waste cycles on generic execution.
+    """
+
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.mkdtemp(prefix="carrel-route-")
+        self.project_dir = Path(self.tmpdir)
+        (self.project_dir / ".claude").mkdir()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _route(self, prompt: str) -> dict:
+        rc, stdout, _ = run_hook(
+            "route-task.py",
+            {"prompt": prompt, "session_id": "test-session", "cwd": str(self.project_dir)},
+            project_dir=str(self.project_dir),
+        )
+        self.assertEqual(rc, 0)
+        return json.loads(stdout) if stdout.strip() else {}
+
+    def test_bug_keyword_routes_to_investigate(self) -> None:
+        out = self._route("there is a bug in the importer")
+        self.assertIn("/investigate", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_security_keyword_routes_to_cso(self) -> None:
+        out = self._route("review for security vulnerabilities in the auth path")
+        self.assertIn("/cso", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_ship_keyword_routes_to_ship_chain(self) -> None:
+        out = self._route("ship it to production")
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("/ship", ctx)
+        self.assertIn("/land-and-deploy", ctx)
+
+    def test_refactor_keyword_routes_to_simplify(self) -> None:
+        out = self._route("can you refactor this module and clean it up")
+        self.assertIn("/simplify", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_planning_keyword_routes_to_makeplan(self) -> None:
+        out = self._route("we need a plan for the new feature")
+        self.assertIn("/claude-mem:make-plan", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_performance_keyword_routes_to_benchmark(self) -> None:
+        out = self._route("the page feels slow, can we benchmark it")
+        self.assertIn("/benchmark", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_no_match_emits_no_suggestion(self) -> None:
+        out = self._route("summarize today's commits in three sentences")
+        self.assertEqual(out, {})
+
+    def test_halt_file_emits_halt_message(self) -> None:
+        (self.project_dir / ".claude" / "HALT").touch()
+        out = self._route("bug in the importer that would normally route to /investigate")
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("HALT signal present", ctx)
+        self.assertNotIn("/investigate", ctx)
+
+    def test_routing_log_written_with_suggestion(self) -> None:
+        self._route("bug in the importer")
+        log_file = self.project_dir / ".claude" / "logs" / "routing.jsonl"
+        self.assertTrue(log_file.exists(), "routing.jsonl was not written")
+        entries = [json.loads(line) for line in log_file.read_text().splitlines() if line.strip()]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["suggestion"], "/investigate")
+        self.assertIn("prompt_snippet", entries[0])
+        self.assertEqual(entries[0]["session"], "test-session")
+
+    def test_routing_log_written_on_no_match(self) -> None:
+        # A non-matching prompt still produces a log entry (suggestion="")
+        # so we have a complete trace of every prompt routed through the
+        # hook, not just the ones that matched.
+        self._route("summarize today's commits in three sentences")
+        log_file = self.project_dir / ".claude" / "logs" / "routing.jsonl"
+        self.assertTrue(log_file.exists())
+        entries = [json.loads(line) for line in log_file.read_text().splitlines() if line.strip()]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["suggestion"], "")
+
+    def test_disabled_when_autonomous_unset(self) -> None:
+        # Without CARREL_AUTONOMOUS=true the hook must exit silently so
+        # ad-hoc Claude Code sessions don't see autonomous routing hints.
+        proc = subprocess.run(
+            [str(HOOKS_DIR / "route-task.py")],
+            input=json.dumps({"prompt": "there is a bug here"}).encode("utf-8"),
+            capture_output=True,
+            env={
+                "CLAUDE_PROJECT_DIR": str(self.project_dir),
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            },
+            timeout=15,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(proc.stdout.decode("utf-8").strip(), "")
+
+    def test_first_matching_rule_wins(self) -> None:
+        # A prompt that matches multiple rules takes the first one in the
+        # ordered list. Pinning this prevents a rule reorder from silently
+        # changing routing decisions.
+        out = self._route("there is a security bug in this module")
+        # "bug" comes first in the rules list, so /investigate wins over /cso.
+        self.assertIn("/investigate", out["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("/cso", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_remaining_rules_route_correctly(self) -> None:
+        # Parameterized coverage for the seven rules not exercised individually
+        # above. The order-pin test catches list reorders; this test catches
+        # in-rule regex tightening that would silently drop a previously-routed
+        # phrase (e.g. narrowing the a11y pattern to drop "screen reader").
+        cases = [
+            ("run an adversarial review on this change", "/codex challenge"),
+            ("can we do an a11y review of the new modal", "design:accessibility-review"),
+            ("do some visual polish on the reader", "/design-review"),
+            ("QA the import flow end-to-end", "/qa"),
+            ("review this PR before I merge", "/review"),
+            ("write a weekly retrospective for the team", "/retro"),
+            ("update CLAUDE.md with the new conventions", "engineering:documentation"),
+        ]
+        for prompt, expected in cases:
+            with self.subTest(prompt=prompt):
+                out = self._route(prompt)
+                self.assertIn(
+                    expected,
+                    out["hookSpecificOutput"]["additionalContext"],
+                    f"expected {expected!r} suggestion for prompt {prompt!r}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

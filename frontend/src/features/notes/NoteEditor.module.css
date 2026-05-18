@@ -1,0 +1,585 @@
+/*
+ * Carrel /notes/:id — full-page Note Editor.
+ *
+ * Word-doc-style writing surface. 720px centered content column on a
+ * Liquid Glass sheet so the page feels like a real piece of paper
+ * sitting on a desk. Sticky toolbar above; back/save indicator at the
+ * very top.
+ *
+ * Tokens (--np-*) come from the global notes-tokens.css loaded in
+ * main.tsx. The .page wrapper carries data-stillwater="true" so
+ * everything inside picks up the palette.
+ */
+
+.page {
+  min-height: 100%;
+  background: var(--np-page-gradient), var(--np-bg);
+  background-attachment: fixed;
+  font-family: var(--np-font-sans);
+  color: var(--np-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  display: flex;
+  flex-direction: column;
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+/* Top bar ─────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--np-card-divider);
+  background: var(--np-glass-card);
+  backdrop-filter: var(--np-glass-blur-soft);
+  -webkit-backdrop-filter: var(--np-glass-blur-soft);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-shadow: inset 0 1px 0 var(--np-glass-edge);
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--np-ink-soft);
+  font-family: var(--np-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.backBtn:hover {
+  color: var(--np-ink);
+  background: var(--np-rail-hover);
+  border-color: var(--np-card-border);
+}
+
+.topbarRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.savedIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--np-font-mono);
+  font-size: 11px;
+  color: var(--np-ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.savedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--np-accent);
+  box-shadow: 0 0 6px var(--np-accent-glow);
+}
+
+.savedDotPulse {
+  animation: editor-pulse 1.2s ease-in-out infinite;
+}
+
+/* Dirty: amber dot signals "you have unsaved work, hit Save". The color
+   shift is deliberate (green = synced, amber = pending) so a glance at
+   the topbar tells the user where they stand without reading text. */
+.savedDotDirty {
+  background: oklch(0.78 0.16 75);
+  box-shadow: 0 0 6px oklch(0.78 0.16 75 / 0.5);
+}
+
+.savedErr {
+  color: oklch(0.55 0.18 25);
+  font-family: var(--np-font-mono);
+  font-size: 11px;
+}
+
+.topbarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--np-btn-primary-bg);
+  color: var(--np-btn-primary-fg);
+  border: 1px solid var(--np-btn-primary-border);
+  border-radius: 8px;
+  font-family: var(--np-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--np-btn-primary-shadow);
+  transition:
+    filter 0.12s,
+    opacity 0.12s;
+}
+
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.saveBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.deleteBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--np-ink-soft);
+  border: 1px solid var(--np-card-border);
+  border-radius: 8px;
+  font-family: var(--np-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.deleteBtn:hover:not(:disabled) {
+  color: oklch(0.55 0.2 25);
+  border-color: oklch(0.55 0.2 25 / 0.55);
+  background: oklch(0.55 0.2 25 / 0.06);
+}
+
+.deleteBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes editor-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Toolbar (sticky just under the top bar) ────────────────────── */
+.toolbar {
+  position: sticky;
+  top: 53px; /* matches topbar height */
+  z-index: 19;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 28px;
+  background: var(--np-glass-card);
+  backdrop-filter: var(--np-glass-blur-soft);
+  -webkit-backdrop-filter: var(--np-glass-blur-soft);
+  border-bottom: 1px solid var(--np-card-divider);
+  box-shadow: inset 0 1px 0 var(--np-glass-edge);
+}
+
+.toolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbarSep {
+  width: 1px;
+  height: 18px;
+  background: var(--np-card-divider);
+  margin: 0 6px;
+  display: inline-block;
+}
+
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--np-ink-soft);
+  font-family: var(--np-font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.toolbarBtn:hover {
+  background: var(--np-rail-hover);
+  color: var(--np-ink);
+  border-color: var(--np-card-border);
+}
+
+.toolbarBtn:active {
+  background: var(--np-accent-faint);
+  color: var(--np-accent);
+}
+
+/* Sheet — the actual "Word page" ─────────────────────────────── */
+.sheet {
+  max-width: 760px;
+  width: 100%;
+  margin: 32px auto 80px;
+  padding: 56px 64px 64px;
+  background: var(--np-glass-card-strong);
+  backdrop-filter: var(--np-glass-blur);
+  -webkit-backdrop-filter: var(--np-glass-blur);
+  border: 1px solid var(--np-card-border);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 var(--np-glass-edge-strong),
+    0 18px 60px -20px rgba(20, 23, 26, 0.18);
+}
+
+@media (max-width: 760px) {
+  .sheet {
+    margin: 16px;
+    padding: 32px 28px 48px;
+  }
+}
+
+.titleInput {
+  width: 100%;
+  font-family: var(--np-font-serif);
+  font-size: 38px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  color: var(--np-ink);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0 0 8px;
+  margin-bottom: 4px;
+  text-wrap: balance;
+}
+
+.titleInput::placeholder {
+  color: var(--np-ink-faint);
+}
+
+/* Metadata strip ─────────────────────────────────────────────── */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--np-card-divider);
+  flex-wrap: wrap;
+}
+
+.sourcePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--np-font-mono);
+  font-size: 11px;
+  color: var(--np-accent);
+  background: var(--np-accent-faint);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+
+.sourcePillMuted {
+  color: var(--np-ink-faint);
+  background: transparent;
+  border: 1px dashed var(--np-card-divider);
+}
+
+.sourceIc {
+  width: 11px;
+  height: 11px;
+}
+
+.sourceJump {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  border-left: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  margin-left: 4px;
+  opacity: 0.9;
+}
+
+.sourceJump:hover {
+  opacity: 1;
+}
+
+.folderWrap {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  margin-left: auto;
+}
+
+.folderWrap::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--np-ink-faint);
+  border-bottom: 1.5px solid var(--np-ink-faint);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+.folderSelect {
+  font-family: var(--np-font-sans);
+  font-size: 12px;
+  color: var(--np-ink-soft);
+  padding: 5px 24px 5px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: var(--np-glass-card);
+  border: 1px solid var(--np-card-border);
+  appearance: none;
+  -webkit-appearance: none;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderSelect:hover {
+  color: var(--np-ink);
+}
+
+.folderSelect:focus {
+  outline: 2px solid var(--np-accent-faint-border);
+  outline-offset: 1px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The writing canvas ─────────────────────────────────────────── */
+.body {
+  font-family: var(--np-font-body);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--np-ink);
+  outline: none;
+  min-height: 420px;
+}
+
+.body:focus {
+  outline: none;
+}
+
+.body:empty::before {
+  content: "Start writing…";
+  color: var(--np-ink-faint);
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* Rich-text content — what contenteditable + execCommand produces.
+   These rules style the HTML the editor emits. */
+.body h1 {
+  font-family: var(--np-font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 28px 0 12px;
+  color: var(--np-ink);
+}
+
+.body h2 {
+  font-family: var(--np-font-serif);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 24px 0 10px;
+  color: var(--np-ink);
+}
+
+.body h3 {
+  font-family: var(--np-font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 20px 0 8px;
+  color: var(--np-ink);
+}
+
+.body p {
+  margin: 0 0 10px;
+}
+
+.body ul,
+.body ol {
+  padding-left: 24px;
+  margin: 0 0 12px;
+}
+
+.body li {
+  margin-bottom: 4px;
+}
+
+.body blockquote {
+  margin: 12px 0;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--np-accent);
+  color: var(--np-ink-soft);
+  font-style: italic;
+}
+
+.body pre {
+  font-family: var(--np-font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--np-textarea-bg);
+  border: 1px solid var(--np-textarea-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.body a {
+  color: var(--np-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.body strong {
+  font-weight: 600;
+  color: var(--np-ink);
+}
+
+.body em {
+  font-style: italic;
+}
+
+/* Skeleton + not-found ──────────────────────────────────────── */
+.skeleton {
+  max-width: 760px;
+  margin: 80px auto;
+  height: 480px;
+  border-radius: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--np-glass-card),
+    var(--np-glass-card-strong),
+    var(--np-glass-card)
+  );
+  background-size: 200% 100%;
+  animation: editor-shimmer 1.8s linear infinite;
+}
+
+@keyframes editor-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+  .savedDotPulse {
+    animation: none;
+  }
+}
+
+.notFound {
+  max-width: 480px;
+  margin: 120px auto;
+  padding: 36px 32px;
+  text-align: center;
+  background: var(--np-glass-card);
+  border: 1px solid var(--np-card-border);
+  border-radius: 14px;
+  backdrop-filter: var(--np-glass-blur-soft);
+  -webkit-backdrop-filter: var(--np-glass-blur-soft);
+  box-shadow: inset 0 1px 0 var(--np-glass-edge);
+}
+
+.notFound h1 {
+  font-family: var(--np-font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--np-ink);
+}
+
+.notFound p {
+  font-family: var(--np-font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--np-ink-soft);
+  margin: 0 0 20px;
+}
+
+.notFoundBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: var(--np-btn-primary-bg);
+  color: var(--np-btn-primary-fg);
+  border: 1px solid var(--np-btn-primary-border);
+  border-radius: 9px;
+  font-family: var(--np-font-sans);
+  font-weight: 500;
+  font-size: 13.5px;
+  cursor: pointer;
+  box-shadow: var(--np-btn-primary-shadow);
+}
+
+.notFoundBtn:hover {
+  filter: brightness(1.05);
+}

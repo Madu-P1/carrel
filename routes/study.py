@@ -350,6 +350,7 @@ def create_card(payload: CardCreateRequest) -> Dict[str, Any]:
                 front=payload.front,
                 back=payload.back,
                 concept_id=payload.concept_id,
+                doc_id=payload.doc_id,
                 card_type=payload.card_type,
                 kind=payload.kind,
             )
@@ -373,6 +374,7 @@ def create_card_pair(payload: CardPairCreateRequest) -> Dict[str, Any]:
                 front=payload.front,
                 back=payload.back,
                 concept_id=payload.concept_id,
+                doc_id=payload.doc_id,
                 card_type=payload.card_type,
             )
     except ValueError as exc:

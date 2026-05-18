@@ -227,7 +227,20 @@ export const appShell = {
       SHELL_PANEL_WIDTHS.right.min,
       SHELL_PANEL_WIDTHS.right.max
     )
-  )
+  ),
+  // Notes-page rail replacement (Phase A · Stillwater).
+  //
+  // When the user is on /notes, the Notes page owns the left rail
+  // entirely — the global WorkspaceSidebar is hidden and the page's
+  // own rail (Workspace + Subjects) takes its place. The student
+  // returns to the global nav by tapping the Carrel brand mark at the
+  // top of the Notes rail, which flips this signal to false.
+  //
+  // The signal lives at app-shell scope (not page scope) so the
+  // AppShell can react to it without prop-drilling. It only has an
+  // effect when pathname.startsWith("/notes"); off /notes the global
+  // rail is always shown regardless of value.
+  notesRailReplacement: signal(true)
 };
 
 export function setActiveSession(context: ActiveSessionContext | null): void {
@@ -275,6 +288,30 @@ export function navigateTo(path: string): void {
 
 export function toggleLeft(): void {
   appShell.leftOpen.value = !appShell.leftOpen.value;
+}
+
+/**
+ * Toggle which content fills the AppShell sidebar's middle nav slot
+ * on /notes: the Notes Workspace+Subjects body (true, default), or
+ * the global workspace nav (false). The brand mark, TodayPanel, and
+ * ProviderFooter stay put either way — only the middle swaps.
+ *
+ * Off /notes routes this signal has no visual effect (the global
+ * nav is shown regardless), so the function is safe to call
+ * unconditionally.
+ */
+export function toggleNotesRailMode(): void {
+  appShell.notesRailReplacement.value = !appShell.notesRailReplacement.value;
+}
+
+/** Force the Notes rail content on. Used by tests and the route guard. */
+export function enterNotesRailMode(): void {
+  appShell.notesRailReplacement.value = true;
+}
+
+/** Force the global workspace nav on. */
+export function exitNotesRailMode(): void {
+  appShell.notesRailReplacement.value = false;
 }
 
 export function toggleRight(): void {

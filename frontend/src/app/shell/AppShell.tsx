@@ -55,14 +55,19 @@ interface ShellFrameProps extends AppShellProps {
 
 const navLinks: SidebarNavItem[] = [
   { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
-  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "sparkle", path: "/session" },
+  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "session", path: "/session" },
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
-  { key: "reader", label: "Reader", commandHint: "⌘4", icon: "doc", path: "/reader" },
+  // Notes sits right after Library: when a user thinks "where are my
+  // notes?" the mental path is Library → my notes about library items.
+  // No ⌘ hotkey for now — the 1-9 slots are taken; adding ⌘⇧N is a
+  // polish follow-up that also touches keyboard-shortcut registration.
+  { key: "notes", label: "Notes", commandHint: "", icon: "notes", path: "/notes" },
+  { key: "reader", label: "Reader", commandHint: "⌘4", icon: "reader", path: "/reader" },
   { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  { key: "study", label: "Review Queue", commandHint: "⌘6", icon: "study", path: "/study" },
+  { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
-  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "command", path: "/plan" }
+  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "plan", path: "/plan" }
 ];
 
 const FIRST_LAUNCH_EVENT_KEY = "carrel.metrics.first-launch-recorded";
@@ -81,7 +86,7 @@ function routeLabel(path: string): string {
   }
 
   if (path.startsWith("/study")) {
-    return "Study";
+    return "Flashcards";
   }
 
   if (path.startsWith("/library")) {
@@ -100,6 +105,10 @@ function routeLabel(path: string): string {
     return "Plan";
   }
 
+  if (path.startsWith("/notes")) {
+    return "Notes";
+  }
+
   return "Workspace";
 }
 
@@ -107,13 +116,17 @@ function routeMotionIndex(path: string): number {
   if (path === "/") return 0;
   if (path.startsWith("/session")) return 1;
   if (path.startsWith("/library")) return 2;
-  if (path.startsWith("/reader")) return 3;
-  if (path.startsWith("/ask")) return 4;
-  if (path.startsWith("/study")) return 5;
-  if (path.startsWith("/search")) return 6;
-  if (path.startsWith("/concepts")) return 7;
-  if (path.startsWith("/plan")) return 8;
-  return 9;
+  // Notes lives next to Library in the sidebar; pin its motion index
+  // there too so forward/back transitions read as "moving along the
+  // study row" rather than across the app.
+  if (path.startsWith("/notes")) return 3;
+  if (path.startsWith("/reader")) return 4;
+  if (path.startsWith("/ask")) return 5;
+  if (path.startsWith("/study")) return 6;
+  if (path.startsWith("/search")) return 7;
+  if (path.startsWith("/concepts")) return 8;
+  if (path.startsWith("/plan")) return 9;
+  return 10;
 }
 
 function useRouteMotion(pathname: string): "backward" | "forward" | "none" {
@@ -192,6 +205,12 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   const theme = appShell.theme.value;
   const pathname = pathnameFromRoute(path);
   const isReaderFocusMode = pathname.startsWith("/reader") && readerState.focusMode.value;
+  // Notes-page rail-mode: the AppShell rail stays visible; its middle
+  // nav section swaps to the Notes Workspace+Subjects content via
+  // WorkspaceSidebar. The wrapper gets data-stillwater="true" so the
+  // Notes token palette (--np-*) cascades to the slotted content.
+  const isNotesRailMode =
+    pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
   const activeLabel = routeLabel(pathname);
   const routeMotion = useRouteMotion(pathname);
   const panelContent = appShell.rightPanelContent.value;
@@ -494,6 +513,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
             .filter(Boolean)
             .join(" ")}
           data-collapsed={!isLeftOpen ? "true" : "false"}
+          data-stillwater={isNotesRailMode ? "true" : "false"}
           data-testid="left-sidebar"
         >
           <div className={styles.leftRailInner}>

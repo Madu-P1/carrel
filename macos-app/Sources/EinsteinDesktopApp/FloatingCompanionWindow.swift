@@ -96,6 +96,9 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         panel.orderFrontRegardless()
         self.panel = panel
         self.webView = webView
+        // Seed the cube's light/dark theme; viewDidChangeEffectiveAppearance
+        // keeps it in sync after a live system appearance switch.
+        pushAppearance()
         companionLog.info("Floating companion window opened.")
     }
 
@@ -215,6 +218,7 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         webView.onFilesEnter = { [weak self] in self?.handleFilesEnter() }
         webView.onFilesExit = { [weak self] in self?.handleFilesExit() }
         webView.onFilesDropped = { [weak self] urls in self?.handleFilesDropped(urls) }
+        webView.onAppearanceChange = { [weak self] in self?.pushAppearance() }
         return webView
     }
 
@@ -469,6 +473,25 @@ final class FloatingCompanionWindow: NSObject, WKNavigationDelegate, WKScriptMes
         panel.setFrameOrigin(origin)
     }
 
+    /// Resolve an NSAppearance to the "light" / "dark" token the
+    /// companion CSS keys off via `<html data-appearance="...">`.
+    private func appearanceToken(_ appearance: NSAppearance) -> String {
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light"
+    }
+
+    /// Push the current system appearance into the companion WebView.
+    /// Queued behind the initial load via `whenLoaded`, so a push that
+    /// arrives before didFinish is replayed in order.
+    private func pushAppearance() {
+        let token = appearanceToken(NSApp.effectiveAppearance)
+        whenLoaded { [weak self] in
+            guard let self else { return }
+            self.evaluate(
+                "document.documentElement.setAttribute('data-appearance', \(self.jsString(token)))"
+            )
+        }
+    }
+
     private func evaluate(_ source: String) {
         guard let webView else { return }
         webView.evaluateJavaScript(source) { _, error in
@@ -512,6 +535,7 @@ final class DropAcceptingWebView: WKWebView {
     var onFilesEnter: (() -> Void)?
     var onFilesExit: (() -> Void)?
     var onFilesDropped: (([URL]) -> Void)?
+    var onAppearanceChange: (() -> Void)?
 
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         super.init(frame: frame, configuration: configuration)
@@ -520,6 +544,16 @@ final class DropAcceptingWebView: WKWebView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Fires when the view's effective appearance flips (a system
+    /// Light/Dark switch). The companion's CSS does not reliably
+    /// re-evaluate prefers-color-scheme on a live switch in a separate
+    /// panel WebView, so the host pushes the resolved appearance into a
+    /// data-attribute in response.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         if !readFileURLs(from: sender).isEmpty {

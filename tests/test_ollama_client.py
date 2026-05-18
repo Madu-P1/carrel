@@ -399,5 +399,56 @@ class OllamaConfigTests(unittest.TestCase):
         self.assertEqual(client.model_for_task("balanced"), "qwen2.5:7b")
 
 
+class OllamaCloudAuthTests(unittest.TestCase):
+    """OLLAMA_API_KEY / Ollama Cloud wiring (base_url ollama.com)."""
+
+    def test_cloud_endpoint_without_api_key_returns_typed_error(self) -> None:
+        # No injected transport: this is the real-network path, so the
+        # guard fires before any HTTP call and surfaces a fixable code.
+        client = OllamaClient(base_url="https://ollama.com")
+        result = client.request_text(
+            request_kind="test.no_key",
+            system="",
+            prompt="anything",
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "ollama_no_api_key")
+        self.assertIn("OLLAMA_API_KEY", result.error_message or "")
+
+    def test_cloud_endpoint_with_api_key_sends_bearer_header(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["auth"] = request.headers.get("authorization")
+            return httpx.Response(200, json=_ok_payload("ok"))
+
+        client = OllamaClient(
+            base_url="https://ollama.com",
+            api_key="sk-test-key",
+            http_client=_mock_transport(handler),
+        )
+        result = client.request_text(
+            request_kind="test.cloud",
+            system="",
+            prompt="anything",
+        )
+        self.assertTrue(result.ok, msg=str(result))
+        self.assertEqual(captured["auth"], "Bearer sk-test-key")
+
+    def test_local_endpoint_sends_no_auth_header(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["auth"] = request.headers.get("authorization")
+            return httpx.Response(200, json=_ok_payload("ok"))
+
+        client = OllamaClient(
+            base_url="http://127.0.0.1:11434",
+            http_client=_mock_transport(handler),
+        )
+        client.request_text(request_kind="test.local", system="", prompt="x")
+        self.assertIsNone(captured["auth"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,8 +6,10 @@ import { resetDocumentsQuery } from "../src/features/library/hooks/useDocumentsQ
 import { resetReaderDetailQueries } from "../src/features/reader/hooks/useReaderDetail";
 import { readerState, READER_OUTLINE_WIDTH, resetReaderState } from "../src/features/reader/state";
 import { installFetchMock, resetFetchMock } from "./support/mockFetch";
+import { installXhrMock } from "./support/mockXhr";
 
 installFetchMock();
+installXhrMock();
 
 let prefersDark = true;
 let prefersReducedMotion = false;

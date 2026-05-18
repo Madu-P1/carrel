@@ -1,4 +1,7 @@
+import { Icon } from "@/design-system";
+
 import type { PlanEvent } from "../api/planApi";
+import { isUserStudyBlock } from "../utils/eventClassification";
 import { formatTimeRange } from "../utils/timezone";
 import styles from "./EventBlock.module.css";
 
@@ -13,6 +16,9 @@ interface EventBlockProps {
   topPercent: number;
   /** Block height as % of the day grid. */
   heightPercent: number;
+  /** Click handler — opens the detail dialog. Optional so the block
+   *  remains a pure visual block when consumers don't wire detail. */
+  onSelect?: (event: PlanEvent) => void;
 }
 
 /**
@@ -27,14 +33,33 @@ export function EventBlock({
   color,
   topPercent,
   heightPercent,
+  onSelect,
 }: EventBlockProps) {
   const accent = color ?? "var(--color-accent)";
+  const interactive = typeof onSelect === "function";
+  // Self-scheduled study blocks ("Study Bio", "Revise calc", etc.) get a
+  // distinct visual treatment so the user can tell at a glance which
+  // blocks the planner is counting as allocated prep time. Matches the
+  // backend's STUDY_ALLOCATION_KEYWORDS regex — keep them in sync.
+  const isStudy = isUserStudyBlock(event.summary);
   const className = [
     styles.block,
     event.status === "tentative" ? styles.blockTentative : "",
+    interactive ? styles.blockInteractive : "",
+    isStudy ? styles.blockStudy : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const handleClick = interactive ? () => onSelect?.(event) : undefined;
+  const handleKey = interactive
+    ? (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.(event);
+        }
+      }
+    : undefined;
 
   return (
     <div
@@ -48,7 +73,21 @@ export function EventBlock({
         ["--event-color" as string]: accent,
       }}
       title={event.summary}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? `${event.summary || "Untitled"} — view details` : undefined}
+      onClick={handleClick}
+      onKeyDown={handleKey}
     >
+      {isStudy ? (
+        <span
+          className={styles.studyBadge}
+          aria-label="Allocated study block — counted by the planner"
+          title="The planner counts this as allocated prep time."
+        >
+          <Icon name="study" size={12} />
+        </span>
+      ) : null}
       <span className={styles.title}>{event.summary || "(untitled)"}</span>
       <span className={styles.meta}>{formatTimeRange(event.start_at, event.end_at)}</span>
       {event.location ? (

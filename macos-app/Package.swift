@@ -38,6 +38,11 @@ let package = Package(
         .executableTarget(
             name: "EinsteinAFMBridge",
             path: "Sources/EinsteinAFMBridge"
+        ),
+        .testTarget(
+            name: "EinsteinDesktopTests",
+            dependencies: ["EinsteinDesktop"],
+            path: "Tests/EinsteinDesktopTests"
         )
     ]
 )

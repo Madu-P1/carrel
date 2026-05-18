@@ -54,11 +54,11 @@ export function friendlyError(err: unknown, context: { surface?: string } = {}):
       detail: detail ?? `${err.status} ${err.statusText}`,
       recovery:
         err.status >= 500
-          ? "Reload to retry — if it keeps failing, the backend log at dist/einstein-backend.log usually has the stack."
+          ? "Reload to retry. If it keeps failing, the backend log at dist/einstein-backend.log usually has the stack."
           : err.status === 404
             ? "The route doesn't exist. This usually means you're on an older build."
             : err.status === 409
-              ? "Concurrent modification — re-read and retry."
+              ? "Concurrent modification. Re-read and retry."
               : undefined,
     };
   }

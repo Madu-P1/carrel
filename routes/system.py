@@ -31,6 +31,8 @@ def _provider_payload() -> Dict[str, Any]:
             kind = "claude"
         elif "ollama" in cls:
             kind = "ollama"
+        elif "afm" in cls:
+            kind = "afm"
         elif "null" in cls:
             kind = "null"
         else:

@@ -1,0 +1,189 @@
+/*
+ * Carrel /notes — Stillwater + Liquid Glass tokens.
+ *
+ * Global (not a CSS Module) because the rail content lives in TWO
+ * places: inside NotesPage's main pane (the AppShell content area)
+ * AND inside the AppShell's sidebar (the WorkspaceSidebar slot when
+ * isNotesRailActive). Both ancestors get a `data-stillwater="true"`
+ * attribute so child components can read --np-* via simple var() refs
+ * regardless of where they render.
+ *
+ * Light + dark switch via the existing html.theme-light /
+ * html.theme-dark global. Tokens reference the design-system fonts
+ * directly so the serif/mono stays in sync with the rest of the app.
+ */
+
+[data-stillwater="true"] {
+  /* Shared layout knobs */
+  --np-rail-w: 260px;
+  --np-tile-radius: 14px;
+  --np-gap-row: 18px;
+  --np-content-w: 1100px;
+
+  /* Typography */
+  --np-font-serif: var(--font-serif);
+  --np-font-sans: var(--font-sans);
+  --np-font-body: var(--font-sans);
+  --np-font-mono: var(--font-mono);
+
+  /* Light defaults — Stillwater "cool slate paper" */
+  --np-bg: oklch(0.97 0.005 220);
+  --np-ink: #14171a;
+  --np-ink-soft: #3c434b;
+  --np-ink-dim: #5a6068;
+  --np-ink-faint: #8b9098;
+
+  --np-page-gradient:
+    radial-gradient(
+      ellipse 110% 90% at 20% 0%,
+      color-mix(in srgb, oklch(0.78 0.13 175) 6%, transparent),
+      transparent 56%
+    ),
+    radial-gradient(
+      ellipse 80% 70% at 90% 100%,
+      color-mix(in srgb, oklch(0.66 0.13 65) 5%, transparent),
+      transparent 60%
+    );
+
+  /* Glass surfaces */
+  --np-glass-rail: color-mix(in srgb, #ffffff 60%, transparent);
+  --np-glass-rail-strong: color-mix(in srgb, #ffffff 78%, transparent);
+  --np-glass-card: color-mix(in srgb, #ffffff 72%, transparent);
+  --np-glass-card-strong: color-mix(in srgb, #ffffff 82%, transparent);
+  --np-glass-tile: color-mix(in srgb, #ffffff 70%, transparent);
+  --np-glass-tile-expanded: color-mix(in srgb, #ffffff 86%, transparent);
+  --np-glass-blur: saturate(180%) blur(22px);
+  --np-glass-blur-soft: saturate(160%) blur(14px);
+
+  --np-rail-border: rgba(255, 255, 255, 0.32);
+  --np-rail-hover: rgba(255, 255, 255, 0.55);
+  --np-rail-active: rgba(20, 23, 26, 0.06);
+  --np-glass-edge: rgba(255, 255, 255, 0.45);
+  --np-glass-edge-strong: rgba(255, 255, 255, 0.7);
+
+  --np-card-bg: var(--np-glass-card);
+  --np-card-border: rgba(20, 23, 26, 0.08);
+  --np-card-divider: rgba(20, 23, 26, 0.06);
+
+  --np-tile-bg: var(--np-glass-tile);
+  --np-tile-bg-expanded: var(--np-glass-tile-expanded);
+  --np-tile-border: rgba(20, 23, 26, 0.08);
+  --np-tile-border-hover: rgba(20, 23, 26, 0.18);
+  --np-tile-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 8px 24px -12px rgba(20, 23, 26, 0.12);
+  --np-tile-shadow-expanded:
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 18px 50px -20px rgba(20, 23, 26, 0.22),
+    0 0 0 1px oklch(0.58 0.10 195 / 0.18);
+
+  --np-textarea-bg: color-mix(in srgb, #ffffff 78%, transparent);
+  --np-textarea-border: rgba(20, 23, 26, 0.1);
+  --np-input-bg: var(--np-glass-card);
+  --np-input-bg-focus: var(--np-glass-card-strong);
+  --np-input-border: rgba(20, 23, 26, 0.1);
+  --np-kbd-bg: rgba(20, 23, 26, 0.05);
+
+  --np-btn-primary-bg: oklch(0.18 0.015 220);
+  --np-btn-primary-fg: #f7f7f4;
+  --np-btn-primary-border: oklch(0.22 0.018 220);
+  --np-btn-primary-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 8px 24px -12px rgba(20, 23, 26, 0.4);
+
+  --np-btn-ghost-bg: color-mix(in srgb, #ffffff 60%, transparent);
+  --np-btn-ghost-border: rgba(20, 23, 26, 0.1);
+
+  --np-accent: oklch(0.58 0.10 195);
+  --np-accent-glow: oklch(0.58 0.10 195 / 0.5);
+  --np-accent-faint: oklch(0.58 0.10 195 / 0.12);
+  --np-accent-faint-border: oklch(0.58 0.10 195 / 0.35);
+  --np-accent-warm: oklch(0.66 0.13 65);
+  --np-accent-warm-faint: oklch(0.66 0.13 65 / 0.16);
+}
+
+/* Dark mode — Liquid Glass on near-black slate. */
+html.theme-dark [data-stillwater="true"] {
+  --np-bg: oklch(0.10 0.012 220);
+  --np-ink: oklch(0.95 0 0 / 0.95);
+  --np-ink-soft: oklch(0.78 0.012 220);
+  --np-ink-dim: oklch(0.62 0.012 220);
+  --np-ink-faint: oklch(0.48 0.012 220);
+
+  --np-page-gradient:
+    radial-gradient(
+      ellipse 110% 90% at 20% 0%,
+      color-mix(in srgb, oklch(0.78 0.13 175) 14%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 80% 70% at 90% 100%,
+      color-mix(in srgb, oklch(0.72 0.12 70) 10%, transparent),
+      transparent 62%
+    );
+
+  --np-glass-rail: color-mix(in srgb, oklch(0.14 0.013 220) 70%, transparent);
+  --np-glass-rail-strong: color-mix(
+    in srgb,
+    oklch(0.18 0.014 220) 84%,
+    transparent
+  );
+  --np-glass-card: color-mix(in srgb, oklch(0.16 0.013 220) 74%, transparent);
+  --np-glass-card-strong: color-mix(
+    in srgb,
+    oklch(0.20 0.014 220) 84%,
+    transparent
+  );
+  --np-glass-tile: color-mix(in srgb, oklch(0.15 0.013 220) 72%, transparent);
+  --np-glass-tile-expanded: color-mix(
+    in srgb,
+    oklch(0.18 0.015 220) 86%,
+    transparent
+  );
+
+  --np-rail-border: rgba(255, 255, 255, 0.08);
+  --np-rail-hover: rgba(255, 255, 255, 0.06);
+  --np-rail-active: rgba(255, 255, 255, 0.09);
+  --np-glass-edge: rgba(255, 255, 255, 0.10);
+  --np-glass-edge-strong: rgba(255, 255, 255, 0.18);
+
+  --np-card-bg: var(--np-glass-card);
+  --np-card-border: rgba(255, 255, 255, 0.08);
+  --np-card-divider: rgba(255, 255, 255, 0.06);
+
+  --np-tile-bg: var(--np-glass-tile);
+  --np-tile-bg-expanded: var(--np-glass-tile-expanded);
+  --np-tile-border: rgba(255, 255, 255, 0.08);
+  --np-tile-border-hover: rgba(255, 255, 255, 0.18);
+  --np-tile-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  --np-tile-shadow-expanded:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 20px 60px -20px rgba(0, 0, 0, 0.7),
+    0 0 0 1px oklch(0.78 0.13 175 / 0.22);
+
+  --np-textarea-bg: color-mix(in srgb, oklch(0.10 0.012 220) 70%, transparent);
+  --np-textarea-border: rgba(255, 255, 255, 0.10);
+  --np-input-bg: var(--np-glass-card);
+  --np-input-bg-focus: var(--np-glass-card-strong);
+  --np-input-border: rgba(255, 255, 255, 0.10);
+  --np-kbd-bg: rgba(255, 255, 255, 0.06);
+
+  --np-btn-primary-bg: oklch(0.78 0.13 175);
+  --np-btn-primary-fg: oklch(0.10 0.012 220);
+  --np-btn-primary-border: oklch(0.78 0.13 175);
+  --np-btn-primary-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 0 32px -6px oklch(0.78 0.13 175 / 0.55);
+
+  --np-btn-ghost-bg: color-mix(in srgb, oklch(0.16 0.013 220) 64%, transparent);
+  --np-btn-ghost-border: rgba(255, 255, 255, 0.08);
+
+  --np-accent: oklch(0.82 0.13 175);
+  --np-accent-glow: oklch(0.82 0.13 175 / 0.7);
+  --np-accent-faint: oklch(0.82 0.13 175 / 0.16);
+  --np-accent-faint-border: oklch(0.82 0.13 175 / 0.40);
+  --np-accent-warm: oklch(0.78 0.12 70);
+  --np-accent-warm-faint: oklch(0.78 0.12 70 / 0.18);
+}

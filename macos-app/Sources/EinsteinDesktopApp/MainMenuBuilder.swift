@@ -11,15 +11,25 @@ enum MainMenuBuilder {
         mainMenu.addItem(buildEditMenu())
         mainMenu.addItem(buildViewMenu())
         mainMenu.addItem(buildNavigateMenu())
-        mainMenu.addItem(buildWindowMenu())
-        mainMenu.addItem(buildHelpMenu())
+
+        // Keep direct references to the Window/Help submenu items so
+        // we can pass their submenus straight to NSApp. The older
+        // `mainMenu.item(withTitle: "Window")?.submenu` lookup
+        // depended on AppKit auto-syncing the outer NSMenuItem's
+        // title from the submenu title, which doesn't fire reliably
+        // (e.g. in XCTest bundles without a running NSApplication),
+        // leaving NSApp.windowsMenu / NSApp.helpMenu silently nil.
+        let windowMenuItem = buildWindowMenu()
+        mainMenu.addItem(windowMenuItem)
+        let helpMenuItem = buildHelpMenu()
+        mainMenu.addItem(helpMenuItem)
 
         NSApp.mainMenu = mainMenu
-        NSApp.windowsMenu = mainMenu.item(withTitle: "Window")?.submenu
-        NSApp.helpMenu = mainMenu.item(withTitle: "Help")?.submenu
+        NSApp.windowsMenu = windowMenuItem.submenu
+        NSApp.helpMenu = helpMenuItem.submenu
     }
 
-    private static func buildAppMenu() -> NSMenuItem {
+    static func buildAppMenu() -> NSMenuItem {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "Carrel")
 
@@ -57,7 +67,7 @@ enum MainMenuBuilder {
         return appMenuItem
     }
 
-    private static func buildFileMenu() -> NSMenuItem {
+    static func buildFileMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "File")
         menu.addItem(
@@ -87,7 +97,7 @@ enum MainMenuBuilder {
         return item
     }
 
-    private static func buildEditMenu() -> NSMenuItem {
+    static func buildEditMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Edit")
         menu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -108,7 +118,7 @@ enum MainMenuBuilder {
         return item
     }
 
-    private static func buildViewMenu() -> NSMenuItem {
+    static func buildViewMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "View")
         menu.addItem(
@@ -171,7 +181,7 @@ enum MainMenuBuilder {
         return item
     }
 
-    private static func buildNavigateMenu() -> NSMenuItem {
+    static func buildNavigateMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Navigate")
         menu.addItem(titled: "Dashboard", key: "1", command: "nav.dashboard", target: MenuCommandDispatcher.shared)
@@ -191,7 +201,7 @@ enum MainMenuBuilder {
         return item
     }
 
-    private static func buildWindowMenu() -> NSMenuItem {
+    static func buildWindowMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
@@ -200,7 +210,7 @@ enum MainMenuBuilder {
         return item
     }
 
-    private static func buildHelpMenu() -> NSMenuItem {
+    static func buildHelpMenu() -> NSMenuItem {
         let item = NSMenuItem()
         let menu = NSMenu(title: "Help")
         menu.addItem(
@@ -218,12 +228,21 @@ enum MainMenuBuilder {
 final class MenuCommandDispatcher: NSObject {
     static let shared = MenuCommandDispatcher()
 
+    /// Test seam: replace the `WebViewBridgeDispatcher.dispatch` call
+    /// with a spy that returns its own success/failure verdict. When
+    /// set, the closure receives the command string and its return
+    /// value decides whether `NSSound.beep()` fires. Production code
+    /// never sets it; tearDown resets to nil.
+    static var _dispatchSinkForTesting: ((String) -> Bool)?
+
     @objc func dispatchCommand(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else {
             return
         }
 
-        if !WebViewBridgeDispatcher.dispatch(command: command) {
+        let dispatched = MenuCommandDispatcher._dispatchSinkForTesting?(command)
+            ?? WebViewBridgeDispatcher.dispatch(command: command)
+        if !dispatched {
             NSSound.beep()
         }
     }
@@ -236,9 +255,7 @@ enum WebViewBridgeDispatcher {
             return false
         }
 
-        let escaped = command
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        let escaped = escapeForJSStringLiteral(command)
 
         webView.evaluateJavaScript("window.__dispatchNativeMenu?.(\"\(escaped)\")") { _, error in
             if let error {
@@ -246,6 +263,17 @@ enum WebViewBridgeDispatcher {
             }
         }
         return true
+    }
+
+    /// Escapes a command string for embedding inside a JS double-quoted
+    /// string literal. Backslashes first, then double-quotes, so the
+    /// substitution itself doesn't introduce escapable characters.
+    /// Exposed at module-internal scope so `@testable` can exercise it
+    /// without standing up a WKWebView.
+    static func escapeForJSStringLiteral(_ command: String) -> String {
+        command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     @MainActor
@@ -305,7 +333,7 @@ enum WebViewRegistry {
     }
 }
 
-private extension NSMenu {
+extension NSMenu {
     @discardableResult
     func addItem(
         titled title: String,

@@ -74,6 +74,21 @@ ARCH_BASH_VERBS = [
     r"(^|[;&|]|\s)go\s+(get|mod\s+tidy)\b",
 ]
 
+# Heredoc pattern mirrors `.claude/hooks/audit-gate.py::HEREDOC_PATTERN`.
+# Strips bodies of `<<TAG`, `<<-TAG`, `<<'TAG'`, `<<"TAG"` so verbs inside
+# JSON payloads, commit messages, or docs don't false-positive. Falls
+# through on unclosed heredocs (safe-fail: over-fire, never under-fire).
+HEREDOC_PATTERN = re.compile(
+    r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)\n\s*\1\s*(?:\n|$)",
+    re.DOTALL,
+)
+
+
+def _strip_heredocs(cmd: str) -> str:
+    if not cmd:
+        return cmd
+    return HEREDOC_PATTERN.sub("\n", cmd)
+
 
 def match_patterns(patterns: list[str], text: str) -> list[str]:
     if not text:
@@ -85,7 +100,7 @@ def detect(tool_name: str, tool_input: dict) -> list[str]:
     hits: list[str] = []
     if tool_name == "Bash":
         cmd = tool_input.get("command", "") or ""
-        hits += match_patterns(ARCH_BASH_VERBS, cmd)
+        hits += match_patterns(ARCH_BASH_VERBS, _strip_heredocs(cmd))
         return hits
     if tool_name in ("Edit", "Write"):
         fp = tool_input.get("file_path", "") or ""
