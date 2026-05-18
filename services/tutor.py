@@ -22,6 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
+from services.retrieval.typed_hybrid import RetrievedNode
 from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
@@ -127,7 +128,7 @@ SUBMIT_GROUNDED_ANSWER_TOOL: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class Citation:
-    chunk_id: str
+    node_id: int
     doc_id: str
     page_num: int | None
     section: str | None
@@ -161,13 +162,13 @@ class GroundedAnswer:
 
 
 @dataclass(frozen=True)
-class HydratedChunkContext:
-    chunk_id: str
+class HydratedNodeContext:
+    node_id: int
     doc_id: str
     document_name: str
     section: str | None
     page_num: int | None
-    content: str
+    verbatim_text: str
     snippet: str
     score: float
 
@@ -486,34 +487,115 @@ def _payload_concept_id(payload: Any) -> str | None:
     return None
 
 
-def _fallback_quote(context: HydratedChunkContext) -> str:
+def _fallback_quote(context: HydratedNodeContext) -> str:
     if context.snippet.strip():
         return context.snippet.strip()
-    return context.content.strip()[:240]
+    return context.verbatim_text.strip()[:240]
 
 
-def _citation_payload(context: HydratedChunkContext, *, quote: str | None = None) -> Dict[str, Any]:
+def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None) -> Dict[str, Any]:
     section_label = context.section or "Excerpt"
     snippet = (quote or _fallback_quote(context)).strip()
+    # API payload keys (`chunk_id`, `content`) stay on the legacy names
+    # until T05 of AUTONOMOUS_WORK_PLAN.md ports api_models.py +
+    # response_model + frontend together. Internal field reads use the
+    # renamed attributes from HydratedNodeContext.
     return {
-        "chunk_id": context.chunk_id,
+        "chunk_id": context.node_id,
         "document_id": context.doc_id,
         "document_name": context.document_name,
         "section": context.section,
         "page_num": context.page_num,
         "snippet": snippet,
-        "content": context.content,
+        "content": context.verbatim_text,
         "score": round(context.score, 6),
         "label": f"{context.document_name} · {section_label}",
     }
 
 
-def _hydrate_chunk_context(
-    hits: Sequence[ScoredHit],
+def _hydrate_node_context(
+    hits: Sequence[ScoredHit] | Sequence[RetrievedNode],
     conn: sqlite3.Connection,
-) -> list[HydratedChunkContext]:
+) -> list[HydratedNodeContext]:
+    """Hydrate citation context from either retrieval shape.
+
+    Dispatches on hit type so both paths coexist until Phase 4 flips
+    `RETRIEVAL_USE_NODES` to default-on:
+    - `RetrievedNode` (typed-node path) → SELECT FROM documents for the
+      filename only; the rest of the citation context comes from fields
+      retrieval already populated (`verbatim_text`, `heading_path`, `page`).
+    - `ScoredHit` (legacy chunks path) → SELECT FROM chunks JOIN documents.
+      Still the active path at call sites that read `search_hybrid`.
+
+    T01 transitional state is contained to the chunks branch: `node_id`
+    carries a str UUID there until callers move to the nodes branch.
+    """
     if not hits:
         return []
+    if isinstance(hits[0], RetrievedNode):
+        return _hydrate_from_nodes(hits, conn)  # type: ignore[arg-type]
+    return _hydrate_from_chunks(hits, conn)  # type: ignore[arg-type]
+
+
+def _hydrate_from_nodes(
+    hits: Sequence[RetrievedNode],
+    conn: sqlite3.Connection,
+) -> list[HydratedNodeContext]:
+    """Nodes-path hydration (RETRIEVAL_USE_NODES=true).
+
+    `RetrievedNode` already carries verbatim_text, heading_path, page,
+    so the SQL only fetches `documents.filename` for the user-facing
+    citation label. Returns `HydratedNodeContext` with the real integer
+    `nodes.id` in `node_id` (no transitional str UUID here).
+    """
+    doc_ids = list({hit.doc_id for hit in hits})
+    placeholders = ",".join("?" * len(doc_ids))
+    rows = conn.execute(
+        f"SELECT id, filename FROM documents WHERE id IN ({placeholders})",
+        doc_ids,
+    ).fetchall()
+    by_doc = {str(row["id"]): str(row["filename"]) for row in rows}
+    contexts: list[HydratedNodeContext] = []
+    for hit in hits:
+        document_name = by_doc.get(hit.doc_id)
+        if document_name is None:
+            # CLAUDE.md "no silent fallbacks": make the orphaned-hit
+            # case visible rather than quietly relabeling. A node should
+            # not exist without its document (FK cascade in 0016), so
+            # this is a data-integrity signal, not a normal path.
+            log_event(
+                LOGGER,
+                "warning",
+                "tutor_hydrate_orphaned_node",
+                node_id=hit.node_id,
+                doc_id=hit.doc_id,
+            )
+            document_name = "Source"
+        contexts.append(
+            HydratedNodeContext(
+                node_id=hit.node_id,
+                doc_id=hit.doc_id,
+                document_name=document_name,
+                section=hit.heading_path or None,
+                page_num=hit.page,
+                verbatim_text=strip_extraction_artifacts(hit.verbatim_text),
+                snippet=strip_extraction_artifacts(hit.snippet),
+                score=float(hit.score),
+            )
+        )
+    return contexts
+
+
+def _hydrate_from_chunks(
+    hits: Sequence[ScoredHit],
+    conn: sqlite3.Connection,
+) -> list[HydratedNodeContext]:
+    """Legacy chunks-path hydration (RETRIEVAL_USE_NODES=false).
+
+    Preserves the T01 transitional state: `hit.chunk_id` is a str UUID
+    that flows through `HydratedNodeContext.node_id` until Phase 4
+    completes the full migration off chunks.
+    """
     chunk_ids = [hit.chunk_id for hit in hits]
     placeholders = ",".join("?" * len(chunk_ids))
     rows = conn.execute(
@@ -526,12 +608,18 @@ def _hydrate_chunk_context(
         chunk_ids,
     ).fetchall()
     by_id = {str(row["id"]): row for row in rows}
-    contexts: list[HydratedChunkContext] = []
+    contexts: list[HydratedNodeContext] = []
     for hit in hits:
         row = by_id.get(hit.chunk_id)
         contexts.append(
-            HydratedChunkContext(
-                chunk_id=hit.chunk_id,
+            HydratedNodeContext(
+                # T01 transitional: hit.chunk_id is still a str UUID
+                # sourced from chunks; node_id will carry a real int
+                # after Phase 4 flips RETRIEVAL_USE_NODES default-on
+                # and callers move to the nodes branch. Python
+                # dataclasses don't enforce annotations at runtime, so
+                # the string flows through harmlessly until then.
+                node_id=hit.chunk_id,
                 doc_id=hit.doc_id,
                 document_name=str(row["document_name"]) if row else "Source",
                 section=str(row["section"]) if row and row["section"] else hit.section,
@@ -539,7 +627,7 @@ def _hydrate_chunk_context(
                 # Strip PDF math extraction artifacts (PUA chars, empty
                 # parens) before the chunk reaches the LLM or operator
                 # surfaces. See Pass 3a plan / services/extraction/text_artifacts.py.
-                content=strip_extraction_artifacts(
+                verbatim_text=strip_extraction_artifacts(
                     str(row["content"] or "") if row else hit.snippet
                 ),
                 # Codex P2: snippet flows straight into the citation
@@ -554,7 +642,7 @@ def _hydrate_chunk_context(
     return contexts
 
 
-def _build_user_prompt(question: str, contexts: Sequence[HydratedChunkContext]) -> str:
+def _build_user_prompt(question: str, contexts: Sequence[HydratedNodeContext]) -> str:
     lines = [f"<question>{escape(question)}</question>", "<chunks>"]
     for index, context in enumerate(contexts, start=1):
         doc = escape(context.document_name, quote=True)
@@ -566,28 +654,30 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedChunkContext]) 
         # block. Escape the XML boundary tokens in the chunk body so the
         # model never sees a literal boundary that closes the wrap. The
         # system prompt documents the sentinel mapping at rule 4.
-        lines.append(escape_chunk_xml(context.content))
+        lines.append(escape_chunk_xml(context.verbatim_text))
         lines.append("</chunk>")
     lines.append("</chunks>")
     return "\n".join(lines)
 
 
-def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedChunkContext]:
-    # Codex P2: this path bypassed _hydrate_chunk_context's artifact
+def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
+    # Codex P2: this path bypassed _hydrate_node_context's artifact
     # cleanup, so scope-fallback chunks (when retrieval returns nothing
     # and we widen to subject/doc scope) still rendered PUA boxes and
     # empty parens. Run the same strip the primary path does.
-    contexts: list[HydratedChunkContext] = []
+    contexts: list[HydratedNodeContext] = []
     for row in rows:
         cleaned = strip_extraction_artifacts(str(row["content"] or ""))
         contexts.append(
-            HydratedChunkContext(
-                chunk_id=str(row["id"]),
+            HydratedNodeContext(
+                # T01 transitional: row["id"] is the chunks.id TEXT
+                # PK until T02/T03 port these queries to FROM nodes.
+                node_id=str(row["id"]),
                 doc_id=str(row["doc_id"]),
                 document_name=str(row["document_name"] or "Source"),
                 section=str(row["section"]) if row["section"] else None,
                 page_num=int(row["page_num"]) if row["page_num"] is not None else None,
-                content=cleaned,
+                verbatim_text=cleaned,
                 snippet=cleaned[:240],
                 score=0.0,
             )
@@ -602,7 +692,7 @@ def _fallback_contexts_from_scope(
     subject_name: str | None,
     concept_id: str | None,
     limit: int,
-) -> list[HydratedChunkContext]:
+) -> list[HydratedNodeContext]:
     if concept_id:
         concept = conn.execute(
             "SELECT source_chunks FROM concepts WHERE id = ?",
@@ -661,17 +751,20 @@ def _fallback_contexts_from_scope(
 
 def _flatten_claim_citations(
     claims: Sequence[Claim],
-    contexts: Sequence[HydratedChunkContext],
+    contexts: Sequence[HydratedNodeContext],
 ) -> list[Dict[str, Any]]:
-    context_by_chunk_id = {context.chunk_id: context for context in contexts}
+    context_by_node_id = {context.node_id: context for context in contexts}
     flattened: list[Dict[str, Any]] = []
-    seen: set[str] = set()
+    # T01 transitional: node_id is annotated int but transitionally
+    # carries a str UUID until T02. set[str | int] reflects the actual
+    # runtime contents; tightens to set[int] after T02.
+    seen: set[str | int] = set()
     for claim in claims:
         for citation in claim.citations:
-            if citation.chunk_id in seen:
+            if citation.node_id in seen:
                 continue
-            seen.add(citation.chunk_id)
-            context = context_by_chunk_id.get(citation.chunk_id)
+            seen.add(citation.node_id)
+            context = context_by_node_id.get(citation.node_id)
             if context is None:
                 continue
             flattened.append(_citation_payload(context, quote=citation.quote))
@@ -680,18 +773,18 @@ def _flatten_claim_citations(
 
 def _serialize_claims(
     claims: Sequence[Claim],
-    contexts: Sequence[HydratedChunkContext],
+    contexts: Sequence[HydratedNodeContext],
 ) -> list[Dict[str, Any]]:
-    context_by_chunk_id = {context.chunk_id: context for context in contexts}
+    context_by_node_id = {context.node_id: context for context in contexts}
     serialized: list[Dict[str, Any]] = []
     for claim in claims:
         serialized.append(
             {
                 "text": claim.text,
                 "citations": [
-                    _citation_payload(context_by_chunk_id[citation.chunk_id], quote=citation.quote)
+                    _citation_payload(context_by_node_id[citation.node_id], quote=citation.quote)
                     for citation in claim.citations
-                    if citation.chunk_id in context_by_chunk_id
+                    if citation.node_id in context_by_node_id
                 ],
             }
         )
@@ -699,7 +792,7 @@ def _serialize_claims(
 
 
 def _passages_only_fallback(
-    contexts: Sequence[HydratedChunkContext],
+    contexts: Sequence[HydratedNodeContext],
     *,
     error: str,
     latency_ms: float = 0.0,
@@ -710,10 +803,10 @@ def _passages_only_fallback(
 ) -> GroundedAnswer:
     claims = tuple(
         Claim(
-            text=context.snippet or context.content[:240],
+            text=context.snippet or context.verbatim_text[:240],
             citations=(
                 Citation(
-                    chunk_id=context.chunk_id,
+                    node_id=context.node_id,
                     doc_id=context.doc_id,
                     page_num=context.page_num,
                     section=context.section,
@@ -766,7 +859,7 @@ def _empty_retrieval_answer(question: str) -> GroundedAnswer:
 
 def _resolve_grounded_answer(
     result: ClaudeCallResult,
-    contexts: Sequence[HydratedChunkContext],
+    contexts: Sequence[HydratedNodeContext],
     *,
     question: str,
     concept_name: str | None,
@@ -799,7 +892,7 @@ def _resolve_grounded_answer(
                 citation_drop_count += 1
                 continue
             context = contexts[chunk_index - 1]
-            matched_quote = validated_citation_quote(quote, context.content)
+            matched_quote = validated_citation_quote(quote, context.verbatim_text)
             if matched_quote is None:
                 citation_drop_count += 1
                 continue
@@ -807,7 +900,7 @@ def _resolve_grounded_answer(
                 citation_repair_count += 1
             citations.append(
                 Citation(
-                    chunk_id=context.chunk_id,
+                    node_id=context.node_id,
                     doc_id=context.doc_id,
                     page_num=context.page_num,
                     section=context.section,
@@ -883,7 +976,7 @@ def grounded_citations(
         subject_name=_normalized_subject_name(subject_name),
         limit=limit,
     )
-    contexts = _hydrate_chunk_context(hits, conn)
+    contexts = _hydrate_node_context(hits, conn)
     return [_citation_payload(context) for context in contexts]
 
 
@@ -965,7 +1058,7 @@ def grounded_tutor_response(
         subject_name=_normalized_subject_name(subject_name),
         limit=resolved_top_k,
     )
-    contexts = _hydrate_chunk_context(hits, conn)
+    contexts = _hydrate_node_context(hits, conn)
     scope_fallback_used = False
     if not contexts:
         contexts = _fallback_contexts_from_scope(
@@ -1024,9 +1117,11 @@ def grounded_tutor_response(
         # ranked by retrieval score so taking the head is correct.
         afm_contexts = list(contexts[:_AFM_MAX_CHUNKS])
         grounded_chunks = [
+            # GroundedChunk is the AFM bridge's wire shape and still
+            # uses chunk_id; T01 only renames tutor-side dataclasses.
             GroundedChunk(
-                chunk_id=ctx.chunk_id,
-                text=ctx.content,
+                chunk_id=ctx.node_id,
+                text=ctx.verbatim_text,
                 doc_id=ctx.doc_id,
                 page_num=ctx.page_num,
                 section=ctx.section,
@@ -1142,16 +1237,21 @@ def grounded_tutor_envelope(
         router=router,
     )
 
+    # T01 transitional: node_id still carries the chunks.id TEXT
+    # value until T02 ports retrieval to FROM nodes. The IN-clause
+    # below joins chunks.id on these values so the legacy str UUID is
+    # what we need here; the local name `chunk_ids` reflects that.
     chunk_ids = []
-    seen_chunk_ids: set[str] = set()
+    # T01 transitional: see seen-set comment in _flatten_claim_citations.
+    seen_node_ids: set[str | int] = set()
     for claim in grounded.claims:
         for citation in claim.citations:
-            if citation.chunk_id in seen_chunk_ids:
+            if citation.node_id in seen_node_ids:
                 continue
-            seen_chunk_ids.add(citation.chunk_id)
-            chunk_ids.append(citation.chunk_id)
+            seen_node_ids.add(citation.node_id)
+            chunk_ids.append(citation.node_id)
     flat_contexts = (
-        _hydrate_chunk_context(
+        _hydrate_node_context(
             [
                 ScoredHit(
                     chunk_id=context_row["id"],

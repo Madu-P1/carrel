@@ -347,7 +347,10 @@ def run_case(
         subject_name=scope_subject,
         router=router,
     )
-    cited_chunk_ids = {citation.chunk_id for claim in answer.claims for citation in claim.citations}
+    # T01 transitional: Citation.node_id still holds the chunks.id TEXT
+    # value until T02 ports retrieval to FROM nodes. The chunks WHERE
+    # lookup below depends on that. Local names track the surfaced value.
+    cited_chunk_ids = {citation.node_id for claim in answer.claims for citation in claim.citations}
     overlap = cited_chunk_ids & expected_chunks
     citation_precision = len(overlap) / max(len(cited_chunk_ids), 1)
     citation_recall = len(overlap) / max(len(expected_chunks), 1)
@@ -359,7 +362,7 @@ def run_case(
             quote_total += 1
             chunk_row = conn.execute(
                 "SELECT content FROM chunks WHERE id = ?",
-                (citation.chunk_id,),
+                (citation.node_id,),
             ).fetchone()
             if chunk_row and _normalized_substring_match(
                 citation.quote, str(chunk_row["content"] or "")

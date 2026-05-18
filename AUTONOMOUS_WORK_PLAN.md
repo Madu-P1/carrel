@@ -59,7 +59,7 @@ Conventions per task:
 ## T01 — Phase 3 slice β.1: rename Citation chunk_id → node_id
 
 **Plan ref:** Phase 3 task 1 + 2 (the dataclass rename, type change str → int).
-**Status:** pending
+**Status:** done — PR #53 (draft), commits `1b2f45c9` (functional rename) + `b77f75c0` (rater fix: seen-set typing), rated 100/100 SHIP on 2026-05-18.
 **Deps:** none (main has the validators module from #46 + slice α from #48)
 **Effort:** 1 iteration
 **Acceptance:** `services/tutor.py` `Citation` dataclass uses `node_id: int` (was `chunk_id: str`). `HydratedChunkContext` renamed to `HydratedNodeContext` with `node_id: int` + `verbatim_text: str` (was `chunk_id: str` + `content: str`). All internal references updated. tutor.py compiles + `tests/test_tutor_grounded.py` updated to use new names and passes.
@@ -69,10 +69,10 @@ Conventions per task:
 ## T02 — Phase 3 slice β.2: port _hydrate_chunk_context to nodes
 
 **Plan ref:** Phase 3 task 1, the primary `FROM chunks` query at the old line 560.
-**Status:** pending
+**Status:** done — PR #53 (draft), commits `4786cc34` (dual-shape rename) + `7866e7bd` (rater gap-closure: orphaned-node log + tests + plan-doc), rated 100/100 SHIP on 2026-05-18.
 **Deps:** T01
 **Effort:** 1 iteration
-**Acceptance:** `_hydrate_chunk_context` (renamed `_hydrate_node_context`) queries `FROM nodes JOIN documents` instead of `FROM chunks JOIN documents`. Returns a list of `HydratedNodeContext` with `verbatim_text` populated from `nodes.verbatim_text`. `services.retrieval.search_hybrid` callers continue to work; if `RETRIEVAL_USE_NODES=true`, they get nodes; if false, they fall back through the legacy `ScoredHit` shape (already supported).
+**Acceptance:** `_hydrate_chunk_context` (renamed `_hydrate_node_context`) sources its `verbatim_text` / `heading_path` / `page` / integer `node_id` from `nodes` rather than from `chunks`. In practice the data arrives pre-populated on the `RetrievedNode` dataclass at retrieval time (see `services/retrieval/typed_hybrid.py:32-54`, which selects `FROM nodes JOIN node_embeddings JOIN node_fts`), so the hydration helper only needs a `SELECT id, filename FROM documents` round-trip for the user-facing citation label. Returns a list of `HydratedNodeContext` with `verbatim_text` populated from `nodes.verbatim_text`. `services.retrieval.search_hybrid` callers continue to work; if `RETRIEVAL_USE_NODES=true`, they get nodes; if false, they fall back through the legacy `ScoredHit` shape (already supported).
 **Verify:** canonical chain + manual smoke: ask a question, confirm node-id-keyed citations appear in the response.
 **Guards:** do not break the `RETRIEVAL_USE_NODES=false` path; both paths coexist until Phase 4 flips the flag. If both code paths get too tangled, surface a refactor request rather than ship spaghetti.
 
