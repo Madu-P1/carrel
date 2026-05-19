@@ -178,19 +178,32 @@ You are running unattended. The operator is not at the keyboard. Do NOT ask the 
 
 - Pick the next task yourself from the plan or TODOS.md. Do not enumerate options for the operator.
 - Pick commit messages, branch names, file paths, and refactor scopes yourself. Apply Conventional Commits style.
-- Resolve ambiguity in plan files by reading the surrounding context (CLAUDE.md, prior ADRs, recent commits) and making the call. If the call is genuinely 50/50 on a non-architectural choice, default to the option that ships sooner with smaller diff.
+- Resolve ambiguity in plan files by reading the surrounding context (CLAUDE.md, prior ADRs, recent commits, the operator-decisions section at the top of `AUTONOMOUS_WORK_PLAN.md`) and making the call. If the call is genuinely 50/50 on a non-architectural choice, default to the option that ships sooner with smaller diff.
 - For architectural decisions (per the trigger criteria above), the proponent + adversary + synthesizer subagents decide, not the operator. You read the synthesizer verdict and act on it.
 - For major actions, the independent-auditor decides, not the operator. You spawn the auditor, read its verdict, and proceed or revise.
 - For quality scoring, the quality-rater decides, not the operator. You iterate until a fresh-context spawn returns 100.
 
 The ONLY moments you stop and surface to the operator are:
 
-1. The preflight halt conditions (working tree not clean, on main branch, stale plan).
-2. The runtime halt conditions (plan exhausted, 5 unsuccessful iterations, 3 auditor rejections on same hash, destructive action requested, test regression > 3, scope drift, 8-hour cap, .claude/HALT file).
+1. The preflight halt conditions (working tree not clean AND the dirty files do not match the dirty-tree continuation rule above, on main branch with a task that needs a feature branch, stale plan > 14 days).
+2. The runtime halt conditions (plan exhausted, 5 unsuccessful iterations on the same feature, 3 auditor rejections on same hash, destructive action requested, test regression > 3 without justification, scope drift logged in `.claude/logs/scope-drift.jsonl`, 8-hour wall-clock cap, `.claude/HALT` file).
 3. An outreach task surfaced as the only remaining work (operator handles outreach manually).
 4. A genuinely novel architectural choice the synthesizer flags THIRD_OPTION_REQUIRED three times in a row.
 
 For everything else: decide and proceed. Do not write "should I X or Y?" Decide. If the decision is wrong, the auditor or rater will catch it and you will iterate.
+
+### Things that are NEVER reasons to voluntarily halt
+
+The 2026-05-19 max-autonomy directive in `AUTONOMOUS_WORK_PLAN.md` makes these non-halt-reasons explicit. If any of the following come up mid-session, decide and continue, do not write status.md and stop:
+
+- **PR scope ambiguity** ("should I bundle these tasks on one PR or split them?"). Default: branch fresh off `main` for every task per the 2026-05-19 directive. One task = one PR unless two tasks are mechanically coupled (e.g., a migration and the code that requires it).
+- **Branching strategy questions** ("continue on the same feature branch or branch fresh off main?"). Default: branch fresh off `main`.
+- **Context budget anxiety** ("session is getting long, should I checkpoint and stop?"). Answer: no. Run until a real halt condition fires. The 8-hour wall-clock cap is the only time-based halt. Context compaction is the harness's job, not yours.
+- **Data-modeling questions inside a task's stated scope** ("the acceptance text assumes a column that doesn't exist, what should I do?"). Read the surrounding code, infer the intended translation key, edit the acceptance text in the work plan to record what you picked, and proceed. Surface as a one-line follow-up in `.claude/logs/operator-followups.jsonl` so the operator sees the change on their next review pass, but do not halt.
+- **PR-merge readiness anxiety** ("the PR is green, should I admin-merge it or wait for the operator?"). Auditor decides. If the auditor approves the `gh pr merge`, merge. The operator authorized auto-merge after rater 100 in the build-only scope (see `.claude/AUTONOMOUS_SCOPE.md`).
+- **Cross-PR landing questions** ("PR #N's work is on a staging branch but the next task needs it on main, what do I do?"). Open the staging→main PR yourself, run the verify chain on the merged result, auditor-approve, merge, then branch the next task off main. Do not surface this as an operator decision.
+
+If you find yourself drafting a status.md entry that names "operator should decide ..." for anything not in the four ONLY-stop conditions above, stop drafting and apply the decide-and-proceed default instead.
 
 ## Begin
 

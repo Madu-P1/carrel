@@ -113,5 +113,6 @@ Whenever scope shifts, append a row to a new `## History` section at the bottom 
 | 2026-05-12 | Initial scope (build-only, no outreach) | Operator decision to keep the routine narrowly scoped during first multi-week run |
 | 2026-05-17 | OUTREACH_BASH_PATTERNS expanded to include generic external POST/PUT/DELETE | Self-audit found gaps; covers webhook hosts the original pattern missed |
 | 2026-05-18 | This file written | Documents the existing constraints + provides operator handle for future changes |
+| 2026-05-19 | Max-autonomy directive: no voluntary halts on self-resolvable ambiguity | Operator decision after reviewing T01-T03 loop output. The loop voluntarily halted on T03 over a PR-strategy question and a column-name ambiguity in the acceptance text, both of which were self-resolvable. Strengthened `.claude/commands/carrel-build.md` decide-and-proceed contract with a "Things that are NEVER reasons to voluntarily halt" section. Expanded Bash allowlist in `settings.local.json` so the harness never prompts the operator during loop runs. Encoded the two T03 decisions (branch fresh off main; chunk→node page-level translation is acceptable) in the `Operator decisions` header of `AUTONOMOUS_WORK_PLAN.md`. Outreach + destructive gates unchanged. |
 
-*Last updated 2026-05-18.*
+*Last updated 2026-05-19.*

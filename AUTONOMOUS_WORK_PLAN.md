@@ -8,7 +8,17 @@
 >
 > **Verify chain canonical:** see [`CLAUDE.md`](CLAUDE.md) §"Verify chain (run before any merge)" lines 39-49. Every task that lands code runs the full chain before ship.
 >
-> **Date created:** 2026-05-17. **Last status update:** 2026-05-18.
+> **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
+
+## Operator decisions — 2026-05-19 (max-autonomy directive)
+
+Operator authorized the routine to run at maximum autonomy within the existing build-only scope. The two T03 questions surfaced in `.claude/logs/status.md` (2026-05-18) are answered:
+
+1. **PR strategy from T04 onward:** branch fresh off `main` for every task. No more stacked PRs on a long-lived staging branch. T03's work on `staging/loop-batch-2-2026-05-18` (PR #54) must reach `main` before T04 starts; the loop opens a `staging/loop-batch-2-2026-05-18 → main` PR, gets auditor approval, merges, then branches T04 off the now-T03-containing `main`.
+2. **T03 chunk-to-node translation:** the page-level `(doc_id, page_num)` join is acceptable as the interim translation key. The concept-scoped fallback returns empty when no node rows resolve, which is the correct behavior under the "no silent fallbacks" rule. Re-ingestion in Phase 4 will re-key `concepts.source_chunks` directly to node ids and the translation becomes 1:1 anyway.
+3. **No voluntary halts.** The loop does not pause to ask the operator about PR strategy, branch naming, scope ambiguity within a single task, context budget, or "should I continue?". Decide-and-proceed per `.claude/commands/carrel-build.md`. Halt only on the runtime conditions in that file (HALT file, rater 25-nudge cap, auditor 3-rejection cap, destructive action requested, 8-hour wall clock, scope drift, test count regression > 3 without justification, plan exhausted).
+4. **Outreach + destructive gates unchanged.** Build-only scope still enforced by `OUTREACH_BASH_PATTERNS` and `DESTRUCTIVE_BASH_PATTERNS` in `.claude/hooks/audit-gate.py`. Operator owns those.
+5. **Kill switch.** `touch /Users/madu/Desktop/Codex/.claude/HALT` stops the routine cleanly at next hook fire.
 
 ## How the loop picks tasks
 
@@ -79,10 +89,10 @@ Conventions per task:
 ## T03 — Phase 3 slice β.3: port 3 fallback queries to nodes
 
 **Plan ref:** Phase 3 task 1, fallback queries at old lines 655, 671, 686.
-**Status:** pending
+**Status:** done — PR #54, commit `7a75a05d`, merged onto `staging/loop-batch-2-2026-05-18` on 2026-05-19. Operator approved the page-level `(doc_id, page_num)` translation key in the 2026-05-19 max-autonomy directive (see operator-decisions section above). T03 work reaches `main` via the staging→main PR that the next loop iteration opens before starting T04.
 **Deps:** T02
 **Effort:** 1 iteration
-**Acceptance:** `_fallback_contexts_from_scope` queries `FROM nodes` for the concept-scoped, doc-scoped, and subject-scoped fallback paths. `concepts.source_chunks` column is read as before (semantic links to old chunks); the lookup translates chunk_ids to node_ids via a join on doc_id + canonical char_start. If translation fails, the path returns empty.
+**Acceptance:** `_fallback_contexts_from_scope` queries `FROM nodes` for the concept-scoped, doc-scoped, and subject-scoped fallback paths. `concepts.source_chunks` column is read as before (semantic links to old chunks); the lookup translates chunk_ids to node_ids via a join on `(doc_id, page_num)` — operator-approved interim key since `chunks` lacks a `char_start` column. If translation fails (no node rows resolve), the path returns empty per the "no silent fallbacks" rule. Re-ingestion in Phase 4 re-keys `concepts.source_chunks` to node ids directly and the translation becomes 1:1.
 **Verify:** canonical chain + scope-fallback unit tests pass; manually confirm a concept-scoped Ask query returns nodes from the right concept.
 **Guards:** do not silently fall back from nodes to chunks at runtime. Either both work or surface ok=False; CLAUDE.md "no silent fallbacks".
 
