@@ -140,12 +140,12 @@ Conventions per task:
 ## T08 — Phase 3 slice γ.3: side-by-side smoke (`RETRIEVAL_USE_NODES` on vs off)
 
 **Plan ref:** Phase 3 task 5.
-**Status:** pending
+**Status:** in_progress — branch `feat/t08-eval-compare-nodes-2026-05-19`
 **Deps:** T07
 **Effort:** 0.5 iteration
-**Acceptance:** run `evals/run_evals.py --mode smoke --label compare-nodes-on` with `RETRIEVAL_USE_NODES=true`, then `--label compare-nodes-off` with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-{date}.md`.
-**Verify:** the comparison report numbers.
-**Guards:** do not ship if node path regresses either metric; mark `Status: blocked` and surface to operator.
+**Acceptance:** run `evals/run_evals.py --mode full` with `RETRIEVAL_USE_NODES=true`, then with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-2026-05-19.md`. **Mode pivot from smoke to full** mirrors T07: smoke mode is pre-existing broken (FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit). Full mode is the canonical quality bar per CLAUDE.md §Benchmarks+budgets. **Architectural note:** the eval harness calls `grounded_tutor_response` (not `grounded_tutor_envelope`), so the `RETRIEVAL_USE_NODES` dispatch in `_hydrate_cited_contexts` is bypassed; the flag only affects the eval's measurement surface via `_fallback_contexts_from_scope` (fires only when primary retrieval returns empty). Expected outcome is therefore "equal" on cases where primary retrieval succeeds, with the report explicitly documenting why and surfacing the architectural limit so Phase 4 re-ingestion + flag-flip work isn't surprised.
+**Verify:** the comparison report numbers, plus the canonical chain.
+**Guards:** do not ship if node path regresses either metric; mark `Status: blocked` and surface to operator. Honest reporting trumps performative measurement: if the eval's measurement surface can't distinguish the two paths, say so in the report rather than fabricating divergence.
 
 ## T09 — Phase 3 slice γ.4: fail-closed regression test on Null provider
 
