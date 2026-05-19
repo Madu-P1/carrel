@@ -123,7 +123,7 @@ class EvalsRunnerTests(unittest.TestCase):
                     components={"fts": 0.02},
                     sources=("fts",),
                 )
-                with mock.patch("evals.run_evals.search_hybrid", return_value=[hit]):
+                with mock.patch("evals.run_evals.tutor_primary_retrieval", return_value=[hit]):
                     with mock.patch("services.tutor.search_hybrid", return_value=[hit]):
                         metrics = run_evals.run_case(
                             case,

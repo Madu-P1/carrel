@@ -118,6 +118,7 @@ within seconds. Verify the kill path with `bash tests/test_watchdog_kill.sh`.
 - **Grounded answer:** p50 ~4s, p95 ~7s (Sonnet 4.6 latency envelope). Acceptable given product shape.
 - **Ingestion:** phase0 benchmark fails on regression vs `data/benchmarks/baseline.json`.
 - **Quality:** `evals-full` suite must keep `groundedness@8 ≥ 0.7` and `quote_validity ≥ 0.95` (currently 0.857 + 1.0 after PR-D3d quote retrofit, reaffirmed 2026-05-19 post-T05+T06 citation rename). `--mode smoke` is the fast retrieval-only path and does NOT produce `quote_validity`; the canonical quality bar is `--mode full`.
+- **Side-by-side `RETRIEVAL_USE_NODES` comparison run (T08 reopen, post-T57):** the chunks-path run keeps the default env; the nodes-path run sets BOTH `RETRIEVAL_USE_NODES=true` AND `INGEST_USE_DOCLING=true` so the eval's isolated DB populates the `nodes` / `node_fts` / `node_embeddings` tables via the Docling typed-node ingest path. Without `INGEST_USE_DOCLING=true` on the nodes-path run the nodes tables stay empty and the comparison regresses vacuously. The eval-harness id-space dispatch (`tutor_primary_retrieval` in `services/tutor.py` + `RetrievedNode` handling in `evals/run_evals.py::run_case`) is wired in T57. Commit comparison reports under `evals/reports/compare-*.md`.
 
 ## Design System
 

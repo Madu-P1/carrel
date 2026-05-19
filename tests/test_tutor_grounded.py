@@ -794,6 +794,156 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertEqual("claude-sonnet-4-6", response["model"])
 
 
+class TutorPrimaryRetrievalDispatchTests(unittest.TestCase):
+    """T57 — verify `tutor_primary_retrieval` dispatches on
+    `retrieval_use_nodes_enabled()`.
+
+    Flag off (default): route through `search_hybrid` (legacy chunks-based
+    hybrid). Flag on: route through `search_typed_hybrid` (typed-node FTS
+    + vector). Both branches feed `_hydrate_node_context`, which already
+    dispatches on hit shape, so the dispatch is the single hook the
+    `RETRIEVAL_USE_NODES` flag controls at the primary retrieval site.
+
+    This unit test locks the integration the T08 first-pass run surfaced
+    as missing (see `evals/reports/compare-nodes-2026-05-19.md` and the
+    T57 entry in `AUTONOMOUS_WORK_PLAN.md`). Without this dispatch the
+    flag had zero observable effect at the primary retrieval call sites.
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.base_dir = Path(self.temp_dir.name)
+        self.original_base_dir = main.BASE_DIR
+        self.original_data_dir = main.DATA_DIR
+        self.original_upload_dir = main.UPLOAD_DIR
+        self.original_db_path = main.DB_PATH
+        self.original_schema_path = main.SCHEMA_PATH
+
+        main.BASE_DIR = self.base_dir
+        main.DATA_DIR = self.base_dir / "data"
+        main.UPLOAD_DIR = main.DATA_DIR / "uploads"
+        main.DB_PATH = main.DATA_DIR / "test.db"
+        main.SCHEMA_PATH = self.original_schema_path
+        main.initialize_database()
+
+    def tearDown(self) -> None:
+        main.BASE_DIR = self.original_base_dir
+        main.DATA_DIR = self.original_data_dir
+        main.UPLOAD_DIR = self.original_upload_dir
+        main.DB_PATH = self.original_db_path
+        main.SCHEMA_PATH = self.original_schema_path
+        self.temp_dir.cleanup()
+
+    def test_flag_off_routes_to_search_hybrid(self) -> None:
+        chunks_sentinel = [
+            ScoredHit(
+                chunk_id="ck-1",
+                doc_id="doc-a",
+                section="Core",
+                snippet="chunks branch",
+                score=0.42,
+                components={"fts": 0.42},
+                sources=("fts",),
+            )
+        ]
+        with main.get_db() as conn:
+            with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False):
+                with (
+                    mock.patch(
+                        "services.tutor.search_hybrid", return_value=chunks_sentinel
+                    ) as chunks_mock,
+                    mock.patch(
+                        "services.tutor.search_typed_hybrid", return_value=["nodes-sentinel"]
+                    ) as nodes_mock,
+                ):
+                    hits = tutor_service.tutor_primary_retrieval(
+                        conn,
+                        "Explain mitosis.",
+                        doc_ids=None,
+                        subject_name="Biology",
+                        limit=8,
+                    )
+
+        self.assertIs(chunks_sentinel, hits)
+        self.assertEqual(1, chunks_mock.call_count)
+        self.assertEqual(0, nodes_mock.call_count)
+        kwargs = chunks_mock.call_args.kwargs
+        self.assertEqual("Biology", kwargs["subject_name"])
+        self.assertIsNone(kwargs["doc_ids"])
+        self.assertEqual(8, kwargs["limit"])
+
+    def test_flag_on_routes_to_search_typed_hybrid(self) -> None:
+        nodes_sentinel = [
+            tutor_service.RetrievedNode(
+                node_id=7,
+                doc_id="doc-a",
+                node_type="body",
+                heading_path="Core",
+                page=1,
+                char_start=0,
+                char_end=42,
+                verbatim_text="nodes branch",
+                snippet="nodes branch",
+                score=0.42,
+                components={"fts": 0.42},
+                sources=("fts",),
+            )
+        ]
+        with main.get_db() as conn:
+            with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "true"}, clear=False):
+                with (
+                    mock.patch(
+                        "services.tutor.search_hybrid", return_value=["chunks-sentinel"]
+                    ) as chunks_mock,
+                    mock.patch(
+                        "services.tutor.search_typed_hybrid", return_value=nodes_sentinel
+                    ) as nodes_mock,
+                ):
+                    hits = tutor_service.tutor_primary_retrieval(
+                        conn,
+                        "Explain mitosis.",
+                        doc_ids=["doc-a"],
+                        subject_name=None,
+                        limit=8,
+                    )
+
+        self.assertIs(nodes_sentinel, hits)
+        self.assertEqual(0, chunks_mock.call_count)
+        self.assertEqual(1, nodes_mock.call_count)
+        kwargs = nodes_mock.call_args.kwargs
+        self.assertIsNone(kwargs["subject_name"])
+        self.assertEqual(["doc-a"], kwargs["doc_ids"])
+        self.assertEqual(8, kwargs["limit"])
+
+    def test_grounded_tutor_response_uses_dispatcher(self) -> None:
+        """End-to-end: `grounded_tutor_response` exercises the dispatcher
+        on the primary retrieval call site (services/tutor.py:1273)."""
+        with main.get_db() as conn:
+            conn.execute(
+                "INSERT INTO documents (id, filename, file_type, subject_name, status)"
+                " VALUES (?, ?, 'txt', ?, 'ready')",
+                ("doc-a", "bio.txt", "Biology"),
+            )
+            conn.commit()
+            with mock.patch.dict(
+                os.environ,
+                {"RETRIEVAL_USE_NODES": "true", "GROUNDED_TUTOR": "off"},
+                clear=False,
+            ):
+                with (
+                    mock.patch("services.tutor.search_hybrid", return_value=[]) as chunks_mock,
+                    mock.patch("services.tutor.search_typed_hybrid", return_value=[]) as nodes_mock,
+                ):
+                    tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=StubRouter(enabled=False)
+                    )
+
+        # With the flag on, dispatcher MUST hit the typed-hybrid path
+        # at the primary retrieval site, not the legacy chunks hybrid.
+        self.assertEqual(0, chunks_mock.call_count)
+        self.assertEqual(1, nodes_mock.call_count)
+
+
 class HydrateNodeContextDispatchTests(unittest.TestCase):
     """T02 — verify `_hydrate_node_context` dispatches on hit shape.
 

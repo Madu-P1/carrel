@@ -22,7 +22,11 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
-from services.retrieval.typed_hybrid import RetrievedNode, retrieval_use_nodes_enabled
+from services.retrieval.typed_hybrid import (
+    RetrievedNode,
+    retrieval_use_nodes_enabled,
+    search_typed_hybrid,
+)
 from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
@@ -512,6 +516,47 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
         "score": round(context.score, 6),
         "label": f"{context.document_name} · {section_label}",
     }
+
+
+def tutor_primary_retrieval(
+    conn: sqlite3.Connection,
+    question: str,
+    *,
+    doc_ids: list[str] | None,
+    subject_name: str | None,
+    limit: int,
+) -> Sequence[ScoredHit] | Sequence[RetrievedNode]:
+    """T57 primary-retrieval dispatch for grounded tutor + eval harness.
+
+    Routes on `retrieval_use_nodes_enabled()`:
+    - flag on  -> `search_typed_hybrid` (queries `node_fts` + `node_embeddings`,
+      returns `list[RetrievedNode]` with int `node_id`).
+    - flag off -> `search_hybrid` (queries `chunks_fts` + `chunks_vec`,
+      returns `list[ScoredHit]` with str-UUID `chunk_id`).
+
+    Both sides feed `_hydrate_node_context`, which already dispatches on
+    hit shape, so callers don't change downstream. The flag-on branch
+    returns whatever the nodes tables hold — including empty when
+    typed-node ingestion (`INGEST_USE_DOCLING`) hasn't populated them.
+    CLAUDE.md "no silent fallbacks": empty primary retrieval surfaces
+    through the same path as the chunks branch (scope fallback then
+    `_empty_retrieval_answer`); no auto-switch back to chunks.
+    """
+    if retrieval_use_nodes_enabled():
+        return search_typed_hybrid(
+            conn,
+            question,
+            doc_ids=doc_ids,
+            subject_name=subject_name,
+            limit=limit,
+        )
+    return search_hybrid(
+        conn,
+        question,
+        doc_ids=doc_ids,
+        subject_name=subject_name,
+        limit=limit,
+    )
 
 
 def _hydrate_node_context(
@@ -1225,7 +1270,7 @@ def grounded_citations(
     subject_name: str | None = None,
     limit: int = 4,
 ) -> List[Dict[str, Any]]:
-    hits = search_hybrid(
+    hits = tutor_primary_retrieval(
         conn,
         question,
         doc_ids=doc_ids,
@@ -1307,7 +1352,7 @@ def grounded_tutor_response(
         clean_concept_label(str(concept["name"])) if concept and concept.get("name") else None
     )
 
-    hits = search_hybrid(
+    hits = tutor_primary_retrieval(
         conn,
         question,
         doc_ids=resolved_doc_ids,
