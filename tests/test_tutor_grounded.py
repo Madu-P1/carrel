@@ -1184,5 +1184,139 @@ class FallbackContextsFromScopeTests(unittest.TestCase):
         self.assertEqual(contexts, [])
 
 
+class HydrateCitedContextsTests(unittest.TestCase):
+    """T04 — verify `_hydrate_cited_contexts` dispatches on the same
+    RETRIEVAL_USE_NODES flag the rest of the tutor stack does.
+
+    Two paths:
+      1. flag on → SELECT FROM nodes WHERE id IN, RetrievedNode hits,
+         HydratedNodeContext with int node_id and verbatim_text from
+         nodes.verbatim_text.
+      2. flag off → SELECT FROM chunks WHERE id IN, ScoredHit hits,
+         HydratedNodeContext built via `_hydrate_from_chunks`.
+
+    Guard: empty cited_ids returns []; cited_ids that find no rows
+    return [] (no silent fallback between the two paths).
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.base_dir = Path(self.temp_dir.name)
+        self.original_base_dir = main.BASE_DIR
+        self.original_data_dir = main.DATA_DIR
+        self.original_upload_dir = main.UPLOAD_DIR
+        self.original_db_path = main.DB_PATH
+        self.original_schema_path = main.SCHEMA_PATH
+
+        main.BASE_DIR = self.base_dir
+        main.DATA_DIR = self.base_dir / "data"
+        main.UPLOAD_DIR = main.DATA_DIR / "uploads"
+        main.DB_PATH = main.DATA_DIR / "test.db"
+        main.SCHEMA_PATH = self.original_schema_path
+        main.initialize_database()
+
+    def tearDown(self) -> None:
+        main.BASE_DIR = self.original_base_dir
+        main.DATA_DIR = self.original_data_dir
+        main.UPLOAD_DIR = self.original_upload_dir
+        main.DB_PATH = self.original_db_path
+        main.SCHEMA_PATH = self.original_schema_path
+        self.temp_dir.cleanup()
+
+    @staticmethod
+    def _insert_document(conn, doc_id: str, filename: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO documents (id, filename, file_type, subject_name, status)
+            VALUES (?, ?, 'txt', 'Biology', 'ready')
+            """,
+            (doc_id, filename),
+        )
+
+    @staticmethod
+    def _insert_chunk(conn, chunk_id: str, doc_id: str, content: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO chunks (id, doc_id, content, section, page_num, chunk_index, token_count)
+            VALUES (?, ?, ?, 'Core', 1, 1, ?)
+            """,
+            (chunk_id, doc_id, content, len(content.split())),
+        )
+
+    @staticmethod
+    def _insert_node(conn, doc_id: str, verbatim_text: str, *, page: int = 1) -> int:
+        cursor = conn.execute(
+            """
+            INSERT INTO nodes (
+                doc_id, node_type, heading_path, page, char_start, char_end,
+                verbatim_text, reading_order
+            ) VALUES (?, 'body', 'Core', ?, 0, ?, ?, 1)
+            """,
+            (doc_id, page, len(verbatim_text), verbatim_text),
+        )
+        return int(cursor.lastrowid)
+
+    def test_returns_empty_for_empty_cited_ids(self) -> None:
+        with main.get_db() as conn:
+            self.assertEqual(tutor_service._hydrate_cited_contexts(conn, []), [])
+
+    def test_nodes_path_resolves_int_node_ids_to_hydrated_contexts(self) -> None:
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "true"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                node_id = self._insert_node(
+                    conn,
+                    "doc-a",
+                    "Mitosis separates duplicated chromosomes.",
+                )
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, [node_id])
+
+        self.assertEqual(1, len(contexts))
+        ctx = contexts[0]
+        self.assertEqual(node_id, ctx.node_id)
+        self.assertEqual("doc-a", ctx.doc_id)
+        self.assertEqual("bio.txt", ctx.document_name)
+        self.assertEqual("Mitosis separates duplicated chromosomes.", ctx.verbatim_text)
+
+    def test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts(self) -> None:
+        # RETRIEVAL_USE_NODES default is false; rely on it.
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.txt")
+            self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
+            conn.commit()
+            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
+
+        self.assertEqual(1, len(contexts))
+        ctx = contexts[0]
+        # chunks-path keeps the TEXT UUID under the T01 transitional contract.
+        self.assertEqual("chunk-a", ctx.node_id)
+        self.assertEqual("doc-a", ctx.doc_id)
+        self.assertEqual("bio.txt", ctx.document_name)
+        self.assertIn("Meiosis", ctx.verbatim_text)
+
+    def test_nodes_path_returns_empty_when_no_node_rows_resolve(self) -> None:
+        # Flag on, but cited ids reference no existing node rows.
+        # No silent fallback to chunks — return empty.
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "true"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                # A chunk exists for doc-a but the flag-on path must
+                # not silently degrade to it.
+                self._insert_chunk(conn, "chunk-orphan", "doc-a", "Orphan text.")
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, [9999])
+
+        self.assertEqual([], contexts)
+
+    def test_chunks_path_returns_empty_when_no_chunk_rows_resolve(self) -> None:
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.txt")
+            conn.commit()
+            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-missing"])
+
+        self.assertEqual([], contexts)
+
+
 if __name__ == "__main__":
     unittest.main()

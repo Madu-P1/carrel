@@ -907,6 +907,103 @@ def _fallback_contexts_from_scope_chunks(
     return []
 
 
+def _hydrate_cited_contexts(
+    conn: sqlite3.Connection,
+    cited_ids: Sequence[Any],
+) -> list[HydratedNodeContext]:
+    """Post-grounded-answer hydration for the ids the LLM cited.
+
+    T04 dual-path port. Citation.node_id holds:
+    - nodes.id (int) when RETRIEVAL_USE_NODES=true.
+    - chunks.id (TEXT UUID) when the flag is false (default until Phase 4).
+
+    Dispatches on `retrieval_use_nodes_enabled()` so citation-flattening
+    works end-to-end on whichever path retrieval ran. Returns the same
+    `HydratedNodeContext` shape as the primary and scope-fallback paths
+    so `_flatten_claim_citations` and `_serialize_claims` consume it
+    uniformly.
+
+    No silent runtime fallback between the two: a flag-on path that
+    finds no rows returns empty, matching CLAUDE.md's "no silent
+    fallbacks" rule.
+    """
+    if not cited_ids:
+        return []
+    if retrieval_use_nodes_enabled():
+        return _hydrate_cited_contexts_nodes(conn, cited_ids)
+    return _hydrate_cited_contexts_chunks(conn, cited_ids)
+
+
+def _hydrate_cited_contexts_nodes(
+    conn: sqlite3.Connection,
+    cited_ids: Sequence[Any],
+) -> list[HydratedNodeContext]:
+    placeholders = ",".join("?" * len(cited_ids))
+    rows = conn.execute(
+        f"""
+        SELECT id, doc_id, node_type, heading_path, page,
+               char_start, char_end, verbatim_text
+        FROM nodes
+        WHERE id IN ({placeholders})
+        """,
+        list(cited_ids),
+    ).fetchall()
+    if not rows:
+        return []
+    hits = [
+        RetrievedNode(
+            node_id=int(row["id"]),
+            doc_id=str(row["doc_id"]),
+            node_type=str(row["node_type"] or ""),
+            heading_path=str(row["heading_path"] or ""),
+            page=int(row["page"]) if row["page"] is not None else None,
+            char_start=int(row["char_start"]) if row["char_start"] is not None else 0,
+            char_end=int(row["char_end"])
+            if row["char_end"] is not None
+            else (
+                int(row["char_start"]) + len(str(row["verbatim_text"] or ""))
+                if row["char_start"] is not None
+                else len(str(row["verbatim_text"] or ""))
+            ),
+            verbatim_text=str(row["verbatim_text"] or ""),
+            snippet=str(row["verbatim_text"] or "")[:240],
+            score=1.0,
+        )
+        for row in rows
+    ]
+    return _hydrate_node_context(hits, conn)
+
+
+def _hydrate_cited_contexts_chunks(
+    conn: sqlite3.Connection,
+    cited_ids: Sequence[Any],
+) -> list[HydratedNodeContext]:
+    placeholders = ",".join("?" * len(cited_ids))
+    rows = conn.execute(
+        f"""
+        SELECT c.id, c.doc_id, c.section, c.content
+        FROM chunks c
+        WHERE c.id IN ({placeholders})
+        """,
+        list(cited_ids),
+    ).fetchall()
+    if not rows:
+        return []
+    hits = [
+        ScoredHit(
+            chunk_id=row["id"],
+            doc_id=row["doc_id"],
+            section=row["section"],
+            snippet=str(row["content"] or "")[:240],
+            score=1.0,
+            components={},
+            sources=(),
+        )
+        for row in rows
+    ]
+    return _hydrate_node_context(hits, conn)
+
+
 def _flatten_claim_citations(
     claims: Sequence[Claim],
     contexts: Sequence[HydratedNodeContext],
@@ -1395,47 +1492,21 @@ def grounded_tutor_envelope(
         router=router,
     )
 
-    # T01 transitional: node_id still carries the chunks.id TEXT
-    # value until T02 ports retrieval to FROM nodes. The IN-clause
-    # below joins chunks.id on these values so the legacy str UUID is
-    # what we need here; the local name `chunk_ids` reflects that.
-    chunk_ids = []
-    # T01 transitional: see seen-set comment in _flatten_claim_citations.
+    # Collect the unique citation ids the LLM emitted. Under T01's
+    # dual-path contract these are either chunks.id TEXT UUIDs
+    # (RETRIEVAL_USE_NODES=false, the default) or nodes.id integers
+    # (RETRIEVAL_USE_NODES=true). The post-grounded lookup below
+    # dispatches on the same flag to read FROM the matching table.
+    cited_ids: list[Any] = []
     seen_node_ids: set[str | int] = set()
     for claim in grounded.claims:
         for citation in claim.citations:
             if citation.node_id in seen_node_ids:
                 continue
             seen_node_ids.add(citation.node_id)
-            chunk_ids.append(citation.node_id)
-    flat_contexts = (
-        _hydrate_node_context(
-            [
-                ScoredHit(
-                    chunk_id=context_row["id"],
-                    doc_id=context_row["doc_id"],
-                    section=context_row["section"],
-                    snippet=str(context_row["content"] or "")[:240],
-                    score=1.0,
-                    components={},
-                    sources=(),
-                )
-                for context_row in conn.execute(
-                    f"""
-                SELECT c.id, c.doc_id, c.section, c.content
-                FROM chunks c
-                WHERE c.id IN ({",".join("?" * len(chunk_ids))})
-                """
-                    if chunk_ids
-                    else "SELECT NULL AS id, NULL AS doc_id, NULL AS section, NULL AS content WHERE 0",
-                    chunk_ids,
-                ).fetchall()
-            ],
-            conn,
-        )
-        if chunk_ids
-        else []
-    )
+            cited_ids.append(citation.node_id)
+
+    flat_contexts = _hydrate_cited_contexts(conn, cited_ids)
 
     citations = _flatten_claim_citations(grounded.claims, flat_contexts)
     claims = _serialize_claims(grounded.claims, flat_contexts)

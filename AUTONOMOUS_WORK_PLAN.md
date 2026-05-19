@@ -100,7 +100,7 @@ Conventions per task:
 ## T04 — Phase 3 slice β.4: port post-grounded-answer chunks lookup
 
 **Plan ref:** Phase 3 task 1, the 5th `FROM chunks` query at old line 1206.
-**Status:** pending
+**Status:** in_progress — branch `feat/t04-post-grounded-nodes-lookup`
 **Deps:** T03
 **Effort:** 0.5 iteration
 **Acceptance:** the post-`grounded` chunks lookup that builds `flat_contexts` for `_flatten_claim_citations` queries `FROM nodes` instead. Citation flattening works end-to-end on the node-id path.
