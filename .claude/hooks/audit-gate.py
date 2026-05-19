@@ -90,6 +90,59 @@ def _strip_heredocs(cmd: str) -> str:
     return HEREDOC_PATTERN.sub("\n", cmd)
 
 
+# Trailing-redirection patterns. Stripped from the HASHED form of a command
+# only — never from the form used by is_major's verb-pattern matching. The
+# leading command verb determines the action class; trailing pipes to display
+# utilities and tmp/dev-null redirects are output handling and do not change
+# what the action does. Strip them so identical actions with cosmetic
+# differences in output handling (`git log | tail -5` vs `git log | head -20`)
+# share an auditor approval. Conservative on purpose: only pipes-to-known-
+# safe-utilities + standard stdout/stderr redirects. A pipe to an unknown
+# program (e.g., `... | python3 process.py`) is left intact since it could
+# change semantics.
+#
+# Iterative application: `... 2>&1 | tee /tmp/log` strips the tee first,
+# then the 2>&1 redirect on the next pass.
+TRAILING_REDIRECTION_PATTERNS = [
+    # `| <safe-utility> ...` at end of command
+    r"\s*\|\s*(tail|head|less|more|cat|column|sort|uniq|wc|tr|cut|fzf|jq|grep|rg|sed|awk|xargs|tee|nl|fmt|expand|unexpand|rev|paste|fold|join|comm|diff|cmp)\b[^|]*$",
+    # Standard stderr/stdout redirects
+    r"\s*2>&1\s*$",
+    r"\s*2>\s*/dev/null\s*$",
+    r"\s*&>\s*/dev/null\s*$",
+    r"\s*>\s*/dev/null\s*$",
+    r"\s*<\s*/dev/null\s*$",
+    # Writing to a tmp file (operator-local, cosmetic for approval)
+    r"\s*>\s*/tmp/\S+\s*$",
+    r"\s*>>\s*/tmp/\S+\s*$",
+    r"\s*2>\s*/tmp/\S+\s*$",
+]
+
+
+def _strip_trailing_redirections(cmd: str) -> str:
+    """Iteratively strip cosmetic trailing pipes and redirections from `cmd`.
+
+    Applied only to the hashed form of a Bash command, never to the form
+    used by `is_major` to detect destructive/outreach/major verbs. Stripping
+    a `| tail -5` or `2>&1` from the hash means a retry with different
+    output formatting hits the same approval entry, saving an auditor spawn.
+
+    Conservative: only strips pipes to a known-safe utility set + standard
+    stdout/stderr redirects + tmp-file writes. Pipes to unknown programs
+    are preserved because they may change semantics.
+    """
+    if not cmd:
+        return cmd
+    stripped = cmd
+    while True:
+        before = stripped
+        for pattern in TRAILING_REDIRECTION_PATTERNS:
+            stripped = re.sub(pattern, "", stripped, flags=re.IGNORECASE)
+        stripped = stripped.rstrip()
+        if stripped == before:
+            return stripped
+
+
 MAJOR_BASH_PATTERNS = [
     r"\bgit\s+commit\b",
     r"\bgit\s+push\b",
@@ -243,7 +296,15 @@ def main() -> None:
         hash_input.pop("description", None)
         raw_cmd = hash_input.get("command", "") or ""
         if raw_cmd:
-            hash_input["command"] = _strip_heredocs(raw_cmd)
+            # Strip heredocs (commit-message bodies, etc.) AND trailing
+            # cosmetic redirections (`| tail -5`, `2>&1`, `> /tmp/log`).
+            # Both protect the hash from non-semantic command variance so
+            # identical actions hit the same approval. is_major above still
+            # runs against the full command for safety, so destructive
+            # verbs in the leading part are never missed.
+            normalized = _strip_heredocs(raw_cmd)
+            normalized = _strip_trailing_redirections(normalized)
+            hash_input["command"] = normalized
     canonical_parts: dict = {"tool": tool_name, "input": hash_input}
     if tool_name == "Bash":
         cmd = tool_input.get("command", "") or ""
