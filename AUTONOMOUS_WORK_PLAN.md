@@ -90,7 +90,7 @@ Conventions per task:
 ## T03 — Phase 3 slice β.3: port 3 fallback queries to nodes
 
 **Plan ref:** Phase 3 task 1, fallback queries at old lines 655, 671, 686.
-**Status:** done — PR #54, commit `7a75a05d`, merged onto `staging/loop-batch-2-2026-05-18` on 2026-05-19, landed on main via the `land/t03-to-main` staging→main PR on 2026-05-19. Operator approved the page-level `(doc_id, page_num)` translation key in the 2026-05-19 max-autonomy directive (see operator-decisions section above).
+**Status:** done — PR #54 on `staging/loop-batch-2-2026-05-18` (commit `7a75a05d`), landed on `main` via PR #55 (squash commit `2c56ca09`) on 2026-05-19. The landing PR included a dual-path fix (`fix(tutor): gate T03 scope-fallback on RETRIEVAL_USE_NODES`) that restores T02's `RETRIEVAL_USE_NODES=false` contract at the fallback layer — caught by `tests.test_learning_os.LearningOSBackendTests.test_tutor_exchange_persists_evidence_and_workspace_v2_surfaces_it` on the merge. Operator approved the page-level `(doc_id, page_num)` translation key in the 2026-05-19 max-autonomy directive (see operator-decisions section above).
 **Deps:** T02
 **Effort:** 1 iteration
 **Acceptance:** `_fallback_contexts_from_scope` queries `FROM nodes` for the concept-scoped, doc-scoped, and subject-scoped fallback paths. `concepts.source_chunks` column is read as before (semantic links to old chunks); the lookup translates chunk_ids to node_ids via a join on `(doc_id, page_num)` — operator-approved interim key since `chunks` lacks a `char_start` column. If translation fails (no node rows resolve), the path returns empty per the "no silent fallbacks" rule. Re-ingestion in Phase 4 re-keys `concepts.source_chunks` to node ids directly and the translation becomes 1:1.
