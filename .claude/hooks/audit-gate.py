@@ -93,8 +93,11 @@ def _strip_heredocs(cmd: str) -> str:
 MAJOR_BASH_PATTERNS = [
     r"\bgit\s+commit\b",
     r"\bgit\s+push\b",
-    r"\bgit\s+merge\b(?!\s*--abort)",
-    r"\bgit\s+rebase\b(?!\s*--abort)",
+    # `\s+` (not `\b`) after merge/rebase so `git merge-tree`, `git merge-base`,
+    # `git merge-file`, `git rebase-todo` (all read-only or stateless) do not
+    # match. Word boundary after merge would match before the hyphen.
+    r"\bgit\s+merge\s+(?!--abort)",
+    r"\bgit\s+rebase\s+(?!--abort)",
     r"\bgit\s+reset\b",
     r"\bgit\s+tag\b",
     r"\balembic\s+(upgrade|downgrade|revision)\b",
@@ -104,7 +107,11 @@ MAJOR_BASH_PATTERNS = [
     r"\bnpm\s+(install|uninstall|publish)\b",
     r"\bswift\s+package\s+(add|update)\b",
     r"\bcurl\s+[^|]*\|\s*(sh|bash|zsh)\b",
-    r"\bgh\s+(pr|release|workflow|issue)\s+",
+    # Negative lookahead for read-only `gh` subcommands so they skip the
+    # auditor spawn. `gh pr list|view|checks|status|diff`, `gh issue list|view|status`,
+    # `gh release list|view`, `gh workflow list|view` are inherently safe.
+    # `gh pr create|edit|merge|close|reopen|comment|review|ready` still match.
+    r"\bgh\s+(pr|release|workflow|issue)\s+(?!(list|view|checks|status|diff|describe)\b)",
 ]
 
 MAJOR_FILE_PATTERNS = [
@@ -222,9 +229,21 @@ def main() -> None:
     # never affects what the shell runs. Drop it from the hash so relabeling
     # does not force a re-audit on identical commands. The pending file still
     # records the full tool_input including description.
+    #
+    # Also strip heredoc bodies from the hashed command (2026-05-19 fix). A
+    # `git commit -m "$(cat <<EOF ... EOF)"` whose body contains a timestamp
+    # or any free-text variance would otherwise hash differently on every
+    # retry and force a fresh auditor verdict, even though the verb +
+    # outer-command surface and the staged diff are identical. The
+    # staged_diff_hash below still disambiguates by content for git commit,
+    # so dropping the message body from the hash is safe: an approved diff
+    # stays approved across message edits, and a new diff still re-audits.
     hash_input = dict(tool_input)
     if tool_name == "Bash":
         hash_input.pop("description", None)
+        raw_cmd = hash_input.get("command", "") or ""
+        if raw_cmd:
+            hash_input["command"] = _strip_heredocs(raw_cmd)
     canonical_parts: dict = {"tool": tool_name, "input": hash_input}
     if tool_name == "Bash":
         cmd = tool_input.get("command", "") or ""
