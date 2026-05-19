@@ -67,7 +67,11 @@ export function saveAskAnchorDraft({
   sourceKind,
   citation
 }: SaveAskAnchorDraftInput): { draft: AskAnchorDraft; status: "created" | "updated" } {
-  const chunkId = citation?.chunk_id ?? null;
+  // The anchor system's `chunkId` is still the str-keyed anchor field
+  // (the `anchors.chunk_id` column rename is T14, not T05/T06). Source
+  // it from the tutor citation's renamed `node_id`: str-UUID on the
+  // chunks branch and int on the nodes branch, both string-coerced.
+  const chunkId = citation?.node_id != null ? String(citation.node_id) : null;
   const documentId = citation?.document_id ?? null;
   const dedupeId = [sourceKind, documentId ?? "no-doc", chunkId ?? "no-chunk", title].join("::");
   const draft: AskAnchorDraft = {
@@ -119,7 +123,7 @@ export async function saveCitationAnchor({
   }
   const response = await anchors.create({
     document_id: citation.document_id,
-    chunk_id: citation.chunk_id ?? null,
+    chunk_id: citation.node_id != null ? String(citation.node_id) : null,
     page_num: citation.page_num ?? null,
     quote_text: quoteText || citation.snippet || citation.content || claimText,
     claim_text: claimText,

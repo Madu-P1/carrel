@@ -38,20 +38,25 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
     setResolved(null);
     setPreviewError(false);
     requestKeyRef.current = "";
-  }, [citation.chunk_id, citation.document_id]);
+  }, [citation.node_id, citation.document_id]);
+
+  // `node_id` is `number | string` after T05: int on the nodes branch,
+  // str-UUID on the legacy chunks branch. Both the flight registry and
+  // the evidence resolve API key on a string, so coerce once here.
+  const nodeIdKey = citation.node_id != null ? String(citation.node_id) : "";
 
   const handleClick = () => {
     // SM-2: capture the chip's rect + HTML before navigation so the Reader
-    // can spawn a ghost that flies from here to the target chunk.
+    // can spawn a ghost that flies from here to the target node.
     const el = chipRef.current;
-    if (el && citation.chunk_id) {
+    if (el && nodeIdKey) {
       registerFlight({
         kind: "citation-chip",
-        id: citation.chunk_id,
+        id: nodeIdKey,
         rect: el.getBoundingClientRect(),
         html: el.outerHTML,
         docId: citation.document_id,
-        chunkId: citation.chunk_id,
+        nodeId: nodeIdKey,
       });
     }
     onClick?.(citation);
@@ -66,7 +71,7 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
   const preview = previewTextFor(citation);
   const confidence = Math.round(((resolved?.confidence ?? citation.score ?? 0.7) || 0) * 100);
   const resolvedQuote = (resolved?.quote_text ?? preview).trim();
-  const locationKind = resolved?.location_kind ?? (citation.chunk_id ? "chunk" : "page");
+  const locationKind = resolved?.location_kind ?? (nodeIdKey ? "chunk" : "page");
   const locationCopy = locationKind === "bbox" || locationKind === "text_offset"
     ? "Exact span"
     : "Approximate passage";
@@ -110,7 +115,7 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
       return undefined;
     }
 
-    const requestKey = `${citation.document_id}:${citation.chunk_id ?? ""}`;
+    const requestKey = `${citation.document_id}:${nodeIdKey}`;
     if (requestKey === requestKeyRef.current && (resolved || previewError)) {
       return undefined;
     }
@@ -119,7 +124,7 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
     setPreviewError(false);
     void evidence.resolve({
       documentId: citation.document_id,
-      chunkId: citation.chunk_id
+      chunkId: nodeIdKey || null
     })
       .then((result) => {
         if (active) {
@@ -134,14 +139,14 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
     return () => {
       active = false;
     };
-  }, [citation.chunk_id, citation.document_id, previewError, previewOpen, resolved]);
+  }, [citation.document_id, nodeIdKey, previewError, previewOpen, resolved]);
 
   useEffect(() => () => clearHoverTimer(), []);
 
   const chip = (
     <button
       className={[styles.citationChip, "anim-fadeUp"].join(" ")}
-      data-chunk-id={citation.chunk_id}
+      data-node-id={nodeIdKey || undefined}
       onClick={handleClick}
       ref={chipRef}
       style={{ animationDelay: `${delayMs}ms` }}

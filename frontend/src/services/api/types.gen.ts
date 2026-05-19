@@ -2844,8 +2844,8 @@ export interface components {
         };
         /** TutorCitationItem */
         TutorCitationItem: {
-            /** Chunk Id */
-            chunk_id: string;
+            /** Node Id */
+            node_id: number | string;
             /** Document Id */
             document_id: string;
             /** Document Name */

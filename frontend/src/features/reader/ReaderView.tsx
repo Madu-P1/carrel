@@ -91,8 +91,11 @@ function ReaderDocumentView({
   const openCardDialog = useCallback(() => setCardDialogOpen(true), []);
 
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
-  // animate it to the target chunk.
-  useCitationFlight(id, chunkId);
+  // animate it to the target chunk. T06 re-keyed the flight on `node_id`
+  // so the chip-registered key matches what the URL carries (`?node=`).
+  // The legacy `?chunk=` path no longer feeds a flight (the chip stopped
+  // writing chunkId-keyed entries) so passing `null` here is correct.
+  useCitationFlight(id, nodeId != null ? String(nodeId) : null);
   // PR 4.2: if the user arrived via Ask card click (?node=N), fetch
   // the node, navigate to its page, and highlight the verbatim_text in
   // the rendered DOM. Independent of the chunk path so deep links from

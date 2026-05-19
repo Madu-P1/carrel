@@ -16,7 +16,7 @@ test("claim list renders claims and clicking a citation chip fires the handler",
   fireEvent.click(screen.getByRole("button", { name: /Cell division basics/i }));
 
   expect(onCitationClick).toHaveBeenCalledTimes(1);
-  expect(onCitationClick.mock.calls[0]?.[0]?.chunk_id).toBe("demo-1");
+  expect(onCitationClick.mock.calls[0]?.[0]?.node_id).toBe("demo-1");
 });
 
 test("citation chip hover renders an inspectable evidence preview card", async () => {

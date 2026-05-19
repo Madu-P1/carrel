@@ -92,7 +92,7 @@ test("ClaimList renders tiered support copy, source locations, and card utilitie
   const card = within(firstCard as HTMLElement);
 
   expect(card.getByText(/Supporting passage from cell-division\.md on page 1\./i)).toBeDefined();
-  expect(card.getByText(/cell-division\.md · p\.1 · chunk demo-1/i)).toBeDefined();
+  expect(card.getByText(/cell-division\.md · p\.1 · node demo-1/i)).toBeDefined();
 
   fireEvent.click(card.getByRole("button", { name: /Copy/i }));
   expect(writeText).toHaveBeenCalledWith("Mitosis creates two genetically identical daughter cells.");

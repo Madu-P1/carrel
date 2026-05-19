@@ -53,10 +53,15 @@ def build_evidence_reference(
     confidence: Optional[float] = None,
 ) -> Dict[str, Any]:
     source_id = citation.get("document_id")
-    chunk_id = citation.get("chunk_id")
+    # T05 renamed the citation payload key from `chunk_id` to `node_id`.
+    # The evidence_references schema column is still `chunk_id` (T14
+    # migrates the column); SQLite TEXT affinity accepts the int value
+    # from the nodes branch and the str-UUID from the legacy chunks
+    # branch alike. Column rename and field rename land independently.
+    chunk_id = citation.get("node_id")
     anchor_text = (citation.get("snippet") or citation.get("content") or "").strip()
     if not source_id or not chunk_id or not anchor_text:
-        raise ValueError("Citation must include document_id, chunk_id, and snippet/content.")
+        raise ValueError("Citation must include document_id, node_id, and snippet/content.")
 
     existing = conn.execute(
         """

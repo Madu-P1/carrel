@@ -720,7 +720,7 @@ class GroundedTutorTests(unittest.TestCase):
 
         self.assertEqual("Mitosis separates duplicated chromosomes.", response["answer"])
         self.assertTrue(response["grounded"])
-        self.assertEqual("chunk-1", response["citations"][0]["chunk_id"])
+        self.assertEqual("chunk-1", response["citations"][0]["node_id"])
         self.assertEqual("doc-a", response["citations"][0]["document_id"])
         self.assertEqual("Mitosis separates duplicated chromosomes.", response["claims"][0]["text"])
         self.assertIn("unsupported_spans", response)
