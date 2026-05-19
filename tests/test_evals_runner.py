@@ -47,6 +47,30 @@ class EvalsRunnerTests(unittest.TestCase):
         self.assertEqual(14, report["summary"]["total_cases"])
         self.assertIn("groundedness_at_k", report["summary"])
 
+    def test_smoke_mode_short_circuits_before_answer_metrics(self) -> None:
+        # T07 lock: smoke mode returns at the `if mode == "smoke"` short-
+        # circuit in run_case, BEFORE grounded_tutor_response runs. Per-
+        # case results must NOT carry quote_validity / citation_precision
+        # / citation_recall keys (those are computed only in --mode full).
+        # Locks the invariant the T07 acceptance pivot rests on: the
+        # original `quote_validity ≥ 0.95 in smoke` criterion was
+        # structurally impossible, not merely empirically failing.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch(
+                "evals.run_evals.get_default_router",
+                side_effect=AssertionError("router should not load"),
+            ):
+                report = run_evals.run_suite("smoke", "smoke", report_dir=Path(temp_dir))
+
+        self.assertGreater(len(report["results"]), 0)
+        for case in report["results"]:
+            self.assertNotIn("quote_validity", case)
+            self.assertNotIn("citation_precision", case)
+            self.assertNotIn("citation_recall", case)
+            self.assertNotIn("ok", case)
+            self.assertIn("groundedness_at_k", case)
+        self.assertNotIn("quote_validity", report["summary"])
+
     def test_full_mode_computes_metrics_from_stub_router(self) -> None:
         result = ClaudeCallResult(
             ok=True,

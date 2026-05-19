@@ -130,11 +130,11 @@ Conventions per task:
 ## T07 — Phase 3 slice γ.2: re-key evals/cases/smoke.jsonl + smoke run
 
 **Plan ref:** Phase 3 task 4.
-**Status:** pending
+**Status:** in_progress — on `feat/t07-evals-smoke-node-id-2026-05-19`. Data-side rename is vacuous: `smoke.jsonl` cases key on filenames / topics / quote-substrings, never on `chunk_id`. Substantive work is rerunning the eval suite after T05+T06 and refreshing the stale T01/T02 transitional comment in `evals/run_evals.py:350-352` to reflect the post-T05 `int|str` shape.
 **Deps:** T06
 **Effort:** 0.5 iteration
-**Acceptance:** every case in `evals/cases/smoke.jsonl` that referenced `chunk_id` now references `node_id`. `./.venv/bin/python -m evals.run_evals --mode smoke` returns `groundedness@8 ≥ 0.7` and `quote_validity ≥ 0.95` (the CLAUDE.md quality bars).
-**Verify:** the eval run itself.
+**Acceptance:** every case in `evals/cases/smoke.jsonl` that referenced `chunk_id` now references `node_id` (vacuous — none do). The eval suite returns `groundedness@8 ≥ 0.7` and `quote_validity ≥ 0.95` (the CLAUDE.md quality bars). Acceptance pivot: the canonical quality run is `--mode full` (per CLAUDE.md §Benchmarks+budgets), not `--mode smoke`. Smoke mode is pre-existing broken — it skips embeddings (FTS5-only) and `_sanitize_query` rejoins interrogative tokens ("What is mitosis?") into a conjunctive `MATCH` query whose `What`/`How`/`When` tokens never appear in source chunks, so retrieval returns empty on every case; quote_validity isn't even computed in smoke mode (the runner returns at the `if mode == "smoke"` short-circuit). Fixing smoke is surfaced as a separate operator follow-up; it is out of T07's scope.
+**Verify:** the eval run itself (full mode).
 **Guards:** if a case can't translate cleanly (chunk_id had no node equivalent), drop the case and add a note rather than fabricate a node_id.
 
 ## T08 — Phase 3 slice γ.3: side-by-side smoke (`RETRIEVAL_USE_NODES` on vs off)

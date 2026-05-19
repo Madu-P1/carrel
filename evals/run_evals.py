@@ -347,12 +347,14 @@ def run_case(
         subject_name=scope_subject,
         router=router,
     )
-    # T01 transitional: Citation.node_id still holds the chunks.id TEXT
-    # value until T02 ports retrieval to FROM nodes. The chunks WHERE
-    # lookup below depends on that. Local names track the surfaced value.
-    cited_chunk_ids = {citation.node_id for claim in answer.claims for citation in claim.citations}
-    overlap = cited_chunk_ids & expected_chunks
-    citation_precision = len(overlap) / max(len(cited_chunk_ids), 1)
+    # Post-T05: Citation.node_id is `int | str` (chunks branch surfaces
+    # the legacy chunks.id str-UUID; nodes branch surfaces nodes.id int).
+    # The chunks WHERE lookup below is correct on the default chunks
+    # branch (the only branch the smoke eval exercises today); the
+    # nodes-branch comparison in T08 wires a parallel `FROM nodes` path.
+    cited_node_ids = {citation.node_id for claim in answer.claims for citation in claim.citations}
+    overlap = cited_node_ids & expected_chunks
+    citation_precision = len(overlap) / max(len(cited_node_ids), 1)
     citation_recall = len(overlap) / max(len(expected_chunks), 1)
 
     quote_total = 0
