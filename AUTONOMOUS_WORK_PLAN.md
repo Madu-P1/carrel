@@ -19,6 +19,7 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 3. **No voluntary halts.** The loop does not pause to ask the operator about PR strategy, branch naming, scope ambiguity within a single task, context budget, or "should I continue?". Decide-and-proceed per `.claude/commands/carrel-build.md`. Halt only on the runtime conditions in that file (HALT file, rater 25-nudge cap, auditor 3-rejection cap, destructive action requested, 8-hour wall clock, scope drift, test count regression > 3 without justification, plan exhausted).
 4. **Outreach + destructive gates unchanged.** Build-only scope still enforced by `OUTREACH_BASH_PATTERNS` and `DESTRUCTIVE_BASH_PATTERNS` in `.claude/hooks/audit-gate.py`. Operator owns those.
 5. **Kill switch.** `touch /Users/madu/Desktop/Codex/.claude/HALT` stops the routine cleanly at next hook fire.
+6. **Skill orchestration mandatory.** Before any substantive action the loop runs the pre-action routine in `.claude/commands/carrel-build.md` step 2: state the desired outcome, scan the available skills, pick 1-3 that fit the task type, run them inline, log the decision to `.claude/logs/skill-orchestration.jsonl`. Trivial tasks (formatting, status flip, doc reconciliation, dead-code removal) may skip with a populated `skipped_reason`. Rater rubric criterion D penalizes skipped orchestration on non-trivial work and wrong skill combinations.
 
 ## How the loop picks tasks
 

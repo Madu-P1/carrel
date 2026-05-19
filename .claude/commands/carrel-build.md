@@ -60,23 +60,58 @@ Repeat until a halt condition fires:
 
 **Task announcement:** announce the chosen task by ID + title (e.g., `T01: Phase 3 slice β.1 — rename Citation chunk_id to node_id`) so the operator-visible log carries the queue reference.
 
-### 2. Classify the task
+### 2. Skill orchestration: pre-action routine (mandatory for non-trivial tasks)
 
-The UserPromptSubmit routing hook will inject a skill suggestion. Honor it unless you have a documented reason not to. Skill routing table:
+Before writing any code or running any test for the chosen task, perform the skill-orchestration routine. The routine pays off in output quality by picking the right curated workflows for the task at hand. Skip ONLY for trivial mechanical work (formatting, status flips, doc reconciliation that adds no new claims, removing provably-dead code). Operator directive of 2026-05-19: this routine is now required at task start AND before any sub-decision that introduces or removes meaningful code logic.
 
-| Pattern | Skill |
-|---|---|
-| bug, broken, investigate, debug, crash | `/investigate` |
-| security, vulnerability, auth | `/cso` or `/security-review` |
-| ship, deploy, release | `/ship` then `/land-and-deploy` |
-| plan, architecture | `/claude-mem:make-plan` then `/claude-mem:do` or `/autoplan` |
-| accessibility, a11y, WCAG | `design:accessibility-review` |
-| performance, benchmark, slow | `/benchmark` |
-| visual polish, design review | `/design-review` |
-| refactor, simplify | `/simplify` then `/codex challenge` |
-| QA, test the site | `/qa` |
-| review my diff, code review | `/review` or `/codex` |
-| documentation | `engineering:documentation` |
+Steps:
+
+1. **State the desired outcome** in one sentence. Not "what am I doing" but "what does success look like." Example: "Success = the three scope-fallback queries read FROM nodes, return verbatim_text-populated HydratedNodeContext, the no-silent-fallback rule holds when translation produces zero rows, tests pin the regression, rater scores 100 first iteration." If you cannot write this sentence, you do not understand the task well enough to start coding; re-read the work plan + master plan + prior ADRs first.
+
+2. **Scan the available skills.** The Claude session has access to dozens of skills (see the system-prompt skill list, which is the source of truth, not this file). Pick candidates by matching the task on three axes:
+   - **Task type:** bug fix, feature add, refactor, security, performance, UI polish, docs, infra, test addition, cross-cutting.
+   - **Task surface:** backend (Python/services), frontend (React/Vite), Swift (macos-app/), DB (SQLite/migrations), AI (providers/grounded-answer), infra (CI/Docker/scripts).
+   - **Desired-outcome dimensions:** correctness, security, performance, UX, accessibility, tests, docs.
+
+3. **Score skill combinations against the outcome.** For each candidate, ask: does running it improve the desired outcome by a meaningful margin? A skill that catches a class of defect the rater rubric does not grade for is a win. A skill that duplicates auditor / rater work without adding signal is not.
+
+4. **Pick the combination. Prefer 1-3 skills max per task.** Default patterns:
+
+   | Task type | Pattern |
+   |---|---|
+   | Bug fix | `/investigate` then fix then `/codex challenge` then `/review` |
+   | Feature add (non-trivial arch) | `/plan-eng-review` then implement under `karpathy-guidelines` then `/review` |
+   | Feature add (trivial) | implement then `/review` |
+   | Refactor | `/simplify` then implement then `/codex consult` then `/review` |
+   | UI / visual change | `/plan-design-review` (plan mode) then implement then `/design-review` (live audit) |
+   | Accessibility | `design:accessibility-review` then fix then re-verify |
+   | Security / auth | `/cso` then fix then `/codex challenge` |
+   | Performance | `/benchmark` (baseline) then implement then `/benchmark` (compare) |
+   | Migration / schema | `/plan-eng-review` then implement then `/codex challenge` then `/review` |
+   | Test addition | `engineering:testing-strategy` then implement then `/codex challenge` (adversarial cases) |
+   | Documentation | `engineering:documentation` then write then `/review` |
+   | Cross-cutting refactor | `/autoplan` (runs full review gauntlet) |
+   | Ship workflow | `/ship` then `/land-and-deploy` |
+
+   The UserPromptSubmit routing hook may inject a single-skill suggestion based on the task title. Honor it as a candidate, but the full orchestration routine supersedes it: a single-skill route is the floor, not the ceiling.
+
+5. **Log the orchestration decision** to `.claude/logs/skill-orchestration.jsonl`. One JSON line per task: `{"ts", "task_id", "desired_outcome", "candidate_skills", "chosen_skills", "rationale", "skipped_reason"}`. If skipped (trivial task), set `chosen_skills: []` and explain why in `skipped_reason`. The operator audits this log over time and tunes the patterns.
+
+6. **Run the chosen skills inline as part of the task.** A skill is a step, not a phase. After `/investigate` writes its findings, act on them in step 5 (Implement). After `/review` fires before commit, fix any gaps it surfaces and re-verify. Each skill invocation is a normal subagent / skill call; no special wrapper.
+
+**Anti-patterns to avoid:**
+
+- Running every available skill on every task. That is noise, not rigor.
+- Running skills that duplicate auditor / rater work without adding new signal.
+- Skipping orchestration on tasks marked "trivial" without first verifying the task is genuinely trivial against the criteria above.
+- Defaulting to the largest skill (`/autoplan`, full review gauntlet) for every task. The pattern table is the default; reach for heavyweight skills only when the task type calls for them.
+- Treating the orchestration step as ceremony. The desired-outcome sentence is the binding contract.
+
+**Skipping the routine on a non-trivial task is a rater anti-pattern violation.** See `.claude/RATER_RUBRIC.md` criterion D.
+
+### 2.5. Sub-decision skill check (during implementation)
+
+The orchestration routine fires again, lightweight, when implementation hits a non-trivial sub-decision inside the task. Examples: a third option emerges for a data model, a test starts flaking and the root cause is unclear, a Swift concurrency annotation is required and the right choice is non-obvious, a perf-sensitive code path opens up. Pause, restate the sub-outcome in one sentence, pick the right skill (`/investigate` for unknown bugs, `/codex consult` for a second opinion, `/simplify` for an over-complicated solution, `karpathy-guidelines` for an overengineering check), run it, then resume. Log to the same `.claude/logs/skill-orchestration.jsonl` with a sub-decision marker in the JSON.
 
 ### 3. For architectural decisions: full adversarial debate
 
