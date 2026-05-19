@@ -33,7 +33,7 @@ Sum = 25. Any step red drops its full points to zero.
 - PR exists, title matches task title format `<type>(<scope>): <short>` per Carrel commit convention: **5**
 - PR body cites the task ID (e.g., "Closes T07 of AUTONOMOUS_WORK_PLAN.md"): **5**
 - PR body has a verifiable test-plan or verify-chain summary: **5**
-- PR target branch is `main` (not a stacked branch — we learned that stacked PRs auto-close on parent squash): **5**
+- PR target branch is `main` (not a stacked branch, since stacked PRs auto-close on parent squash): **5**. **Loop-isolated exception (added 2026-05-18):** when the operator routes a loop-isolated run to a staging branch (e.g., `staging/loop-batch-2-2026-05-18`), the PR target is that staging branch and the rater treats it as fully satisfying this clause; the staging branch is itself eventually merged into `main` as a single batch, so the no-stacked-PRs rationale still holds.
 
 ### Criterion D — No anti-pattern violations (15 points)
 

@@ -110,6 +110,39 @@ class GroundedTutorTests(unittest.TestCase):
             (chunk_id, doc_id, content, section, page_num, chunk_index, len(content.split())),
         )
 
+    def _insert_node(
+        self,
+        conn,
+        doc_id: str,
+        verbatim_text: str,
+        *,
+        heading_path: str = "Core",
+        page: int | None = 1,
+        char_start: int = 0,
+        char_end: int | None = None,
+        reading_order: int = 1,
+        node_type: str = "body",
+    ) -> int:
+        cursor = conn.execute(
+            """
+            INSERT INTO nodes (
+                doc_id, node_type, heading_path, page, char_start, char_end,
+                verbatim_text, reading_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                doc_id,
+                node_type,
+                heading_path,
+                page,
+                char_start,
+                char_end if char_end is not None else char_start + len(verbatim_text),
+                verbatim_text,
+                reading_order,
+            ),
+        )
+        return int(cursor.lastrowid)
+
     def _insert_concept(self, conn, concept_id: str, doc_id: str, name: str) -> None:
         conn.execute(
             """
@@ -503,19 +536,24 @@ class GroundedTutorTests(unittest.TestCase):
 
     def test_weak_coverage_refuses_when_scope_fallback_and_few_contexts(self) -> None:
         """Grounded-only refusal: query retrieval returns empty, scope
-        fallback produces only a couple of chunks, threshold is 3. We must
+        fallback produces only a couple of nodes, threshold is 3. We must
         refuse with error='weak_coverage' instead of asking the LLM to
         synthesize from thin evidence — that's the hallucination surface."""
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            # Only 2 chunks in the doc, both tangential to the question.
-            self._insert_chunk(conn, "chunk-1", "doc-a", "Ion channels.")
-            self._insert_chunk(conn, "chunk-2", "doc-a", "Membrane potential.")
+            # Only 2 nodes in the doc, both tangential to the question.
+            # T03: fallback queries FROM nodes, not FROM chunks.
+            self._insert_node(conn, "doc-a", "Ion channels.", reading_order=1)
+            self._insert_node(conn, "doc-a", "Membrane potential.", reading_order=2)
             conn.commit()
             router = StubRouter()
             # Hybrid search misses; scope fallback returns the 2 chunks.
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
-                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_USE_NODES": "true"},
+                    clear=False,
+                ):
                     response = tutor_service.grounded_tutor_response(
                         conn,
                         "Explain photosynthesis light reactions.",
@@ -531,24 +569,29 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertGreater(len(response.claims), 0)
 
     def test_scope_fallback_with_enough_contexts_still_calls_claude(self) -> None:
-        """Counter-case: scope fallback produces enough chunks (>= threshold).
+        """Counter-case: scope fallback produces enough nodes (>= threshold).
         Claude still runs because there's real material to synthesize from."""
         with main.get_db() as conn:
             self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            # 4 chunks >= _WEAK_COVERAGE_MIN_CONTEXTS (default 3).
+            # 4 nodes >= _WEAK_COVERAGE_MIN_CONTEXTS (default 3).
+            # T03: fallback queries FROM nodes, not FROM chunks.
             for i in range(4):
-                self._insert_chunk(
+                self._insert_node(
                     conn,
-                    f"chunk-{i}",
                     "doc-a",
                     f"Sentence {i} about cellular respiration.",
+                    reading_order=i + 1,
                 )
             conn.commit()
             router = StubRouter(
                 result=self._tool_result({"summary": "ok", "claims": [], "unsupported_spans": []})
             )
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
-                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_USE_NODES": "true"},
+                    clear=False,
+                ):
                     tutor_service.grounded_tutor_response(
                         conn,
                         "Explain cellular respiration.",
@@ -872,6 +915,273 @@ class HydrateNodeContextDispatchTests(unittest.TestCase):
             any(call.args[2] == "tutor_hydrate_orphaned_node" for call in logged.call_args_list),
             "expected tutor_hydrate_orphaned_node log_event for orphaned RetrievedNode",
         )
+
+
+class FallbackContextsFromScopeTests(unittest.TestCase):
+    """T03 — verify `_fallback_contexts_from_scope` reads `FROM nodes`.
+
+    Three scope-fallback paths exercise the same node-keyed query:
+      1. concept_id → translate `concepts.source_chunks` UUIDs to nodes
+         by joining (doc_id, page_num) since `chunks` has no char_start.
+      2. doc_ids → SELECT FROM nodes WHERE doc_id IN (...).
+      3. subject_name → SELECT FROM nodes JOIN documents ON subject_name.
+
+    Guard against silent fallback to chunks: when nodes are empty but
+    chunks still exist for the same doc, the result is empty list.
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.base_dir = Path(self.temp_dir.name)
+        self.original_base_dir = main.BASE_DIR
+        self.original_data_dir = main.DATA_DIR
+        self.original_upload_dir = main.UPLOAD_DIR
+        self.original_db_path = main.DB_PATH
+        self.original_schema_path = main.SCHEMA_PATH
+
+        main.BASE_DIR = self.base_dir
+        main.DATA_DIR = self.base_dir / "data"
+        main.UPLOAD_DIR = main.DATA_DIR / "uploads"
+        main.DB_PATH = main.DATA_DIR / "test.db"
+        main.SCHEMA_PATH = self.original_schema_path
+        main.initialize_database()
+
+        # T03 fallback dispatch reads RETRIEVAL_USE_NODES; this class
+        # exercises the nodes path exclusively, so enable the flag for
+        # the duration of the test.
+        self._env_patch = mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "true"}, clear=False)
+        self._env_patch.start()
+
+    def tearDown(self) -> None:
+        self._env_patch.stop()
+        main.BASE_DIR = self.original_base_dir
+        main.DATA_DIR = self.original_data_dir
+        main.UPLOAD_DIR = self.original_upload_dir
+        main.DB_PATH = self.original_db_path
+        main.SCHEMA_PATH = self.original_schema_path
+        self.temp_dir.cleanup()
+
+    @staticmethod
+    def _insert_document(conn, doc_id: str, filename: str, subject_name: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO documents (id, filename, file_type, subject_name, status)
+            VALUES (?, ?, 'txt', ?, 'ready')
+            """,
+            (doc_id, filename, subject_name),
+        )
+
+    @staticmethod
+    def _insert_node(
+        conn,
+        doc_id: str,
+        verbatim_text: str,
+        *,
+        heading_path: str = "Core",
+        page: int | None = 1,
+        char_start: int = 0,
+        reading_order: int = 1,
+    ) -> int:
+        cursor = conn.execute(
+            """
+            INSERT INTO nodes (
+                doc_id, node_type, heading_path, page, char_start, char_end,
+                verbatim_text, reading_order
+            ) VALUES (?, 'body', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                doc_id,
+                heading_path,
+                page,
+                char_start,
+                char_start + len(verbatim_text),
+                verbatim_text,
+                reading_order,
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def _insert_chunk(
+        conn,
+        chunk_id: str,
+        doc_id: str,
+        content: str,
+        *,
+        section: str = "Core",
+        page_num: int | None = 1,
+        chunk_index: int = 1,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO chunks (id, doc_id, content, section, page_num, chunk_index, token_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (chunk_id, doc_id, content, section, page_num, chunk_index, len(content.split())),
+        )
+
+    def test_doc_scope_returns_node_keyed_contexts(self) -> None:
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.md", "Biology")
+            node_id = self._insert_node(
+                conn, "doc-a", "Mitochondria are the powerhouse of the cell."
+            )
+            conn.commit()
+            contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=["doc-a"],
+                subject_name=None,
+                concept_id=None,
+                limit=8,
+            )
+
+        self.assertEqual(len(contexts), 1)
+        ctx = contexts[0]
+        # The post-T03 invariant: node_id is the real integer nodes.id,
+        # not the legacy chunks str-UUID the helper returned before.
+        self.assertEqual(ctx.node_id, node_id)
+        self.assertIsInstance(ctx.node_id, int)
+        self.assertEqual(ctx.doc_id, "doc-a")
+        self.assertEqual(ctx.document_name, "bio.md")
+        self.assertIn("Mitochondria", ctx.verbatim_text)
+
+    def test_subject_scope_returns_node_keyed_contexts(self) -> None:
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.md", "Biology")
+            self._insert_document(conn, "doc-b", "chem.md", "Chemistry")
+            self._insert_node(conn, "doc-a", "Photosynthesis converts light energy.")
+            self._insert_node(conn, "doc-b", "Atoms bond covalently.")
+            conn.commit()
+            contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=None,
+                subject_name="Biology",
+                concept_id=None,
+                limit=8,
+            )
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].doc_id, "doc-a")
+        self.assertIn("Photosynthesis", contexts[0].verbatim_text)
+
+    def test_concept_scope_translates_source_chunks_to_nodes_via_doc_page(self) -> None:
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.md", "Biology")
+            # A legacy chunk pinned to (doc-a, page 2) lives in source_chunks.
+            self._insert_chunk(conn, "chunk-1", "doc-a", "Krebs cycle.", page_num=2)
+            # The node we expect translation to find shares (doc_id, page).
+            node_id = self._insert_node(
+                conn,
+                "doc-a",
+                "The Krebs cycle oxidizes acetyl-CoA in mitochondria.",
+                page=2,
+                reading_order=5,
+            )
+            # A noise node on a different page must NOT be returned.
+            self._insert_node(
+                conn,
+                "doc-a",
+                "Glycolysis happens in the cytoplasm.",
+                page=1,
+                reading_order=1,
+            )
+            conn.execute(
+                """
+                INSERT INTO concepts (id, doc_id, name, description, mastery, source_chunks)
+                VALUES (?, ?, ?, ?, 0.2, ?)
+                """,
+                (
+                    "concept-krebs",
+                    "doc-a",
+                    "Krebs cycle",
+                    "Krebs cycle",
+                    '["chunk-1"]',
+                ),
+            )
+            conn.commit()
+            contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=None,
+                subject_name=None,
+                concept_id="concept-krebs",
+                limit=8,
+            )
+
+        node_ids = [ctx.node_id for ctx in contexts]
+        self.assertIn(node_id, node_ids)
+        self.assertNotIn(
+            "Glycolysis",
+            " ".join(ctx.verbatim_text for ctx in contexts),
+            "noise node on a different page must not leak into the result",
+        )
+
+    def test_fallback_returns_empty_when_only_chunks_present_no_nodes(self) -> None:
+        """Regression guard for CLAUDE.md "no silent fallbacks" rule.
+
+        Chunks rows exist for the doc, but the nodes table has no rows.
+        The fallback must NOT silently widen to chunks; it must return
+        empty so the caller can surface ok=False / weak_coverage.
+        """
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.md", "Biology")
+            self._insert_chunk(conn, "chunk-only", "doc-a", "Only chunk content.")
+            conn.commit()
+            doc_contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=["doc-a"],
+                subject_name=None,
+                concept_id=None,
+                limit=8,
+            )
+            subject_contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=None,
+                subject_name="Biology",
+                concept_id=None,
+                limit=8,
+            )
+
+        self.assertEqual(doc_contexts, [])
+        self.assertEqual(subject_contexts, [])
+
+    def test_concept_fallback_returns_empty_when_translation_fails(self) -> None:
+        """If `concepts.source_chunks` resolves to (doc_id, page) tuples
+        that no node row shares, translation has failed — return empty
+        rather than widening to all nodes in the doc."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio.md", "Biology")
+            self._insert_chunk(conn, "chunk-page-2", "doc-a", "Stuff on page 2.", page_num=2)
+            # Node lives on page 99 — translation must miss.
+            self._insert_node(
+                conn,
+                "doc-a",
+                "Far away node on a different page.",
+                page=99,
+                reading_order=1,
+            )
+            conn.execute(
+                """
+                INSERT INTO concepts (id, doc_id, name, description, mastery, source_chunks)
+                VALUES (?, ?, ?, ?, 0.2, ?)
+                """,
+                (
+                    "concept-x",
+                    "doc-a",
+                    "Concept X",
+                    "Concept X",
+                    '["chunk-page-2"]',
+                ),
+            )
+            conn.commit()
+            contexts = tutor_service._fallback_contexts_from_scope(
+                conn,
+                doc_ids=None,
+                subject_name=None,
+                concept_id="concept-x",
+                limit=8,
+            )
+
+        self.assertEqual(contexts, [])
 
 
 if __name__ == "__main__":

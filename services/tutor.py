@@ -22,7 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
-from services.retrieval.typed_hybrid import RetrievedNode
+from services.retrieval.typed_hybrid import RetrievedNode, retrieval_use_nodes_enabled
 from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
@@ -660,19 +660,54 @@ def _build_user_prompt(question: str, contexts: Sequence[HydratedNodeContext]) -
     return "\n".join(lines)
 
 
-def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
-    # Codex P2: this path bypassed _hydrate_node_context's artifact
-    # cleanup, so scope-fallback chunks (when retrieval returns nothing
-    # and we widen to subject/doc scope) still rendered PUA boxes and
-    # empty parens. Run the same strip the primary path does.
+def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
+    """Build `HydratedNodeContext` rows from a `FROM nodes` SELECT.
+
+    The companion of `_hydrate_from_nodes` for paths that go directly
+    to SQL rather than through `services.retrieval`. Used by the
+    scope-fallback function below when `RETRIEVAL_USE_NODES=true` —
+    populates the real integer `nodes.id` in `node_id` (no T01 str-UUID
+    transition here).
+    """
+    contexts: list[HydratedNodeContext] = []
+    for row in rows:
+        cleaned = strip_extraction_artifacts(str(row["verbatim_text"] or ""))
+        contexts.append(
+            HydratedNodeContext(
+                node_id=int(row["id"]),
+                doc_id=str(row["doc_id"]),
+                document_name=str(row["document_name"] or "Source"),
+                section=str(row["section"]) if row["section"] else None,
+                page_num=int(row["page_num"]) if row["page_num"] is not None else None,
+                verbatim_text=cleaned,
+                snippet=cleaned[:240],
+                score=0.0,
+            )
+        )
+    return contexts
+
+
+def _chunk_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
+    """Build `HydratedNodeContext` rows from a `FROM chunks` SELECT.
+
+    Legacy chunks-path companion used by `_fallback_contexts_from_scope`
+    when `RETRIEVAL_USE_NODES=false` (default). Keeps the T01 dual-path
+    contract from T02 alive at the fallback layer: when typed-node
+    ingestion isn't producing rows (e.g. unit tests that pass raw
+    extracted_text and never run Docling) the system still finds
+    evidence the way it did before T03. Phase 4 flips the flag to
+    default-on and this path retires.
+    """
     contexts: list[HydratedNodeContext] = []
     for row in rows:
         cleaned = strip_extraction_artifacts(str(row["content"] or ""))
         contexts.append(
             HydratedNodeContext(
-                # T01 transitional: row["id"] is the chunks.id TEXT
-                # PK until T02/T03 port these queries to FROM nodes.
-                node_id=str(row["id"]),
+                # chunks.id is a TEXT UUID; the dataclass still types
+                # node_id as int per T01. This is the same transitional
+                # mismatch _hydrate_from_chunks accepts, kept here so
+                # the flag-off path matches downstream code's expectations.
+                node_id=row["id"],
                 doc_id=str(row["doc_id"]),
                 document_name=str(row["document_name"] or "Source"),
                 section=str(row["section"]) if row["section"] else None,
@@ -686,6 +721,129 @@ def _contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext
 
 
 def _fallback_contexts_from_scope(
+    conn: sqlite3.Connection,
+    *,
+    doc_ids: list[str] | None,
+    subject_name: str | None,
+    concept_id: str | None,
+    limit: int,
+) -> list[HydratedNodeContext]:
+    """Scope-widening fallback when query-specific retrieval returns nothing.
+
+    Dual-path per T02's RETRIEVAL_USE_NODES contract:
+    - flag on: T03's `FROM nodes` queries, with `(doc_id, page_num)`
+      chunk-to-node translation for the concept path. Empty on
+      translation failure per CLAUDE.md "no silent fallbacks" — the
+      flag-on path never silently degrades to chunks at runtime.
+    - flag off (default until Phase 4): legacy `FROM chunks` queries.
+
+    The dispatch is explicit and operator-set; this is not a silent
+    runtime fallback between the two paths.
+    """
+    if retrieval_use_nodes_enabled():
+        return _fallback_contexts_from_scope_nodes(
+            conn,
+            doc_ids=doc_ids,
+            subject_name=subject_name,
+            concept_id=concept_id,
+            limit=limit,
+        )
+    return _fallback_contexts_from_scope_chunks(
+        conn,
+        doc_ids=doc_ids,
+        subject_name=subject_name,
+        concept_id=concept_id,
+        limit=limit,
+    )
+
+
+def _fallback_contexts_from_scope_nodes(
+    conn: sqlite3.Connection,
+    *,
+    doc_ids: list[str] | None,
+    subject_name: str | None,
+    concept_id: str | None,
+    limit: int,
+) -> list[HydratedNodeContext]:
+    if concept_id:
+        concept = conn.execute(
+            "SELECT source_chunks FROM concepts WHERE id = ?",
+            (concept_id,),
+        ).fetchone()
+        chunk_ids = load_messages(concept["source_chunks"]) if concept else []
+        if chunk_ids:
+            placeholders = ",".join("?" * len(chunk_ids))
+            chunk_rows = conn.execute(
+                f"""
+                SELECT DISTINCT doc_id, page_num
+                FROM chunks
+                WHERE id IN ({placeholders})
+                """,
+                chunk_ids,
+            ).fetchall()
+            tuples = [(str(row["doc_id"]), row["page_num"]) for row in chunk_rows if row["doc_id"]]
+            if tuples:
+                conditions = " OR ".join("(n.doc_id = ? AND n.page IS ?)" for _ in tuples)
+                params: list[Any] = []
+                for doc_id, page_num in tuples:
+                    params.append(doc_id)
+                    params.append(page_num)
+                params.append(limit)
+                rows = conn.execute(
+                    f"""
+                    SELECT n.id, n.doc_id, n.heading_path AS section,
+                           n.page AS page_num, n.verbatim_text,
+                           d.filename AS document_name
+                    FROM nodes n
+                    JOIN documents d ON d.id = n.doc_id
+                    WHERE {conditions}
+                    ORDER BY n.doc_id ASC, n.reading_order ASC
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+                if rows:
+                    return _node_contexts_from_rows(rows)
+
+    if doc_ids:
+        placeholders = ",".join("?" * len(doc_ids))
+        rows = conn.execute(
+            f"""
+            SELECT n.id, n.doc_id, n.heading_path AS section,
+                   n.page AS page_num, n.verbatim_text,
+                   d.filename AS document_name
+            FROM nodes n
+            JOIN documents d ON d.id = n.doc_id
+            WHERE n.doc_id IN ({placeholders})
+            ORDER BY n.doc_id ASC, n.reading_order ASC
+            LIMIT ?
+            """,
+            (*doc_ids, limit),
+        ).fetchall()
+        if rows:
+            return _node_contexts_from_rows(rows)
+
+    if subject_name:
+        rows = conn.execute(
+            """
+            SELECT n.id, n.doc_id, n.heading_path AS section,
+                   n.page AS page_num, n.verbatim_text,
+                   d.filename AS document_name
+            FROM nodes n
+            JOIN documents d ON d.id = n.doc_id
+            WHERE d.subject_name = ?
+            ORDER BY n.rowid DESC
+            LIMIT ?
+            """,
+            (subject_name, limit),
+        ).fetchall()
+        if rows:
+            return _node_contexts_from_rows(rows)
+
+    return []
+
+
+def _fallback_contexts_from_scope_chunks(
     conn: sqlite3.Connection,
     *,
     doc_ids: list[str] | None,
@@ -713,7 +871,7 @@ def _fallback_contexts_from_scope(
                 (*chunk_ids, limit),
             ).fetchall()
             if rows:
-                return _contexts_from_rows(rows)
+                return _chunk_contexts_from_rows(rows)
 
     if doc_ids:
         placeholders = ",".join("?" * len(doc_ids))
@@ -729,7 +887,7 @@ def _fallback_contexts_from_scope(
             (*doc_ids, limit),
         ).fetchall()
         if rows:
-            return _contexts_from_rows(rows)
+            return _chunk_contexts_from_rows(rows)
 
     if subject_name:
         rows = conn.execute(
@@ -744,7 +902,7 @@ def _fallback_contexts_from_scope(
             (subject_name, limit),
         ).fetchall()
         if rows:
-            return _contexts_from_rows(rows)
+            return _chunk_contexts_from_rows(rows)
 
     return []
 
