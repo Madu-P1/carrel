@@ -47,6 +47,8 @@ From `CLAUDE.md` "Conventions" + `docs/plans/everything-to-100-2026-05-17.md` Ph
 - New runtime motion library (CSS + WAAPI only).
 - New `ENTRY_JS_GZIP_BUDGET` exceeded without bump + justification.
 - Schema change without a corresponding migration file in `migrations/`.
+- **Skipped skill orchestration on a non-trivial task** (per `.claude/commands/carrel-build.md` step 2). The orchestration log at `.claude/logs/skill-orchestration.jsonl` must carry an entry for this task with a populated `desired_outcome` sentence + non-empty `chosen_skills` (or `skipped_reason` if the task is genuinely trivial: formatting, status flip, doc reconciliation that adds no claims, removing provably-dead code). Missing entry on a feature add, bug fix, refactor, migration, security fix, perf change, or UI change = violation.
+- **Wrong skill combination for the task type** (per the pattern table in `.claude/commands/carrel-build.md` step 2). Picking `/autoplan` for a 5-line bug fix, or skipping `/codex challenge` after a security fix, or skipping `/benchmark` on a perf task is a -5 violation. The rater reads the orchestration log and grades the combination against the task type.
 
 ### Criterion E — Tests added (10 points)
 

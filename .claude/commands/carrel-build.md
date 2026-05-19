@@ -60,23 +60,58 @@ Repeat until a halt condition fires:
 
 **Task announcement:** announce the chosen task by ID + title (e.g., `T01: Phase 3 slice β.1 — rename Citation chunk_id to node_id`) so the operator-visible log carries the queue reference.
 
-### 2. Classify the task
+### 2. Skill orchestration: pre-action routine (mandatory for non-trivial tasks)
 
-The UserPromptSubmit routing hook will inject a skill suggestion. Honor it unless you have a documented reason not to. Skill routing table:
+Before writing any code or running any test for the chosen task, perform the skill-orchestration routine. The routine pays off in output quality by picking the right curated workflows for the task at hand. Skip ONLY for trivial mechanical work (formatting, status flips, doc reconciliation that adds no new claims, removing provably-dead code). Operator directive of 2026-05-19: this routine is now required at task start AND before any sub-decision that introduces or removes meaningful code logic.
 
-| Pattern | Skill |
-|---|---|
-| bug, broken, investigate, debug, crash | `/investigate` |
-| security, vulnerability, auth | `/cso` or `/security-review` |
-| ship, deploy, release | `/ship` then `/land-and-deploy` |
-| plan, architecture | `/claude-mem:make-plan` then `/claude-mem:do` or `/autoplan` |
-| accessibility, a11y, WCAG | `design:accessibility-review` |
-| performance, benchmark, slow | `/benchmark` |
-| visual polish, design review | `/design-review` |
-| refactor, simplify | `/simplify` then `/codex challenge` |
-| QA, test the site | `/qa` |
-| review my diff, code review | `/review` or `/codex` |
-| documentation | `engineering:documentation` |
+Steps:
+
+1. **State the desired outcome** in one sentence. Not "what am I doing" but "what does success look like." Example: "Success = the three scope-fallback queries read FROM nodes, return verbatim_text-populated HydratedNodeContext, the no-silent-fallback rule holds when translation produces zero rows, tests pin the regression, rater scores 100 first iteration." If you cannot write this sentence, you do not understand the task well enough to start coding; re-read the work plan + master plan + prior ADRs first.
+
+2. **Scan the available skills.** The Claude session has access to dozens of skills (see the system-prompt skill list, which is the source of truth, not this file). Pick candidates by matching the task on three axes:
+   - **Task type:** bug fix, feature add, refactor, security, performance, UI polish, docs, infra, test addition, cross-cutting.
+   - **Task surface:** backend (Python/services), frontend (React/Vite), Swift (macos-app/), DB (SQLite/migrations), AI (providers/grounded-answer), infra (CI/Docker/scripts).
+   - **Desired-outcome dimensions:** correctness, security, performance, UX, accessibility, tests, docs.
+
+3. **Score skill combinations against the outcome.** For each candidate, ask: does running it improve the desired outcome by a meaningful margin? A skill that catches a class of defect the rater rubric does not grade for is a win. A skill that duplicates auditor / rater work without adding signal is not.
+
+4. **Pick the combination. Prefer 1-3 skills max per task.** Default patterns:
+
+   | Task type | Pattern |
+   |---|---|
+   | Bug fix | `/investigate` then fix then `/codex challenge` then `/review` |
+   | Feature add (non-trivial arch) | `/plan-eng-review` then implement under `karpathy-guidelines` then `/review` |
+   | Feature add (trivial) | implement then `/review` |
+   | Refactor | `/simplify` then implement then `/codex consult` then `/review` |
+   | UI / visual change | `/plan-design-review` (plan mode) then implement then `/design-review` (live audit) |
+   | Accessibility | `design:accessibility-review` then fix then re-verify |
+   | Security / auth | `/cso` then fix then `/codex challenge` |
+   | Performance | `/benchmark` (baseline) then implement then `/benchmark` (compare) |
+   | Migration / schema | `/plan-eng-review` then implement then `/codex challenge` then `/review` |
+   | Test addition | `engineering:testing-strategy` then implement then `/codex challenge` (adversarial cases) |
+   | Documentation | `engineering:documentation` then write then `/review` |
+   | Cross-cutting refactor | `/autoplan` (runs full review gauntlet) |
+   | Ship workflow | `/ship` then `/land-and-deploy` |
+
+   The UserPromptSubmit routing hook may inject a single-skill suggestion based on the task title. Honor it as a candidate, but the full orchestration routine supersedes it: a single-skill route is the floor, not the ceiling.
+
+5. **Log the orchestration decision** to `.claude/logs/skill-orchestration.jsonl`. One JSON line per task: `{"ts", "task_id", "desired_outcome", "candidate_skills", "chosen_skills", "rationale", "skipped_reason"}`. If skipped (trivial task), set `chosen_skills: []` and explain why in `skipped_reason`. The operator audits this log over time and tunes the patterns.
+
+6. **Run the chosen skills inline as part of the task.** A skill is a step, not a phase. After `/investigate` writes its findings, act on them in step 5 (Implement). After `/review` fires before commit, fix any gaps it surfaces and re-verify. Each skill invocation is a normal subagent / skill call; no special wrapper.
+
+**Anti-patterns to avoid:**
+
+- Running every available skill on every task. That is noise, not rigor.
+- Running skills that duplicate auditor / rater work without adding new signal.
+- Skipping orchestration on tasks marked "trivial" without first verifying the task is genuinely trivial against the criteria above.
+- Defaulting to the largest skill (`/autoplan`, full review gauntlet) for every task. The pattern table is the default; reach for heavyweight skills only when the task type calls for them.
+- Treating the orchestration step as ceremony. The desired-outcome sentence is the binding contract.
+
+**Skipping the routine on a non-trivial task is a rater anti-pattern violation.** See `.claude/RATER_RUBRIC.md` criterion D.
+
+### 2.5. Sub-decision skill check (during implementation)
+
+The orchestration routine fires again, lightweight, when implementation hits a non-trivial sub-decision inside the task. Examples: a third option emerges for a data model, a test starts flaking and the root cause is unclear, a Swift concurrency annotation is required and the right choice is non-obvious, a perf-sensitive code path opens up. Pause, restate the sub-outcome in one sentence, pick the right skill (`/investigate` for unknown bugs, `/codex consult` for a second opinion, `/simplify` for an over-complicated solution, `karpathy-guidelines` for an overengineering check), run it, then resume. Log to the same `.claude/logs/skill-orchestration.jsonl` with a sub-decision marker in the JSON.
 
 ### 3. For architectural decisions: full adversarial debate
 
@@ -178,19 +213,32 @@ You are running unattended. The operator is not at the keyboard. Do NOT ask the 
 
 - Pick the next task yourself from the plan or TODOS.md. Do not enumerate options for the operator.
 - Pick commit messages, branch names, file paths, and refactor scopes yourself. Apply Conventional Commits style.
-- Resolve ambiguity in plan files by reading the surrounding context (CLAUDE.md, prior ADRs, recent commits) and making the call. If the call is genuinely 50/50 on a non-architectural choice, default to the option that ships sooner with smaller diff.
+- Resolve ambiguity in plan files by reading the surrounding context (CLAUDE.md, prior ADRs, recent commits, the operator-decisions section at the top of `AUTONOMOUS_WORK_PLAN.md`) and making the call. If the call is genuinely 50/50 on a non-architectural choice, default to the option that ships sooner with smaller diff.
 - For architectural decisions (per the trigger criteria above), the proponent + adversary + synthesizer subagents decide, not the operator. You read the synthesizer verdict and act on it.
 - For major actions, the independent-auditor decides, not the operator. You spawn the auditor, read its verdict, and proceed or revise.
 - For quality scoring, the quality-rater decides, not the operator. You iterate until a fresh-context spawn returns 100.
 
 The ONLY moments you stop and surface to the operator are:
 
-1. The preflight halt conditions (working tree not clean, on main branch, stale plan).
-2. The runtime halt conditions (plan exhausted, 5 unsuccessful iterations, 3 auditor rejections on same hash, destructive action requested, test regression > 3, scope drift, 8-hour cap, .claude/HALT file).
+1. The preflight halt conditions (working tree not clean AND the dirty files do not match the dirty-tree continuation rule above, on main branch with a task that needs a feature branch, stale plan > 14 days).
+2. The runtime halt conditions (plan exhausted, 5 unsuccessful iterations on the same feature, 3 auditor rejections on same hash, destructive action requested, test regression > 3 without justification, scope drift logged in `.claude/logs/scope-drift.jsonl`, 8-hour wall-clock cap, `.claude/HALT` file).
 3. An outreach task surfaced as the only remaining work (operator handles outreach manually).
 4. A genuinely novel architectural choice the synthesizer flags THIRD_OPTION_REQUIRED three times in a row.
 
 For everything else: decide and proceed. Do not write "should I X or Y?" Decide. If the decision is wrong, the auditor or rater will catch it and you will iterate.
+
+### Things that are NEVER reasons to voluntarily halt
+
+The 2026-05-19 max-autonomy directive in `AUTONOMOUS_WORK_PLAN.md` makes these non-halt-reasons explicit. If any of the following come up mid-session, decide and continue, do not write status.md and stop:
+
+- **PR scope ambiguity** ("should I bundle these tasks on one PR or split them?"). Default: branch fresh off `main` for every task per the 2026-05-19 directive. One task = one PR unless two tasks are mechanically coupled (e.g., a migration and the code that requires it).
+- **Branching strategy questions** ("continue on the same feature branch or branch fresh off main?"). Default: branch fresh off `main`.
+- **Context budget anxiety** ("session is getting long, should I checkpoint and stop?"). Answer: no. Run until a real halt condition fires. The 8-hour wall-clock cap is the only time-based halt. Context compaction is the harness's job, not yours.
+- **Data-modeling questions inside a task's stated scope** ("the acceptance text assumes a column that doesn't exist, what should I do?"). Read the surrounding code, infer the intended translation key, edit the acceptance text in the work plan to record what you picked, and proceed. Surface as a one-line follow-up in `.claude/logs/operator-followups.jsonl` so the operator sees the change on their next review pass, but do not halt.
+- **PR-merge readiness anxiety** ("the PR is green, should I admin-merge it or wait for the operator?"). Auditor decides. If the auditor approves the `gh pr merge`, merge. The operator authorized auto-merge after rater 100 in the build-only scope (see `.claude/AUTONOMOUS_SCOPE.md`).
+- **Cross-PR landing questions** ("PR #N's work is on a staging branch but the next task needs it on main, what do I do?"). Open the staging→main PR yourself, run the verify chain on the merged result, auditor-approve, merge, then branch the next task off main. Do not surface this as an operator decision.
+
+If you find yourself drafting a status.md entry that names "operator should decide ..." for anything not in the four ONLY-stop conditions above, stop drafting and apply the decide-and-proceed default instead.
 
 ## Begin
 
