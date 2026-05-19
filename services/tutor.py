@@ -21,6 +21,7 @@ from app_logging import get_logger, log_event
 from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
+from services.note_sanitizer import sanitize_note_html
 from services.retrieval import ScoredHit, search_hybrid
 from services.retrieval.typed_hybrid import RetrievedNode
 from services.retrieval.validators import validated_citation_quote
@@ -241,6 +242,7 @@ def fetch_notes(
     notes: List[Dict[str, Any]] = []
     for row in rows:
         item = dict(row)
+        item["content"] = sanitize_note_html(item.get("content"))
         if item.get("concept_name"):
             item["concept_name"] = clean_concept_label(item["concept_name"])
         notes.append(item)
@@ -261,6 +263,7 @@ def upsert_note_record(
     folder_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     clean_title = (title or "").strip() or "Study note"
+    clean_content = sanitize_note_html(content)
     # A bad folder_id from the client is a 400, not a silent FK
     # violation at commit time. Validate up front so the error message
     # the user sees actually says "folder not found".
@@ -280,7 +283,7 @@ def upsert_note_record(
                 doc_id,
                 concept_id,
                 clean_title,
-                content,
+                clean_content,
                 source_snippet,
                 note_type,
                 goal_id,
@@ -302,7 +305,7 @@ def upsert_note_record(
                 doc_id,
                 concept_id,
                 clean_title,
-                content,
+                clean_content,
                 source_snippet,
                 note_type,
                 goal_id,
@@ -329,6 +332,7 @@ def upsert_note_record(
     if not row:
         raise HTTPException(status_code=404, detail="Saved note could not be loaded.")
     item = dict(row)
+    item["content"] = sanitize_note_html(item.get("content"))
     if item.get("concept_name"):
         item["concept_name"] = clean_concept_label(item["concept_name"])
     return item
@@ -386,6 +390,7 @@ def move_note_to_folder(
         # delete, which we surface as 404.
         raise HTTPException(status_code=404, detail="Note disappeared mid-move.")
     item = dict(row)
+    item["content"] = sanitize_note_html(item.get("content"))
     if item.get("concept_name"):
         item["concept_name"] = clean_concept_label(item["concept_name"])
     return item

@@ -385,11 +385,13 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
 
 def initialize_database() -> None:
     from services.ingestion import ingest_document_record
+    from services.note_sanitizer import sanitize_existing_notes
 
     DATA_DIR.mkdir(exist_ok=True)
     UPLOAD_DIR.mkdir(exist_ok=True)
     with get_db() as conn:
         apply_migrations(conn)
+        sanitize_existing_notes(conn)
         seed_demo_data(conn, ingest_document_record)
 
 

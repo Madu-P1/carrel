@@ -7,6 +7,7 @@ import {
   type NoteRecord
 } from "@/services/api/endpoints";
 
+import { notePreviewText } from "../noteContent";
 import { Ic } from "./NotesIcons";
 import styles from "./NoteTile.module.css";
 
@@ -48,16 +49,8 @@ export function NoteTile({ note, subjects, onChanged }: NoteTileProps) {
   };
 
   const sourceLabel = note.document_name ?? null;
-  // Strip the HTML the editor produces so the preview is plain text.
-  // Lightweight tag strip is fine: the editor's output is a known
-  // shape (h1/h2/h3/p/ul/ol/blockquote/pre/strong/em/u) and we never
-  // accept user-pasted scripts (contenteditable sanitizes paste).
-  const plainBody = note.content
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const trimmedFirst = plainBody.split(/\.\s+|\n\n/)[0] ?? "";
-  const previewBody = trimmedFirst || "Start writing…";
+  const previewBody =
+    notePreviewText(note.content).split(/\.\s+|\n\n/)[0] ?? "Start writing...";
 
   return (
     <li className={styles.tile}>

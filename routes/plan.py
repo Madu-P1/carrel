@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 
 import db
 from api_models import (
@@ -162,12 +162,15 @@ def restore_suggestion(suggestion_id: str) -> Dict[str, str]:
 
 
 @router.get("/api/plan/events/stream")
-async def stream_plan_events(after_id: Optional[str] = None):
+async def stream_plan_events(
+    after_id: Optional[str] = None,
+    last_event_id: Optional[str] = Header(default=None),
+):
     """Server-Sent Events stream — emits when the plan should refresh.
 
     The companion alarm + dashboard insertions hook subscribe via
-    `EventSource(...)`. Each `calendar-changed` event is the signal to
-    refetch downstream views.
+    fetch-SSE. Each `calendar-changed` event is the signal to refetch
+    downstream views.
 
     Trigger: `study_events.event_type = 'local_calendar_synced'` rows
     landing — emitted when a Calendar.app change reaches the backend.
@@ -179,7 +182,7 @@ async def stream_plan_events(after_id: Optional[str] = None):
     from fastapi.responses import StreamingResponse
 
     async def event_stream():
-        cursor = after_id or ""
+        cursor = last_event_id or after_id or ""
         yield "event: hello\ndata: {}\n\n"
         while True:
             with db.get_db() as conn:

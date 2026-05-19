@@ -1,3 +1,5 @@
+import { notePreviewText } from "@/features/notes/noteContent";
+
 import { EmptyState } from "./EmptyState";
 import styles from "./SourcePanel.module.css";
 
@@ -20,14 +22,17 @@ export function NotesList({ notes }: { notes: NoteLike[] }) {
   return (
     <ul className={styles.rowList}>
       {notes.map((note, index) => (
-        <li
-          className={styles.noteRow}
-          key={`${note.title ?? "note"}-${index}`}
-        >
+        <li className={styles.noteRow} key={`${note.title ?? "note"}-${index}`}>
           <div className={styles.rowHeader}>
-            <span className={styles.rowTitle}>{note.title || "Untitled note"}</span>
+            <span className={styles.rowTitle}>
+              {note.title || "Untitled note"}
+            </span>
           </div>
-          {note.content ? <p className={styles.rowPreview}>{note.content}</p> : null}
+          {note.content ? (
+            <p className={styles.rowPreview}>
+              {notePreviewText(note.content, "Empty note.")}
+            </p>
+          ) : null}
         </li>
       ))}
     </ul>

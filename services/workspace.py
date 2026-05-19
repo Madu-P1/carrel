@@ -172,7 +172,7 @@ def build_momentum_engine(conn: sqlite3.Connection, fetch_recent_events) -> Dict
         }
     else:
         headline = f"Compare {focus_name} with {related_name or 'a nearby concept'}"
-        reason = "Your next leverage comes from contrast. Comparing adjacent concepts tends to surface the misconceptions that simple rereading misses."
+        reason = "The next gain comes from contrast. Comparing adjacent concepts tends to surface the misconceptions that simple rereading misses."
         primary_action = {
             "label": "Open compare mode",
             "type": "compare",

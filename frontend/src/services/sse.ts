@@ -2,41 +2,37 @@
  * Shared SSE multiplexer.
  *
  * Before this module, four separate features (jobs feed, plan view,
- * dashboard insertions, companion alarm) each built their own
- * EventSource + reconnect + handler tree against the same backend
+ * dashboard insertions, companion alarm) each built their own stream
+ * connection + reconnect + handler tree against the same backend
  * stream. That meant up to 4 simultaneous connections to one URL,
  * 4 reconnect loops, 4 separate sets of bugs to keep in sync.
  *
  * Now everything that wants to listen calls `subscribeSse(url, event,
  * cb)` and gets an unsubscribe function back. The multiplexer keeps a
- * single EventSource per URL, fans events out, and auto-reconnects
+ * single fetch stream per URL, fans events out, and auto-reconnects
  * with exponential backoff when the underlying socket dies. When the
  * last subscriber for a URL leaves, the connection is closed and the
  * URL slot is freed.
  *
- * No queueing: SSE is fire-and-forget by design and EventSource
- * reconnect already includes the `Last-Event-ID` header. Listeners
- * that need durability can fall back to polling — every existing
- * caller already does this naturally via window-focus refetches.
- *
- * Auth: the local API gate also covers SSE, so each EventSource is
- * opened against the URL augmented with `?token=…`. The channel key
- * stays the un-tokenized URL so subscribers don't have to thread the
- * token through.
+ * Auth uses the same `X-Carrel-Local-Token` header as normal API
+ * calls. EventSource cannot send that header, so this module consumes
+ * SSE over fetch + ReadableStream instead of putting the long-lived
+ * token in the URL.
  */
 
-import { withLocalApiToken } from "./api/client";
+import { LOCAL_TOKEN_HEADER, resolveLocalApiToken } from "./api/client";
 
 interface Channel {
-  source: EventSource | null;
+  controller: AbortController | null;
   /** Map of event-name → set of callbacks. Outer map is keyed by
-   *  event name so EventSource.addEventListener fires each cb directly
-   *  and we don't have to filter inside the handler. */
+   *  event name so dispatch can fan out without each callback having
+   *  to filter the event type itself. */
   listeners: Map<string, Set<(ev: MessageEvent) => void>>;
   /** Backoff schedule for the next reconnect attempt. Resets on a
    *  successful open. */
   reconnectMs: number;
   reconnectTimer: number | null;
+  lastEventId: string | null;
 }
 
 const channels = new Map<string, Channel>();
@@ -45,36 +41,117 @@ const MAX_RECONNECT_MS = 30_000;
 
 function open(url: string): void {
   const channel = channels.get(url);
-  if (!channel || channel.source) return;
-  if (typeof EventSource === "undefined") return;
-  // Resolve the local API token asynchronously and append it as
-  // `?token=` — EventSource can't set custom headers. The channel may
-  // already have a source by the time we resolve (a second subscribe
-  // triggered open() concurrently); guard against that.
-  void withLocalApiToken(url).then((authedUrl) => {
-    const ch = channels.get(url);
-    if (!ch || ch.source) return;
-    let source: EventSource;
+  if (!channel || channel.controller) return;
+  if (typeof fetch === "undefined" || typeof ReadableStream === "undefined") {
+    dispatchTransportError(channel);
+    scheduleReconnect(url);
+    return;
+  }
+
+  const controller = new AbortController();
+  channel.controller = controller;
+  void runFetchStream(url, channel, controller);
+}
+
+async function runFetchStream(
+  url: string,
+  channel: Channel,
+  controller: AbortController
+): Promise<void> {
+  try {
+    const token = await resolveLocalApiToken();
+    if (controller.signal.aborted || channel.controller !== controller) return;
+
+    const response = await fetch(url, {
+      headers: {
+        accept: "text/event-stream",
+        ...(token ? { [LOCAL_TOKEN_HEADER]: token } : {}),
+        ...(channel.lastEventId ? { "Last-Event-ID": channel.lastEventId } : {})
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`SSE stream failed: ${response.status} ${response.statusText}`);
+    }
+
+    channel.reconnectMs = INITIAL_RECONNECT_MS;
+    await readSseBody(response.body, channel);
+    if (!controller.signal.aborted) dispatchTransportError(channel);
+  } catch {
+    if (!controller.signal.aborted) dispatchTransportError(channel);
+  } finally {
+    if (channel.controller === controller) {
+      channel.controller = null;
+    }
+    if (!controller.signal.aborted && channel.listeners.size > 0) {
+      scheduleReconnect(url);
+    }
+  }
+}
+
+async function readSseBody(body: ReadableStream<Uint8Array>, channel: Channel): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let frameEnd = buffer.indexOf("\n\n");
+      while (frameEnd !== -1) {
+        const frame = buffer.slice(0, frameEnd);
+        buffer = buffer.slice(frameEnd + 2);
+        dispatchFrame(frame, channel);
+        frameEnd = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
     try {
-      source = new EventSource(authedUrl);
+      reader.releaseLock();
     } catch {
-      scheduleReconnect(url);
-      return;
+      // The browser may already have released the reader when aborting.
     }
-    ch.source = source;
-    for (const [event, set] of ch.listeners) {
-      for (const cb of set) source.addEventListener(event, cb as EventListener);
-    }
-    source.onopen = () => {
-      ch.reconnectMs = INITIAL_RECONNECT_MS;
-    };
-    source.onerror = () => {
-      source.close();
-      ch.source = null;
-      if (ch.listeners.size === 0) return;
-      scheduleReconnect(url);
-    };
+  }
+}
+
+function dispatchFrame(frame: string, channel: Channel): void {
+  let eventName = "message";
+  let nextId: string | null = null;
+  const dataLines: string[] = [];
+
+  for (const rawLine of frame.split("\n")) {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "" || line.startsWith(":")) continue;
+    const colon = line.indexOf(":");
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? "" : line.slice(colon + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+
+    if (field === "event") eventName = value;
+    if (field === "data") dataLines.push(value);
+    if (field === "id") nextId = value;
+  }
+
+  if (nextId !== null) channel.lastEventId = nextId;
+  if (dataLines.length === 0) return;
+
+  dispatchEvent(channel, eventName, dataLines.join("\n"));
+}
+
+function dispatchEvent(channel: Channel, eventName: string, data: string): void {
+  const listeners = channel.listeners.get(eventName);
+  if (!listeners || listeners.size === 0) return;
+  const event = new MessageEvent(eventName, {
+    data,
+    lastEventId: channel.lastEventId ?? ""
   });
+  for (const cb of Array.from(listeners)) cb(event);
+}
+
+function dispatchTransportError(channel: Channel): void {
+  dispatchEvent(channel, "error", "");
 }
 
 function scheduleReconnect(url: string): void {
@@ -93,7 +170,7 @@ function scheduleReconnect(url: string): void {
  * Listen to one event on the SSE stream at `url`. Returns an
  * unsubscribe function — call it on cleanup. Repeated subscribes to
  * the same url+event are deduped at the socket level: only one
- * EventSource is opened per URL.
+ * fetch stream is opened per URL.
  */
 export function subscribeSse(
   url: string,
@@ -103,10 +180,11 @@ export function subscribeSse(
   let channel = channels.get(url);
   if (!channel) {
     channel = {
-      source: null,
+      controller: null,
       listeners: new Map(),
       reconnectMs: INITIAL_RECONNECT_MS,
       reconnectTimer: null,
+      lastEventId: null,
     };
     channels.set(url, channel);
   }
@@ -116,23 +194,18 @@ export function subscribeSse(
     channel.listeners.set(event, set);
   }
   set.add(cb);
-  if (channel.source) {
-    channel.source.addEventListener(event, cb as EventListener);
-  } else {
-    open(url);
-  }
+  open(url);
   return () => {
     const ch = channels.get(url);
     if (!ch) return;
-    ch.source?.removeEventListener(event, cb as EventListener);
     const s = ch.listeners.get(event);
     if (s) {
       s.delete(cb);
       if (s.size === 0) ch.listeners.delete(event);
     }
     if (ch.listeners.size === 0) {
-      ch.source?.close();
-      ch.source = null;
+      ch.controller?.abort();
+      ch.controller = null;
       if (ch.reconnectTimer !== null) {
         window.clearTimeout(ch.reconnectTimer);
         ch.reconnectTimer = null;

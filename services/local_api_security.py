@@ -56,11 +56,7 @@ def requires_local_api_token(request: Request) -> bool:
 
 
 def has_valid_local_api_token(request: Request) -> bool:
-    # EventSource cannot set custom headers, so the SSE path
-    # (services/sse.ts -> withLocalApiToken) appends ?token=<value>.
-    # Loopback-only, so query-string leakage via shared logs is not a
-    # cross-origin concern.
-    supplied = request.headers.get(HEADER_NAME) or request.query_params.get("token")
+    supplied = request.headers.get(HEADER_NAME)
     if not supplied:
         return False
     return secrets.compare_digest(supplied, _LOCAL_API_TOKEN)

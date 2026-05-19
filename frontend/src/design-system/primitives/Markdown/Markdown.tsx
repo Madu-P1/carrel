@@ -32,6 +32,7 @@ type AnchorProps = { href: string; children: ComponentChildren };
 type CodeProps = { children: string };
 type PreProps = { language?: string; children: string };
 type HeadingProps = { children: ComponentChildren };
+type BlockProps = { children: ComponentChildren };
 
 export type MarkdownComponents = Partial<{
   a: FunctionComponent<AnchorProps>;
@@ -43,6 +44,7 @@ export type MarkdownComponents = Partial<{
   h4: FunctionComponent<HeadingProps>;
   h5: FunctionComponent<HeadingProps>;
   h6: FunctionComponent<HeadingProps>;
+  blockquote: FunctionComponent<BlockProps>;
 }>;
 
 export interface MarkdownProps {
@@ -53,13 +55,24 @@ export interface MarkdownProps {
 
 const EMPTY_COMPONENTS: MarkdownComponents = {};
 
-export function Markdown({ source, components, className }: MarkdownProps): VNode {
+export function Markdown({
+  source,
+  components,
+  className
+}: MarkdownProps): VNode {
   const comps = components ?? EMPTY_COMPONENTS;
   const tree = useMemo(() => renderBlocks(source, comps), [source, comps]);
-  return <div className={[styles.markdown, className].filter(Boolean).join(" ")}>{tree}</div>;
+  return (
+    <div className={[styles.markdown, className].filter(Boolean).join(" ")}>
+      {tree}
+    </div>
+  );
 }
 
-function renderBlocks(src: string, comps: MarkdownComponents): ComponentChildren[] {
+function renderBlocks(
+  src: string,
+  comps: MarkdownComponents
+): ComponentChildren[] {
   const out: ComponentChildren[] = [];
   const lines = src.replace(/\r\n/g, "\n").split("\n");
   let i = 0;
@@ -79,13 +92,15 @@ function renderBlocks(src: string, comps: MarkdownComponents): ComponentChildren
       const codeText = codeLines.join("\n");
       const Pre = comps.pre;
       out.push(
-        Pre
-          ? <Pre key={`b${blockKey++}`} language={lang || undefined}>{codeText}</Pre>
-          : (
-            <pre key={`b${blockKey++}`} className={styles.codeBlock}>
-              <code data-language={lang || undefined}>{codeText}</code>
-            </pre>
-          )
+        Pre ? (
+          <Pre key={`b${blockKey++}`} language={lang || undefined}>
+            {codeText}
+          </Pre>
+        ) : (
+          <pre key={`b${blockKey++}`} className={styles.codeBlock}>
+            <code data-language={lang || undefined}>{codeText}</code>
+          </pre>
+        )
       );
       continue;
     }
@@ -105,11 +120,38 @@ function renderBlocks(src: string, comps: MarkdownComponents): ComponentChildren
       continue;
     }
 
-    if (/^\s*[-*]\s+/.test(line)) {
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: ComponentChildren[] = [];
+      let quoteKey = 0;
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        const quoteText = lines[i].replace(/^\s*>\s?/, "");
+        quoteLines.push(
+          <p key={`q${quoteKey++}`}>
+            {renderInline(quoteText, comps, `b${blockKey}-q${quoteKey}`)}
+          </p>
+        );
+        i++;
+      }
+      const Blockquote = comps.blockquote;
+      out.push(
+        Blockquote ? (
+          <Blockquote key={`b${blockKey++}`}>{quoteLines}</Blockquote>
+        ) : (
+          <blockquote key={`b${blockKey++}`} className={styles.blockquote}>
+            {quoteLines}
+          </blockquote>
+        )
+      );
+      continue;
+    }
+
+    if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
+      const ordered = /^\s*\d+\.\s+/.test(line);
+      const markerPattern = ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/;
       const items: VNode[] = [];
       let itemKey = 0;
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        const itemText = lines[i].replace(/^\s*[-*]\s+/, "");
+      while (i < lines.length && markerPattern.test(lines[i])) {
+        const itemText = lines[i].replace(markerPattern, "");
         items.push(
           <li key={`li${itemKey++}`}>
             {renderInline(itemText, comps, `b${blockKey}-li${itemKey}`)}
@@ -117,7 +159,17 @@ function renderBlocks(src: string, comps: MarkdownComponents): ComponentChildren
         );
         i++;
       }
-      out.push(<ul key={`b${blockKey++}`} className={styles.list}>{items}</ul>);
+      out.push(
+        ordered ? (
+          <ol key={`b${blockKey++}`} className={styles.list}>
+            {items}
+          </ol>
+        ) : (
+          <ul key={`b${blockKey++}`} className={styles.list}>
+            {items}
+          </ul>
+        )
+      );
       continue;
     }
 
@@ -133,18 +185,27 @@ function renderBlocks(src: string, comps: MarkdownComponents): ComponentChildren
       lines[i].trim() !== "" &&
       !/^#{1,6}\s+/.test(lines[i]) &&
       !/^```/.test(lines[i]) &&
-      !/^\s*[-*]\s+/.test(lines[i])
+      !/^\s*>\s?/.test(lines[i]) &&
+      !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])
     ) {
       paraLines.push(lines[i]);
       i++;
     }
     const paraText = paraLines.join(" ");
-    out.push(<p key={`b${blockKey++}`}>{renderInline(paraText, comps, `b${blockKey}`)}</p>);
+    out.push(
+      <p key={`b${blockKey++}`}>
+        {renderInline(paraText, comps, `b${blockKey}`)}
+      </p>
+    );
   }
   return out;
 }
 
-function renderInline(src: string, comps: MarkdownComponents, scope: string): ComponentChildren[] {
+function renderInline(
+  src: string,
+  comps: MarkdownComponents,
+  scope: string
+): ComponentChildren[] {
   const tokens: ComponentChildren[] = [];
   let buf = "";
   let i = 0;
@@ -165,9 +226,13 @@ function renderInline(src: string, comps: MarkdownComponents, scope: string): Co
         const text = src.slice(i + 1, close);
         const Code = comps.code;
         tokens.push(
-          Code
-            ? <Code key={`${scope}-c${keyN++}`}>{text}</Code>
-            : <code key={`${scope}-c${keyN++}`} className={styles.inlineCode}>{text}</code>
+          Code ? (
+            <Code key={`${scope}-c${keyN++}`}>{text}</Code>
+          ) : (
+            <code key={`${scope}-c${keyN++}`} className={styles.inlineCode}>
+              {text}
+            </code>
+          )
         );
         i = close + 1;
         continue;
@@ -204,6 +269,21 @@ function renderInline(src: string, comps: MarkdownComponents, scope: string): Co
       }
     }
 
+    if (ch === "~" && src[i + 1] === "~") {
+      const close = src.indexOf("~~", i + 2);
+      if (close !== -1) {
+        flush();
+        const inner = src.slice(i + 2, close);
+        tokens.push(
+          <del key={`${scope}-d${keyN++}`}>
+            {renderInline(inner, comps, `${scope}d${keyN}`)}
+          </del>
+        );
+        i = close + 2;
+        continue;
+      }
+    }
+
     if (ch === "[") {
       const textEnd = src.indexOf("]", i + 1);
       if (textEnd !== -1 && src[textEnd + 1] === "(") {
@@ -213,14 +293,25 @@ function renderInline(src: string, comps: MarkdownComponents, scope: string): Co
           const text = src.slice(i + 1, textEnd);
           const url = src.slice(textEnd + 2, urlEnd);
           const Anchor = comps.a;
+          const safe = safeHref(url);
           tokens.push(
-            Anchor
-              ? <Anchor key={`${scope}-a${keyN++}`} href={url}>{text}</Anchor>
-              : (
-                <a key={`${scope}-a${keyN++}`} href={url} className={styles.link}>
-                  {text}
-                </a>
-              )
+            Anchor && safe ? (
+              <Anchor key={`${scope}-a${keyN++}`} href={safe}>
+                {text}
+              </Anchor>
+            ) : safe ? (
+              <a
+                key={`${scope}-a${keyN++}`}
+                href={safe}
+                className={styles.link}
+              >
+                {text}
+              </a>
+            ) : (
+              <span key={`${scope}-a${keyN++}`} className={styles.linkUnsafe}>
+                {text}
+              </span>
+            )
           );
           i = urlEnd + 1;
           continue;
@@ -233,4 +324,40 @@ function renderInline(src: string, comps: MarkdownComponents, scope: string): Co
   }
   flush();
   return tokens;
+}
+
+function safeHref(raw: string): string | null {
+  const href = raw.trim();
+  if (href === "") return null;
+  const compact = stripHrefControlsAndSpaces(href).toLowerCase();
+  if (
+    compact.startsWith("javascript:") ||
+    compact.startsWith("data:") ||
+    compact.startsWith("vbscript:")
+  ) {
+    return null;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+    try {
+      const parsed = new URL(href);
+      return parsed.protocol === "http:" ||
+        parsed.protocol === "https:" ||
+        parsed.protocol === "mailto:"
+        ? href
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return href;
+}
+
+function stripHrefControlsAndSpaces(value: string): string {
+  let out = "";
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (code <= 32 || code === 127) continue;
+    out += char;
+  }
+  return out;
 }

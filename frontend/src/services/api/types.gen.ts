@@ -1847,8 +1847,8 @@ export interface paths {
          * @description Server-Sent Events stream — emits when the plan should refresh.
          *
          *     The companion alarm + dashboard insertions hook subscribe via
-         *     `EventSource(...)`. Each `calendar-changed` event is the signal to
-         *     refetch downstream views.
+         *     fetch-SSE. Each `calendar-changed` event is the signal to refetch
+         *     downstream views.
          *
          *     Trigger: `study_events.event_type = 'local_calendar_synced'` rows
          *     landing — emitted when a Calendar.app change reaches the backend.
@@ -5785,7 +5785,9 @@ export interface operations {
             query?: {
                 after_id?: number;
             };
-            header?: never;
+            header?: {
+                "last-event-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6455,7 +6457,9 @@ export interface operations {
             query?: {
                 after_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "last-event-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

@@ -6,6 +6,7 @@ import {
   type NoteRecord
 } from "@/services/api/endpoints";
 
+import { notePreviewText } from "../noteContent";
 import { Ic } from "./NotesIcons";
 import styles from "./UnsortedInbox.module.css";
 
@@ -28,11 +29,13 @@ interface UnsortedInboxProps {
  * Empty state: the card vanishes entirely. No "you're all caught up"
  * filler — fewer chrome elements when there's nothing to triage.
  */
-export function UnsortedInbox({ notes, subjects, onChanged }: UnsortedInboxProps) {
+export function UnsortedInbox({
+  notes,
+  subjects,
+  onChanged
+}: UnsortedInboxProps) {
   const top5 = useMemo(() => {
-    return notes
-      .filter((n) => n.folder_id === null)
-      .slice(0, 5);
+    return notes.filter((n) => n.folder_id === null).slice(0, 5);
   }, [notes]);
 
   if (top5.length === 0) return null;
@@ -86,10 +89,8 @@ function InboxRow({ note, subjects, onChanged }: InboxRowProps) {
     }
   };
 
-  const sourceLine = note.document_name
-    ? `${note.document_name}`
-    : "No source";
-  const snippet = (note.content || "").split("\n\n")[0] || "Empty note.";
+  const sourceLine = note.document_name ? `${note.document_name}` : "No source";
+  const snippet = notePreviewText(note.content, "Empty note.");
 
   return (
     <li className={styles.row}>

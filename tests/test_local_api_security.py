@@ -33,8 +33,8 @@ def _make_request(
     """Build a minimal ASGI Request without spinning up the app.
 
     `requires_local_api_token` only inspects `request.url.path` and
-    `request.method`. `has_valid_local_api_token` also reads headers and
-    query params, so callers can override them.
+    `request.method`. `has_valid_local_api_token` reads headers, while
+    query params are included so rejection tests can pin URL-token behavior.
     """
     scope = {
         "type": "http",
@@ -95,8 +95,7 @@ class RequiresLocalApiTokenTests(unittest.TestCase):
 
 
 class HasValidLocalApiTokenTests(unittest.TestCase):
-    """SSE / EventSource cannot set custom headers, so `?token=` is the only
-    auth carrier on that path. `has_valid_local_api_token` must accept it."""
+    """Only the header form is accepted so tokens never leak through URLs."""
 
     def test_accepts_correct_header(self) -> None:
         token = get_local_api_token()
@@ -107,14 +106,14 @@ class HasValidLocalApiTokenTests(unittest.TestCase):
         )
         self.assertTrue(has_valid_local_api_token(request))
 
-    def test_accepts_correct_query_param_for_sse(self) -> None:
+    def test_rejects_correct_token_in_query_param(self) -> None:
         token = get_local_api_token()
         request = _make_request(
             "GET",
             "/api/jobs/stream",
             query_string=f"token={token}".encode("utf-8"),
         )
-        self.assertTrue(has_valid_local_api_token(request))
+        self.assertFalse(has_valid_local_api_token(request))
 
     def test_rejects_wrong_token_in_header(self) -> None:
         request = _make_request(

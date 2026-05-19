@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List
 
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from services import jobs as jobs_service
@@ -51,9 +51,17 @@ def list_job_events(
 
 
 @router.get("/api/jobs/stream")
-async def stream_jobs(after_id: int = Query(default=0, ge=0)) -> StreamingResponse:
+async def stream_jobs(
+    after_id: int = Query(default=0, ge=0),
+    last_event_id: str | None = Header(default=None),
+) -> StreamingResponse:
+    try:
+        initial_cursor = max(after_id, int(last_event_id)) if last_event_id else after_id
+    except ValueError:
+        initial_cursor = after_id
+
     async def event_stream() -> AsyncIterator[str]:
-        cursor = after_id
+        cursor = initial_cursor
         while True:
             events = jobs_service.list_events(after_id=cursor, limit=100)
             for event in events:

@@ -264,7 +264,7 @@ def save_note(payload: NoteUpsertRequest) -> Dict[str, Any]:
         mastery_state = None
         concept_id = payload.concept_id or note.get("concept_id")
         if concept_id:
-            content_words = len(re.findall(r"[A-Za-z0-9]+", payload.content or ""))
+            content_words = len(re.findall(r"[A-Za-z0-9]+", note.get("content") or ""))
             evidence_count = len(payload.evidence_reference_ids or [])
             if content_words >= 8:
                 mastery_state = mastery_engine.update_mastery_state(

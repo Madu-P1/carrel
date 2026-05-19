@@ -41,6 +41,18 @@ test("Markdown renders a bullet list with three items", () => {
   expect(items[2].textContent).toBe("three");
 });
 
+test("Markdown renders ordered lists and block quotes", () => {
+  const { container } = render(
+    <Markdown source={"1. first\n2. second\n\n> quoted\n> source"} />
+  );
+
+  expect(container.querySelector("ol li")?.textContent).toBe("first");
+  expect(container.querySelectorAll("ol li")[1]?.textContent).toBe("second");
+  expect(container.querySelector("blockquote")?.textContent).toBe(
+    "quotedsource"
+  );
+});
+
 test("Markdown renders a link with href + text", () => {
   const { container } = render(
     <Markdown source="see [docs](https://example.com) for more" />
@@ -48,6 +60,16 @@ test("Markdown renders a link with href + text", () => {
   const link = container.querySelector("a");
   expect(link?.getAttribute("href")).toBe("https://example.com");
   expect(link?.textContent).toBe("docs");
+});
+
+test("Markdown does not render executable link hrefs", () => {
+  const { container } = render(
+    <Markdown source="bad [link](javascript:alert(1)) stays text" />
+  );
+
+  expect(container.querySelector("a")).toBeNull();
+  expect(container.textContent).toContain("link");
+  expect(container.innerHTML).not.toContain("javascript:");
 });
 
 test("Markdown component overrides replace the default anchor (MDX-style)", () => {

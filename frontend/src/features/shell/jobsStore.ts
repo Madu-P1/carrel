@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals";
 
-import { withLocalApiToken } from "@/services/api/client";
 import { jobs, type IngestionJob, type JobEvent } from "@/services/api/endpoints";
+import { subscribeSse } from "@/services/sse";
 
 export const jobsState = {
   items: signal<IngestionJob[]>([]),
@@ -13,7 +13,6 @@ export const jobsState = {
 
 let started = false;
 let pollTimer: number | null = null;
-let eventSource: EventSource | null = null;
 
 function upsertJob(job: IngestionJob): void {
   const existing = jobsState.items.value;
@@ -53,39 +52,30 @@ async function refreshEvents(): Promise<void> {
   }
 }
 
+function ensurePollFallback(): void {
+  if (pollTimer === null) {
+    pollTimer = window.setInterval(() => void refreshEvents(), 2500);
+  }
+}
+
 export function startJobsFeed(): void {
   if (started) return;
   started = true;
   void refreshJobs();
 
-  // PR-S1: the local-API gate now covers /api/jobs/stream. EventSource
-  // cannot set custom headers, so we resolve the token and append it as
-  // `?token=` via withLocalApiToken before constructing the source. The
-  // async wait is brief (token is read from window.__CARREL_LOCAL_API_TOKEN
-  // synchronously after the first call) but we still need to await it.
-  void withLocalApiToken(jobs.streamUrl(jobsState.lastEventId.value)).then((authedUrl) => {
+  const streamUrl = jobs.streamUrl(jobsState.lastEventId.value);
+  subscribeSse(streamUrl, "job", (event) => {
     try {
-      eventSource = new EventSource(authedUrl);
-      eventSource.addEventListener("job", (event) => {
-        try {
-          const parsed = JSON.parse((event as MessageEvent).data) as JobEvent;
-          jobsState.events.value = [...jobsState.events.value, parsed].slice(-200);
-          jobsState.lastEventId.value = Math.max(jobsState.lastEventId.value, parsed.id);
-          void refreshJobs();
-        } catch {
-          void refreshEvents();
-        }
-      });
-      eventSource.onerror = () => {
-        eventSource?.close();
-        eventSource = null;
-        if (pollTimer === null) {
-          pollTimer = window.setInterval(() => void refreshEvents(), 2500);
-        }
-      };
+      const parsed = JSON.parse(event.data) as JobEvent;
+      jobsState.events.value = [...jobsState.events.value, parsed].slice(-200);
+      jobsState.lastEventId.value = Math.max(jobsState.lastEventId.value, parsed.id);
+      void refreshJobs();
     } catch {
-      pollTimer = window.setInterval(() => void refreshEvents(), 2500);
+      void refreshEvents();
     }
+  });
+  subscribeSse(streamUrl, "error", () => {
+    ensurePollFallback();
   });
 }
 

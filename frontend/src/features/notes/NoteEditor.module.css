@@ -245,6 +245,54 @@
   color: var(--np-accent);
 }
 
+.toolbarBtn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.toolbarBtn:disabled:hover {
+  background: transparent;
+  color: var(--np-ink-soft);
+  border-color: transparent;
+}
+
+.toolbarSpacer {
+  flex: 1 1 auto;
+  min-width: 16px;
+}
+
+.modeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--np-card-border);
+  background: transparent;
+  color: var(--np-ink-soft);
+  font-family: var(--np-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.modeBtn:hover {
+  color: var(--np-ink);
+  background: var(--np-rail-hover);
+}
+
+.modeBtnActive {
+  color: var(--np-accent);
+  background: var(--np-accent-faint);
+  border-color: var(--np-accent-faint-border);
+}
+
 /* Sheet — the actual "Word page" ─────────────────────────────── */
 .sheet {
   max-width: 760px;
@@ -273,7 +321,7 @@
   font-family: var(--np-font-serif);
   font-size: 38px;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-weight: 500;
   color: var(--np-ink);
   background: transparent;
@@ -400,72 +448,70 @@
 }
 
 /* The writing canvas ─────────────────────────────────────────── */
-.body {
+.structuredEditor {
   font-family: var(--np-font-body);
   font-size: 16px;
   line-height: 1.7;
   color: var(--np-ink);
-  outline: none;
   min-height: 420px;
 }
 
-.body:focus {
+.structuredProse {
+  min-height: 420px;
   outline: none;
+  caret-color: var(--np-accent);
+  word-break: break-word;
 }
 
-.body:empty::before {
-  content: "Start writing…";
-  color: var(--np-ink-faint);
-  font-style: italic;
-  pointer-events: none;
-}
-
-/* Rich-text content — what contenteditable + execCommand produces.
-   These rules style the HTML the editor emits. */
-.body h1 {
-  font-family: var(--np-font-serif);
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  margin: 28px 0 12px;
-  color: var(--np-ink);
-}
-
-.body h2 {
-  font-family: var(--np-font-serif);
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-  margin: 24px 0 10px;
-  color: var(--np-ink);
-}
-
-.body h3 {
-  font-family: var(--np-font-serif);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.3;
-  margin: 20px 0 8px;
-  color: var(--np-ink);
-}
-
-.body p {
-  margin: 0 0 10px;
-}
-
-.body ul,
-.body ol {
-  padding-left: 24px;
+.structuredProse p {
   margin: 0 0 12px;
 }
 
-.body li {
-  margin-bottom: 4px;
+.structuredProse p:last-child {
+  margin-bottom: 0;
 }
 
-.body blockquote {
+.structuredProse h1,
+.structuredProse h2,
+.structuredProse h3 {
+  font-family: var(--np-font-serif);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--np-ink);
+  margin: 20px 0 10px;
+  line-height: 1.2;
+}
+
+.structuredProse h1:first-child,
+.structuredProse h2:first-child,
+.structuredProse h3:first-child {
+  margin-top: 0;
+}
+
+.structuredProse h1 {
+  font-size: 28px;
+}
+
+.structuredProse h2 {
+  font-size: 22px;
+}
+
+.structuredProse h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.structuredProse ul,
+.structuredProse ol {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+.structuredProse li {
+  margin: 4px 0;
+}
+
+.structuredProse blockquote {
   margin: 12px 0;
   padding: 4px 0 4px 16px;
   border-left: 3px solid var(--np-accent);
@@ -473,31 +519,117 @@
   font-style: italic;
 }
 
-.body pre {
-  font-family: var(--np-font-mono);
-  font-size: 13px;
-  line-height: 1.55;
-  background: var(--np-textarea-bg);
-  border: 1px solid var(--np-textarea-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+.structuredProse pre {
   margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--np-card-border);
+  background: color-mix(in srgb, var(--np-ink) 5%, transparent);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
 
-.body a {
+.structuredProse code {
+  font-family: var(--np-font-mono);
+  font-size: 0.92em;
+}
+
+.structuredProse a {
   color: var(--np-accent);
   text-decoration: underline;
+  text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
 
-.body strong {
-  font-weight: 600;
+.structuredProse :global(.is-editor-empty:first-child)::before {
+  content: attr(data-placeholder);
+  color: var(--np-ink-faint);
+  font-style: italic;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.structuredProse :global(.ProseMirror-selectednode) {
+  outline: 2px solid var(--np-accent-faint-border);
+  outline-offset: 3px;
+}
+
+.editorLoading {
+  margin: 0;
+  color: var(--np-ink-faint);
+  font-family: var(--np-font-body);
+  font-size: 16px;
+  font-style: italic;
+}
+
+.preview {
+  min-height: 420px;
+  outline: none;
+}
+
+.preview:focus-visible {
+  outline: 2px solid var(--np-accent-faint-border);
+  outline-offset: 6px;
+  border-radius: 8px;
+}
+
+.previewMarkdown {
+  font-family: var(--np-font-body);
+  font-size: 16px;
+  line-height: 1.7;
   color: var(--np-ink);
 }
 
-.body em {
+.previewMarkdown h1,
+.previewMarkdown h2,
+.previewMarkdown h3 {
+  font-family: var(--np-font-serif);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--np-ink);
+}
+
+.previewMarkdown h1 {
+  font-size: 28px;
+}
+
+.previewMarkdown h2 {
+  font-size: 22px;
+}
+
+.previewMarkdown h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.previewMarkdown p {
+  margin: 0;
+}
+
+.previewMarkdown ul,
+.previewMarkdown ol {
+  padding-left: 24px;
+}
+
+.previewMarkdown blockquote {
+  margin: 12px 0;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--np-accent);
+  color: var(--np-ink-soft);
+  font-style: italic;
+}
+
+.previewMarkdown pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.previewEmpty {
+  margin: 0;
+  color: var(--np-ink-faint);
+  font-family: var(--np-font-body);
+  font-size: 16px;
   font-style: italic;
 }
 

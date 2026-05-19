@@ -150,9 +150,8 @@ const ENTRY_JS_GZIP_BUDGET = 112 * 1024;
  *    38 KB → 40 KB: Full-page Note Editor (Word-doc-style writing
  *                    surface) — NoteEditor.module.css ships toolbar
  *                    chrome, sticky topbar, the 720px "sheet" Liquid
- *                    Glass panel, contenteditable body type rules
- *                    (h1/h2/h3/p/ul/ol/blockquote/pre/em/strong), 404
- *                    state. Adds the /notes/:id route. */
+ *                    Glass panel, markdown write/preview rules, and the
+ *                    404 state. Adds the /notes/:id route. */
 const ENTRY_CSS_GZIP_BUDGET = 40 * 1024;
 
 function gzippedSize(path: string): number {
@@ -193,5 +192,4 @@ describe("entry-bundle size budget", () => {
       `index.css gzipped is ${gz} bytes, budget is ${ENTRY_CSS_GZIP_BUDGET}.`
     ).toBeLessThan(ENTRY_CSS_GZIP_BUDGET);
   });
-
 });

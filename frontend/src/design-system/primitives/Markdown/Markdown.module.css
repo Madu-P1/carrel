@@ -70,10 +70,29 @@
   margin: 0;
 }
 
+.blockquote {
+  margin: 0;
+  padding-left: var(--space-4, 16px);
+  border-left: 3px solid var(--color-border-subtle, rgba(0, 0, 0, 0.14));
+  color: var(--color-text-secondary, currentColor);
+}
+
+.blockquote p {
+  margin: 0;
+}
+
+.blockquote p + p {
+  margin-top: var(--space-2, 8px);
+}
+
 .link {
   color: var(--color-link, #0066cc);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.linkUnsafe {
+  color: inherit;
 }
 
 .link:hover {

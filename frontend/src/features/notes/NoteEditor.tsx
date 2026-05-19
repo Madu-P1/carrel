@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
+import { Markdown } from "@/design-system";
 import { createQuery } from "@/lib/query";
 import {
   notes as notesApi,
@@ -9,11 +16,13 @@ import {
 } from "@/services/api/endpoints";
 
 import { Ic } from "./components/NotesIcons";
-import {
-  notesOrganizationQuery,
-  refreshNotesOrganization
-} from "./state";
+import { notesOrganizationQuery, refreshNotesOrganization } from "./state";
+import { noteContentToMarkdown, serializeNoteMarkdown } from "./noteContent";
+import type { StructuredEditorHandle } from "./StructuredMarkdownEditor";
 import styles from "./NoteEditor.module.css";
+
+type StructuredMarkdownEditorComponent =
+  typeof import("./StructuredMarkdownEditor").StructuredMarkdownEditor;
 
 interface NoteEditorProps {
   /** The note id from the route. */
@@ -23,11 +32,10 @@ interface NoteEditorProps {
 /**
  * Full-page writing surface for a single note.
  *
- * Layout: 720px centered content column (Word page width), title input
- * up top, contenteditable body underneath, a sticky toolbar with the
- * usual rich-text actions (bold, italic, underline, H1–H3, lists,
- * quote, code). A slim metadata strip carries the source pill and a
- * move-to-folder dropdown.
+ * Layout: 720px centered content column (Word page width), title input up
+ * top, a structured writing surface underneath, a sticky toolbar with the
+ * usual rich-text actions (bold, italic, H1-H3, lists, quote, code). A slim
+ * metadata strip carries the source pill and a move-to-folder dropdown.
  *
  * Save semantics (2026-05-16 rewrite, after the duplicate-note bug):
  *   - NO autosave during typing. Typing only flips the dirty flag.
@@ -41,12 +49,8 @@ interface NoteEditorProps {
  *   - Delete: explicit button + window.confirm + DELETE /api/notes/:id,
  *     then navigate back to /notes.
  *
- * Editor backend: native contenteditable + document.execCommand. Yes,
- * it's deprecated in spec; in practice it's what Apple Notes and Word
- * Online run on and behaves consistently across every WebKit /
- * Chromium today. The HTML the editor produces is saved verbatim and
- * re-rendered on load. When we want @-mentions / math / collab,
- * upgrade to TipTap or Lexical without touching the page shell.
+ * Editor backend: TipTap/ProseMirror document state with markdown persistence
+ * and a safe JSX preview. Legacy HTML notes are converted once on load.
  */
 export function NoteEditor({ id }: NoteEditorProps) {
   // Fetch all notes once; find this one by id. A per-note GET endpoint
@@ -88,9 +92,7 @@ export function NoteEditor({ id }: NoteEditorProps) {
     );
   }
 
-  return (
-    <EditorSurface key={note.id} note={note} subjects={subjects} />
-  );
+  return <EditorSurface key={note.id} note={note} subjects={subjects} />;
 }
 
 interface EditorSurfaceProps {
@@ -100,38 +102,45 @@ interface EditorSurfaceProps {
 
 function EditorSurface({ note, subjects }: EditorSurfaceProps) {
   const [title, setTitle] = useState(note.title || "Untitled note");
+  const [draftContent, setDraftContent] = useState(() =>
+    noteContentToMarkdown(note.content)
+  );
+  const [mode, setMode] = useState<"write" | "preview">("write");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const lastSavedRef = useRef({ title: note.title, content: note.content });
+  const editorHandleRef = useRef<StructuredEditorHandle | null>(null);
+  const [editorReady, setEditorReady] = useState(false);
+  const [StructuredEditorComponent, setStructuredEditorComponent] =
+    useState<StructuredMarkdownEditorComponent | null>(null);
+  const lastSavedRef = useRef({
+    title: note.title,
+    content: serializeNoteMarkdown(noteContentToMarkdown(note.content))
+  });
   // Mirror of `dirty` for callbacks (keydown / navigation) that close
   // over an old render. Reading state inside a stable handler is the
   // canonical use case for a ref alongside state.
   const dirtyRef = useRef(false);
 
-  // Mount body content once: contenteditable's innerHTML is the source
-  // of truth from here on out. Setting it on every render would clobber
-  // the user's caret position mid-type.
+  // Mount body content once per note. Setting it on every render would
+  // clobber the user's caret position mid-type.
   useEffect(() => {
-    if (!bodyRef.current) return;
-    const isWorkspaceSeed = note.content === "\n";
-    bodyRef.current.innerHTML = isWorkspaceSeed ? "" : note.content;
+    const nextDraft = noteContentToMarkdown(note.content);
+    const savedContent = serializeNoteMarkdown(nextDraft);
+    const isWorkspaceSeed = savedContent === "\n";
+    setDraftContent(nextDraft);
+    setMode("write");
     // Focus the body. If empty (new workspace note), put the caret at
     // the start; otherwise leave selection alone so re-navigation
     // doesn't jump the user's last position.
     if (isWorkspaceSeed) {
-      bodyRef.current.focus();
-      const range = document.createRange();
-      range.setStart(bodyRef.current, 0);
-      range.collapse(true);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      window.requestAnimationFrame(() => {
+        editorHandleRef.current?.focus();
+      });
     }
-    lastSavedRef.current = { title: note.title, content: note.content };
+    lastSavedRef.current = { title: note.title, content: savedContent };
     setTitle(note.title || "Untitled note");
     setDirty(false);
     dirtyRef.current = false;
@@ -145,11 +154,31 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void import("./StructuredMarkdownEditor").then((module) => {
+      if (!cancelled) {
+        setStructuredEditorComponent(() => module.StructuredMarkdownEditor);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleEditorReady = useCallback(
+    (handle: StructuredEditorHandle | null) => {
+      editorHandleRef.current = handle;
+      setEditorReady(handle !== null);
+    },
+    []
+  );
+
   const flushSave = useCallback(async (): Promise<boolean> => {
-    if (!bodyRef.current) return true;
     const nextTitle = title.trim() || "Untitled note";
-    let nextContent = bodyRef.current.innerHTML;
-    if (nextContent === "" || nextContent === "<br>") nextContent = "\n";
+    const nextContent = serializeNoteMarkdown(
+      editorHandleRef.current?.getMarkdown() ?? draftContent
+    );
     if (
       nextTitle === lastSavedRef.current.title &&
       nextContent === lastSavedRef.current.content
@@ -177,6 +206,7 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
         note_type: note.note_type
       });
       lastSavedRef.current = { title: nextTitle, content: nextContent };
+      if (nextContent === "\n") setDraftContent("");
       dirtyRef.current = false;
       setDirty(false);
       const stamp = new Date().toLocaleTimeString([], {
@@ -198,6 +228,7 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
     note.concept_id,
     note.folder_id,
     note.note_type,
+    draftContent,
     title
   ]);
 
@@ -231,23 +262,6 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
-
-  const applyCommand = (command: string, value?: string) => {
-    // execCommand is the cross-browser-WebKit-tested path for
-    // contenteditable formatting. focusing first ensures the command
-    // applies to the editor, not the toolbar button.
-    bodyRef.current?.focus();
-    document.execCommand(command, false, value);
-    markDirty();
-  };
-
-  const applyHeading = (level: 1 | 2 | 3 | 0) => {
-    if (level === 0) {
-      applyCommand("formatBlock", "<p>");
-    } else {
-      applyCommand("formatBlock", `<h${level}>`);
-    }
-  };
 
   const handleMove = async (event: Event) => {
     const value = (event.currentTarget as HTMLSelectElement).value;
@@ -317,15 +331,23 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
         <div className={styles.topbarRight}>
           <div className={styles.savedIndicator}>
             {saveError ? (
-              <span className={styles.savedErr} role="alert">{saveError}</span>
+              <span className={styles.savedErr} role="alert">
+                {saveError}
+              </span>
             ) : saving ? (
               <>
-                <span className={[styles.savedDot, styles.savedDotPulse].join(" ")} aria-hidden />
+                <span
+                  className={[styles.savedDot, styles.savedDotPulse].join(" ")}
+                  aria-hidden
+                />
                 <span>Saving…</span>
               </>
             ) : dirty ? (
               <>
-                <span className={[styles.savedDot, styles.savedDotDirty].join(" ")} aria-hidden />
+                <span
+                  className={[styles.savedDot, styles.savedDotDirty].join(" ")}
+                  aria-hidden
+                />
                 <span>Unsaved changes</span>
               </>
             ) : (
@@ -363,8 +385,24 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
 
       {/* Toolbar (sticky) ----------------------------------------- */}
       <Toolbar
-        onCommand={applyCommand}
-        onHeading={applyHeading}
+        mode={mode}
+        editorReady={editorReady}
+        onModeChange={setMode}
+        onBold={() => editorHandleRef.current?.toggleBold()}
+        onItalic={() => editorHandleRef.current?.toggleItalic()}
+        onStrike={() => editorHandleRef.current?.toggleStrike()}
+        onHeading={(level) =>
+          level === 0
+            ? editorHandleRef.current?.setParagraph()
+            : editorHandleRef.current?.toggleHeading(level)
+        }
+        onList={(ordered) =>
+          ordered
+            ? editorHandleRef.current?.toggleOrderedList()
+            : editorHandleRef.current?.toggleBulletList()
+        }
+        onQuote={() => editorHandleRef.current?.toggleBlockquote()}
+        onCodeBlock={() => editorHandleRef.current?.toggleCodeBlock()}
       />
 
       {/* Page surface — Word-style centered column ---------------- */}
@@ -400,7 +438,9 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
               ) : null}
             </span>
           ) : (
-            <span className={[styles.sourcePill, styles.sourcePillMuted].join(" ")}>
+            <span
+              className={[styles.sourcePill, styles.sourcePillMuted].join(" ")}
+            >
               No source
             </span>
           )}
@@ -428,55 +468,91 @@ function EditorSurface({ note, subjects }: EditorSurfaceProps) {
           </label>
         </div>
 
-        {/* The writing canvas. ContentEditable + execCommand drives
-            bold/italic/underline natively; the toolbar buttons fire
-            the same commands so keyboard and click stay in sync. */}
-        <div
-          ref={bodyRef}
-          className={styles.body}
-          contentEditable
-          spellcheck
-          aria-label="Note body"
-          onInput={markDirty}
-        />
+        {mode === "write" ? (
+          StructuredEditorComponent ? (
+            <StructuredEditorComponent
+              key={note.id}
+              initialMarkdown={draftContent}
+              onChange={setDraftContent}
+              onDirty={markDirty}
+              onReady={handleEditorReady}
+            />
+          ) : (
+            <p className={styles.editorLoading} role="status">
+              Loading editor...
+            </p>
+          )
+        ) : (
+          <div
+            className={styles.preview}
+            tabIndex={0}
+            aria-label="Note preview"
+          >
+            {draftContent.trim() ? (
+              <Markdown
+                source={draftContent}
+                className={styles.previewMarkdown}
+              />
+            ) : (
+              <p className={styles.previewEmpty}>Start writing...</p>
+            )}
+          </div>
+        )}
       </article>
     </div>
   );
 }
 
 interface ToolbarProps {
-  onCommand: (command: string, value?: string) => void;
+  mode: "write" | "preview";
+  editorReady: boolean;
+  onModeChange: (mode: "write" | "preview") => void;
+  onBold: () => void;
+  onItalic: () => void;
+  onStrike: () => void;
   onHeading: (level: 1 | 2 | 3 | 0) => void;
+  onList: (ordered: boolean) => void;
+  onQuote: () => void;
+  onCodeBlock: () => void;
 }
 
-function Toolbar({ onCommand, onHeading }: ToolbarProps) {
+function Toolbar({
+  mode,
+  editorReady,
+  onModeChange,
+  onBold,
+  onItalic,
+  onStrike,
+  onHeading,
+  onList,
+  onQuote,
+  onCodeBlock
+}: ToolbarProps) {
+  const writeMode = mode === "write";
+  const editing = writeMode && editorReady;
   return (
     <nav aria-label="Formatting toolbar" className={styles.toolbar}>
       <ToolbarGroup>
         <ToolbarButton
           label="Bold"
           shortcut="⌘B"
-          onClick={() => onCommand("bold")}
+          disabled={!editing}
+          onClick={onBold}
         >
           <span style={{ fontWeight: 700 }}>B</span>
         </ToolbarButton>
         <ToolbarButton
           label="Italic"
           shortcut="⌘I"
-          onClick={() => onCommand("italic")}
+          disabled={!editing}
+          onClick={onItalic}
         >
           <span style={{ fontStyle: "italic" }}>I</span>
         </ToolbarButton>
         <ToolbarButton
-          label="Underline"
-          shortcut="⌘U"
-          onClick={() => onCommand("underline")}
-        >
-          <span style={{ textDecoration: "underline" }}>U</span>
-        </ToolbarButton>
-        <ToolbarButton
           label="Strikethrough"
-          onClick={() => onCommand("strikeThrough")}
+          disabled={!editing}
+          onClick={onStrike}
         >
           <span style={{ textDecoration: "line-through" }}>S</span>
         </ToolbarButton>
@@ -485,16 +561,32 @@ function Toolbar({ onCommand, onHeading }: ToolbarProps) {
       <span className={styles.toolbarSep} aria-hidden />
 
       <ToolbarGroup>
-        <ToolbarButton label="Paragraph" onClick={() => onHeading(0)}>
+        <ToolbarButton
+          label="Paragraph"
+          disabled={!editing}
+          onClick={() => onHeading(0)}
+        >
           ¶
         </ToolbarButton>
-        <ToolbarButton label="Heading 1" onClick={() => onHeading(1)}>
+        <ToolbarButton
+          label="Heading 1"
+          disabled={!editing}
+          onClick={() => onHeading(1)}
+        >
           H1
         </ToolbarButton>
-        <ToolbarButton label="Heading 2" onClick={() => onHeading(2)}>
+        <ToolbarButton
+          label="Heading 2"
+          disabled={!editing}
+          onClick={() => onHeading(2)}
+        >
           H2
         </ToolbarButton>
-        <ToolbarButton label="Heading 3" onClick={() => onHeading(3)}>
+        <ToolbarButton
+          label="Heading 3"
+          disabled={!editing}
+          onClick={() => onHeading(3)}
+        >
           H3
         </ToolbarButton>
       </ToolbarGroup>
@@ -504,27 +596,17 @@ function Toolbar({ onCommand, onHeading }: ToolbarProps) {
       <ToolbarGroup>
         <ToolbarButton
           label="Bulleted list"
-          onClick={() => onCommand("insertUnorderedList")}
+          disabled={!editing}
+          onClick={() => onList(false)}
         >
           •
         </ToolbarButton>
         <ToolbarButton
           label="Numbered list"
-          onClick={() => onCommand("insertOrderedList")}
+          disabled={!editing}
+          onClick={() => onList(true)}
         >
           1.
-        </ToolbarButton>
-        <ToolbarButton
-          label="Indent"
-          onClick={() => onCommand("indent")}
-        >
-          →|
-        </ToolbarButton>
-        <ToolbarButton
-          label="Outdent"
-          onClick={() => onCommand("outdent")}
-        >
-          |←
         </ToolbarButton>
       </ToolbarGroup>
 
@@ -533,35 +615,29 @@ function Toolbar({ onCommand, onHeading }: ToolbarProps) {
       <ToolbarGroup>
         <ToolbarButton
           label="Block quote"
-          onClick={() => onCommand("formatBlock", "<blockquote>")}
+          disabled={!editing}
+          onClick={onQuote}
         >
           ❝
         </ToolbarButton>
         <ToolbarButton
           label="Code block"
-          onClick={() => onCommand("formatBlock", "<pre>")}
+          disabled={!editing}
+          onClick={onCodeBlock}
         >
           {"</>"}
         </ToolbarButton>
       </ToolbarGroup>
 
-      <span className={styles.toolbarSep} aria-hidden />
+      <span className={styles.toolbarSpacer} aria-hidden />
 
       <ToolbarGroup>
-        <ToolbarButton
-          label="Undo"
-          shortcut="⌘Z"
-          onClick={() => onCommand("undo")}
-        >
-          ↶
-        </ToolbarButton>
-        <ToolbarButton
-          label="Redo"
-          shortcut="⌘⇧Z"
-          onClick={() => onCommand("redo")}
-        >
-          ↷
-        </ToolbarButton>
+        <ModeButton active={writeMode} onClick={() => onModeChange("write")}>
+          Write
+        </ModeButton>
+        <ModeButton active={!writeMode} onClick={() => onModeChange("preview")}>
+          Preview
+        </ModeButton>
       </ToolbarGroup>
     </nav>
   );
@@ -574,6 +650,7 @@ function ToolbarGroup({ children }: { children: preact.ComponentChildren }) {
 interface ToolbarButtonProps {
   label: string;
   shortcut?: string;
+  disabled?: boolean;
   onClick: () => void;
   children: preact.ComponentChildren;
 }
@@ -581,6 +658,7 @@ interface ToolbarButtonProps {
 function ToolbarButton({
   label,
   shortcut,
+  disabled = false,
   onClick,
   children
 }: ToolbarButtonProps) {
@@ -589,15 +667,36 @@ function ToolbarButton({
       type="button"
       className={styles.toolbarBtn}
       onMouseDown={(e) => {
-        // Critical: prevent the button from stealing focus from the
-        // editor. Without this, contenteditable loses its selection
-        // when the user clicks the toolbar, and execCommand applies
-        // to nothing.
+        // Keep the editor selection stable while the toolbar click runs.
         e.preventDefault();
       }}
       onClick={onClick}
+      disabled={disabled}
       aria-label={shortcut ? `${label} (${shortcut})` : label}
       title={shortcut ? `${label} (${shortcut})` : label}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ModeButton({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: preact.ComponentChildren;
+}) {
+  return (
+    <button
+      type="button"
+      className={[styles.modeBtn, active ? styles.modeBtnActive : ""]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onClick}
+      aria-pressed={active}
     >
       {children}
     </button>

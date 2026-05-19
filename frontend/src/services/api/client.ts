@@ -158,20 +158,6 @@ function readWindowLocalApiToken(): string | null {
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
-/**
- * SSE / EventSource flavor of `api()` — EventSource cannot set custom
- * headers, so the backend accepts the token via `?token=` for safe
- * methods. Returns the URL with the token appended (or unchanged if
- * no token is available, which yields a 403 the SSE client surfaces
- * as a closed connection).
- */
-export async function withLocalApiToken(url: string): Promise<string> {
-  const token = await resolveLocalApiToken();
-  if (!token) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}token=${encodeURIComponent(token)}`;
-}
-
 interface TimeoutHandle {
   signal: AbortSignal | null;
   didTimeout: () => boolean;
