@@ -143,10 +143,38 @@ function normalizeMarkdown(markdown: string): string {
     .trim();
 }
 
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+// Decode the small set of named + numeric HTML entities that
+// `HTML_ENTITY_RE` recognises. Done in pure JS rather than the common
+// `textarea.innerHTML = value; return textarea.value` shortcut because
+// that pattern routes user-controlled bytes through the HTML parser
+// (CodeQL js/xss-through-dom). For sanitised note markdown this set
+// of entities is enough; anything else either passes through verbatim
+// or is stripped earlier by sanitizeNoteHtml.
 function decodeHtmlEntities(value: string): string {
-  if (!HTML_ENTITY_RE.test(value) || typeof document === "undefined")
-    return value;
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = value;
-  return textarea.value;
+  if (!HTML_ENTITY_RE.test(value)) return value;
+  return value.replace(
+    /&(nbsp|amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/gi,
+    (match, entity: string) => {
+      const named = NAMED_HTML_ENTITIES[entity.toLowerCase()];
+      if (named !== undefined) return named;
+      if (entity.startsWith("#x") || entity.startsWith("#X")) {
+        const code = Number.parseInt(entity.slice(2), 16);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      }
+      if (entity.startsWith("#")) {
+        const code = Number.parseInt(entity.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      }
+      return match;
+    }
+  );
 }
