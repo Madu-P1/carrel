@@ -145,6 +145,14 @@ class NodesFtsSearchTests(unittest.TestCase):
     def test_returns_empty_for_blank_query(self) -> None:
         self.assertEqual(search_node_fts(self._conn, "   "), [])
 
+    def test_operational_error_is_logged_not_silent(self) -> None:
+        self._conn.execute("DROP TABLE node_fts")
+        with self.assertLogs("einstein.retrieval.nodes_fts", level="WARNING") as captured:
+            hits = search_node_fts(self._conn, "chlorophyll")
+
+        self.assertEqual(hits, [])
+        self.assertTrue(any("node_fts_search_failed" in line for line in captured.output))
+
     def test_basic_match_returns_node_metadata(self) -> None:
         hits = search_node_fts(self._conn, "chlorophyll")
         self.assertEqual(len(hits), 1)

@@ -161,13 +161,9 @@ class ReverseCardSchemaTests(unittest.TestCase):
         """Deleting either card of the pair removes the card_pairs row;
         the surviving card stays alive.
 
-        Note: the app does NOT currently enable PRAGMA foreign_keys=ON
-        on every connection (see db.py::_apply_connection_pragmas).
-        This test enables FK enforcement explicitly to pin the schema's
-        design intent — the CASCADE will fire if/when the app opts into
-        global FK enforcement. Tracked as a follow-up; the structural
-        FK + CASCADE still document the relationship even without
-        runtime enforcement.
+        The app now enables PRAGMA foreign_keys=ON on every managed
+        connection, so this pins the live cascade behavior rather than
+        only the schema declaration.
         """
         with main.get_db() as conn:
             conn.execute("PRAGMA foreign_keys = ON")
@@ -346,10 +342,9 @@ class ReverseCardServiceTests(unittest.TestCase):
 
     def test_delete_card_cleans_card_pairs_row(self) -> None:
         """delete_card must remove the card_pairs row that references
-        the deleted card. The schema declares ON DELETE CASCADE, but
-        the app does not enable PRAGMA foreign_keys globally — so the
-        cleanup has to live in application code. This test hits the
-        production code path with no PRAGMA toggle."""
+        the deleted card. The schema declares ON DELETE CASCADE, and
+        delete_card also performs an explicit cleanup for ad-hoc
+        connections outside db.get_db()."""
         with main.get_db() as conn:
             result = create_card_pair(conn, front="Femur", back="Thigh bone")
             self.assertEqual(

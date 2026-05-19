@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 import db
+from services.documents import delete_document_record
 from services.ingestion.persistence import (
     delete_typed_nodes,
     embed_and_index_nodes,
@@ -158,6 +159,31 @@ class TypedNodesPersistenceTests(unittest.TestCase):
         delete_typed_nodes(self._conn, self._doc_id)
         after = self._conn.execute("SELECT COUNT(*) AS n FROM node_embeddings").fetchone()["n"]
         self.assertEqual(after, 0)
+
+    def test_delete_document_record_removes_typed_nodes_and_embeddings(self) -> None:
+        nodes = [_make_node(0, text="private deletion sentinel")]
+        ids = insert_typed_nodes(self._conn, self._doc_id, nodes)
+        if node_embeddings_table_exists(self._conn):
+            embed_and_index_nodes(self._conn, nodes, ids, embedder=_DeterministicEmbedder())
+
+        self.assertTrue(delete_document_record(self._conn, self._doc_id))
+
+        node_count = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM nodes WHERE doc_id = ?",
+            (self._doc_id,),
+        ).fetchone()["n"]
+        self.assertEqual(node_count, 0)
+        fts_hit = self._conn.execute(
+            "SELECT id FROM node_fts WHERE node_fts MATCH 'sentinel'"
+        ).fetchone()
+        self.assertIsNone(fts_hit)
+        if node_embeddings_table_exists(self._conn):
+            embedding_count = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM node_embeddings WHERE node_id IN (%s)"
+                % ",".join("?" for _ in ids),
+                ids,
+            ).fetchone()["n"]
+            self.assertEqual(embedding_count, 0)
 
     def test_embed_and_index_skips_excluded_node_types(self) -> None:
         if not node_embeddings_table_exists(self._conn):

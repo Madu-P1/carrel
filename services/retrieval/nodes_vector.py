@@ -9,12 +9,16 @@ candidates from `nodes_fts.py` without a second round-trip.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import struct
 from typing import Iterable
 
+from app_logging import get_logger, log_event
 from services.retrieval.embeddings import Embedder, default_embedder
 from services.retrieval.nodes_fts import NodeHit
+
+LOGGER = get_logger("retrieval.nodes_vector")
 
 
 def _pack(vec: list[float]) -> bytes:
@@ -86,7 +90,16 @@ def search_node_vectors(
 
     try:
         rows = conn.execute("\n".join(sql), params).fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "node_vector_search_failed",
+            error_type=exc.__class__.__name__,
+            error=str(exc),
+            doc_filter_count=len(doc_ids or []),
+            subject_filter=bool(subject_name),
+        )
         return []
 
     return [

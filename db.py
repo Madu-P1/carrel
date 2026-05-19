@@ -83,8 +83,14 @@ def _apply_connection_pragmas(conn: sqlite3.Connection) -> None:
     is FULL, which fsyncs more aggressively than WAL needs. NORMAL is
     the documented safe complement to WAL (no torn writes; one fsync
     per checkpoint instead of two).
+
+    foreign_keys=ON is per-connection. SQLite parses REFERENCES clauses
+    either way, but it only enforces them when the pragma is enabled.
+    Carrel relies on cascades for source deletion and SET NULL for
+    durable job/calendar references, so every app connection must opt in.
     """
     conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
 
@@ -100,8 +106,12 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 def column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
     if not table_exists(conn, table_name):
         return False
-    columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    columns = conn.execute(f"PRAGMA table_info({_quote_identifier(table_name)})").fetchall()
     return any(row["name"] == column_name for row in columns)
+
+
+def _quote_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def _migration_version(name: str) -> int:
@@ -231,6 +241,529 @@ def _has_tables(conn: sqlite3.Connection, table_names: list[str]) -> bool:
 
 def _has_columns(conn: sqlite3.Connection, table_name: str, column_names: list[str]) -> bool:
     return all(column_exists(conn, table_name, column_name) for column_name in column_names)
+
+
+def _delete_missing_parent(
+    conn: sqlite3.Connection,
+    *,
+    child_table: str,
+    child_column: str,
+    parent_table: str,
+    parent_column: str = "id",
+) -> int:
+    if not (
+        table_exists(conn, child_table)
+        and table_exists(conn, parent_table)
+        and column_exists(conn, child_table, child_column)
+        and column_exists(conn, parent_table, parent_column)
+    ):
+        return 0
+    child = _quote_identifier(child_table)
+    parent = _quote_identifier(parent_table)
+    child_col = _quote_identifier(child_column)
+    parent_col = _quote_identifier(parent_column)
+    cursor = conn.execute(
+        f"""
+        DELETE FROM {child}
+        WHERE rowid IN (
+            SELECT c.rowid
+            FROM {child} AS c
+            LEFT JOIN {parent} AS p ON p.{parent_col} = c.{child_col}
+            WHERE c.{child_col} IS NOT NULL AND p.{parent_col} IS NULL
+        )
+        """
+    )
+    return int(cursor.rowcount if cursor.rowcount is not None else 0)
+
+
+def _null_missing_parent(
+    conn: sqlite3.Connection,
+    *,
+    child_table: str,
+    child_column: str,
+    parent_table: str,
+    parent_column: str = "id",
+) -> int:
+    if not (
+        table_exists(conn, child_table)
+        and table_exists(conn, parent_table)
+        and column_exists(conn, child_table, child_column)
+        and column_exists(conn, parent_table, parent_column)
+    ):
+        return 0
+    child = _quote_identifier(child_table)
+    parent = _quote_identifier(parent_table)
+    child_col = _quote_identifier(child_column)
+    parent_col = _quote_identifier(parent_column)
+    cursor = conn.execute(
+        f"""
+        UPDATE {child}
+        SET {child_col} = NULL
+        WHERE rowid IN (
+            SELECT c.rowid
+            FROM {child} AS c
+            LEFT JOIN {parent} AS p ON p.{parent_col} = c.{child_col}
+            WHERE c.{child_col} IS NOT NULL AND p.{parent_col} IS NULL
+        )
+        """
+    )
+    return int(cursor.rowcount if cursor.rowcount is not None else 0)
+
+
+def _delete_orphan_vectors(
+    conn: sqlite3.Connection,
+    *,
+    vector_table: str,
+    vector_column: str,
+    parent_table: str,
+    parent_column: str,
+) -> int:
+    if not (
+        table_exists(conn, vector_table)
+        and table_exists(conn, parent_table)
+        and column_exists(conn, vector_table, vector_column)
+        and (parent_column.lower() == "rowid" or column_exists(conn, parent_table, parent_column))
+    ):
+        return 0
+    vector = _quote_identifier(vector_table)
+    parent = _quote_identifier(parent_table)
+    vector_col = _quote_identifier(vector_column)
+    parent_col = "rowid" if parent_column.lower() == "rowid" else _quote_identifier(parent_column)
+    cursor = conn.execute(
+        f"""
+        DELETE FROM {vector}
+        WHERE {vector_col} NOT IN (SELECT {parent_col} FROM {parent})
+        """
+    )
+    return int(cursor.rowcount if cursor.rowcount is not None else 0)
+
+
+def _rebuild_fts_index(conn: sqlite3.Connection, table_name: str) -> None:
+    if table_exists(conn, table_name):
+        quoted = _quote_identifier(table_name)
+        conn.execute(f"INSERT INTO {quoted}({quoted}) VALUES('rebuild')")
+
+
+def _delete_orphan_concept_subgraph(conn: sqlite3.Connection) -> dict[str, int]:
+    if not _has_tables(conn, ["concepts", "documents"]):
+        return {}
+    concept_ids = [
+        row["id"]
+        for row in conn.execute(
+            """
+            SELECT c.id
+            FROM concepts AS c
+            LEFT JOIN documents AS d ON d.id = c.doc_id
+            WHERE c.doc_id IS NOT NULL AND d.id IS NULL
+            """
+        ).fetchall()
+    ]
+    if not concept_ids:
+        return {}
+
+    counts: dict[str, int] = {}
+    placeholders = ",".join("?" * len(concept_ids))
+
+    def add(key: str, cursor: sqlite3.Cursor) -> None:
+        count = int(cursor.rowcount if cursor.rowcount is not None else 0)
+        if count:
+            counts[key] = counts.get(key, 0) + count
+
+    if table_exists(conn, "questions"):
+        question_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM questions WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if question_ids:
+            question_placeholders = ",".join("?" * len(question_ids))
+            if table_exists(conn, "quiz_log"):
+                add(
+                    "quiz_log",
+                    conn.execute(
+                        f"DELETE FROM quiz_log WHERE question_id IN ({question_placeholders})",
+                        question_ids,
+                    ),
+                )
+            if table_exists(conn, "quiz_evidence"):
+                add(
+                    "quiz_evidence",
+                    conn.execute(
+                        f"DELETE FROM quiz_evidence WHERE question_id IN ({question_placeholders})",
+                        question_ids,
+                    ),
+                )
+            if table_exists(conn, "review_events"):
+                add(
+                    "review_events",
+                    conn.execute(
+                        f"UPDATE review_events SET question_id = NULL WHERE question_id IN ({question_placeholders})",
+                        question_ids,
+                    ),
+                )
+        add(
+            "questions",
+            conn.execute(
+                f"DELETE FROM questions WHERE concept_id IN ({placeholders})", concept_ids
+            ),
+        )
+
+    if table_exists(conn, "srs_cards"):
+        card_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM srs_cards WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if card_ids:
+            card_placeholders = ",".join("?" * len(card_ids))
+            if table_exists(conn, "flashcard_evidence"):
+                add(
+                    "flashcard_evidence",
+                    conn.execute(
+                        f"DELETE FROM flashcard_evidence WHERE card_id IN ({card_placeholders})",
+                        card_ids,
+                    ),
+                )
+            if table_exists(conn, "card_pairs"):
+                add(
+                    "card_pairs",
+                    conn.execute(
+                        f"DELETE FROM card_pairs WHERE card_a_id IN ({card_placeholders}) OR card_b_id IN ({card_placeholders})",
+                        card_ids * 2,
+                    ),
+                )
+            if table_exists(conn, "review_events"):
+                add(
+                    "review_events",
+                    conn.execute(
+                        f"UPDATE review_events SET card_id = NULL WHERE card_id IN ({card_placeholders})",
+                        card_ids,
+                    ),
+                )
+        add(
+            "srs_cards",
+            conn.execute(
+                f"DELETE FROM srs_cards WHERE concept_id IN ({placeholders})", concept_ids
+            ),
+        )
+
+    if table_exists(conn, "notes"):
+        note_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM notes WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if note_ids and table_exists(conn, "note_evidence"):
+            note_placeholders = ",".join("?" * len(note_ids))
+            add(
+                "note_evidence",
+                conn.execute(
+                    f"DELETE FROM note_evidence WHERE note_id IN ({note_placeholders})",
+                    note_ids,
+                ),
+            )
+        add(
+            "notes",
+            conn.execute(f"DELETE FROM notes WHERE concept_id IN ({placeholders})", concept_ids),
+        )
+
+    if table_exists(conn, "evidence_references"):
+        evidence_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM evidence_references WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if evidence_ids:
+            evidence_placeholders = ",".join("?" * len(evidence_ids))
+            for table in (
+                "artifact_evidence",
+                "flashcard_evidence",
+                "note_evidence",
+                "quiz_evidence",
+                "tutor_exchange_evidence",
+            ):
+                if table_exists(conn, table):
+                    add(
+                        table,
+                        conn.execute(
+                            f"DELETE FROM {table} WHERE evidence_reference_id IN ({evidence_placeholders})",
+                            evidence_ids,
+                        ),
+                    )
+            add(
+                "evidence_references",
+                conn.execute(
+                    f"DELETE FROM evidence_references WHERE id IN ({evidence_placeholders})",
+                    evidence_ids,
+                ),
+            )
+
+    for table in (
+        "claims",
+        "concept_examples",
+        "misconceptions",
+        "dialogue_sessions",
+        "study_events",
+    ):
+        if table_exists(conn, table):
+            add(
+                table,
+                conn.execute(
+                    f"DELETE FROM {table} WHERE concept_id IN ({placeholders})", concept_ids
+                ),
+            )
+
+    if table_exists(conn, "mastery_states"):
+        mastery_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM mastery_states WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if mastery_ids:
+            mastery_placeholders = ",".join("?" * len(mastery_ids))
+            if table_exists(conn, "review_events"):
+                add(
+                    "review_events",
+                    conn.execute(
+                        f"UPDATE review_events SET mastery_state_id = NULL WHERE mastery_state_id IN ({mastery_placeholders})",
+                        mastery_ids,
+                    ),
+                )
+            add(
+                "mastery_states",
+                conn.execute(
+                    f"DELETE FROM mastery_states WHERE id IN ({mastery_placeholders})",
+                    mastery_ids,
+                ),
+            )
+
+    if table_exists(conn, "concept_edges"):
+        add(
+            "concept_edges",
+            conn.execute(
+                f"DELETE FROM concept_edges WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+                concept_ids * 2,
+            ),
+        )
+    add("concepts", conn.execute(f"DELETE FROM concepts WHERE id IN ({placeholders})", concept_ids))
+    return counts
+
+
+def repair_foreign_key_orphans(conn: sqlite3.Connection) -> dict[str, int]:
+    """Repair pre-FK-enforcement orphans before normal app writes run.
+
+    This is intentionally idempotent and code-driven rather than a pure SQL
+    migration because sqlite-vec virtual tables are optional at runtime. A
+    static migration that references `chunks_vec` or `node_embeddings` fails
+    on machines where sqlite-vec is unavailable, exactly where startup should
+    stay graceful.
+    """
+
+    if conn.in_transaction:
+        conn.commit()
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    counts: dict[str, int] = {}
+
+    def add(key: str, count: int) -> None:
+        if count:
+            counts[key] = counts.get(key, 0) + count
+
+    try:
+        # Source-owned rows must not survive after their document disappears.
+        for key, count in _delete_orphan_concept_subgraph(conn).items():
+            add(key, count)
+        add(
+            "node_embeddings",
+            _delete_orphan_vectors(
+                conn,
+                vector_table="node_embeddings",
+                vector_column="node_id",
+                parent_table="nodes",
+                parent_column="id",
+            ),
+        )
+        add(
+            "nodes",
+            _delete_missing_parent(
+                conn,
+                child_table="nodes",
+                child_column="doc_id",
+                parent_table="documents",
+            ),
+        )
+        add(
+            "node_embeddings",
+            _delete_orphan_vectors(
+                conn,
+                vector_table="node_embeddings",
+                vector_column="node_id",
+                parent_table="nodes",
+                parent_column="id",
+            ),
+        )
+        add(
+            "chunks_vec",
+            _delete_orphan_vectors(
+                conn,
+                vector_table="chunks_vec",
+                vector_column="chunk_id",
+                parent_table="chunks",
+                parent_column="rowid",
+            ),
+        )
+        add(
+            "chunks",
+            _delete_missing_parent(
+                conn,
+                child_table="chunks",
+                child_column="doc_id",
+                parent_table="documents",
+            ),
+        )
+        add(
+            "chunks_vec",
+            _delete_orphan_vectors(
+                conn,
+                vector_table="chunks_vec",
+                vector_column="chunk_id",
+                parent_table="chunks",
+                parent_column="rowid",
+            ),
+        )
+        for table in ("notes", "study_events", "anchors", "stale_dependencies"):
+            column = (
+                "document_id"
+                if table == "anchors"
+                else "source_id"
+                if table == "stale_dependencies"
+                else "doc_id"
+            )
+            add(
+                table,
+                _delete_missing_parent(
+                    conn,
+                    child_table=table,
+                    child_column=column,
+                    parent_table="documents",
+                ),
+            )
+        add(
+            "evidence_references",
+            _delete_missing_parent(
+                conn,
+                child_table="evidence_references",
+                child_column="source_id",
+                parent_table="documents",
+            ),
+        )
+        add(
+            "srs_cards",
+            _delete_missing_parent(
+                conn,
+                child_table="srs_cards",
+                child_column="doc_id",
+                parent_table="documents",
+            ),
+        )
+
+        # Nullable back-references should be cleared, not used as a reason to
+        # delete otherwise user-authored state.
+        for table, column, parent in (
+            ("documents", "duplicate_of", "documents"),
+            ("ingestion_jobs", "document_id", "documents"),
+            ("study_suggestions", "doc_id", "documents"),
+            ("study_suggestions", "source_event_id", "calendar_events"),
+            ("anchors", "chunk_id", "chunks"),
+            ("anchors", "srs_card_id", "srs_cards"),
+            ("claims", "source_chunk_id", "chunks"),
+            ("concept_examples", "source_chunk_id", "chunks"),
+            ("misconceptions", "source_chunk_id", "chunks"),
+            ("evidence_references", "chunk_id", "chunks"),
+            ("notes", "folder_id", "note_folders"),
+            ("review_events", "mastery_state_id", "mastery_states"),
+            ("review_events", "card_id", "srs_cards"),
+            ("review_events", "question_id", "questions"),
+            ("artifacts", "parent_artifact_id", "artifacts"),
+            ("artifacts", "goal_id", "goals"),
+            ("artifacts", "session_id", "sessions"),
+            ("artifact_exports", "artifact_id", "artifacts"),
+        ):
+            add(
+                table,
+                _null_missing_parent(
+                    conn, child_table=table, child_column=column, parent_table=parent
+                ),
+            )
+
+        # Generic final sweep for any FK we missed. Nullable columns are nulled;
+        # required child rows are removed.
+        for _ in range(8):
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if not violations:
+                break
+            changed = 0
+            for violation in violations:
+                table = str(violation[0])
+                rowid = violation[1]
+                fk_id = int(violation[3])
+                fk_rows = [
+                    row
+                    for row in conn.execute(
+                        f"PRAGMA foreign_key_list({_quote_identifier(table)})"
+                    ).fetchall()
+                    if int(row["id"]) == fk_id
+                ]
+                if rowid is None or not fk_rows:
+                    continue
+                child_column = str(fk_rows[0]["from"])
+                table_info = {
+                    row["name"]: row
+                    for row in conn.execute(
+                        f"PRAGMA table_info({_quote_identifier(table)})"
+                    ).fetchall()
+                }
+                child_meta = table_info.get(child_column)
+                nullable = child_meta is not None and not bool(child_meta["notnull"])
+                action = str(fk_rows[0]["on_delete"] or "").upper()
+                quoted_table = _quote_identifier(table)
+                quoted_column = _quote_identifier(child_column)
+                if nullable or action == "SET NULL":
+                    cursor = conn.execute(
+                        f"UPDATE {quoted_table} SET {quoted_column} = NULL WHERE rowid = ?",
+                        (rowid,),
+                    )
+                else:
+                    cursor = conn.execute(f"DELETE FROM {quoted_table} WHERE rowid = ?", (rowid,))
+                changed += int(cursor.rowcount if cursor.rowcount is not None else 0)
+            if not changed:
+                break
+            add("foreign_key_check", changed)
+
+        remaining_violations = len(conn.execute("PRAGMA foreign_key_check").fetchall())
+        add("foreign_key_unresolved", remaining_violations)
+        _rebuild_fts_index(conn, "chunks_fts")
+        _rebuild_fts_index(conn, "node_fts")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.execute("PRAGMA foreign_keys = ON")
+        raise
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    if counts:
+        log_event(LOGGER, logging.WARNING, "foreign_key_orphans_repaired", **counts)
+    return counts
 
 
 def _has_initial_schema_baseline(conn: sqlite3.Connection) -> bool:
@@ -381,6 +914,7 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
             (migration.version, migration.name),
         )
     conn.commit()
+    repair_foreign_key_orphans(conn)
 
 
 def initialize_database() -> None:

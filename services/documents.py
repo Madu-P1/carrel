@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import db
 from services import stale_tracker
 from services.extraction_pipeline import IngestedAsset
-from services.ingestion.persistence import delete_chunk_vectors
+from services.ingestion.persistence import delete_chunk_vectors, delete_typed_nodes
 from services.ingestion import normalize_subject_name, summarize_document
 from services.ingestion.text_utils import clean_learning_text
 
@@ -689,8 +689,184 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
     if not document_row:
         return False
     concept_ids = [concept["id"] for concept in collect_document_concepts(conn, doc_id)]
+    chunk_ids = [
+        row["id"]
+        for row in conn.execute(
+            "SELECT id FROM chunks WHERE doc_id = ?",
+            (doc_id,),
+        ).fetchall()
+    ]
+    if chunk_ids:
+        chunk_placeholders = ",".join("?" * len(chunk_ids))
+        conn.execute(
+            f"UPDATE claims SET source_chunk_id = NULL WHERE source_chunk_id IN ({chunk_placeholders})",
+            chunk_ids,
+        )
+        conn.execute(
+            f"UPDATE concept_examples SET source_chunk_id = NULL WHERE source_chunk_id IN ({chunk_placeholders})",
+            chunk_ids,
+        )
+        conn.execute(
+            f"UPDATE misconceptions SET source_chunk_id = NULL WHERE source_chunk_id IN ({chunk_placeholders})",
+            chunk_ids,
+        )
+        conn.execute(
+            f"UPDATE evidence_references SET chunk_id = NULL WHERE chunk_id IN ({chunk_placeholders})",
+            chunk_ids,
+        )
+
+    evidence_params: list[str] = [doc_id]
+    evidence_where = ["source_id = ?"]
     if concept_ids:
         placeholders = ",".join("?" * len(concept_ids))
+        evidence_where.append(f"concept_id IN ({placeholders})")
+        evidence_params.extend(concept_ids)
+    evidence_ids = [
+        row["id"]
+        for row in conn.execute(
+            f"SELECT id FROM evidence_references WHERE {' OR '.join(evidence_where)}",
+            evidence_params,
+        ).fetchall()
+    ]
+    if evidence_ids:
+        evidence_placeholders = ",".join("?" * len(evidence_ids))
+        for table in (
+            "artifact_evidence",
+            "flashcard_evidence",
+            "note_evidence",
+            "quiz_evidence",
+            "tutor_exchange_evidence",
+        ):
+            conn.execute(
+                f"DELETE FROM {table} WHERE evidence_reference_id IN ({evidence_placeholders})",
+                evidence_ids,
+            )
+        conn.execute(
+            f"DELETE FROM evidence_references WHERE id IN ({evidence_placeholders})",
+            evidence_ids,
+        )
+
+    doc_note_ids = [
+        row["id"]
+        for row in conn.execute("SELECT id FROM notes WHERE doc_id = ?", (doc_id,)).fetchall()
+    ]
+    if doc_note_ids:
+        note_placeholders = ",".join("?" * len(doc_note_ids))
+        conn.execute(
+            f"DELETE FROM note_evidence WHERE note_id IN ({note_placeholders})",
+            doc_note_ids,
+        )
+
+    doc_card_ids = [
+        row["id"]
+        for row in conn.execute("SELECT id FROM srs_cards WHERE doc_id = ?", (doc_id,)).fetchall()
+    ]
+    if doc_card_ids:
+        card_placeholders = ",".join("?" * len(doc_card_ids))
+        conn.execute(
+            f"DELETE FROM flashcard_evidence WHERE card_id IN ({card_placeholders})",
+            doc_card_ids,
+        )
+        conn.execute(
+            f"DELETE FROM card_pairs WHERE card_a_id IN ({card_placeholders}) OR card_b_id IN ({card_placeholders})",
+            doc_card_ids * 2,
+        )
+        conn.execute(
+            f"UPDATE review_events SET card_id = NULL WHERE card_id IN ({card_placeholders})",
+            doc_card_ids,
+        )
+        conn.execute(f"DELETE FROM srs_cards WHERE id IN ({card_placeholders})", doc_card_ids)
+
+    if concept_ids:
+        placeholders = ",".join("?" * len(concept_ids))
+        question_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM questions WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        card_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM srs_cards WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        note_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM notes WHERE concept_id IN ({placeholders}) OR doc_id = ?",
+                [*concept_ids, doc_id],
+            ).fetchall()
+        ]
+        if question_ids:
+            question_placeholders = ",".join("?" * len(question_ids))
+            conn.execute(
+                f"DELETE FROM quiz_log WHERE question_id IN ({question_placeholders})",
+                question_ids,
+            )
+            conn.execute(
+                f"DELETE FROM quiz_evidence WHERE question_id IN ({question_placeholders})",
+                question_ids,
+            )
+            conn.execute(
+                f"UPDATE review_events SET question_id = NULL WHERE question_id IN ({question_placeholders})",
+                question_ids,
+            )
+        if card_ids:
+            card_placeholders = ",".join("?" * len(card_ids))
+            conn.execute(
+                f"DELETE FROM flashcard_evidence WHERE card_id IN ({card_placeholders})",
+                card_ids,
+            )
+            conn.execute(
+                f"DELETE FROM card_pairs WHERE card_a_id IN ({card_placeholders}) OR card_b_id IN ({card_placeholders})",
+                card_ids * 2,
+            )
+            conn.execute(
+                f"UPDATE review_events SET card_id = NULL WHERE card_id IN ({card_placeholders})",
+                card_ids,
+            )
+        if note_ids:
+            note_placeholders = ",".join("?" * len(note_ids))
+            conn.execute(
+                f"DELETE FROM note_evidence WHERE note_id IN ({note_placeholders})",
+                note_ids,
+            )
+        conn.execute(
+            f"DELETE FROM claims WHERE concept_id IN ({placeholders})",
+            concept_ids,
+        )
+        conn.execute(
+            f"DELETE FROM concept_examples WHERE concept_id IN ({placeholders})",
+            concept_ids,
+        )
+        conn.execute(
+            f"DELETE FROM misconceptions WHERE concept_id IN ({placeholders})",
+            concept_ids,
+        )
+        conn.execute(
+            f"DELETE FROM dialogue_sessions WHERE concept_id IN ({placeholders})",
+            concept_ids,
+        )
+        mastery_ids = [
+            row["id"]
+            for row in conn.execute(
+                f"SELECT id FROM mastery_states WHERE concept_id IN ({placeholders})",
+                concept_ids,
+            ).fetchall()
+        ]
+        if mastery_ids:
+            mastery_placeholders = ",".join("?" * len(mastery_ids))
+            conn.execute(
+                f"UPDATE review_events SET mastery_state_id = NULL WHERE mastery_state_id IN ({mastery_placeholders})",
+                mastery_ids,
+            )
+            conn.execute(
+                f"DELETE FROM mastery_states WHERE id IN ({mastery_placeholders})",
+                mastery_ids,
+            )
         conn.execute(f"DELETE FROM questions WHERE concept_id IN ({placeholders})", concept_ids)
         conn.execute(f"DELETE FROM srs_cards WHERE concept_id IN ({placeholders})", concept_ids)
         conn.execute(f"DELETE FROM notes WHERE concept_id IN ({placeholders})", concept_ids)
@@ -702,6 +878,10 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
         conn.execute(f"DELETE FROM concepts WHERE id IN ({placeholders})", concept_ids)
     conn.execute("DELETE FROM notes WHERE doc_id = ?", (doc_id,))
     conn.execute("DELETE FROM study_events WHERE doc_id = ?", (doc_id,))
+    conn.execute("DELETE FROM stale_dependencies WHERE source_id = ?", (doc_id,))
+    conn.execute("UPDATE ingestion_jobs SET document_id = NULL WHERE document_id = ?", (doc_id,))
+    conn.execute("UPDATE study_suggestions SET doc_id = NULL WHERE doc_id = ?", (doc_id,))
+    conn.execute("UPDATE documents SET duplicate_of = NULL WHERE duplicate_of = ?", (doc_id,))
     chunk_rowids = [
         int(row["rowid"])
         for row in conn.execute(
@@ -710,6 +890,7 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
         ).fetchall()
     ]
     delete_chunk_vectors(conn, chunk_rowids)
+    delete_typed_nodes(conn, doc_id)
     conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
     conn.execute("DELETE FROM app_settings WHERE key = ?", (_selector_cache_key(doc_id),))
     deleted = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,)).rowcount

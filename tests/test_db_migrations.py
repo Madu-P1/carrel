@@ -158,6 +158,80 @@ class DatabaseMigrationTests(unittest.TestCase):
         expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 11
         self.assertEqual(expected_total, total)
 
+    def test_repair_foreign_key_orphans_purges_deleted_source_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._configure_temp_runtime(root)
+
+            with db.get_db() as conn:
+                db.apply_migrations(conn)
+                conn.execute("PRAGMA foreign_keys = OFF")
+                conn.execute(
+                    """
+                    INSERT INTO chunks (id, doc_id, content, chunk_index)
+                    VALUES ('chunk-orphan', 'missing-doc', 'deleted source text', 0)
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO nodes (
+                        id, doc_id, node_type, heading_path, page,
+                        char_start, char_end, verbatim_text, reading_order
+                    ) VALUES (
+                        9001, 'missing-doc', 'body', '', 1,
+                        0, 19, 'deleted source text', 0
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO concepts (id, doc_id, name)
+                    VALUES ('concept-orphan', 'missing-doc', 'Ghost concept')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO questions (id, concept_id, type, question, answer)
+                    VALUES ('question-orphan', 'concept-orphan', 'qa', 'q', 'a')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO srs_cards (id, concept_id, front, back)
+                    VALUES ('card-orphan', 'concept-orphan', 'front', 'back')
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO notes (id, concept_id, title, content)
+                    VALUES ('note-orphan', 'concept-orphan', 'title', 'body')
+                    """
+                )
+                conn.commit()
+
+                repaired = db.repair_foreign_key_orphans(conn)
+
+                self.assertGreaterEqual(repaired.get("chunks", 0), 1)
+                self.assertGreaterEqual(repaired.get("nodes", 0), 1)
+                self.assertGreaterEqual(repaired.get("concepts", 0), 1)
+                self.assertGreaterEqual(repaired.get("srs_cards", 0), 1)
+                self.assertGreaterEqual(repaired.get("questions", 0), 1)
+                self.assertGreaterEqual(repaired.get("notes", 0), 1)
+                self.assertEqual(
+                    conn.execute("SELECT COUNT(*) AS n FROM chunks").fetchone()["n"],
+                    0,
+                )
+                self.assertEqual(
+                    conn.execute("SELECT COUNT(*) AS n FROM nodes").fetchone()["n"],
+                    0,
+                )
+                self.assertEqual(
+                    conn.execute("SELECT COUNT(*) AS n FROM srs_cards").fetchone()["n"],
+                    0,
+                )
+                self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+                self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

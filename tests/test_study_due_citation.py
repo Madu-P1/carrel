@@ -87,6 +87,10 @@ class FetchDueCardsCitationTests(unittest.TestCase):
                 page_count=None,
                 subject_name="Finance",
             )["doc_id"]
+            self.chunk_id = conn.execute(
+                "SELECT id FROM chunks WHERE doc_id = ? ORDER BY chunk_index LIMIT 1",
+                (self.doc_id,),
+            ).fetchone()["id"]
             self.concept_id = _insert_concept(conn, doc_id=self.doc_id, name="Duration matching")
             conn.commit()
 
@@ -114,7 +118,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
                 quote_text="A duration-matched portfolio neutralizes first-order interest-rate risk.",
                 origin="manual",
                 page_num=7,
-                chunk_id="chunk-abc",
+                chunk_id=self.chunk_id,
                 srs_card_id=card_id,
             )
             conn.commit()
@@ -126,7 +130,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row["id"], card_id)
         self.assertEqual(row["document_id"], self.doc_id)
-        self.assertEqual(row["chunk_id"], "chunk-abc")
+        self.assertEqual(row["chunk_id"], self.chunk_id)
         self.assertEqual(row["page_num"], 7)
         self.assertEqual(
             row["quote_text"],
@@ -167,7 +171,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
                 quote_text="Old, weak anchor that should lose to the carded one.",
                 origin="ai_answer_citation",
                 page_num=2,
-                chunk_id="chunk-old",
+                chunk_id=self.chunk_id,
                 srs_card_id=card_id,
             )
             anchors_service.create_anchor(
@@ -176,7 +180,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
                 quote_text="Convexity captures the residual sensitivity at large rate moves.",
                 origin="manual",
                 page_num=9,
-                chunk_id="chunk-new",
+                chunk_id=self.chunk_id,
                 srs_card_id=card_id,
             )
             conn.commit()
@@ -186,7 +190,7 @@ class FetchDueCardsCitationTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         row = rows[0]
-        self.assertEqual(row["chunk_id"], "chunk-new")
+        self.assertEqual(row["chunk_id"], self.chunk_id)
         self.assertEqual(row["page_num"], 9)
 
     def test_orphan_card_with_no_concept_still_returns_row(self) -> None:

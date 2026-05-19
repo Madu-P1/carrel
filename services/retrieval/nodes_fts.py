@@ -9,10 +9,15 @@ like "photosystem II" matches body text AND headings that scope it.
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass
 from typing import Iterable
+
+from app_logging import get_logger, log_event
+
+LOGGER = get_logger("retrieval.nodes_fts")
 
 _FTS_OPERATOR_CHARS = re.compile(r"[^\w\s]+", re.UNICODE)
 
@@ -90,7 +95,16 @@ def search_node_fts(
 
     try:
         rows = conn.execute("\n".join(sql), params).fetchall()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "node_fts_search_failed",
+            error_type=exc.__class__.__name__,
+            error=str(exc),
+            doc_filter_count=len(doc_ids or []),
+            subject_filter=bool(subject_name),
+        )
         return []
 
     return [

@@ -279,12 +279,10 @@ def delete_card(conn: sqlite3.Connection, card_id: str) -> bool:
     Also cleans up the `flashcard_evidence` junction if it exists so we don't
     leave orphan provenance rows pointing at a deleted card.
 
-    PR 5.2 — also cleans up `card_pairs` rows that reference this card.
-    The card_pairs FKs declare ON DELETE CASCADE, but the app does not
-    currently enable PRAGMA foreign_keys globally (see
-    db.py::_apply_connection_pragmas), so the cleanup must happen in
-    application code. The pair row dies; any surviving twin stays alive
-    (its reverse partner is just gone — the pair link no longer exists).
+    Also cleans up `card_pairs` rows that reference this card. App
+    connections enforce ON DELETE CASCADE, and the explicit delete keeps
+    the service safe for older ad-hoc connections used by tests or repair
+    scripts. The pair row dies; any surviving twin stays alive.
     """
     # flashcard_evidence may or may not exist depending on migration state;
     # be defensive.

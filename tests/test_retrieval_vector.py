@@ -194,6 +194,24 @@ class RetrievalVectorTests(unittest.TestCase):
 
         self.assertEqual([], hits)
 
+    def test_operational_error_is_logged_not_silent(self) -> None:
+        embedder = MockEmbedder()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._configure_temp_runtime(root)
+            with db.get_db() as conn:
+                db.apply_migrations(conn)
+                self._insert_document(conn, "doc-a", "Biology")
+                self._insert_chunk(conn, "chunk-a", "doc-a", "Cell division drives growth.")
+                conn.execute("DROP TABLE chunks_vec")
+                conn.execute("CREATE TABLE chunks_vec (chunk_id INTEGER, embedding BLOB)")
+                conn.commit()
+                with self.assertLogs("einstein.retrieval.vector", level="WARNING") as captured:
+                    hits = search_vector(conn, "Cell division", embedder=embedder)
+
+        self.assertEqual([], hits)
+        self.assertTrue(any("vector_search_failed" in line for line in captured.output))
+
     def test_backfill_indexes_missing_rows_and_clears_flag(self) -> None:
         embedder = MockEmbedder()
         with tempfile.TemporaryDirectory() as temp_dir:

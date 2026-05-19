@@ -145,6 +145,17 @@ class NodesVectorSearchTests(unittest.TestCase):
     def test_returns_empty_for_blank_query(self) -> None:
         self.assertEqual(search_node_vectors(self._conn, "  ", embedder=self._embedder), [])
 
+    def test_operational_error_is_logged_not_silent(self) -> None:
+        self._conn.execute("DROP TABLE node_embeddings")
+        self._conn.execute("CREATE TABLE node_embeddings (node_id INTEGER, embedding BLOB)")
+        self._conn.commit()
+
+        with self.assertLogs("einstein.retrieval.nodes_vector", level="WARNING") as captured:
+            hits = search_node_vectors(self._conn, "photosynthesis", embedder=self._embedder)
+
+        self.assertEqual(hits, [])
+        self.assertTrue(any("node_vector_search_failed" in line for line in captured.output))
+
     def test_node_type_filter_excludes_footers(self) -> None:
         # Footers were never embedded (the persistence helper excludes
         # them) but the filter is still in the SQL. Pass an explicit

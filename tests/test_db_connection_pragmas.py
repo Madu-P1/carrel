@@ -8,8 +8,9 @@ SQLite's default is 0ms, so any second writer would see an instant
 action (upload during review, two browser tabs, etc.) would 500.
 
 These tests prove:
-1. Every connection from `get_db()` has the three PRAGMAs applied
-   (busy_timeout=5000ms, journal_mode=WAL, synchronous=NORMAL).
+1. Every connection from `get_db()` has the safety PRAGMAs applied
+   (busy_timeout=5000ms, foreign_keys=ON, journal_mode=WAL,
+   synchronous=NORMAL).
 2. Ten concurrent writers against the same DB all succeed without
    `OperationalError`.
 """
@@ -77,6 +78,11 @@ class ConnectionPragmaTests(unittest.TestCase):
             (mode,) = conn.execute("PRAGMA journal_mode").fetchone()
             self.assertEqual(mode.lower(), "wal")
 
+    def test_foreign_keys_are_enabled(self) -> None:
+        with db.get_db() as conn:
+            (enabled,) = conn.execute("PRAGMA foreign_keys").fetchone()
+            self.assertEqual(enabled, 1)
+
     def test_synchronous_is_normal(self) -> None:
         # SQLite returns synchronous as an integer:
         #   0 = OFF, 1 = NORMAL, 2 = FULL, 3 = EXTRA.
@@ -91,8 +97,10 @@ class ConnectionPragmaTests(unittest.TestCase):
         for _ in range(3):
             with db.get_db() as conn:
                 (timeout_ms,) = conn.execute("PRAGMA busy_timeout").fetchone()
+                (foreign_keys_enabled,) = conn.execute("PRAGMA foreign_keys").fetchone()
                 (sync_level,) = conn.execute("PRAGMA synchronous").fetchone()
                 self.assertEqual(timeout_ms, 5000)
+                self.assertEqual(foreign_keys_enabled, 1)
                 self.assertEqual(sync_level, 1)
 
 
