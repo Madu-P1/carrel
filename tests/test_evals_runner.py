@@ -246,6 +246,81 @@ class EvalsRunnerTests(unittest.TestCase):
         self.assertTrue(any(path.suffix == ".md" for path in report_files))
         self.assertIn("reports", report)
 
+    def test_quality_thresholds_lock_invariants_on_both_flag_values(self) -> None:
+        """Lock the T08 (re-open) acceptance bar in pure aggregator logic.
+
+        Builds two synthetic per-case result sets that simulate a
+        side-by-side `RETRIEVAL_USE_NODES` on/off comparison, then asserts
+        `_aggregate` reports values that satisfy CLAUDE.md
+        §Benchmarks+budgets quality bars (`groundedness@8 ≥ 0.7`,
+        `quote_validity ≥ 0.95`) on BOTH branches. No network, no DB,
+        no Docling; the point is locking the invariant the comparison
+        report exists to defend, not running the full eval in CI.
+
+        After T57 (Phase 4.0 precursor) lands and T08 reopens, the
+        real comparison run must continue to pass this invariant on
+        both branches or block T08 per its `Guards`.
+        """
+        nodes_on_cases = [
+            {
+                "groundedness_at_k": 1,
+                "citation_precision": 1.0,
+                "citation_recall": 1.0,
+                "quote_validity": 1.0,
+                "quote_valid_count": 2,
+                "quote_total": 2,
+                "citation_attempt_count": 2,
+                "citation_drop_count": 0,
+                "citation_repair_count": 0,
+                "fallback": False,
+                "scope_fallback": False,
+                "latency_ms": 3500.0,
+                "model": "claude-sonnet-4-6",
+            }
+        ] * 12 + [
+            {
+                "groundedness_at_k": 0,
+                "citation_precision": 0.0,
+                "citation_recall": 0.0,
+                "quote_validity": None,
+                "quote_valid_count": 0,
+                "quote_total": 0,
+                "citation_attempt_count": 0,
+                "citation_drop_count": 0,
+                "citation_repair_count": 0,
+                "fallback": True,
+                "scope_fallback": False,
+                "latency_ms": 0.0,
+                "model": "",
+            }
+        ] * 2
+
+        nodes_off_cases = list(nodes_on_cases)
+
+        on_summary = run_evals._aggregate(nodes_on_cases, mode="full")
+        off_summary = run_evals._aggregate(nodes_off_cases, mode="full")
+
+        for label, summary in (("on", on_summary), ("off", off_summary)):
+            with self.subTest(branch=label):
+                self.assertGreaterEqual(
+                    summary["groundedness_at_k"]["value"],
+                    0.7,
+                    f"{label} branch groundedness@8 fell below CLAUDE.md 0.7 bar",
+                )
+                self.assertIsNotNone(summary["quote_validity"])
+                self.assertGreaterEqual(
+                    float(summary["quote_validity"]),
+                    0.95,
+                    f"{label} branch quote_validity fell below CLAUDE.md 0.95 bar",
+                )
+                self.assertEqual([], summary["warnings"])
+
+        self.assertEqual(
+            on_summary["groundedness_at_k"]["value"],
+            off_summary["groundedness_at_k"]["value"],
+        )
+        self.assertEqual(on_summary["quote_validity"], off_summary["quote_validity"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,8 @@ evals/reports/*.json
 !evals/reports/baseline.json
 evals/reports/*.md
 !evals/reports/.gitkeep
+!evals/reports/compare-*.md
+evals/reports/_*/
 
 frontend/node_modules/
 frontend/dist/
