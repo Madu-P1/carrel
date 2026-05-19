@@ -549,7 +549,11 @@ class GroundedTutorTests(unittest.TestCase):
             router = StubRouter()
             # Hybrid search misses; scope fallback returns the 2 chunks.
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
-                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_USE_NODES": "true"},
+                    clear=False,
+                ):
                     response = tutor_service.grounded_tutor_response(
                         conn,
                         "Explain photosynthesis light reactions.",
@@ -583,7 +587,11 @@ class GroundedTutorTests(unittest.TestCase):
                 result=self._tool_result({"summary": "ok", "claims": [], "unsupported_spans": []})
             )
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
-                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_USE_NODES": "true"},
+                    clear=False,
+                ):
                     tutor_service.grounded_tutor_response(
                         conn,
                         "Explain cellular respiration.",
@@ -938,7 +946,14 @@ class FallbackContextsFromScopeTests(unittest.TestCase):
         main.SCHEMA_PATH = self.original_schema_path
         main.initialize_database()
 
+        # T03 fallback dispatch reads RETRIEVAL_USE_NODES; this class
+        # exercises the nodes path exclusively, so enable the flag for
+        # the duration of the test.
+        self._env_patch = mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "true"}, clear=False)
+        self._env_patch.start()
+
     def tearDown(self) -> None:
+        self._env_patch.stop()
         main.BASE_DIR = self.original_base_dir
         main.DATA_DIR = self.original_data_dir
         main.UPLOAD_DIR = self.original_upload_dir

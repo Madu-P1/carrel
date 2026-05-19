@@ -22,7 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
-from services.retrieval.typed_hybrid import RetrievedNode
+from services.retrieval.typed_hybrid import RetrievedNode, retrieval_use_nodes_enabled
 from services.retrieval.validators import validated_citation_quote
 from services.helpers import load_messages, split_sentences, tokenize
 
@@ -665,8 +665,9 @@ def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeCo
 
     The companion of `_hydrate_from_nodes` for paths that go directly
     to SQL rather than through `services.retrieval`. Used by the
-    scope-fallback function below — populates the real integer
-    `nodes.id` in `node_id` (no T01 str-UUID transition here).
+    scope-fallback function below when `RETRIEVAL_USE_NODES=true` —
+    populates the real integer `nodes.id` in `node_id` (no T01 str-UUID
+    transition here).
     """
     contexts: list[HydratedNodeContext] = []
     for row in rows:
@@ -674,6 +675,39 @@ def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeCo
         contexts.append(
             HydratedNodeContext(
                 node_id=int(row["id"]),
+                doc_id=str(row["doc_id"]),
+                document_name=str(row["document_name"] or "Source"),
+                section=str(row["section"]) if row["section"] else None,
+                page_num=int(row["page_num"]) if row["page_num"] is not None else None,
+                verbatim_text=cleaned,
+                snippet=cleaned[:240],
+                score=0.0,
+            )
+        )
+    return contexts
+
+
+def _chunk_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeContext]:
+    """Build `HydratedNodeContext` rows from a `FROM chunks` SELECT.
+
+    Legacy chunks-path companion used by `_fallback_contexts_from_scope`
+    when `RETRIEVAL_USE_NODES=false` (default). Keeps the T01 dual-path
+    contract from T02 alive at the fallback layer: when typed-node
+    ingestion isn't producing rows (e.g. unit tests that pass raw
+    extracted_text and never run Docling) the system still finds
+    evidence the way it did before T03. Phase 4 flips the flag to
+    default-on and this path retires.
+    """
+    contexts: list[HydratedNodeContext] = []
+    for row in rows:
+        cleaned = strip_extraction_artifacts(str(row["content"] or ""))
+        contexts.append(
+            HydratedNodeContext(
+                # chunks.id is a TEXT UUID; the dataclass still types
+                # node_id as int per T01. This is the same transitional
+                # mismatch _hydrate_from_chunks accepts, kept here so
+                # the flag-off path matches downstream code's expectations.
+                node_id=row["id"],
                 doc_id=str(row["doc_id"]),
                 document_name=str(row["document_name"] or "Source"),
                 section=str(row["section"]) if row["section"] else None,
@@ -694,14 +728,43 @@ def _fallback_contexts_from_scope(
     concept_id: str | None,
     limit: int,
 ) -> list[HydratedNodeContext]:
-    # T03: scope-fallback now reads `FROM nodes`. The concept path
-    # still consults `concepts.source_chunks` (a JSON list of legacy
-    # chunks.id UUIDs) for semantic linkage, then translates those
-    # UUIDs to nodes by joining shared (doc_id, page_num) — `chunks`
-    # has no `char_start` column (see migration 0001) so page-level
-    # granularity is the canonical translation key. If translation
-    # produces no node rows, return empty per CLAUDE.md "no silent
-    # fallbacks" — never fall back from nodes to chunks at runtime.
+    """Scope-widening fallback when query-specific retrieval returns nothing.
+
+    Dual-path per T02's RETRIEVAL_USE_NODES contract:
+    - flag on: T03's `FROM nodes` queries, with `(doc_id, page_num)`
+      chunk-to-node translation for the concept path. Empty on
+      translation failure per CLAUDE.md "no silent fallbacks" — the
+      flag-on path never silently degrades to chunks at runtime.
+    - flag off (default until Phase 4): legacy `FROM chunks` queries.
+
+    The dispatch is explicit and operator-set; this is not a silent
+    runtime fallback between the two paths.
+    """
+    if retrieval_use_nodes_enabled():
+        return _fallback_contexts_from_scope_nodes(
+            conn,
+            doc_ids=doc_ids,
+            subject_name=subject_name,
+            concept_id=concept_id,
+            limit=limit,
+        )
+    return _fallback_contexts_from_scope_chunks(
+        conn,
+        doc_ids=doc_ids,
+        subject_name=subject_name,
+        concept_id=concept_id,
+        limit=limit,
+    )
+
+
+def _fallback_contexts_from_scope_nodes(
+    conn: sqlite3.Connection,
+    *,
+    doc_ids: list[str] | None,
+    subject_name: str | None,
+    concept_id: str | None,
+    limit: int,
+) -> list[HydratedNodeContext]:
     if concept_id:
         concept = conn.execute(
             "SELECT source_chunks FROM concepts WHERE id = ?",
@@ -776,6 +839,70 @@ def _fallback_contexts_from_scope(
         ).fetchall()
         if rows:
             return _node_contexts_from_rows(rows)
+
+    return []
+
+
+def _fallback_contexts_from_scope_chunks(
+    conn: sqlite3.Connection,
+    *,
+    doc_ids: list[str] | None,
+    subject_name: str | None,
+    concept_id: str | None,
+    limit: int,
+) -> list[HydratedNodeContext]:
+    if concept_id:
+        concept = conn.execute(
+            "SELECT source_chunks FROM concepts WHERE id = ?",
+            (concept_id,),
+        ).fetchone()
+        chunk_ids = load_messages(concept["source_chunks"]) if concept else []
+        if chunk_ids:
+            placeholders = ",".join("?" * len(chunk_ids))
+            rows = conn.execute(
+                f"""
+                SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
+                FROM chunks c
+                JOIN documents d ON d.id = c.doc_id
+                WHERE c.id IN ({placeholders})
+                ORDER BY c.chunk_index ASC
+                LIMIT ?
+                """,
+                (*chunk_ids, limit),
+            ).fetchall()
+            if rows:
+                return _chunk_contexts_from_rows(rows)
+
+    if doc_ids:
+        placeholders = ",".join("?" * len(doc_ids))
+        rows = conn.execute(
+            f"""
+            SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
+            FROM chunks c
+            JOIN documents d ON d.id = c.doc_id
+            WHERE c.doc_id IN ({placeholders})
+            ORDER BY c.doc_id ASC, c.chunk_index ASC
+            LIMIT ?
+            """,
+            (*doc_ids, limit),
+        ).fetchall()
+        if rows:
+            return _chunk_contexts_from_rows(rows)
+
+    if subject_name:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
+            FROM chunks c
+            JOIN documents d ON d.id = c.doc_id
+            WHERE d.subject_name = ?
+            ORDER BY c.rowid DESC
+            LIMIT ?
+            """,
+            (subject_name, limit),
+        ).fetchall()
+        if rows:
+            return _chunk_contexts_from_rows(rows)
 
     return []
 
