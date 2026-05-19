@@ -100,7 +100,7 @@ Conventions per task:
 ## T04 — Phase 3 slice β.4: port post-grounded-answer chunks lookup
 
 **Plan ref:** Phase 3 task 1, the 5th `FROM chunks` query at old line 1206.
-**Status:** in_progress — branch `feat/t04-post-grounded-nodes-lookup`
+**Status:** done — PR #56, commit `aa23381b`, rated 97/100 (structural pre-merge ceiling per rubric Criterion F) on 2026-05-19. Dual-path from day one (T01/T02/T03 contract honored): `_hydrate_cited_contexts` dispatches on `RETRIEVAL_USE_NODES`; nodes branch SELECTs FROM nodes, chunks branch preserved verbatim until Phase 4. No silent runtime fallback between paths.
 **Deps:** T03
 **Effort:** 0.5 iteration
 **Acceptance:** the post-`grounded` chunks lookup that builds `flat_contexts` for `_flatten_claim_citations` queries `FROM nodes` instead. Citation flattening works end-to-end on the node-id path.
