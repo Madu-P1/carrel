@@ -1,19 +1,29 @@
-# T08 — Side-by-side eval: `RETRIEVAL_USE_NODES` on vs off
+# T08 first-pass — side-by-side eval: `RETRIEVAL_USE_NODES` on vs off
+
+**Outcome:** T08 **parked**. The first-pass run produced identical metrics on both flag values, but the equality is **architectural artifact, not signal**. T08 reopens after **T57** (Phase 4.0 precursor — wire primary-retrieval dispatch + eval-harness id-space dispatch) lands.
 
 **Date:** 2026-05-19 (UTC run timestamps below).
 **Suite:** smoke (14 cases).
 **Mode:** full (canonical quality bar per `CLAUDE.md` §Benchmarks+budgets; smoke mode is pre-existing broken — FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit).
 **Model:** `claude-sonnet-4-6` on both runs.
-**Branch:** `feat/t08-eval-compare-nodes-2026-05-19`.
+**Branch:** `feat/t08-eval-compare-nodes-2026-05-19` (PR #61).
 **Raw reports:**
-- USE_NODES=true → `evals/reports/_t08_nodes_on/2026-05-19T21-58-13.398251Z.{json,md}`
-- USE_NODES=false → `evals/reports/_t08_nodes_off/2026-05-19T21-59-23.850960Z.{json,md}`
+- USE_NODES=true → `evals/reports/_t08_nodes_on/2026-05-19T21-58-13.398251Z.{json,md}` (gitignored, local-only)
+- USE_NODES=false → `evals/reports/_t08_nodes_off/2026-05-19T21-59-23.850960Z.{json,md}` (gitignored, local-only)
 
-## Verdict
+## Why the result is vacuous (the architectural ceiling)
 
-**PASS.** The node path is **equal** to the chunks path on both required metrics. T08 acceptance bar ("equal or better on both `groundedness@8` and `quote_validity`") is met.
+Three coupled pieces conspire to make the eval blind to `RETRIEVAL_USE_NODES`:
 
-## Aggregate side-by-side
+1. **Primary retrieval is not flag-aware.** `services/tutor.py::grounded_tutor_response` calls `services.retrieval.search_hybrid` unconditionally at the two primary retrieval sites (~`:1228` and `:1310`), plus `grounded_citations` (~`:1196`). `search_hybrid` is the legacy chunks-based hybrid (queries `chunks_fts` + `chunks_vec`). The flag is read only at two downstream sites:
+   - `_fallback_contexts_from_scope` (line 744) — dispatches `_fallback_contexts_from_scope_nodes` vs `_fallback_contexts_from_scope_chunks`. **Fires only when primary retrieval returns empty.** `fallback_rate = 0` and `scope_fallback_rate = 0` on both branches across all 14 cases, so this dispatch never executes.
+   - `_hydrate_cited_contexts` (line 933) — dispatches `_hydrate_cited_contexts_nodes` vs `_hydrate_cited_contexts_chunks`. **Only called from `grounded_tutor_envelope`** (the route-handler wrapper), not from `grounded_tutor_response`. The eval calls `grounded_tutor_response` directly, so this dispatch is bypassed entirely.
+2. **Typed-node ingestion is gated by `INGEST_USE_DOCLING` (default false).** Even if the dispatch is wired, the eval's isolated DB never populates the `nodes` / `node_fts` / `node_embeddings` tables. A flag-on run against an empty `nodes` table would correctly return empty primary hits + empty scope fallback (per CLAUDE.md "no silent fallbacks") and refuse every case — a regression, not a divergence.
+3. **The eval harness speaks only the chunks id-space.** `evals/run_evals.py::_resolve_expected_chunks` collects str-UUID `chunks.id`s. `run_case` extracts `retrieved_chunk_ids = [hit.chunk_id for hit in hits]`. `quote_validity` is computed by `SELECT content FROM chunks WHERE id = ?`. There is no parallel `FROM nodes` path. If the nodes path ever surfaces `RetrievedNode` hits (int `node_id`), the harness either crashes or grades them as zero.
+
+The first-pass run produces identical numbers because, by construction, both flag values walk the same chunks-based code path at every measurement surface the eval touches.
+
+## Measured (vacuous) numbers — first-pass
 
 | Metric | USE_NODES=true | USE_NODES=false | Delta |
 |---|---|---|---|
@@ -27,49 +37,33 @@
 | scope_fallback_rate | 0/14 (0%) | 0/14 (0%) | 0 |
 | p50 latency | 3.43 s | 3.42 s | +0.01 s |
 | p95 latency | 6.03 s | 5.74 s | +0.29 s |
-| total cited claims | 29 | 26 | +3 |
+| total cited claims | 29 | 26 | +3 (LLM jitter) |
 
-The retrieval-side metrics (`groundedness@8`, `citation_precision`, `citation_recall`, `quote_validity`, `fallback_rate`, `scope_fallback_rate`) are **identical to the basis-point** across both branches. The citation-count delta (29 vs 26) and the small repair/latency drift are LLM non-determinism — Claude returned a slightly different number of claim/citation tuples per question across the two independent grounded-answer calls. `quote_validity = 1.0` on both branches: every quote Claude emitted resolved verbatim against its cited chunk.
+The retrieval-side metrics are identical to the basis-point. The citation-count delta (29 vs 26) and small latency drift come from LLM non-determinism across two independent grounded-answer calls, not from flag-induced retrieval divergence. Both runs use identical retrieval (`search_hybrid`); the LLM happened to emit slightly different numbers of claim/citation tuples per question.
 
-## Per-case side-by-side
+Per-case data showed 12/12 successful biology + photosynthesis cases at `groundedness=1`, `precision=1.00`, `recall=1.00`, `quote_validity=1.00` on both branches; both negative-control cases (gravity, black holes) correctly refused to ground on out-of-corpus topics on both branches.
 
-| Case | grnd (on/off) | precision (on/off) | recall (on/off) | quote_validity (on/off) |
-|---|---|---|---|---|
-| biology-mitosis-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 3/3 / 4/4 |
-| biology-meiosis-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 2/2 / 2/2 |
-| biology-checkpoints-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 1/1 / 1/1 |
-| biology-chromosomes-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 4/4 / 1/1 |
-| biology-growth-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 4/4 / 3/3 |
-| photo-definition-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 5/5 / 5/5 |
-| photo-light-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 2/2 / 2/2 |
-| photo-calvin-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 2/2 / 2/2 |
-| photo-stomata-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 1/1 / 1/1 |
-| cross-purpose-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 3/3 / 3/3 |
-| scope-cell-checkpoint-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 1/1 / 1/1 |
-| scope-photo-pigment-001 | 1 / 1 | 1.00 / 1.00 | 1.00 / 1.00 | 1/1 / 1/1 |
-| negative-gravity-001 | 0 / 0 | 0.00 / 0.00 | 0.00 / 0.00 | n/a (0/0) / n/a (0/0) |
-| negative-blackholes-001 | 0 / 0 | 0.00 / 0.00 | 0.00 / 0.00 | n/a (0/0) / n/a (0/0) |
+## T57 — the precursor task
 
-Both negative-control cases (gravity, black holes) correctly refuse to ground on out-of-corpus topics on both branches — zero citations attempted, zero false positives. Both biology and photosynthesis cases land at `groundedness = 1` on both branches.
+`AUTONOMOUS_WORK_PLAN.md` now lists **T57 (Phase 4.0 precursor)** at the end of the queue. T57 closes the three architectural pieces in one PR:
 
-## Why the metrics are identical — architectural note
+1. Wire `services/tutor.py:1228`, `:1310`, and `grounded_citations` to dispatch on `retrieval_use_nodes_enabled()`. Add a unit test in `tests/test_tutor_grounded.py` that mocks both retrieval functions, flips the flag, and asserts the right one is called.
+2. Extend `evals/run_evals.py::run_case` to handle both `ScoredHit` and `RetrievedNode` hit shapes — dispatch the `retrieved_chunk_ids` extraction on type, and dispatch the `quote_validity` lookup on the type of `citation.node_id` (int → `nodes`; str → `chunks`). Extend `_resolve_expected_chunks` to compute matching `nodes.id` ints alongside the chunks set.
+3. Document the eval invocation pattern: the USE_NODES=true run uses `INGEST_USE_DOCLING=true` so fixtures populate the nodes tables. The chunks-path run keeps the default.
 
-`grounded_tutor_response` (the function the eval harness exercises) calls `services.retrieval.search_hybrid(...)` unconditionally — the legacy chunks-based hybrid. `RetrievalUseNodes` is **not** a switch at the primary retrieval site. The flag only changes behavior in two places inside `services/tutor.py`:
+T08's `Deps` line was updated to `T07, T57`. After T57 lands, T08 reopens, the comparison runs again, and the numbers become real signal.
 
-1. `_fallback_contexts_from_scope` — dispatches `_fallback_contexts_from_scope_nodes` vs `_fallback_contexts_from_scope_chunks`. **Fires only when primary retrieval returns empty.** Across the 14 smoke cases, `fallback_rate = 0` on both branches, so this dispatch was never exercised. Confirmed by `scope_fallback_rate = 0`.
-2. `_hydrate_cited_contexts` — dispatches `_hydrate_cited_contexts_nodes` vs `_hydrate_cited_contexts_chunks`. **Only called from `grounded_tutor_envelope`** (the route-handler wrapper), not from `grounded_tutor_response`. The eval calls `grounded_tutor_response` directly, so this dispatch is bypassed.
+## Why park rather than expand T08
 
-So the eval's measurement surface — `grounded_tutor_response` → `search_hybrid` → `_hydrate_node_context` (which dispatches on hit type, and `ScoredHit` always lands in the chunks branch) — is structurally identical between the two flag values for cases where primary retrieval succeeds. The 29 vs 26 citation-count delta and small latency drift come from independent Claude calls, not from flag-induced retrieval divergence.
+The wiring T57 covers is genuinely Phase 4 work (T10/T11/T12 own the broader Docling-default-on + re-ingest + flag-flip flow). Expanding T08 to absorb it would:
+- More than triple the diff and double the iteration count.
+- Confound the comparison by mixing Docling-extracted text (nodes path) with the legacy chunker output (chunks path), since the two ingestion paths produce different chunks/nodes for the same source PDFs.
+- Block the T08 deliverable behind a larger architectural change that already has its own queued slot.
 
-## What this means for Phase 4
+Parking surfaces the architectural ceiling cleanly and isolates the wiring work into a focused PR (T57). T08 reopens as a half-iteration re-run.
 
-Phase 4 (re-ingestion + node-vector backfill + flipping `RETRIEVAL_USE_NODES` default-on) requires a separate eval-architecture pass before the flag flip actually drives observable quality movement in the eval. Specifically:
+## Honest reporting
 
-- The primary retrieval call site at `services/tutor.py:1228` and `:1310` (and `services/tutor.py:grounded_citations`) needs to dispatch on `retrieval_use_nodes_enabled()` and call `search_typed_hybrid` (which queries `nodes_fts` + `nodes_vec`) instead of `search_hybrid` when the flag is on. Without this, flipping the flag default-on still routes through chunks-based retrieval — defeating the purpose.
-- Once the dispatch is wired at the primary site, the eval harness's `_resolve_expected_chunks` and `quote_validity` lookup (`run_case`, lines 247-272 and 365-373) need a parallel `FROM nodes` path so the comparison can grade the nodes branch in its own id-space. The existing `run_case` comment ("the nodes-branch comparison in T08 wires a parallel `FROM nodes` path") was written in anticipation of this work; T08 itself is satisfied by the equality verdict above, but the broader architectural follow-up is real and tracked.
+The first-pass deliverable is this report. The work is not lost — the architectural finding tightens the Phase 4 plan and `tests/test_evals_runner.py::test_quality_thresholds_lock_invariants_on_both_branches` (added on the same commit as this rewrite) locks the threshold-invariant logic so a future T08 reopen has a regression net. Operator-followups (`.claude/logs/operator-followups.jsonl`) carries the same Phase-4-precursor note for the operator's review queue.
 
-Surfaced to operator-followups so the Phase 4 plan can absorb it.
-
-## Conclusion
-
-T08 acceptance is met: **node path is equal to chunks path on `groundedness@8` (85.71% on both) and `quote_validity` (1.00 on both)**. No regression on either required metric, no regression on `citation_precision`, `citation_recall`, `fallback_rate`, or `scope_fallback_rate`. The architectural finding above (eval harness can't currently distinguish the two paths beyond fallback rates, which were 0 in this run) is documented and surfaced rather than papered over, per CLAUDE.md "no silent fallbacks" and the T08 guard "honest reporting trumps performative measurement".
+CLAUDE.md "no silent fallbacks" applies to eval reports as much as to runtime: rather than claim a vacuous "equal" as closure, the architectural ceiling is named, the precursor task is filed, and the comparison reopens once the precursor lands.

@@ -140,12 +140,13 @@ Conventions per task:
 ## T08 — Phase 3 slice γ.3: side-by-side smoke (`RETRIEVAL_USE_NODES` on vs off)
 
 **Plan ref:** Phase 3 task 5.
-**Status:** in_progress — branch `feat/t08-eval-compare-nodes-2026-05-19`
-**Deps:** T07
-**Effort:** 0.5 iteration
-**Acceptance:** run `evals/run_evals.py --mode full` with `RETRIEVAL_USE_NODES=true`, then with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-2026-05-19.md`. **Mode pivot from smoke to full** mirrors T07: smoke mode is pre-existing broken (FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit). Full mode is the canonical quality bar per CLAUDE.md §Benchmarks+budgets. **Architectural note:** the eval harness calls `grounded_tutor_response` (not `grounded_tutor_envelope`), so the `RETRIEVAL_USE_NODES` dispatch in `_hydrate_cited_contexts` is bypassed; the flag only affects the eval's measurement surface via `_fallback_contexts_from_scope` (fires only when primary retrieval returns empty). Expected outcome is therefore "equal" on cases where primary retrieval succeeds, with the report explicitly documenting why and surfacing the architectural limit so Phase 4 re-ingestion + flag-flip work isn't surprised.
-**Verify:** the comparison report numbers, plus the canonical chain.
-**Guards:** do not ship if node path regresses either metric; mark `Status: blocked` and surface to operator. Honest reporting trumps performative measurement: if the eval's measurement surface can't distinguish the two paths, say so in the report rather than fabricating divergence.
+**Status:** blocked — first-pass attempt on `feat/t08-eval-compare-nodes-2026-05-19` (PR #61, commits `156ecca5` + `923c441d`) discovered an architectural ceiling: the eval harness cannot distinguish the two flag paths today. T08 is parked behind a new precursor task **T57** (Phase 4.0 precursor). Reopen T08 after T57 lands and re-run the comparison; it will then exercise real divergence.
+**Deps:** T07, T57
+**Effort:** 0.5 iteration (after T57)
+**Acceptance:** run `evals/run_evals.py --mode full` with `RETRIEVAL_USE_NODES=true`, then with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-{date}.md`. **Mode pivot from smoke to full** mirrors T07: smoke is pre-existing broken (FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit). Full mode is the canonical quality bar per CLAUDE.md §Benchmarks+budgets.
+**Architectural ceiling found in first-pass (documented in `evals/reports/compare-nodes-2026-05-19.md`):** the eval harness calls `grounded_tutor_response` directly, which dispatches `search_hybrid` (legacy chunks-based) unconditionally at `services/tutor.py:1228` and `:1310` and inside `grounded_citations`. The `RETRIEVAL_USE_NODES` flag is only consulted at two downstream sites — `_fallback_contexts_from_scope` (fires only on empty primary retrieval; 0 cases in the smoke suite) and `_hydrate_cited_contexts` (only called from `grounded_tutor_envelope`, which the eval bypasses). Layered on top, typed-node ingestion is gated by `INGEST_USE_DOCLING` (default false), so even if dispatch is wired the eval's isolated DB has an empty `nodes` table on the USE_NODES=true run; the harness's `_resolve_expected_chunks` and `quote_validity` lookup also speak only the chunks id-space. The first-pass run produced **equal** numbers on both branches (groundedness@8 = 12/14, quote_validity = 1.00) but the equality is vacuous, not informative. T57 (below) wires the three pieces required for a non-vacuous comparison.
+**Verify:** the comparison report numbers (after T57 lands and T08 reopens), plus the canonical chain.
+**Guards:** do not ship T08 as `done` while the comparison is vacuous. Honest reporting trumps performative measurement: if the eval's measurement surface can't distinguish the two paths, say so and park rather than fabricating divergence. CLAUDE.md "no silent fallbacks" applies to eval reports too.
 
 ## T09 — Phase 3 slice γ.4: fail-closed regression test on Null provider
 
@@ -621,11 +622,24 @@ Conventions per task:
 
 **Plan ref:** Phase 28.
 **Status:** pending
-**Deps:** ALL above (T01-T55)
+**Deps:** ALL above (T01-T55, T57)
 **Effort:** 1 iteration
 **Acceptance:** canonical chain green from clean checkout. `evals --mode full` meets all bars (groundedness@8 ≥ 0.7, quote_validity ≥ 0.95, card_quality@1 ≥ Phase 9 baseline, anchor_accuracy@1 ≥ 0.95). cold launch p50 ≤ 800ms. axe-core zero violations. Manual smoke test of E2E flow (drop PDF → ask → flight → save anchor → promote → review → activate → upgrade → bulk generate). Launch checklist written.
 **Verify:** all eval + benchmark bars + the manual smoke.
 **Guards:** never ship without the rollback plan documented.
+
+## T57 — Phase 4.0 (precursor): wire `RETRIEVAL_USE_NODES` primary-retrieval dispatch + eval-harness id-space dispatch
+
+**Plan ref:** Phase 4 precursor (discovered during T08's first-pass attempt; documented in `evals/reports/compare-nodes-2026-05-19.md`).
+**Status:** pending
+**Deps:** T07
+**Effort:** 1 iteration
+**Acceptance:** three coupled pieces land in one PR:
+1. `services/tutor.py`: dispatch on `retrieval_use_nodes_enabled()` at the three primary-retrieval call sites — `grounded_tutor_response` (line ~1228), the post-`grounded` sister site (line ~1310), and `grounded_citations` (line ~1196). When the flag is on, call `search_typed_hybrid` (returns `list[RetrievedNode]`); when off, call `search_hybrid` (returns `list[ScoredHit]`). Existing `_hydrate_node_context` already dispatches on hit type, so downstream code keeps working. Add a unit test in `tests/test_tutor_grounded.py` that asserts the dispatch (mock both retrieval functions, flip the flag, assert the right one is called).
+2. `evals/run_evals.py::run_case`: handle both hit types — extract `hit.node_id if isinstance(hit, RetrievedNode) else hit.chunk_id` for the `retrieved_chunk_ids` set; dispatch `quote_validity` lookup on the type of `citation.node_id` (int → `SELECT verbatim_text FROM nodes WHERE id = ?`; str → `SELECT content FROM chunks WHERE id = ?`). `_resolve_expected_chunks` returns an expected set that covers both id-spaces (extend it to also match against `nodes.verbatim_text` and collect matching `nodes.id` ints).
+3. The eval invocation pattern documented in CLAUDE.md and the comparison-report runbook updated to include `INGEST_USE_DOCLING=true` on the USE_NODES=true run path (so the fixtures populate the nodes tables). The chunks-path run keeps the default. This is the documented invocation pattern, not a code change in the runner itself.
+**Verify:** canonical chain + new dispatch unit test + a fresh side-by-side eval comparison run that produces real divergence numbers (chunks branch vs nodes branch).
+**Guards:** no silent fallbacks; the nodes-branch primary retrieval surfaces ok=False rather than falling back to chunks. The eval-harness id-space dispatch is symmetric (chunks lookups stay on the chunks branch, nodes lookups on the nodes branch). After T57 lands, reopen T08 (`Status: pending`) and re-run the comparison.
 
 ---
 
