@@ -496,12 +496,13 @@ def _fallback_quote(context: HydratedNodeContext) -> str:
 def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None) -> Dict[str, Any]:
     section_label = context.section or "Excerpt"
     snippet = (quote or _fallback_quote(context)).strip()
-    # API payload keys (`chunk_id`, `content`) stay on the legacy names
-    # until T05 of AUTONOMOUS_WORK_PLAN.md ports api_models.py +
-    # response_model + frontend together. Internal field reads use the
-    # renamed attributes from HydratedNodeContext.
+    # `node_id` is the API key as of T05. Value is `int` on the nodes
+    # branch (`nodes.id`) and `str` on the legacy chunks branch (the
+    # T01 transitional UUID flow); `TutorCitationItem.node_id: int |
+    # str` accepts both. `content` is unchanged: this key is the full
+    # verbatim chunk text the model produced citations against.
     return {
-        "chunk_id": context.node_id,
+        "node_id": context.node_id,
         "document_id": context.doc_id,
         "document_name": context.document_name,
         "section": context.section,

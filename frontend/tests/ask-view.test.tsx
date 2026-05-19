@@ -239,5 +239,5 @@ test("Ask flow navigates to the reader deep link when a citation chip is clicked
   expect(await screen.findByText(/cell-division\.md/i)).toBeDefined();
   expect(document.querySelector('[data-chunk-id="demo-1"]')).toBeTruthy();
   expect(window.location.pathname).toBe("/reader/demo-doc-biology");
-  expect(window.location.search).toBe("?chunk=demo-1");
+  expect(window.location.search).toBe("?node=demo-1");
 });

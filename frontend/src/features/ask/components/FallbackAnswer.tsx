@@ -40,7 +40,7 @@ function fallbackLocations(claim: ClaimRecord): string[] {
     [
       citation.document_name ?? citation.document_id ?? "Source",
       citation.page_num ? `p.${citation.page_num}` : null,
-      citation.chunk_id ? `chunk ${citation.chunk_id}` : null
+      citation.node_id != null ? `node ${citation.node_id}` : null
     ]
       .filter(Boolean)
       .join(" · ")

@@ -231,30 +231,31 @@ export function AskView() {
   }, [docs, scope]);
 
   const handleCitationClick = (citation: CitationRecord) => {
+    const nodeIdKey = citation.node_id != null ? String(citation.node_id) : "";
     void events.track(
       "first_citation_verified",
       {
         doc_id: citation.document_id,
-        chunk_id: citation.chunk_id,
+        node_id: nodeIdKey || null,
         page_num: citation.page_num ?? null
       },
       "reader"
     );
     navigateTo(
-      `/reader/${encodeURIComponent(citation.document_id)}?chunk=${encodeURIComponent(citation.chunk_id)}`
+      `/reader/${encodeURIComponent(citation.document_id)}?node=${encodeURIComponent(nodeIdKey)}`
     );
   };
 
-  // Cards-mode counterpart to handleCitationClick. The reader pane
-  // doesn't yet route on `?node=` (PR 4.2 wires that), so for now we
-  // navigate page-level. The query param is sent so the reader can
-  // pick it up once the route handler lands.
+  // Cards-mode counterpart to handleCitationClick. The reader picks
+  // up `?node=` via PR 4.2's `useNodeDeepLink`. Page is included so
+  // the reader can scroll to the right page when the verbatim_text
+  // resolve misses.
   const handleCardOpen = (card: AskCardData) => {
     void events.track(
       "first_citation_verified",
       {
         doc_id: card.doc_id,
-        chunk_id: null,
+        node_id: card.node_id != null ? String(card.node_id) : null,
         page_num: card.page ?? null,
       },
       "reader",

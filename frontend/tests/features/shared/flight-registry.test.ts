@@ -72,18 +72,18 @@ describe("flightRegistry", () => {
     expect(peekFlight("doc-card", "doc-2")?.rect.left).toBe(100);
   });
 
-  test("citation-chip entries carry html + docId + chunkId", () => {
+  test("citation-chip entries carry html + docId + nodeId", () => {
     registerFlight({
       kind: "citation-chip",
-      id: "chunk-9",
+      id: "node-9",
       rect: makeRect(),
       html: "<button>cite</button>",
       docId: "doc-3",
-      chunkId: "chunk-9",
+      nodeId: "node-9",
     });
-    const flight = peekFlight("citation-chip", "chunk-9");
+    const flight = peekFlight("citation-chip", "node-9");
     expect(flight?.html).toBe("<button>cite</button>");
     expect(flight?.docId).toBe("doc-3");
-    expect(flight?.chunkId).toBe("chunk-9");
+    expect(flight?.nodeId).toBe("node-9");
   });
 });

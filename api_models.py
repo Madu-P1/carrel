@@ -143,7 +143,14 @@ class TutorQueryRequest(BaseModel):
 
 
 class TutorCitationItem(BaseModel):
-    chunk_id: str
+    # `int | str` dual-shape honors the T01-T04 dual-path contract:
+    # under `RETRIEVAL_USE_NODES=true` this is `nodes.id` (int);
+    # under the legacy chunks branch the value is the str UUID of the
+    # source chunk, flowed through via the T01 transitional path in
+    # `services/tutor.py::_hydrate_node_context_from_chunks_branch`.
+    # Narrows to `int` after Phase 4 re-ingest + Phase 5 chunks-table
+    # drop. Strict `int` here would 500 the legacy path.
+    node_id: int | str
     document_id: str
     document_name: str
     section: Optional[str] = None

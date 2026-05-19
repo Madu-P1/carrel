@@ -110,17 +110,17 @@ Conventions per task:
 ## T05 — Phase 3 slice β.5: api_models + response_model
 
 **Plan ref:** Phase 3 task 2.
-**Status:** pending
+**Status:** in_progress — bundled with T06 on `feat/t05-t06-citation-node-id-2026-05-19` (mechanical coupling: flipping `TutorCitationItem.chunk_id` → `node_id` in the backend breaks the frontend contract unless the consumer ships in the same PR; prior-session memory 7629 captured this decision).
 **Deps:** T04
 **Effort:** 0.5 iteration
-**Acceptance:** `api_models.py::TutorCitationItem` carries `node_id: int` (was `chunk_id: str`). `TutorQueryResponse` updated. `routes/tutor.py` `@router.post("/api/tutor/query", response_model=TutorQueryResponse)` continues to emit a 200 response with `node_id`-keyed citations. `./script/generate-api-types.sh` regenerates `frontend/src/services/api/types.gen.ts`.
+**Acceptance:** `api_models.py::TutorCitationItem` carries `node_id: int | str` (was `chunk_id: str`). Dual-shape honors T01-T04's `RETRIEVAL_USE_NODES=false` contract: chunks-branch flows str UUIDs through `Citation.node_id` (see `services/tutor.py:622`, the T01 transitional comment); strict `int` would 500 the legacy path. Narrows to `int` after Phase 4 re-ingest and Phase 5 chunks-table drop. `TutorQueryResponse` updated by reference. `routes/tutor.py` `@router.post("/api/tutor/query", response_model=TutorQueryResponse)` continues to emit a 200 response with `node_id`-keyed citations. `./script/generate-api-types.sh` regenerates `frontend/src/services/api/types.gen.ts`.
 **Verify:** canonical chain + curl `/api/tutor/query` and confirm `node_id` in the response JSON.
-**Guards:** do not leave `chunk_id` as an alias in the response — break clean. Frontend gets updated in T06.
+**Guards:** do not leave `chunk_id` as an alias in the response — break clean. Frontend gets updated in T06 (same PR).
 
 ## T06 — Phase 3 slice γ.1: frontend citation chip + flight to node_id
 
 **Plan ref:** Phase 3 task 2.
-**Status:** pending
+**Status:** in_progress — bundled with T05 on `feat/t05-t06-citation-node-id-2026-05-19`.
 **Deps:** T05
 **Effort:** 1 iteration
 **Acceptance:** `frontend/src/features/ask/components/CitationChip.tsx` accepts `node_id: number` (was `chunk_id: string`). `useCitationFlight.ts` and `useNodeDeepLink.ts` navigate by `node_id`. `ReaderView` deep-link route is `/reader/{doc_id}?node={node_id}` (the existing PR 4.2 contract). `frontend/tests/ask-components.test.tsx` updated.

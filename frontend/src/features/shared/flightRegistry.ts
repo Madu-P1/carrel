@@ -26,8 +26,9 @@ export interface FlightEntry {
   html?: string;
   /** For citation chips: the target doc's id, to scope SM-2 to the right reader. */
   docId?: string;
-  /** For citation chips: the target chunk id inside the doc. */
-  chunkId?: string;
+  /** For citation chips: the target node id inside the doc (str-coerced;
+   *  on the chunks branch it carries the legacy chunk UUID). */
+  nodeId?: string;
   timestamp: number;
 }
 

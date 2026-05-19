@@ -12,8 +12,8 @@ function makeRect(x: number, y: number, w: number, h: number): DOMRect {
   } as DOMRect;
 }
 
-function Probe({ docId, chunkId }: { docId: string; chunkId: string | null }) {
-  useCitationFlight(docId, chunkId);
+function Probe({ docId, nodeId }: { docId: string; nodeId: string | null }) {
+  useCitationFlight(docId, nodeId);
   return null;
 }
 
@@ -37,7 +37,7 @@ describe("useCitationFlight (SM-2)", () => {
       rect: makeRect(20, 20, 120, 30),
       html: '<span class="chip">source</span>',
       docId: "doc-7",
-      chunkId: "chunk-X",
+      nodeId: "chunk-X",
     });
 
     let capturedAnimation: { _finish?: () => void } = {};
@@ -62,7 +62,7 @@ describe("useCitationFlight (SM-2)", () => {
     } as unknown as typeof HTMLElement.prototype.animate;
 
     try {
-      render(<Probe docId="doc-7" chunkId="chunk-X" />);
+      render(<Probe docId="doc-7" nodeId="chunk-X" />);
       // Poll for the raf-based flight kickoff. Give it a few ticks.
       for (let i = 0; i < 6; i++) {
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -90,14 +90,14 @@ describe("useCitationFlight (SM-2)", () => {
       rect: makeRect(0, 0, 100, 30),
       html: "<span>cite</span>",
       docId: "doc-OTHER",
-      chunkId: "chunk-Y",
+      nodeId: "chunk-Y",
     });
 
     const animateSpy = vi.fn();
     const originalAnimate = HTMLElement.prototype.animate;
     HTMLElement.prototype.animate = animateSpy as unknown as typeof HTMLElement.prototype.animate;
     try {
-      render(<Probe docId="doc-SELF" chunkId="chunk-Y" />);
+      render(<Probe docId="doc-SELF" nodeId="chunk-Y" />);
       for (let i = 0; i < 4; i++) {
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       }
@@ -107,12 +107,12 @@ describe("useCitationFlight (SM-2)", () => {
     }
   });
 
-  test("no-op when chunkId is null", async () => {
+  test("no-op when nodeId is null", async () => {
     const animateSpy = vi.fn();
     const originalAnimate = HTMLElement.prototype.animate;
     HTMLElement.prototype.animate = animateSpy as unknown as typeof HTMLElement.prototype.animate;
     try {
-      render(<Probe docId="doc-1" chunkId={null} />);
+      render(<Probe docId="doc-1" nodeId={null} />);
       for (let i = 0; i < 2; i++) {
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       }

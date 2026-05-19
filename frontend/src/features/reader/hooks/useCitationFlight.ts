@@ -16,15 +16,19 @@ import { ghostFlight } from "@/lib/flip";
  * scroll). We wait for a single paint frame after the chunk id shows up in the
  * DOM before measuring the target rect.
  */
-export function useCitationFlight(docId: string | null, chunkId: string | null | undefined) {
+export function useCitationFlight(docId: string | null, nodeId: string | null | undefined) {
   useEffect(() => {
-    if (!docId || !chunkId) return;
+    if (!docId || !nodeId) return;
 
-    const flight = consumeFlight("citation-chip", chunkId);
+    const flight = consumeFlight("citation-chip", nodeId);
     if (!flight || flight.docId !== docId || !flight.html) return;
 
     // Poll briefly for the target chunk element — the Reader may still be
     // scrolling to it after useChunkDeepLink updated highlightedChunkId.
+    // T06 keeps the DOM target on `data-chunk-id` because the reader still
+    // renders chunks pre-Phase-4; on the chunks branch `nodeId` is a chunk
+    // UUID and matches. On the nodes branch the int won't match and the
+    // ghost-flight degrades silently — `useNodeDeepLink` still navigates.
     const startedAt = performance.now();
     let cancelled = false;
     // jsdom does not expose the global CSS interface. Fall back to a minimal
@@ -36,7 +40,7 @@ export function useCitationFlight(docId: string | null, chunkId: string | null |
         : value.replace(/["\\]/g, "\\$&");
     const poll = () => {
       if (cancelled) return;
-      const target = document.querySelector<HTMLElement>(`[data-chunk-id="${escapeAttr(chunkId)}"]`);
+      const target = document.querySelector<HTMLElement>(`[data-chunk-id="${escapeAttr(nodeId)}"]`);
       if (target && target.getBoundingClientRect().height > 0) {
         ghostFlight(flight.html!, flight.rect, target, {
           durationMs: 420,
@@ -61,5 +65,5 @@ export function useCitationFlight(docId: string | null, chunkId: string | null |
     return () => {
       cancelled = true;
     };
-  }, [docId, chunkId]);
+  }, [docId, nodeId]);
 }

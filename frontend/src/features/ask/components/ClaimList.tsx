@@ -38,7 +38,7 @@ function sourceLocationFor(citation: CitationRecord): string {
   return [
     citation.document_name ?? citation.document_id ?? "Source",
     citation.page_num ? `p.${citation.page_num}` : null,
-    citation.chunk_id ? `chunk ${citation.chunk_id}` : null
+    citation.node_id != null ? `node ${citation.node_id}` : null
   ]
     .filter(Boolean)
     .join(" · ");
@@ -105,7 +105,7 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
                           citation={citation}
                           index={runningIndex}
                           delayMs={citationDelay}
-                          key={`${claim.text}-${citation.chunk_id}`}
+                          key={`${claim.text}-${citation.node_id ?? ""}`}
                           onClick={onCitationClick}
                         />
                       );
@@ -115,7 +115,7 @@ export function ClaimList({ claims, onCitationClick }: ClaimListProps) {
                 {claim.citations.length > 0 ? (
                   <div className={styles.feedCardLocationList}>
                     {claim.citations.map((citation) => (
-                      <span className={styles.feedCardLocation} key={`${claim.text}-${citation.chunk_id}-location`}>
+                      <span className={styles.feedCardLocation} key={`${claim.text}-${citation.node_id ?? ""}-location`}>
                         {sourceLocationFor(citation)}
                       </span>
                     ))}
