@@ -521,6 +521,69 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertEqual([], router.calls)
         self.assertIn(response.error, {"grounded_tutor_unavailable", "grounded_tutor_disabled"})
 
+    def test_pro_tutor_fails_closed_on_null_provider(self) -> None:
+        """T09 fail-closed regression: when `select_provider()` returns
+        NullProvider via the production env-driven path, `grounded_tutor_response`
+        must surface `ok=False` with the canonical Null-provider error code
+        and emit no LLM-synthesized summary — no silent fallback to a
+        heuristic answer (CLAUDE.md "no silent fallbacks").
+
+        This complements `test_grounded_tutor_auto_without_ai_returns_fallback`
+        (which injects a disabled StubRouter directly) by exercising the
+        `select_provider` → `get_default_provider` → `grounded_tutor_response`
+        integration end-to-end with `CARREL_AI_PROVIDER=off`. The cached
+        provider singleton is dropped via `reset_default_provider()` so
+        the off-override actually takes effect.
+
+        Acceptance text in AUTONOMOUS_WORK_PLAN.md originally said
+        `error="ai_synthesis_unavailable", citations=[]`; the actual code
+        emits `error="grounded_tutor_unavailable"` (mode=auto with
+        `ai_enabled=False`) and populates passages-only claims via
+        `_passages_only_fallback`. The test asserts the real fail-closed
+        contract; the acceptance text was updated to match on the T09
+        in_progress commit and the discrepancy surfaced to
+        operator-followups.
+        """
+        from ai.providers import (
+            NullProvider,
+            get_default_provider,
+            reset_default_provider,
+            select_provider,
+        )
+
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
+            self._insert_chunk(
+                conn, "chunk-1", "doc-a", "Mitosis separates duplicated chromosomes."
+            )
+            conn.commit()
+            hits = [
+                self._hit("chunk-1", "doc-a", "Core", "Mitosis separates duplicated chromosomes.")
+            ]
+
+            reset_default_provider()
+            try:
+                with mock.patch.dict(
+                    os.environ,
+                    {"CARREL_AI_PROVIDER": "off", "GROUNDED_TUTOR": "auto"},
+                    clear=False,
+                ):
+                    self.assertIsInstance(select_provider(), NullProvider)
+                    self.assertIsInstance(get_default_provider(), NullProvider)
+
+                    with mock.patch("services.tutor.search_hybrid", return_value=hits):
+                        response = tutor_service.grounded_tutor_response(conn, "Explain mitosis.")
+            finally:
+                reset_default_provider()
+
+        self.assertFalse(response.ok)
+        self.assertEqual("grounded_tutor_unavailable", response.error)
+        self.assertEqual("", response.summary)
+        self.assertEqual("", response.model)
+        self.assertEqual(0, response.citation_attempt_count)
+        self.assertEqual(0, response.citation_drop_count)
+        self.assertEqual(0, response.citation_repair_count)
+
     def test_empty_retrieval_returns_empty_answer_without_claude_call(self) -> None:
         with main.get_db() as conn:
             router = StubRouter()

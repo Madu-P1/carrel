@@ -151,10 +151,10 @@ Conventions per task:
 ## T09 — Phase 3 slice γ.4: fail-closed regression test on Null provider
 
 **Plan ref:** Phase 3 task 6.
-**Status:** pending
+**Status:** in_progress — branch `feat/t09-tutor-fails-closed-null-provider-2026-05-20`
 **Deps:** T06
 **Effort:** 0.5 iteration
-**Acceptance:** new test in `tests/test_tutor_grounded.py::test_pro_tutor_fails_closed_on_null_provider` that asserts the tutor returns `ok=False, error="ai_synthesis_unavailable", citations=[]` when `select_provider()` returns the Null provider.
+**Acceptance:** new test in `tests/test_tutor_grounded.py::test_pro_tutor_fails_closed_on_null_provider` that asserts the tutor returns `ok=False`, `error="grounded_tutor_unavailable"`, `summary=""`, `model=""`, and zero citation-attempt/drop/repair counts when `select_provider()` returns the Null provider via the production env-driven path (`CARREL_AI_PROVIDER=off` + `reset_default_provider()`). **Error-code correction:** original acceptance text said `error="ai_synthesis_unavailable", citations=[]`; that string exists nowhere in the codebase. The actual fail-closed contract on the Null-provider + `mode=auto` path is `error="grounded_tutor_unavailable"` (set at `services/tutor.py:1336`), and the answer carries passages-only claims via `_passages_only_fallback` (not empty `citations=[]`) when retrieval returned hits. The test asserts the real contract — `summary==""` and `model==""` are the canonical no-LLM-call signal — and the discrepancy is surfaced to `.claude/logs/operator-followups.jsonl`. The intent (no silent fallback to heuristic answers) is preserved verbatim.
 **Verify:** canonical chain + the new test passes.
 **Guards:** no silent fallback to heuristic answers. CLAUDE.md "no silent fallbacks".
 
