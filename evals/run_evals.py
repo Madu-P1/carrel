@@ -103,11 +103,20 @@ def _isolated_runtime(mode: str) -> Iterator[None]:
                     ).fetchall()
                     for row in rows:
                         table_name = str(row["name"])
+                        # Skip sqlite internals, the migration ledger, and
+                        # every FTS5/vec auxiliary table. Direct DELETE FROM
+                        # node_fts_data / node_fts_idx / etc. corrupts the
+                        # FTS5 index and surfaces as "invalid fts5 file
+                        # format" on the next trigger-driven insert. The
+                        # nodes-side data is cleared by the nodes_fts_delete
+                        # trigger when the parent `nodes` row is deleted, so
+                        # the loop only needs to touch user-data tables.
                         if (
                             table_name.startswith("sqlite_")
                             or table_name == "schema_migrations"
                             or table_name.startswith("chunks_fts")
                             or table_name.startswith("chunks_vec")
+                            or table_name.startswith("node_fts")
                         ):
                             continue
                         conn.execute(f"DELETE FROM {table_name}")
@@ -209,17 +218,50 @@ def _validate_case_shape(case: EvalCase, fixtures: dict[str, FixtureDefinition])
     return errors
 
 
+def _extract_fixture_text(fixture: FixtureDefinition) -> str:
+    """Read fixture content as plain text for the legacy chunker.
+
+    Text/markdown fixtures round-trip via `read_text`. PDF fixtures
+    are extracted with `pypdf` so the chunks branch still gets
+    indexable text alongside the Docling-extracted nodes (T57 +
+    T58 dual-branch parity for the side-by-side eval).
+    """
+    if fixture.file_type.lower() == "pdf":
+        import pypdf
+
+        reader = pypdf.PdfReader(str(fixture.path))
+        return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    return fixture.path.read_text(encoding="utf-8")
+
+
 def _ingest_fixtures(fixtures: dict[str, FixtureDefinition]) -> dict[str, str]:
+    """Ingest each fixture through the production orchestrator.
+
+    T58 — also copies the raw fixture bytes into `db.UPLOAD_DIR /
+    storage_name` and passes `storage_name`, so the orchestrator's
+    `_resolve_ingest_path` finds the file on disk and the Docling
+    typed-node ingest path can run when `INGEST_USE_DOCLING=true`.
+    Without this, the orchestrator logs `docling_skipped_no_file`
+    for every fixture and the `nodes` tables stay empty regardless
+    of `RETRIEVAL_USE_NODES`. The chunks branch keeps working off
+    `extracted_text` as before.
+    """
+    import db as db_module
+
     resolved: dict[str, str] = {}
+    db_module.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     with main.get_db() as conn:
         for filename, fixture in fixtures.items():
-            text = fixture.path.read_text(encoding="utf-8")
+            storage_path = db_module.UPLOAD_DIR / fixture.filename
+            storage_path.write_bytes(fixture.path.read_bytes())
+            text = _extract_fixture_text(fixture)
             result = ingest_document_record(
                 conn=conn,
                 filename=fixture.filename,
                 file_type=fixture.file_type,
                 extracted_text=text,
                 page_count=1,
+                storage_name=fixture.filename,
                 subject_name=fixture.subject_name,
             )
             resolved[filename] = str(result["doc_id"])

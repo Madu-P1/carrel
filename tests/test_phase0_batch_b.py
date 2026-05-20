@@ -65,7 +65,9 @@ class Phase0BatchBTests(unittest.TestCase):
 
     def test_smoke_eval_suite_passes(self) -> None:
         report = run_suite("smoke", "smoke")
-        self.assertEqual(14, report["summary"]["total_cases"])
+        # T58 added biology-mitosis-pdf-001 to exercise the Docling
+        # typed-node ingest path; smoke suite is now 15 cases (was 14).
+        self.assertEqual(15, report["summary"]["total_cases"])
         self.assertEqual(0, report["summary"]["blocking_errors"])
 
 
