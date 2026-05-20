@@ -222,7 +222,7 @@ def _extract_fixture_text(fixture: FixtureDefinition) -> str:
     """Read fixture content as plain text for the legacy chunker.
 
     Text/markdown fixtures round-trip via `read_text`. PDF fixtures
-    are extracted with `pypdf` so the chunks branch still gets
+    are extracted with `PyPDF2` so the chunks branch still gets
     indexable text alongside the Docling-extracted nodes (T57 +
     T58 dual-branch parity for the side-by-side eval).
     """
