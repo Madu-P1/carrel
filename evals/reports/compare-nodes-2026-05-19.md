@@ -70,7 +70,7 @@ T58 (in flight) closes the eval-fixture-Docling-path gap by adding the storage_n
 ### T58 measured outcome (proof that the wired path works)
 
 With T58 in place (`INGEST_USE_DOCLING=true`, default `INGEST_DOCLING_FORMATS=pdf`):
-- **Chunks branch (default env):** `groundedness@8 = 13/15 (86.67%)`, `quote_validity = 32/32 (1.0000)` — baseline preserved and slightly improved (new PDF fixture also passes on the chunks branch via `pypdf`-driven pre-extraction).
+- **Chunks branch (default env):** `groundedness@8 = 13/15 (86.67%)`, `quote_validity = 32/32 (1.0000)` — baseline preserved and slightly improved (new PDF fixture also passes on the chunks branch via `PyPDF2`-driven pre-extraction).
 - **Nodes branch (RETRIEVAL_USE_NODES=true + INGEST_USE_DOCLING=true):** `groundedness@8 = 1/15 (6.67%)`, `quote_validity = 24/24 (1.0000)`. The single `grnd=1` case is `biology-mitosis-pdf-001` against the new `cell_division.pdf` fixture — Docling produced 2 nodes from the PDF and the typed-node retrieval found them. The other 14 cases register `grnd=0` because their expected fixtures are `.md`, which the Docling parser doesn't handle yet (T10).
 - **Quote-validity = 1.0 on the nodes branch despite low groundedness:** the typed-node retrieval surfaces the PDF's nodes for biology questions across cases (BM25 + vector match on biology terms). The LLM cites the PDF's verbatim text correctly, but the case's expected ids belong to the `.md` fixture's chunks (a different id-space). Once T10 adds Docling parsing for `.md`, the 14 `.md` fixtures will populate matching nodes and `groundedness@8` rises accordingly.
 
