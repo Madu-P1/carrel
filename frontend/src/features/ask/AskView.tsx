@@ -20,17 +20,21 @@ import { ScopePill, type AskScopeValue } from "./components/ScopePill";
 import { UnsupportedSpans } from "./components/UnsupportedSpans";
 import { focusAskInput } from "./focusRegistry";
 import { readAskQueryParams, scopeFromRoute } from "./askRoute";
+import { resolveCardsMode } from "./cardsMode";
 import { useAskCards } from "./hooks/useAskCards";
 import { useAskTutor } from "./hooks/useAskTutor";
 import type { CitationRecord } from "./types";
 import type { AskCard as AskCardData, AskCardsParams } from "@/services/api/endpoints";
 import styles from "./AskView.module.css";
 
-// Build-time flag — when "true", AskView swaps the synthesised-answer
-// renderer for the typed-node card list. Keep the flag at the build
-// boundary so production bundles pick exactly one path; runtime toggles
-// would force every user to pay for both code paths in the bundle.
-const CARDS_MODE = import.meta.env.VITE_RETRIEVAL_USE_NODES === "true";
+// Build-time flag: defaults on (T12, Phase 4.3). AskView renders the
+// typed-node card list unless VITE_RETRIEVAL_USE_NODES is "false", in
+// which case it falls back to the synthesised-answer renderer. The
+// derivation lives in resolveCardsMode so the default-on contract is
+// unit-tested (see cardsMode.ts). Reading import.meta.env here keeps
+// the flag at the build boundary, so a production bundle ships exactly
+// one renderer instead of paying for both code paths.
+const CARDS_MODE = resolveCardsMode(import.meta.env.VITE_RETRIEVAL_USE_NODES);
 
 // Subject-agnostic sample that demonstrates Carrel's strength
 // (citation-grounded synthesis across whatever the user has imported)

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,6 +103,17 @@ class EvalsRunnerTests(unittest.TestCase):
             stop_reason="tool_use",
             request_id="req_eval_stub",
         )
+        # T12: this test builds a ScoredHit and SELECTs FROM chunks, so
+        # it exercises the legacy chunks path. RETRIEVAL_USE_NODES and
+        # INGEST_USE_DOCLING now default on; pin both off so the .md
+        # fixture populates `chunks` and the tutor retrieves from it.
+        env = mock.patch.dict(
+            os.environ,
+            {"INGEST_USE_DOCLING": "false", "RETRIEVAL_USE_NODES": "false"},
+            clear=False,
+        )
+        env.start()
+        self.addCleanup(env.stop)
         fixtures = run_evals._load_fixture_manifest()
         with run_evals._isolated_runtime("full"):
             mapping = run_evals._ingest_fixtures(fixtures)

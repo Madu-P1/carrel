@@ -57,10 +57,11 @@ class RetrievedNode:
 def retrieval_use_nodes_enabled() -> bool:
     """Top-level flag — callers above retrieval gate which path to use.
 
-    Defaults off so deploying PR 2 alone never changes user-facing
-    behavior. PR 4 (Free-tier card UI) flips it on for new sessions.
+    Defaults on (T12, Phase 4.3): retrieval routes through the typed
+    nodes / node_fts / node_embeddings tables. Set RETRIEVAL_USE_NODES
+    to "false" to force the legacy chunks path.
     """
-    return os.getenv("RETRIEVAL_USE_NODES", "false").lower() in ("1", "true", "yes")
+    return os.getenv("RETRIEVAL_USE_NODES", "true").lower() in ("1", "true", "yes")
 
 
 def retrieval_use_reranker_enabled() -> bool:

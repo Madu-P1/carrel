@@ -35,7 +35,8 @@ LOGGER = get_logger("ingestion.orchestrator")
 def _docling_enabled_for(extension: str) -> bool:
     """Two env-var feature flags gate the typed-node ingest path.
 
-    INGEST_USE_DOCLING (default false) — master switch.
+    INGEST_USE_DOCLING (default true, flipped in T12 / Phase 4.3) is
+    the master switch.
     INGEST_DOCLING_FORMATS (default 'pdf,docx,html,md,pptx,tex') —
     comma-separated allowlist of file extensions to route through
     Docling. Every default entry maps to a registered Docling
@@ -43,7 +44,7 @@ def _docling_enabled_for(extension: str) -> bool:
     file extension for `InputFormat.LATEX`. EPUB and TXT stay on the
     legacy extraction path — Docling has no InputFormat for either.
     """
-    if os.getenv("INGEST_USE_DOCLING", "false").lower() not in ("1", "true", "yes"):
+    if os.getenv("INGEST_USE_DOCLING", "true").lower() not in ("1", "true", "yes"):
         return False
     formats = os.getenv("INGEST_DOCLING_FORMATS", "pdf,docx,html,md,pptx,tex").lower().split(",")
     allowed = {fmt.strip() for fmt in formats if fmt.strip()}

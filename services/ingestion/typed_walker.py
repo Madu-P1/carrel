@@ -12,11 +12,17 @@ offsets are computed against a canonical text built incrementally as the
 walker proceeds — joining text with "\\n\\n" — so they index into the
 same canonical document the rest of the pipeline consumes. PR 2 wires
 those offsets into the citation chips.
+
+A very large PDF cannot be parsed in one shot — Docling's peak memory
+scales with page count. `stitch_walks` exists for that case: a caller
+parses the document in page-range slices, walks each slice, and stitches
+the per-slice lists back into the single contiguous list a one-shot
+`walk` would have produced.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 # Docling element labels (DocItemLabel.value strings) mapped to our
@@ -116,3 +122,47 @@ def walk(doc: Any) -> list[TypedNode]:
         reading_order += 1
 
     return nodes
+
+
+def stitch_walks(slices: list[list[TypedNode]]) -> list[TypedNode]:
+    """Merge per-page-range `walk` outputs into one document-global list.
+
+    A very large PDF is parsed in page-range slices to bound memory (see
+    `script/reingest_all.py`). Each slice is walked independently, so its
+    nodes restart `reading_order` at 0 and char offsets at 0. This
+    stitches the slices back into the single contiguous list a one-shot
+    `walk` would have produced: `reading_order` runs 0..N-1 across the
+    whole document, and char offsets index a canonical text that joins
+    the slices with the same "\\n\\n" separator `walk` puts between
+    nodes within a slice.
+
+    `page` is left untouched — Docling's `page_range` yields absolute
+    page numbers, so per-slice `page` values are already document-global.
+    `heading_path` is also left as each slice produced it: a heading that
+    opened in an earlier slice does not carry into a later one, so a few
+    nodes near a slice boundary may miss an ancestor breadcrumb. This is
+    an accepted, minor degradation for very large PDFs — most slices
+    contain their own headings. Empty slices contribute nothing, exactly
+    as empty pages do in a one-shot `walk`.
+    """
+    merged: list[TypedNode] = []
+    reading_order_offset = 0
+    char_offset = 0
+    for slice_nodes in slices:
+        if not slice_nodes:
+            continue
+        for node in slice_nodes:
+            merged.append(
+                replace(
+                    node,
+                    reading_order=node.reading_order + reading_order_offset,
+                    char_start=node.char_start + char_offset,
+                    char_end=node.char_end + char_offset,
+                )
+            )
+        reading_order_offset += len(slice_nodes)
+        # `walk` ends a slice's canonical text at the last node's
+        # `char_end`; the next slice's text follows after a "\n\n" join,
+        # the same 2-char separator `walk` inserts between nodes.
+        char_offset += slice_nodes[-1].char_end + 2
+    return merged

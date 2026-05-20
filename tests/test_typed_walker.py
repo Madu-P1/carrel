@@ -11,7 +11,7 @@ import unittest
 from dataclasses import dataclass
 from typing import Iterable
 
-from services.ingestion.typed_walker import DOCLING_TYPE_MAP, TypedNode, walk
+from services.ingestion.typed_walker import DOCLING_TYPE_MAP, TypedNode, stitch_walks, walk
 
 
 @dataclass
@@ -136,6 +136,73 @@ class TypedWalkerTests(unittest.TestCase):
         )
         with self.assertRaises(Exception):
             node.node_type = "heading"  # type: ignore[misc]
+
+
+class StitchWalksTests(unittest.TestCase):
+    """`stitch_walks` merges per-page-range slice walks into one list.
+
+    A very large PDF is parsed in page-range slices to bound memory; each
+    slice is walked independently and restarts reading_order / char
+    offsets at 0. `stitch_walks` must produce exactly the contiguous list
+    a one-shot `walk` would have.
+    """
+
+    def test_no_slices_yields_empty_list(self) -> None:
+        self.assertEqual(stitch_walks([]), [])
+
+    def test_single_slice_is_returned_unchanged(self) -> None:
+        only = walk(_FakeDoc([_Item("text", "alpha"), _Item("text", "beta")]))
+        self.assertEqual(stitch_walks([only]), only)
+
+    def test_reading_order_is_contiguous_across_slices(self) -> None:
+        slice_a = walk(_FakeDoc([_Item("text", "a"), _Item("text", "b")]))
+        slice_b = walk(_FakeDoc([_Item("text", "c"), _Item("text", "d"), _Item("text", "e")]))
+        stitched = stitch_walks([slice_a, slice_b])
+        self.assertEqual([n.reading_order for n in stitched], [0, 1, 2, 3, 4])
+
+    def test_char_offsets_index_one_global_canonical_text(self) -> None:
+        # Each slice walks in isolation (offsets restart at 0); the stitch
+        # must shift them so they index the joined canonical document.
+        texts_a, texts_b = ["alpha", "beta"], ["gamma", "delta"]
+        slice_a = walk(_FakeDoc([_Item("text", t) for t in texts_a]))
+        slice_b = walk(_FakeDoc([_Item("text", t) for t in texts_b]))
+        stitched = stitch_walks([slice_a, slice_b])
+        canonical = "\n\n".join(texts_a + texts_b)
+        for node in stitched:
+            self.assertEqual(canonical[node.char_start : node.char_end], node.verbatim_text)
+
+    def test_empty_slices_contribute_nothing(self) -> None:
+        # A page-range slice that parses to no nodes (blank/image pages)
+        # must not advance offsets or insert a phantom separator.
+        slice_a = walk(_FakeDoc([_Item("text", "alpha")]))
+        slice_c = walk(_FakeDoc([_Item("text", "beta")]))
+        with_gap = stitch_walks([slice_a, [], slice_c])
+        without_gap = stitch_walks([slice_a, slice_c])
+        self.assertEqual(with_gap, without_gap)
+
+    def test_stitched_slices_equal_a_one_shot_walk(self) -> None:
+        # The gold standard: splitting a document into slices and
+        # stitching must reproduce the one-shot walk byte for byte. The
+        # split sits between pages so no heading breadcrumb crosses it.
+        items = [
+            _Item("text", "alpha", page=1),
+            _Item("text", "beta", page=1),
+            _Item("text", "gamma", page=2),
+            _Item("text", "delta", page=2),
+            _Item("text", "epsilon", page=3),
+        ]
+        whole = walk(_FakeDoc(items))
+        slice_a = walk(_FakeDoc(items[:2]))
+        slice_b = walk(_FakeDoc(items[2:]))
+        self.assertEqual(stitch_walks([slice_a, slice_b]), whole)
+
+    def test_page_numbers_pass_through_untouched(self) -> None:
+        # Docling page_range yields absolute page numbers, so per-slice
+        # `page` is already document-global — the stitch must not shift it.
+        slice_a = walk(_FakeDoc([_Item("text", "a", page=58)]))
+        slice_b = walk(_FakeDoc([_Item("text", "b", page=61)]))
+        stitched = stitch_walks([slice_a, slice_b])
+        self.assertEqual([n.page for n in stitched], [58, 61])
 
 
 if __name__ == "__main__":

@@ -46,7 +46,19 @@ class GroundedTutorTests(unittest.TestCase):
         main.initialize_database()
         self.clear_seed_data()
 
+        # T12: RETRIEVAL_USE_NODES now defaults on. These tests inject
+        # ScoredHit fixtures through `search_hybrid` and assert the
+        # chunks id-space (string node_id), so they exercise the legacy
+        # chunks retrieval path. Pin the flag off for the class. The
+        # typed-node path is covered by TutorPrimaryRetrievalDispatchTests,
+        # HydrateNodeContextDispatchTests, FallbackContextsFromScopeTests,
+        # and HydrateCitedContextsTests; the two tests here that need it
+        # on (test_weak_coverage_*, test_scope_fallback_*) override locally.
+        self._env_patch = mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False)
+        self._env_patch.start()
+
     def tearDown(self) -> None:
+        self._env_patch.stop()
         main.BASE_DIR = self.original_base_dir
         main.DATA_DIR = self.original_data_dir
         main.UPLOAD_DIR = self.original_upload_dir
@@ -1493,12 +1505,14 @@ class HydrateCitedContextsTests(unittest.TestCase):
         self.assertEqual("Mitosis separates duplicated chromosomes.", ctx.verbatim_text)
 
     def test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts(self) -> None:
-        # RETRIEVAL_USE_NODES default is false; rely on it.
-        with main.get_db() as conn:
-            self._insert_document(conn, "doc-a", "bio.txt")
-            self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
-            conn.commit()
-            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
+        # T12: RETRIEVAL_USE_NODES now defaults on; pin it off so this
+        # test exercises the legacy chunks branch it is named for.
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
 
         self.assertEqual(1, len(contexts))
         ctx = contexts[0]
@@ -1523,10 +1537,13 @@ class HydrateCitedContextsTests(unittest.TestCase):
         self.assertEqual([], contexts)
 
     def test_chunks_path_returns_empty_when_no_chunk_rows_resolve(self) -> None:
-        with main.get_db() as conn:
-            self._insert_document(conn, "doc-a", "bio.txt")
-            conn.commit()
-            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-missing"])
+        # T12: pin RETRIEVAL_USE_NODES off so this exercises the chunks
+        # branch it is named for (the flag now defaults on).
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-missing"])
 
         self.assertEqual([], contexts)
 

@@ -18,9 +18,11 @@ dist/
 data/uploads/
 data/job-uploads/
 data/logs/
+data/migrations/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/*.db.*-bak
 data/**/*.db
 data/**/*.db-shm
 data/**/*.db-wal
