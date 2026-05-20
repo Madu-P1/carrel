@@ -161,7 +161,7 @@ Conventions per task:
 ## T10 — Phase 4.1: extend Docling format coverage to 5 formats
 
 **Plan ref:** Phase 4 task 2.
-**Status:** in_progress
+**Status:** done — commit 14cef900, landed on main 2026-05-20 (operator session; manual verify, rater not run)
 **Deps:** T57 (was T08; retargeted 2026-05-20 after T58 split T08 into precursors. T10's format-coverage work is independent of T08's side-by-side comparison; T08 now depends on T10, not the other way around.)
 **Effort:** 1 iteration
 **Acceptance:** `INGEST_DOCLING_FORMATS` default extended from `pdf` to `pdf,docx,html,md,pptx,tex` AND `services/ingestion/docling_parser.py::parse_document` registers `InputFormat` handlers for every newly-supported extension (currently only `InputFormat.PDF` is registered; the 5 new ones are `DOCX`, `HTML`, `MD`, `PPTX`, `LATEX`). New `tests/integration/test_docling_format_coverage.py` with 5 fixture cases (one per newly-supported format), all green. **Operator decision 2026-05-20:** the original ask `pdf,docx,epub,html,md,txt` named two values that are not Docling `InputFormat` members (verified against `docling~=2.93`: no `EPUB`, no `TXT`). `epub` and `txt` are dropped from the Docling allowlist; `pptx` and `latex` are substituted (both real Docling `InputFormat` values, both relevant to a study app: lecture slides and papers). **Extension-vs-InputFormat correction (2026-05-20, found in T10 review):** `INGEST_DOCLING_FORMATS` is keyed by file extension, not by `InputFormat` name. Docling maps `InputFormat.LATEX` to extensions `tex` and `latex`; a real LaTeX file is `*.tex`, so the allowlist token is `tex` (not `latex`, which would never match an uploaded `.tex` file). The default token list is `pdf,docx,html,md,pptx,tex`. EPUB and TXT keep working on the legacy extraction path until a dedicated typed-node path exists (see the T13 Notes line). **Side-effect:** the existing `.md` smoke fixtures (`cell_division.md`, `photosynthesis.md`) now populate `nodes` tables when `INGEST_USE_DOCLING=true`, which unblocks T08's full side-by-side comparison.
@@ -171,20 +171,20 @@ Conventions per task:
 ## T11 — Phase 4.2: write script/reingest_all.py
 
 **Plan ref:** Phase 4 task 3.
-**Status:** pending
+**Status:** done — commit 93daef24, landed on main 2026-05-20 (operator session; manual verify, rater not run)
 **Deps:** T10
 **Effort:** 1 iteration
 **Acceptance:** new `script/reingest_all.py` that iterates documents in `documents`, backfills typed `nodes` for those that lack them, logs progress to stdout + `data/migrations/reingest-{date}.jsonl`, idempotent (skips docs with non-zero node count), default concurrency 4. **Mechanism correction (2026-05-20, T11 review):** the original acceptance said "calls `_run_import_job` with the original file bytes", but `_run_import_job` (`services/jobs.py`) hashes the content and skips anything already present as a canonical duplicate, so it cannot re-ingest existing documents. `reingest_all.py` instead drives the Docling typed-node path directly (`docling_parser.parse_document` -> `typed_walker.walk` -> `insert_typed_nodes` -> `embed_and_index_nodes`) for each document with a stored file and zero `nodes` rows. Docling parses run across a thread pool; node insertion and embedding run serially on one connection. `chunks` is never read or written, satisfying the guard below.
 **Verify:** canonical chain + dry-run the script on a temp DB with 2 fixture docs.
 **Guards:** do not delete chunks rows during re-ingest; just add nodes alongside.
 
-## T12 — Phase 4.3: flip 5 typed-node flags to default-on + run re-ingest
+## T12 — Phase 4.3: flip 3 typed-node flags to default-on + run re-ingest
 
 **Plan ref:** Phase 4 task 1 + 4 + 5.
 **Status:** pending
 **Deps:** T11
 **Effort:** 1 iteration (plus overnight re-ingest)
-**Acceptance:** defaults flipped in `services/ingestion/orchestrator.py:43`, `services/retrieval/typed_hybrid.py:63,74`, `frontend/src/features/ask/AskView.tsx:33`. Run `script/reingest_all.py` against the live DB; verify `SELECT COUNT(*) FROM documents WHERE id NOT IN (SELECT DISTINCT doc_id FROM nodes)` returns 0. Insert `app_settings('chunks_to_nodes_migration_complete', '<date>')` row.
+**Acceptance:** flip the 3 typed-node default flags on: `INGEST_USE_DOCLING` in `services/ingestion/orchestrator.py::_docling_enabled_for` (default `false` to `true`), `RETRIEVAL_USE_NODES` in `services/retrieval/typed_hybrid.py::retrieval_use_nodes_enabled` (default `false` to `true`), and the `VITE_RETRIEVAL_USE_NODES` build flag in `frontend/src/features/ask/AskView.tsx` (change `=== "true"` to `!== "false"`). Run `script/reingest_all.py` against the live DB; verify `SELECT COUNT(*) FROM documents WHERE id NOT IN (SELECT DISTINCT doc_id FROM nodes)` returns 0. Insert an `app_settings('chunks_to_nodes_migration_complete', '<date>')` row. **Scope correction (2026-05-20, T12 review):** the original acceptance said "5 flags" and listed `typed_hybrid.py:74`. That line is `RETRIEVAL_USE_RERANKER`, which is independent of the chunks-to-nodes migration; turning it on forces a roughly 1 GB cross-encoder model download on every user, so it is out of T12 scope and stays off. There are 3 typed-node flags, not 5. **Test migration (part of T12):** flipping `RETRIEVAL_USE_NODES` default-on routes retrieval through `nodes` and breaks about 15 backend tests that seed only `chunks` and assumed the old default (verified 2026-05-20: the canonical backend `unittest` list yields 13 failures + 2 errors with the flag on). T12 must migrate them: pin `RETRIEVAL_USE_NODES=false` on tests that specifically cover the legacy chunks path (for example `test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts`), seed `nodes` for tests that should now exercise the default path, until the canonical verify chain is green. **Re-ingest is the overnight step:** `script/reingest_all.py` runs Docling OCR over real documents at roughly 30 minutes per document; the live library currently has 4 documents without `nodes`, so budget about 2 hours. The script is idempotent, so a watchdog kill mid-run resumes cleanly.
 **Verify:** canonical chain + the SQL invariant check.
 **Guards:** do not start T13 until the SQL invariant holds.
 
