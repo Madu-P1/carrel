@@ -140,7 +140,7 @@ Conventions per task:
 ## T08 — Phase 3 slice γ.3: side-by-side smoke (`RETRIEVAL_USE_NODES` on vs off)
 
 **Plan ref:** Phase 3 task 5.
-**Status:** blocked — first-pass attempt landed via PR #61 (squash commit `84bd080d`, 2026-05-20) discovered an architectural ceiling: the eval harness cannot distinguish the two flag paths today. Comparison report committed at `evals/reports/compare-nodes-2026-05-19.md` (vacuous-equality outcome, architectural ceiling documented), gap-2 threshold-invariant regression test landed in `tests/test_evals_runner.py`, fresh-context rater scored the park deliverable 100/100 SHIP. T08 is parked behind a new precursor task **T57** (Phase 4.0 precursor); reopen after T57 lands and the comparison will then exercise real divergence.
+**Status:** pending — first-pass parked via PR #61 (squash commit `84bd080d`, 2026-05-20) discovered the architectural ceiling that T57 (PR #63, squash commit `fa20c2c0`, 2026-05-20) wired. T08 is now reopen-eligible: rerun the side-by-side comparison per the CLAUDE.md §Benchmarks+budgets invocation pattern (BOTH `RETRIEVAL_USE_NODES=true` AND `INGEST_USE_DOCLING=true` on the nodes-path run; chunks-path run keeps default env). Update `evals/reports/compare-nodes-2026-05-19.md` (or commit a new dated report) with real divergence numbers.
 **Deps:** T07, T57
 **Effort:** 0.5 iteration (after T57)
 **Acceptance:** run `evals/run_evals.py --mode full` with `RETRIEVAL_USE_NODES=true`, then with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-{date}.md`. **Mode pivot from smoke to full** mirrors T07: smoke is pre-existing broken (FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit). Full mode is the canonical quality bar per CLAUDE.md §Benchmarks+budgets.
@@ -631,7 +631,7 @@ Conventions per task:
 ## T57 — Phase 4.0 (precursor): wire `RETRIEVAL_USE_NODES` primary-retrieval dispatch + eval-harness id-space dispatch
 
 **Plan ref:** Phase 4 precursor (discovered during T08's first-pass attempt; documented in `evals/reports/compare-nodes-2026-05-19.md`).
-**Status:** in_progress — branch `feat/t57-typed-retrieval-dispatch-2026-05-20`
+**Status:** done — PR #63, squash commit `fa20c2c0`, rated 100/100 SHIP on 2026-05-20
 **Deps:** T07
 **Effort:** 1 iteration
 **Acceptance:** three coupled pieces land in one PR:
