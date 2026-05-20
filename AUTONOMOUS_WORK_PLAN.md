@@ -140,9 +140,9 @@ Conventions per task:
 ## T08 — Phase 3 slice γ.3: side-by-side smoke (`RETRIEVAL_USE_NODES` on vs off)
 
 **Plan ref:** Phase 3 task 5.
-**Status:** pending — first-pass parked via PR #61 (squash commit `84bd080d`, 2026-05-20) discovered the architectural ceiling that T57 (PR #63, squash commit `fa20c2c0`, 2026-05-20) wired. T08 is now reopen-eligible: rerun the side-by-side comparison per the CLAUDE.md §Benchmarks+budgets invocation pattern (BOTH `RETRIEVAL_USE_NODES=true` AND `INGEST_USE_DOCLING=true` on the nodes-path run; chunks-path run keeps default env). Update `evals/reports/compare-nodes-2026-05-19.md` (or commit a new dated report) with real divergence numbers.
-**Deps:** T07, T57
-**Effort:** 0.5 iteration (after T57)
+**Status:** blocked (re-parked) — reopen attempt on `feat/t08-reopen-non-vacuous-compare-2026-05-20` discovered a SECOND architectural ceiling after T57 closed the first. The eval's `_ingest_fixtures` calls `ingest_document_record(extracted_text=..., storage_name=None)`, so `_resolve_ingest_path` returns None and Docling silently skips with `docling_skipped_no_file` for every fixture. The nodes table stays empty even with `INGEST_USE_DOCLING=true` + `INGEST_DOCLING_FORMATS=pdf,md,txt`. Re-parked behind new precursor **T58** (Phase 4.0 second precursor). Reopen comparison report updated at `evals/reports/compare-nodes-2026-05-19.md` documents both diagnostic passes; chunks-baseline (12/14 + 1.00) confirmed unchanged post-T57.
+**Deps:** T07, T57, T58
+**Effort:** 0.5 iteration (after T58)
 **Acceptance:** run `evals/run_evals.py --mode full` with `RETRIEVAL_USE_NODES=true`, then with `RETRIEVAL_USE_NODES=false`. Compare metrics; the node path must be equal or better on both `groundedness@8` and `quote_validity`. Commit the comparison report under `evals/reports/compare-nodes-{date}.md`. **Mode pivot from smoke to full** mirrors T07: smoke is pre-existing broken (FTS5 conjunctive interrogative-token MATCH returns 0/14 groundedness, and `quote_validity` isn't computed in smoke mode at all per `_aggregate` short-circuit). Full mode is the canonical quality bar per CLAUDE.md §Benchmarks+budgets.
 **Architectural ceiling found in first-pass (documented in `evals/reports/compare-nodes-2026-05-19.md`):** the eval harness calls `grounded_tutor_response` directly, which dispatches `search_hybrid` (legacy chunks-based) unconditionally at `services/tutor.py:1228` and `:1310` and inside `grounded_citations`. The `RETRIEVAL_USE_NODES` flag is only consulted at two downstream sites — `_fallback_contexts_from_scope` (fires only on empty primary retrieval; 0 cases in the smoke suite) and `_hydrate_cited_contexts` (only called from `grounded_tutor_envelope`, which the eval bypasses). Layered on top, typed-node ingestion is gated by `INGEST_USE_DOCLING` (default false), so even if dispatch is wired the eval's isolated DB has an empty `nodes` table on the USE_NODES=true run; the harness's `_resolve_expected_chunks` and `quote_validity` lookup also speak only the chunks id-space. The first-pass run produced **equal** numbers on both branches (groundedness@8 = 12/14, quote_validity = 1.00) but the equality is vacuous, not informative. T57 (below) wires the three pieces required for a non-vacuous comparison.
 **Verify:** the comparison report numbers (after T57 lands and T08 reopens), plus the canonical chain.
@@ -627,6 +627,19 @@ Conventions per task:
 **Acceptance:** canonical chain green from clean checkout. `evals --mode full` meets all bars (groundedness@8 ≥ 0.7, quote_validity ≥ 0.95, card_quality@1 ≥ Phase 9 baseline, anchor_accuracy@1 ≥ 0.95). cold launch p50 ≤ 800ms. axe-core zero violations. Manual smoke test of E2E flow (drop PDF → ask → flight → save anchor → promote → review → activate → upgrade → bulk generate). Launch checklist written.
 **Verify:** all eval + benchmark bars + the manual smoke.
 **Guards:** never ship without the rollback plan documented.
+
+## T58 — Phase 4.0 (second precursor): route eval fixture ingest through the Docling typed-node path
+
+**Plan ref:** Phase 4 second precursor (discovered during T08's reopen attempt; documented in `evals/reports/compare-nodes-2026-05-19.md` under "Why the nodes branch is empty").
+**Status:** pending
+**Deps:** T57
+**Effort:** 0.5–1 iteration (depends on whether Docling can parse `.md`/`.txt` fixtures or whether a `.pdf` fixture must be added).
+**Acceptance:** with `INGEST_USE_DOCLING=true` (and any necessary `INGEST_DOCLING_FORMATS` extension), running `evals/run_evals.py --mode full` against the smoke suite populates the `nodes` / `node_fts` / `node_embeddings` tables for every fixture. Two coupled pieces:
+1. `evals/run_evals.py::_ingest_fixtures` copies each fixture file from `evals/fixtures/<path>` into `db.UPLOAD_DIR / storage_name` BEFORE calling `ingest_document_record`, AND passes the `storage_name`. This is the surface fix that lets `services/ingestion/orchestrator.py::_resolve_ingest_path` actually find the file (currently returns None → `docling_skipped_no_file` for every fixture).
+2. Confirm Docling produces valid `nodes` rows for the fixture file-format set (currently `.md` + `.txt`). If `_docling_enabled_for` rejects those formats by default (`INGEST_DOCLING_FORMATS=pdf` only) AND Docling cannot reliably parse them, add a small `.pdf` fixture to `evals/fixtures/` plus a smoke case keyed to it. The new fixture must exercise both retrieval branches (chunks via legacy chunker, nodes via Docling).
+The chunks-path eval invocation (default env) must still produce the existing baseline (`groundedness@8 = 12/14`, `quote_validity = 1.00`). Add a regression assertion in `tests/test_evals_runner.py` if practical.
+**Verify:** canonical chain + chunks-path eval-full baseline preserved + nodes-path eval-full with `INGEST_USE_DOCLING=true` produces non-empty hits on at least the new Docling-parsed fixture(s).
+**Guards:** no silent fallback in the ingest path (Docling errors must surface, not vanish via `docling_skipped_no_file` or `docling_ingest_failed`). Do not regress the chunks-baseline. After T58 lands, reopen T08 (`Status: pending`) and re-run the comparison.
 
 ## T57 — Phase 4.0 (precursor): wire `RETRIEVAL_USE_NODES` primary-retrieval dispatch + eval-harness id-space dispatch
 
