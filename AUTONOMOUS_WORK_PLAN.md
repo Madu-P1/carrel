@@ -631,7 +631,7 @@ Conventions per task:
 ## T57 — Phase 4.0 (precursor): wire `RETRIEVAL_USE_NODES` primary-retrieval dispatch + eval-harness id-space dispatch
 
 **Plan ref:** Phase 4 precursor (discovered during T08's first-pass attempt; documented in `evals/reports/compare-nodes-2026-05-19.md`).
-**Status:** pending
+**Status:** in_progress — branch `feat/t57-typed-retrieval-dispatch-2026-05-20`
 **Deps:** T07
 **Effort:** 1 iteration
 **Acceptance:** three coupled pieces land in one PR:

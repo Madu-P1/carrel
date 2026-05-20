@@ -20,8 +20,12 @@ if str(ROOT_DIR) not in sys.path:
 import main  # noqa: E402
 from ai.router import ClaudeRouter, get_default_router  # noqa: E402
 from services.ingestion import ingest_document_record  # noqa: E402
-from services.retrieval.hybrid import search_hybrid  # noqa: E402
-from services.tutor import GroundedAnswer, grounded_tutor_response  # noqa: E402
+from services.retrieval.typed_hybrid import RetrievedNode  # noqa: E402
+from services.tutor import (  # noqa: E402
+    GroundedAnswer,
+    grounded_tutor_response,
+    tutor_primary_retrieval,
+)
 
 EVALS_DIR = Path(__file__).resolve().parent
 FIXTURES_DIR = EVALS_DIR / "fixtures"
@@ -246,30 +250,73 @@ def _normalized_substring_match(needle: str, haystack: str) -> bool:
     return bool(normalized_needle) and normalized_needle in normalized_haystack
 
 
-def _resolve_expected_chunks(
+def _resolve_expected_ids(
     conn: sqlite3.Connection,
     case: EvalCase,
     filename_to_doc_id: dict[str, str],
-) -> set[str]:
+) -> set[str | int]:
+    """Expected-content ids covering BOTH retrieval id-spaces.
+
+    Returns a set that includes:
+    - `chunks.id` str UUIDs (legacy chunks-based retrieval result space).
+    - `nodes.id` ints (typed-node retrieval result space).
+
+    Either id-space's hit shape can match an expected id and count for
+    `groundedness@8`. This is the T57 generalization of the pre-T08
+    `_resolve_expected_chunks`: when `RETRIEVAL_USE_NODES=true` and the
+    nodes tables are populated (Docling-enabled ingest), the eval can
+    grade the typed-node retrieval against the same per-case expected
+    content.
+    """
     if not case.expected_quote_substrings:
         return set()
     doc_ids = _resolve_fixture_doc_ids(filename_to_doc_id, case.expected_doc_filenames)
     if not doc_ids:
         return set()
     placeholders = ",".join("?" * len(doc_ids))
-    rows = conn.execute(
+    expected: set[str | int] = set()
+
+    chunk_rows = conn.execute(
         f"SELECT id, content FROM chunks WHERE doc_id IN ({placeholders})",
         doc_ids,
     ).fetchall()
-    expected: set[str] = set()
-    for row in rows:
+    for row in chunk_rows:
         content = str(row["content"] or "")
         if any(
             _normalized_substring_match(fragment, content)
             for fragment in case.expected_quote_substrings
         ):
             expected.add(str(row["id"]))
+
+    node_rows = conn.execute(
+        f"SELECT id, verbatim_text FROM nodes WHERE doc_id IN ({placeholders})",
+        doc_ids,
+    ).fetchall()
+    for row in node_rows:
+        verbatim = str(row["verbatim_text"] or "")
+        if any(
+            _normalized_substring_match(fragment, verbatim)
+            for fragment in case.expected_quote_substrings
+        ):
+            expected.add(int(row["id"]))
+
     return expected
+
+
+def _resolve_expected_chunks(
+    conn: sqlite3.Connection,
+    case: EvalCase,
+    filename_to_doc_id: dict[str, str],
+) -> set[str | int]:
+    """Backwards-compatible alias for `_resolve_expected_ids`.
+
+    Retained because the prior name is part of the eval-harness ABI
+    inside the module; rather than rename every call site we expose
+    the generalized id-space set under both names. The return-type
+    annotation widens to `set[str | int]` (was `set[str]`) since the
+    nodes branch contributes int ids.
+    """
+    return _resolve_expected_ids(conn, case, filename_to_doc_id)
 
 
 def _scope_doc_ids(case: EvalCase, filename_to_doc_id: dict[str, str]) -> list[str] | None:
@@ -315,14 +362,20 @@ def run_case(
     if case.expected_quote_substrings and not expected_chunks:
         load_errors.append("expected_quote_substrings did not resolve to any ingested chunk")
 
-    hits = search_hybrid(
+    hits = tutor_primary_retrieval(
         conn,
         case.question,
         doc_ids=scope_doc_ids,
         subject_name=scope_subject,
         limit=8,
     )
-    retrieved_chunk_ids = [hit.chunk_id for hit in hits]
+    # T57 — id-space dispatch: typed-node hits expose int `node_id`,
+    # chunks hits expose str-UUID `chunk_id`. Both shapes feed the same
+    # groundedness@8 calculation against `expected_chunks` which now
+    # carries both id-spaces (see `_resolve_expected_ids`).
+    retrieved_chunk_ids: list[str | int] = [
+        hit.node_id if isinstance(hit, RetrievedNode) else hit.chunk_id for hit in hits
+    ]
     grounded_at_k = int(bool(set(retrieved_chunk_ids) & expected_chunks))
     metrics: dict[str, Any] = {
         "case_id": case.case_id,
@@ -333,7 +386,9 @@ def run_case(
         "scope": case.scope,
         "groundedness_at_k": grounded_at_k,
         "retrieved_chunk_ids": retrieved_chunk_ids,
-        "expected_chunk_ids": sorted(expected_chunks),
+        # T57 — expected_chunks holds `str | int` (chunks UUIDs + node ints);
+        # sort by str-projection so the report stays deterministic.
+        "expected_chunk_ids": sorted(expected_chunks, key=str),
         "load_errors": load_errors,
         "notes": case.notes,
     }
@@ -347,11 +402,10 @@ def run_case(
         subject_name=scope_subject,
         router=router,
     )
-    # Post-T05: Citation.node_id is `int | str` (chunks branch surfaces
-    # the legacy chunks.id str-UUID; nodes branch surfaces nodes.id int).
-    # The chunks WHERE lookup below is correct on the default chunks
-    # branch (the only branch the smoke eval exercises today); the
-    # nodes-branch comparison in T08 wires a parallel `FROM nodes` path.
+    # T05+T57: Citation.node_id is `int | str`. The chunks branch
+    # surfaces the legacy chunks.id str-UUID; the typed-node branch
+    # surfaces nodes.id int. The quote-validity lookup below dispatches
+    # on the literal type so each branch grades against its own table.
     cited_node_ids = {citation.node_id for claim in answer.claims for citation in claim.citations}
     overlap = cited_node_ids & expected_chunks
     citation_precision = len(overlap) / max(len(cited_node_ids), 1)
@@ -362,13 +416,17 @@ def run_case(
     for claim in answer.claims:
         for citation in claim.citations:
             quote_total += 1
-            chunk_row = conn.execute(
-                "SELECT content FROM chunks WHERE id = ?",
-                (citation.node_id,),
-            ).fetchone()
-            if chunk_row and _normalized_substring_match(
-                citation.quote, str(chunk_row["content"] or "")
-            ):
+            if isinstance(citation.node_id, int):
+                row = conn.execute(
+                    "SELECT verbatim_text AS content FROM nodes WHERE id = ?",
+                    (citation.node_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT content FROM chunks WHERE id = ?",
+                    (citation.node_id,),
+                ).fetchone()
+            if row and _normalized_substring_match(citation.quote, str(row["content"] or "")):
                 quote_valid_count += 1
 
     metrics.update(
