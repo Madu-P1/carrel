@@ -631,7 +631,7 @@ Conventions per task:
 ## T58 — Phase 4.0 (second precursor): route eval fixture ingest through the Docling typed-node path
 
 **Plan ref:** Phase 4 second precursor (discovered during T08's reopen attempt; documented in `evals/reports/compare-nodes-2026-05-19.md` under "Why the nodes branch is empty").
-**Status:** in_progress — branch `feat/t58-eval-fixture-docling-path-2026-05-20`
+**Status:** done — PR #65, squash commit `9fad573e`, rated 100/100 SHIP on 2026-05-20
 **Deps:** T57
 **Effort:** 0.5–1 iteration (scoped to wiring + PDF proof; full format coverage is T10).
 **Acceptance:** four pieces:
