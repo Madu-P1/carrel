@@ -174,7 +174,7 @@ Conventions per task:
 **Status:** pending
 **Deps:** T10
 **Effort:** 1 iteration
-**Acceptance:** new `script/reingest_all.py` that iterates every doc in `documents`, calls `_run_import_job` with the original file bytes, logs progress to stdout + `data/migrations/reingest-{date}.jsonl`, idempotent (skips docs with non-zero node count), default concurrency 4.
+**Acceptance:** new `script/reingest_all.py` that iterates documents in `documents`, backfills typed `nodes` for those that lack them, logs progress to stdout + `data/migrations/reingest-{date}.jsonl`, idempotent (skips docs with non-zero node count), default concurrency 4. **Mechanism correction (2026-05-20, T11 review):** the original acceptance said "calls `_run_import_job` with the original file bytes", but `_run_import_job` (`services/jobs.py`) hashes the content and skips anything already present as a canonical duplicate, so it cannot re-ingest existing documents. `reingest_all.py` instead drives the Docling typed-node path directly (`docling_parser.parse_document` -> `typed_walker.walk` -> `insert_typed_nodes` -> `embed_and_index_nodes`) for each document with a stored file and zero `nodes` rows. Docling parses run across a thread pool; node insertion and embedding run serially on one connection. `chunks` is never read or written, satisfying the guard below.
 **Verify:** canonical chain + dry-run the script on a temp DB with 2 fixture docs.
 **Guards:** do not delete chunks rows during re-ingest; just add nodes alongside.
 
