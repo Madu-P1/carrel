@@ -192,12 +192,12 @@ Conventions per task:
 
 **Plan ref:** Phase 5 task 1.
 **Status:** pending
-**Deps:** T12
+**Deps:** T12, T32
 **Effort:** 1-2 iterations
 **Acceptance:** `services/documents.py:580,693-698`, `services/artifact_studio.py:72,84`, `services/evidence_resolution.py:19`, `services/retrieval/fts.py:37-42`, `services/retrieval/vector.py:17-59`, `services/ingestion/orchestrator.py:292` (INSERT INTO chunks), `services/extraction/quality.py`, `services/concepts/*` audited and ported to nodes. `grep -rn "FROM chunks\|INSERT INTO chunks\|UPDATE chunks" services/ routes/` returns zero (outside historical migrations).
 **Verify:** canonical chain + the grep gate.
 **Guards:** do not drop the chunks table here; T15 owns the drop migration.
-**Notes:** EPUB and TXT ingest on the legacy extraction path (`services/extraction/parsers/epub.py`, `text.py`), which writes `chunks`. Docling has no `InputFormat` for either, so T10's allowlist excludes them (operator decision 2026-05-20). This task's `INSERT INTO chunks` grep gate therefore forces those two parsers onto typed-nodes, or a deliberate operator call to drop `.epub`/`.txt` typed-node support, before T15 drops the chunks table.
+**Notes:** EPUB and TXT ingest on the legacy extraction path (`services/extraction/parsers/epub.py`, `text.py`), which writes `chunks`. Docling has no `InputFormat` for either, so T10's allowlist excludes them (operator decision 2026-05-20). This task's `INSERT INTO chunks` grep gate therefore forces those two parsers onto typed-nodes, or a deliberate operator call to drop `.epub`/`.txt` typed-node support, before T15 drops the chunks table. **Priority gate (2026-05-20):** the `T32` in Deps above is an operator priority gate, not a code dependency. It defers Phase 5 until Phases 7-13 (the higher-impact citations, anchoring, and flashcard work) are done. Remove `T32` from Deps to restore the original ordering.
 
 ## T14 — Phase 5.2: migrate anchors.chunk_id → anchors.node_id
 
@@ -223,11 +223,12 @@ Conventions per task:
 
 **Plan ref:** Phase 6 tasks 1 + 2.
 **Status:** pending
-**Deps:** none (Ship 4 plumbing already in main)
+**Deps:** T32
 **Effort:** 1 iteration
 **Acceptance:** new migration `0019_jobs_partial_status.sql` extends `ingestion_jobs.status` CHECK to include `'partial'`. `services/jobs.py` emits `ocr_fallback` event on extraction fallback. `_update_job` computes `partial` when `successful_pages < total_pages`. UI tray shows the new event row + partial status badge.
 **Verify:** canonical chain + manual smoke: ingest a scanned PDF, see OCR fallback event in tray.
 **Guards:** do not promote `services/jobs.py` to a package; flat-module is intentional.
+**Notes:** Deps `T32` is an operator priority gate (2026-05-20), not a code dependency: T16's Ship 4 plumbing is already in main. The gate defers Phase 6 until Phases 7-13 (the higher-impact work) are done. Remove `T32` from Deps to restore the original ordering.
 
 ## T17 — Phase 6.2: Jobs Tray stuck detection + auto-archive + orphan guard
 
