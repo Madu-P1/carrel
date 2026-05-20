@@ -63,6 +63,15 @@ T10 ("extend Docling format coverage to 5 formats") currently has `Deps: T08`. W
 This is the third diagnostic pass on T08. Each pass closed a layer of the architectural ceiling:
 1. First pass (PR #61, parked): identified primary-retrieval dispatcher gap.
 2. T57 (PR #63, shipped): wired the dispatcher.
-3. Reopen (this report, re-parked): identified eval-fixture-Docling-path gap.
+3. Reopen (PR #64, re-parked): identified eval-fixture-Docling-path gap.
 
-T58 is filed; T08 reopens after it lands. Each precursor is a focused, shippable unit. The repeated re-parking is not failure — it's the discovery process working as intended (CLAUDE.md "no silent fallbacks" applied to eval reports: surface the ceiling rather than ship a false 100). The chunks-path baseline `groundedness@8 = 12/14, quote_validity = 1.00` is preserved across both diagnostic passes; T57's dispatcher wiring is verified non-regressive.
+T58 (in flight) closes the eval-fixture-Docling-path gap by adding the storage_name wiring + a PDF fixture + a node_fts isolated-runtime FTS5 fix. After T58, only one ceiling remains: the Docling parser at `services/ingestion/docling_parser.py` only registers `InputFormat.PDF`, so the 14 `.md` smoke fixtures still skip Docling under T58's wiring. T10 ("extend Docling format coverage to 5 formats") owns that final layer. T08's full reopen will work after T58 AND T10 are both landed.
+
+### T58 measured outcome (proof that the wired path works)
+
+With T58 in place (`INGEST_USE_DOCLING=true`, default `INGEST_DOCLING_FORMATS=pdf`):
+- **Chunks branch (default env):** `groundedness@8 = 13/15 (86.67%)`, `quote_validity = 32/32 (1.0000)` — baseline preserved and slightly improved (new PDF fixture also passes on the chunks branch via `PyPDF2`-driven pre-extraction).
+- **Nodes branch (RETRIEVAL_USE_NODES=true + INGEST_USE_DOCLING=true):** `groundedness@8 = 1/15 (6.67%)`, `quote_validity = 24/24 (1.0000)`. The single `grnd=1` case is `biology-mitosis-pdf-001` against the new `cell_division.pdf` fixture — Docling produced 2 nodes from the PDF and the typed-node retrieval found them. The other 14 cases register `grnd=0` because their expected fixtures are `.md`, which the Docling parser doesn't handle yet (T10).
+- **Quote-validity = 1.0 on the nodes branch despite low groundedness:** the typed-node retrieval surfaces the PDF's nodes for biology questions across cases (BM25 + vector match on biology terms). The LLM cites the PDF's verbatim text correctly, but the case's expected ids belong to the `.md` fixture's chunks (a different id-space). Once T10 adds Docling parsing for `.md`, the 14 `.md` fixtures will populate matching nodes and `groundedness@8` rises accordingly.
+
+Each precursor is a focused, shippable unit. The repeated re-parking is not failure — it's the discovery process working as intended (CLAUDE.md "no silent fallbacks" applied to eval reports: surface the ceiling rather than ship a false 100). T08 stays parked behind T58 + T10. The chunks-path baseline `groundedness@8 = 12/14, quote_validity = 1.00` is preserved across all diagnostic passes (improves to 13/15 with the T58 PDF fixture); T57's dispatcher and T58's storage_name wiring are both verified non-regressive.

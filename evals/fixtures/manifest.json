@@ -12,5 +12,12 @@
     "path": "photosynthesis.md",
     "file_type": "md",
     "subject_name": "EvalBiology"
+  },
+  {
+    "source_id": "cell_division_pdf",
+    "filename": "cell_division.pdf",
+    "path": "cell_division.pdf",
+    "file_type": "pdf",
+    "subject_name": "EvalBiology"
   }
 ]

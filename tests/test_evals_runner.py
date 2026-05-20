@@ -44,7 +44,7 @@ class EvalsRunnerTests(unittest.TestCase):
                 report = run_evals.run_suite("smoke", "smoke", report_dir=Path(temp_dir))
 
         self.assertEqual(0, report["summary"]["blocking_errors"])
-        self.assertEqual(14, report["summary"]["total_cases"])
+        self.assertEqual(15, report["summary"]["total_cases"])
         self.assertIn("groundedness_at_k", report["summary"])
 
     def test_smoke_mode_short_circuits_before_answer_metrics(self) -> None:
