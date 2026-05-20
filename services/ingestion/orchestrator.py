@@ -36,13 +36,16 @@ def _docling_enabled_for(extension: str) -> bool:
     """Two env-var feature flags gate the typed-node ingest path.
 
     INGEST_USE_DOCLING (default false) — master switch.
-    INGEST_DOCLING_FORMATS (default 'pdf') — comma-separated allowlist of
-    file extensions to route through Docling. Start with PDF only;
-    expand once parity is proven on real documents.
+    INGEST_DOCLING_FORMATS (default 'pdf,docx,html,md,pptx,tex') —
+    comma-separated allowlist of file extensions to route through
+    Docling. Every default entry maps to a registered Docling
+    InputFormat (see `docling_parser.parse_document`); `tex` is the
+    file extension for `InputFormat.LATEX`. EPUB and TXT stay on the
+    legacy extraction path — Docling has no InputFormat for either.
     """
     if os.getenv("INGEST_USE_DOCLING", "false").lower() not in ("1", "true", "yes"):
         return False
-    formats = os.getenv("INGEST_DOCLING_FORMATS", "pdf").lower().split(",")
+    formats = os.getenv("INGEST_DOCLING_FORMATS", "pdf,docx,html,md,pptx,tex").lower().split(",")
     allowed = {fmt.strip() for fmt in formats if fmt.strip()}
     return extension.lstrip(".").lower() in allowed
 

@@ -32,23 +32,46 @@ def is_available() -> bool:
 def parse_document(path: Path) -> Any:
     """Parse a file with Docling, return the DoclingDocument.
 
+    Six formats are registered as explicit Docling `InputFormat`
+    handlers: PDF, DOCX, HTML, Markdown, PPTX, and LaTeX. The allowlist
+    here is the upper bound; `orchestrator._docling_enabled_for` gates
+    which extensions actually reach this function via
+    `INGEST_DOCLING_FORMATS`.
+
     Raises ImportError if Docling isn't installed (callers should gate on
     `is_available()` first). Other Docling failures bubble up — the
     orchestrator wraps the call in a try/except so a bad file never
     breaks the existing chunks ingest path.
     """
-    from docling.datamodel.pipeline_options import PdfPipelineOptions
-    from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.document_converter import (
+        DocumentConverter,
+        HTMLFormatOption,
+        LatexFormatOption,
+        MarkdownFormatOption,
+        PdfFormatOption,
+        PowerpointFormatOption,
+        WordFormatOption,
+    )
 
-    pipeline_opts = PdfPipelineOptions()
-    pipeline_opts.do_ocr = True
+    pdf_pipeline_opts = PdfPipelineOptions()
+    pdf_pipeline_opts.do_ocr = True
     # ocr_options.kind defaults to "auto" which picks rapidocr or
     # easyocr based on what's installed. Apple Vision via NativeBridge
     # is a follow-up — see docs/algorithms/ask-pipeline-pr1-typed-nodes.md
-    # risk #3.
-
+    # risk #3. OCR pipeline options apply to PDF only; the other five
+    # formats carry text natively and use Docling's default backend.
+    format_options = {
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_pipeline_opts),
+        InputFormat.DOCX: WordFormatOption(),
+        InputFormat.HTML: HTMLFormatOption(),
+        InputFormat.MD: MarkdownFormatOption(),
+        InputFormat.PPTX: PowerpointFormatOption(),
+        InputFormat.LATEX: LatexFormatOption(),
+    }
     converter = DocumentConverter(
-        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_opts)}
+        allowed_formats=list(format_options),
+        format_options=format_options,
     )
     return converter.convert(str(path)).document
