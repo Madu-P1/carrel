@@ -227,9 +227,13 @@ def _extract_fixture_text(fixture: FixtureDefinition) -> str:
     T58 dual-branch parity for the side-by-side eval).
     """
     if fixture.file_type.lower() == "pdf":
-        import pypdf
+        # PyPDF2 is the declared dep in requirements.txt and is the
+        # parser the production extraction pipeline already uses at
+        # services/extraction/parsers/pdf.py. Stay on the declared
+        # dep rather than introduce pypdf as a second PDF library.
+        from PyPDF2 import PdfReader
 
-        reader = pypdf.PdfReader(str(fixture.path))
+        reader = PdfReader(str(fixture.path))
         return "\n\n".join((page.extract_text() or "") for page in reader.pages)
     return fixture.path.read_text(encoding="utf-8")
 
