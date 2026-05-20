@@ -161,10 +161,10 @@ Conventions per task:
 ## T10 — Phase 4.1: extend Docling format coverage to 5 formats
 
 **Plan ref:** Phase 4 task 2.
-**Status:** pending
+**Status:** in_progress
 **Deps:** T57 (was T08; retargeted 2026-05-20 after T58 split T08 into precursors. T10's format-coverage work is independent of T08's side-by-side comparison; T08 now depends on T10, not the other way around.)
 **Effort:** 1 iteration
-**Acceptance:** `INGEST_DOCLING_FORMATS` default extended from `pdf` to `pdf,docx,epub,html,md,txt` AND `services/ingestion/docling_parser.py::parse_document` registers `InputFormat` handlers for every newly-supported extension (currently only `InputFormat.PDF` is registered). New `tests/integration/test_docling_format_coverage.py` with 5 fixture cases (one per format), all green. **Side-effect:** the existing `.md` smoke fixtures (`cell_division.md`, `photosynthesis.md`) now populate `nodes` tables when `INGEST_USE_DOCLING=true`, which unblocks T08's full side-by-side comparison.
+**Acceptance:** `INGEST_DOCLING_FORMATS` default extended from `pdf` to `pdf,docx,html,md,pptx,latex` AND `services/ingestion/docling_parser.py::parse_document` registers `InputFormat` handlers for every newly-supported extension (currently only `InputFormat.PDF` is registered; the 5 new ones are `DOCX`, `HTML`, `MD`, `PPTX`, `LATEX`). New `tests/integration/test_docling_format_coverage.py` with 5 fixture cases (one per newly-supported format), all green. **Operator decision 2026-05-20:** the original ask `pdf,docx,epub,html,md,txt` named two values that are not Docling `InputFormat` members (verified against `docling~=2.93`: no `EPUB`, no `TXT`). `epub` and `txt` are dropped from the Docling allowlist; `pptx` and `latex` are substituted (both real Docling `InputFormat` values, both relevant to a study app: lecture slides and papers). EPUB and TXT keep working on the legacy extraction path until a dedicated typed-node path exists (see the T13 Notes line). **Side-effect:** the existing `.md` smoke fixtures (`cell_division.md`, `photosynthesis.md`) now populate `nodes` tables when `INGEST_USE_DOCLING=true`, which unblocks T08's full side-by-side comparison.
 **Verify:** canonical chain + the new test passes.
 **Guards:** do not flip `INGEST_USE_DOCLING` to default-on yet; T11 owns that.
 
@@ -197,6 +197,7 @@ Conventions per task:
 **Acceptance:** `services/documents.py:580,693-698`, `services/artifact_studio.py:72,84`, `services/evidence_resolution.py:19`, `services/retrieval/fts.py:37-42`, `services/retrieval/vector.py:17-59`, `services/ingestion/orchestrator.py:292` (INSERT INTO chunks), `services/extraction/quality.py`, `services/concepts/*` audited and ported to nodes. `grep -rn "FROM chunks\|INSERT INTO chunks\|UPDATE chunks" services/ routes/` returns zero (outside historical migrations).
 **Verify:** canonical chain + the grep gate.
 **Guards:** do not drop the chunks table here; T15 owns the drop migration.
+**Notes:** EPUB and TXT ingest on the legacy extraction path (`services/extraction/parsers/epub.py`, `text.py`), which writes `chunks`. Docling has no `InputFormat` for either, so T10's allowlist excludes them (operator decision 2026-05-20). This task's `INSERT INTO chunks` grep gate therefore forces those two parsers onto typed-nodes, or a deliberate operator call to drop `.epub`/`.txt` typed-node support, before T15 drops the chunks table.
 
 ## T14 — Phase 5.2: migrate anchors.chunk_id → anchors.node_id
 
@@ -640,7 +641,7 @@ Conventions per task:
 3. `evals/run_evals.py::_isolated_runtime` extends the FTS5 preservation list to include `node_fts*` (was `chunks_fts*` / `chunks_vec*` only). Without this, `DELETE FROM node_fts_data / node_fts_idx / ...` directly corrupts the FTS5 index and surfaces as `"invalid fts5 file format"` on the next trigger-driven insert.
 4. Chunks-path eval-full baseline is preserved or improved (`groundedness@8 ≥ 0.7`, `quote_validity ≥ 0.95`). Existing `tests.test_phase0_batch_b::test_smoke_eval_suite_passes` and `tests.test_evals_runner::test_smoke_mode_runs_without_claude_key_or_router` updated to assert the new 15-case shape.
 
-**Scope note (T58 vs T10):** T58 wires the path and proves it with one Docling-routable PDF fixture. T10 ("extend Docling format coverage to 5 formats") extends `INGEST_DOCLING_FORMATS` to `pdf,docx,epub,html,md,txt` + adds InputFormat handlers in `services/ingestion/docling_parser.py` so the existing `.md`/`.txt` fixtures also populate nodes. Together T57 + T58 + T10 unblock T08's full reopen with all 15 cases populating both branches. T08 reopened on T58 alone would still see ~14/15 cases with empty nodes (only the PDF fixture reaches Docling under the default format allowlist), so T08 stays parked behind T10 too.
+**Scope note (T58 vs T10):** T58 wires the path and proves it with one Docling-routable PDF fixture. T10 ("extend Docling format coverage to 5 formats") extends `INGEST_DOCLING_FORMATS` to `pdf,docx,html,md,pptx,latex` + adds InputFormat handlers in `services/ingestion/docling_parser.py` so the existing `.md` smoke fixtures also populate nodes. Together T57 + T58 + T10 unblock T08's full reopen with all 15 cases populating both branches. T08 reopened on T58 alone would still see ~14/15 cases with empty nodes (only the PDF fixture reaches Docling under the default format allowlist), so T08 stays parked behind T10 too.
 
 **Verify:** canonical chain + chunks-path eval-full baseline preserved + nodes-path eval-full with `INGEST_USE_DOCLING=true` produces non-empty hits on the new PDF fixture (`typed_nodes_indexed` event fires, `node_count >= 1`).
 **Guards:** no silent fallback in the ingest path (Docling errors must surface as logged events, not vanish via `docling_skipped_no_file` or `docling_ingest_failed`). Do not regress the chunks-baseline. After T58 lands, T10 picks up Docling format coverage; T08 reopens once both T58 and T10 are done.
