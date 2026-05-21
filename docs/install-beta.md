@@ -24,8 +24,23 @@ macOS 26+, en_US locale) and selects AFM automatically when all three
 hold; you do not need to set `EINSTEIN_AI_PROVIDER=afm` by hand. The
 fourth condition, Apple Intelligence enabled, is a runtime check the
 installer cannot perform; install.sh reminds you to confirm it in
-**System Settings, Apple Intelligence & Siri** before launching. On a
-Mac that meets the install-time bar, the install command is just:
+**System Settings, Apple Intelligence & Siri** before launching.
+
+Once the Python environment is in place, `install.sh` also runs a
+live **per-provider availability probe** and prints a verdict for
+Claude, Ollama, and Apple Intelligence — so you see at install time
+whether each backend is actually reachable, not just configured. For
+Apple Intelligence the probe distinguishes the failure modes:
+`device_not_eligible` (Intel / older macOS — use Ollama or Claude),
+`apple_intelligence_not_enabled` (turn it on in System Settings, no
+reinstall needed), and `model_not_ready`. The last one is expected
+right after you first enable Apple Intelligence: macOS streams the
+on-device model variant from Apple's CDN, a **one-time download that
+can take anywhere from 1 to 30 minutes**. During that window the
+probe reports `model_not_ready`; you can watch `modelcatalogd` /
+`mobileassetd` in Activity Monitor for progress. Once it finishes,
+AFM works offline on every launch — no further wait. On a Mac that
+meets the install-time bar, the install command is just:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Madu-P1/carrel/main/install.sh | bash

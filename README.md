@@ -59,6 +59,8 @@ Carrel routes LLM calls through a provider abstraction at `ai/providers.py`. The
 
 Override with `EINSTEIN_AI_PROVIDER=claude|afm|ollama|off` in `.env` (or `CARREL_AI_PROVIDER`, the canonical post-rename name; both are honored until the deferred-rename pass migrates the rest of the system identifiers).
 
+The provider is also a **UI setting**: open the in-app **Settings** page (sidebar entry, or `⌘,`) to pick Claude / Ollama / Apple Intelligence, enter a Claude API key, and see a live per-provider availability verdict. A choice made there is persisted and takes effect immediately — no restart. The Claude API key entered in the UI is stored in the **macOS Keychain**, never in `.env` or the SQLite database. The `EINSTEIN_AI_PROVIDER` / `CARREL_AI_PROVIDER` env var still works and is read at startup; the UI setting layers on top of it.
+
 The free tier uses Apple's on-device 3B model via the `EinsteinAFMBridge` Swift sidecar. Model weights ship with macOS 26; first enable in System Settings can stream a model variant from Apple's CDN (1-30 min one-time), after which subsequent launches are instant.
 
 ## Configuration
