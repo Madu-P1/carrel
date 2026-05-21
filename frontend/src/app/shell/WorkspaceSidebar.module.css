@@ -300,6 +300,33 @@
   flex-shrink: 0;
 }
 
+/* The footer is a real <button> (it navigates to AI Settings) but
+ * must read as the quiet status chip it has always been — strip the
+ * native button chrome and only lift on hover/focus. The shared
+ * `.footer` rule above still owns layout, border, and typography. */
+.footerButton {
+  width: 100%;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: var(--radius-2);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.footerButton:hover {
+  color: var(--text-secondary);
+  background: var(--color-bg-hover, transparent);
+}
+
+.footerButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .footerDot {
   width: 8px;
   height: 8px;

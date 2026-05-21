@@ -67,7 +67,8 @@ const navLinks: SidebarNavItem[] = [
   { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
-  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "plan", path: "/plan" }
+  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "plan", path: "/plan" },
+  { key: "settings", label: "Settings", commandHint: "⌘,", icon: "settings", path: "/settings" }
 ];
 
 const FIRST_LAUNCH_EVENT_KEY = "carrel.metrics.first-launch-recorded";
@@ -109,6 +110,10 @@ function routeLabel(path: string): string {
     return "Notes";
   }
 
+  if (path.startsWith("/settings")) {
+    return "Settings";
+  }
+
   return "Workspace";
 }
 
@@ -126,7 +131,8 @@ function routeMotionIndex(path: string): number {
   if (path.startsWith("/search")) return 7;
   if (path.startsWith("/concepts")) return 8;
   if (path.startsWith("/plan")) return 9;
-  return 10;
+  if (path.startsWith("/settings")) return 10;
+  return 11;
 }
 
 function useRouteMotion(pathname: string): "backward" | "forward" | "none" {

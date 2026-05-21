@@ -35,6 +35,9 @@ const STATIC_ACTIONS: PaletteAction[] = [
   { id: "nav.ask", label: "Go to Ask", hint: "⌘5", group: "Navigate", command: "nav.ask", keywords: ["tutor", "chat", "question"] },
   { id: "nav.study", label: "Go to Study", hint: "⌘6", group: "Navigate", command: "nav.study", keywords: ["srs", "flashcards", "review"] },
   { id: "nav.plan", label: "Go to Plan", hint: "⌘7", group: "Navigate", command: "nav.plan", keywords: ["calendar", "schedule", "coach", "week"] },
+  // Settings has no native MenuCommand wired, so it uses a direct `run`
+  // override (same mechanism as the contextual "End session" action).
+  { id: "nav.settings", label: "Go to Settings", hint: "⌘,", group: "Navigate", keywords: ["preferences", "provider", "ai", "claude", "ollama", "apple intelligence", "api key"], run: () => navigateTo("/settings") },
   { id: "view.toggleLeftSidebar", label: "Toggle Left Sidebar", hint: "⌘B", group: "View", command: "view.toggleLeftSidebar", keywords: ["nav"] },
   { id: "view.toggleRightPanel", label: "Toggle Right Panel", hint: "⌘⌥B", group: "View", command: "view.toggleRightPanel", keywords: ["inspector", "source"] },
   { id: "view.toggleTheme", label: "Toggle Theme", hint: "⌘⇧T", group: "View", command: "view.toggleTheme", keywords: ["dark", "light"] },

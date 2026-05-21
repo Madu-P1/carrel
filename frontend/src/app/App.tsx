@@ -13,6 +13,7 @@ import { PlanView } from "@/features/plan/PlanView";
 import { ReaderView } from "@/features/reader/ReaderView";
 import { SearchView } from "@/features/search/SearchView";
 import { SessionView } from "@/features/session/SessionView";
+import { SettingsView } from "@/features/settings/SettingsView";
 import { StudyView } from "@/features/study/StudyView";
 
 import { appShell } from "./shell/useAppShell";
@@ -130,6 +131,10 @@ function renderBundledRoute(rawPath: string) {
     return <PlanView />;
   }
 
+  if (path.startsWith("/settings")) {
+    return <SettingsView />;
+  }
+
   if (path.startsWith("/notes")) {
     // /notes/:id renders the full-page Note Editor; /notes renders the
     // list view. We split here in bundled mode (no preact-iso router).
@@ -175,6 +180,7 @@ function BoundedRoutes() {
         <Route component={SearchView} path="/search" />
         <Route component={ConceptGraphView} path="/concepts" />
         <Route component={PlanView} path="/plan" />
+        <Route component={SettingsView} path="/settings" />
         <Route component={NotesPage} path="/notes" />
         <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
         <Route component={NotFoundView} default />

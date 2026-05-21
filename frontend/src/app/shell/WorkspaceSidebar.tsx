@@ -24,7 +24,8 @@ export interface SidebarNavItem {
     | "notes"
     | "flashcards"
     | "session"
-    | "plan";
+    | "plan"
+    | "settings";
   path: string;
   key:
     | "dashboard"
@@ -36,7 +37,8 @@ export interface SidebarNavItem {
     | "search"
     | "concepts"
     | "plan"
-    | "notes";
+    | "notes"
+    | "settings";
 }
 
 interface WorkspaceSidebarProps {
@@ -99,7 +101,9 @@ export function WorkspaceSidebar({
     },
     {
       label: "Tools",
-      items: items.filter((item) => ["search", "concepts", "plan"].includes(item.key))
+      items: items.filter((item) =>
+        ["search", "concepts", "plan", "settings"].includes(item.key)
+      )
     }
   ].filter((section) => section.items.length > 0);
 
@@ -236,6 +240,7 @@ export function WorkspaceSidebar({
       <ProviderFooter
         provider={signals.provider}
         backend={signals.backend}
+        onOpenSettings={() => onNavigate("/settings")}
       />
     </div>
   );
@@ -290,11 +295,19 @@ function TodayPanel({ dueCount, docCount, onStartReview }: TodayPanelProps) {
 
 function ProviderFooter({
   provider,
-  backend
+  backend,
+  onOpenSettings
 }: {
   provider: ReturnType<typeof useSidebarSignals>["provider"];
   backend: ReturnType<typeof useSidebarSignals>["backend"];
+  /** Navigate to the AI Settings page. The whole footer is the
+   *  shortcut — it doubles as the provider status chip. */
+  onOpenSettings: () => void;
 }) {
+  const footerClass = [styles.footer, styles.footerButton]
+    .filter(Boolean)
+    .join(" ");
+
   // Backend liveness takes priority over the provider chip. If the
   // FastAPI process is unreachable, EVERY API call is failing — the
   // user needs to see "backend offline" first, before the AI chip's
@@ -302,27 +315,33 @@ function ProviderFooter({
   // provider check fails because it can't reach the backend).
   if (backend === "down") {
     return (
-      <footer className={styles.footer} aria-label="Backend status">
+      <button
+        type="button"
+        className={footerClass}
+        onClick={onOpenSettings}
+        aria-label="Backend offline — open AI settings"
+        title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure. This should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
+      >
         <span
           className={[styles.footerDot, styles.footerDotErr].join(" ")}
           aria-hidden
         />
-        <span
-          className={styles.footerText}
-          title="The FastAPI backend at 127.0.0.1:8000 isn't responding. The desktop app's BackendSupervisor probes every 60s and respawns it on failure. This should clear within a minute. If it doesn't, run `bash script/build_and_run.sh`."
-        >
-          Backend offline
-        </span>
-      </footer>
+        <span className={styles.footerText}>Backend offline</span>
+      </button>
     );
   }
 
   if (!provider) {
     return (
-      <footer className={styles.footer} aria-label="Provider status">
+      <button
+        type="button"
+        className={footerClass}
+        onClick={onOpenSettings}
+        aria-label="Checking provider — open AI settings"
+      >
         <span className={[styles.footerDot, styles.footerDotLoading].join(" ")} aria-hidden />
         <span className={styles.footerText}>Checking provider…</span>
-      </footer>
+      </button>
     );
   }
 
@@ -334,12 +353,16 @@ function ProviderFooter({
   ].join(" ");
 
   return (
-    <footer className={styles.footer} aria-label="Provider status">
+    <button
+      type="button"
+      className={footerClass}
+      onClick={onOpenSettings}
+      aria-label={`Provider: ${label} — open AI settings`}
+      title={providerTitle(provider)}
+    >
       <span className={dotClass} aria-hidden />
-      <span className={styles.footerText} title={providerTitle(provider)}>
-        {label}
-      </span>
-    </footer>
+      <span className={styles.footerText}>{label}</span>
+    </button>
   );
 }
 

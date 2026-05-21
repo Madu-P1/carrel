@@ -315,6 +315,61 @@ export const system = {
 };
 
 /**
+ * User-facing AI settings — wraps `/api/settings/ai` (routes/settings.py).
+ *
+ * The types below are hand-written to match the backend contract rather
+ * than derived from `types.gen.ts`: the settings route post-dates the
+ * last codegen run, and regenerating would churn unrelated schemas.
+ *
+ * Per-provider availability verdict. `kind` is one of claude/ollama/afm.
+ * `configured` is a config-only check (key present, endpoint set, OS gate
+ * passed); `available` reflects a live probe for ollama/afm and equals
+ * `configured` for claude (a real Anthropic probe would cost tokens).
+ * `error_code` carries a stable machine code when unavailable — e.g.
+ * `apple_intelligence_not_enabled`, `model_not_ready`, `device_not_eligible`,
+ * `bridge_missing` — and is `null` when available.
+ */
+export interface ProviderAvailability {
+  kind: string;
+  configured: boolean;
+  available: boolean;
+  detail: string;
+  error_code: string | null;
+}
+
+/**
+ * The `/api/settings/ai` payload. `provider` is the persisted choice
+ * (claude/ollama/afm/auto/off). `key_set` is true when a Claude API key
+ * is stored — the key value itself is NEVER returned. `key_valid` is the
+ * result of the best-effort liveness check: true (authenticated), false
+ * (rejected), or null (not checked — offline, or this request did not
+ * touch the key).
+ */
+export interface AiSettings {
+  provider: string;
+  key_set: boolean;
+  key_valid: boolean | null;
+  availability: {
+    claude: ProviderAvailability;
+    ollama: ProviderAvailability;
+    afm: ProviderAvailability;
+  };
+}
+
+/** POST body for `/api/settings/ai`. Both fields optional — set just the
+ *  provider, just the key, or both. `anthropic_key: ""` clears the key. */
+export interface AiSettingsUpdate {
+  provider?: string;
+  anthropic_key?: string;
+}
+
+export const settings = {
+  getAi: () => api<AiSettings>("/api/settings/ai"),
+  updateAi: (body: AiSettingsUpdate) =>
+    api<AiSettings>("/api/settings/ai", { method: "POST", body })
+};
+
+/**
  * Hybrid (FTS + vector) library search. Wraps `/api/search`, which fuses
  * BM25 keyword hits and dense-vector hits via reciprocal rank fusion in
  * `services.retrieval.search_hybrid`. Each result carries enough context
