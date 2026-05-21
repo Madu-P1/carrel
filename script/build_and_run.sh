@@ -237,9 +237,44 @@ prepare_frontend_resources
 # build. Noops quietly when icon-source.png is absent.
 "$ROOT_DIR/script/generate-icon.sh" || true
 
-swift build --package-path "$PROJECT_DIR"
+# Build the Swift targets. EinsteinDesktop (the app shell) and
+# EinsteinIngestionBridge (PDF / OCR) are REQUIRED and have no macOS-26
+# dependency, so they build on any toolchain. EinsteinAFMBridge wraps
+# Apple's FoundationModels framework, whose @Generable / @Guide macros
+# need the FoundationModelsMacros compiler plugin. That plugin ships
+# inside full Xcode, NOT the standalone Command Line Tools. Building it
+# in the same `swift build` as the core targets is exactly what made
+# installs fail on Command-Line-Tools-only Macs: one failing target
+# aborted the whole build under `set -e`. Core targets now build alone.
+swift build --package-path "$PROJECT_DIR" \
+  --product EinsteinDesktop \
+  --product EinsteinIngestionBridge
 BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
+
+# Optional: the Apple Foundation Models bridge. `xcode-select -p`
+# resolves under /Library/Developer/CommandLineTools when only the
+# Command Line Tools are installed; full Xcode resolves elsewhere. AFM
+# also needs macOS 26+. When either is missing we skip the bridge:
+# ai/native_bridge_paths.py tolerates a missing binary, AFM reports
+# unavailable, and Carrel runs on Claude or Ollama.
+AFM_BUILT=0
+afm_developer_dir="$(xcode-select -p 2>/dev/null || true)"
+afm_macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
+if [[ -n "$afm_developer_dir" && "$afm_developer_dir" != *"CommandLineTools"* \
+      && "${afm_macos_major:-0}" -ge 26 ]]; then
+  if swift build --package-path "$PROJECT_DIR" \
+       --product EinsteinAFMBridge -Xswiftc -DCARREL_AFM; then
+    AFM_BUILT=1
+  else
+    echo "warn: EinsteinAFMBridge failed to build; Carrel will run on Claude or Ollama." >&2
+  fi
+else
+  echo "note: skipping the Apple Intelligence bridge (it needs full Xcode 26+)." >&2
+  echo "note: Carrel will install and run on Claude or Ollama. To add on-device" >&2
+  echo "note: Apple Intelligence later: install Xcode from the App Store, run" >&2
+  echo "note: 'sudo xcode-select -s /Applications/Xcode.app', then re-run this script." >&2
+fi
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -252,8 +287,14 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 # .build/debug), but Vision OCR and Apple Foundation Models both break
 # the moment a user lacks a Codex checkout.
 cp "$BUILD_DIR/EinsteinIngestionBridge" "$APP_MACOS/EinsteinIngestionBridge"
-cp "$BUILD_DIR/EinsteinAFMBridge" "$APP_MACOS/EinsteinAFMBridge"
-chmod +x "$APP_MACOS/EinsteinIngestionBridge" "$APP_MACOS/EinsteinAFMBridge"
+chmod +x "$APP_MACOS/EinsteinIngestionBridge"
+# The AFM bridge is bundled only when it was built (see the toolchain
+# gate above). A missing binary is not an error: ai/native_bridge_paths.py
+# tolerates it and AFM reports unavailable, so the app falls back cleanly.
+if [[ $AFM_BUILT -eq 1 ]]; then
+  cp "$BUILD_DIR/EinsteinAFMBridge" "$APP_MACOS/EinsteinAFMBridge"
+  chmod +x "$APP_MACOS/EinsteinAFMBridge"
+fi
 if [[ -f "$PROJECT_DIR/Resources/app.new.html" ]]; then
   cp "$PROJECT_DIR/Resources/app.new.html" "$APP_RESOURCES/app.new.html"
 fi

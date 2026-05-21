@@ -99,6 +99,12 @@ elif (( macos_major < 26 )); then
   AFM_REASON="macOS $macos_version (need 26+)"
 elif [[ ! "$mac_locale" =~ ^en[_-]US ]]; then
   AFM_REASON="locale is '$mac_locale' (need en_US: open System Settings, General, Language & Region, then set Primary Language to English (US))"
+elif [[ "$(xcode-select -p 2>/dev/null || echo CommandLineTools)" == *"CommandLineTools"* ]]; then
+  # Apple Foundation Models needs the @Generable / @Guide macros, whose
+  # compiler plugin ships only inside full Xcode, not the Command Line
+  # Tools. Without it the AFM bridge cannot be built, so do not route
+  # this Mac to AFM; it installs and runs fine on Claude or Ollama.
+  AFM_REASON="only the Command Line Tools are installed, not full Xcode. The Apple Intelligence build needs the FoundationModels macros from Xcode 26+ (free in the App Store). Install it, run 'sudo xcode-select -s /Applications/Xcode.app', then re-run this script to enable on-device AI."
 else
   AFM_ELIGIBLE=true
 fi
