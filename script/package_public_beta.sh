@@ -61,7 +61,8 @@ if [[ $LOCAL_UNSIGNED -eq 0 ]]; then
   fi
 fi
 
-"$ROOT_DIR/script/build_and_run.sh" --verify
+# --release builds the Swift targets with -c release for distribution.
+"$ROOT_DIR/script/build_and_run.sh" --verify --release
 
 if [[ -n "$SIGN_IDENTITY" ]]; then
   /usr/bin/codesign \

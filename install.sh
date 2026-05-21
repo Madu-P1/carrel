@@ -191,6 +191,90 @@ uv pip install --python .venv/bin/python --quiet -r requirements.txt
 ok "requirements.txt installed"
 
 # ──────────────────────────────────────────────────────────────────
+# 4b. Probe live AI-provider availability
+# ──────────────────────────────────────────────────────────────────
+# Now that the venv exists with deps installed, ask the backend's own
+# probe layer (ai/providers.py::probe_all_providers) for a live verdict
+# on each provider. This turns the install log into a real diagnostic:
+# the user learns immediately whether Claude / Ollama / Apple
+# Intelligence are usable rather than discovering it at first question.
+#
+# Best-effort only: an import error or probe failure must NOT abort the
+# install, so the whole block is guarded and falls through to a warn.
+
+step "Probing AI-provider availability"
+
+VENV_PYTHON=".venv/bin/python"
+probe_json=""
+if probe_json="$("$VENV_PYTHON" -c "import json; from ai.providers import probe_all_providers; print(json.dumps({k: {'configured': v.configured, 'available': v.available, 'detail': v.detail, 'error_code': v.error_code} for k, v in probe_all_providers().items()}))" 2>/dev/null)"; then
+  # Render a human-readable per-provider verdict. python3 (system) is
+  # always present at this point and only formats the already-captured
+  # JSON; no backend code runs here.
+  python3 - "$probe_json" <<'PY'
+import json, sys
+
+labels = {"claude": "Claude API", "ollama": "Ollama (local)", "afm": "Apple Intelligence"}
+afm_guidance = {
+    "apple_intelligence_not_enabled": (
+        "Apple Intelligence is turned off. Enable it in System Settings, "
+        "Apple Intelligence & Siri."
+    ),
+    "device_not_eligible": (
+        "This Mac is not eligible for Apple Intelligence (chip, region, or "
+        "account check failed)."
+    ),
+    "model_not_ready": (
+        "Apple Intelligence is enabled but the on-device model is still "
+        "downloading."
+    ),
+}
+
+try:
+    probe = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+
+for kind in ("claude", "ollama", "afm"):
+    v = probe.get(kind)
+    if not v:
+        continue
+    label = labels.get(kind, kind)
+    detail = v.get("detail") or ""
+    if v.get("available"):
+        print(f"    \033[32mok\033[0m   {label}: {detail}")
+    elif v.get("configured"):
+        print(f"    \033[33mwarn\033[0m {label}: {detail}")
+    else:
+        print(f"    \033[2m{label}: not configured. {detail}\033[0m")
+
+    if kind == "afm" and not v.get("available"):
+        code = v.get("error_code")
+        msg = afm_guidance.get(code)
+        if msg:
+            print(f"         {msg}")
+        if code in ("apple_intelligence_not_enabled", "model_not_ready"):
+            # Sourced from docs/plans/afm-runbook-2026-05-10.md: the
+            # post-enable model download is a 1 to 30 minute window.
+            print(
+                "         After enabling, Apple downloads the model in the "
+                "background (1 to 30 minutes)."
+            )
+            print(
+                "         Watch progress with: log show --predicate "
+                "'process == \"modelcatalogd\" OR process == \"mobileassetd\"' "
+                "--last 5m"
+            )
+            print(
+                "         Carrel picks the model up automatically once it is "
+                "ready; no reinstall needed."
+            )
+PY
+else
+  warn "Could not probe AI-provider availability (this does not block install)."
+  note "Carrel will determine provider availability at runtime instead."
+fi
+
+# ──────────────────────────────────────────────────────────────────
 # 5. Install bun (or fall back to existing JS runner)
 # ──────────────────────────────────────────────────────────────────
 

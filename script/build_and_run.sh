@@ -18,6 +18,7 @@ set -euo pipefail
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 
 MODE="run"
+BUILD_CONFIG="debug"
 APP_NAME="EinsteinDesktop"
 BUNDLE_ID="com.madu.EinsteinDesktop"
 MIN_SYSTEM_VERSION="14.0"
@@ -36,13 +37,20 @@ BACKEND_PIDFILE="$DIST_DIR/einstein-backend.pid"
 BACKEND_LOG="$DIST_DIR/einstein-backend.log"
 
 usage() {
-  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify] [--release]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify)
       MODE="$1"
+      shift
+      ;;
+    --release)
+      # Opt-in: build the Swift targets with -c release. Without this
+      # flag the build stays debug (unchanged default). The packager
+      # (package_public_beta.sh) passes --release for distribution.
+      BUILD_CONFIG="release"
       shift
       ;;
     *)
@@ -114,6 +122,17 @@ ensure_backend() {
   mkdir -p "$DIST_DIR"
 
   ensure_local_api_token
+
+  # Mirror BackendSupervisor.swift: tell Python where the bundled Swift
+  # sidecar binaries (EinsteinIngestionBridge, EinsteinAFMBridge) live so
+  # the dev-spawned backend resolves them the same way a DMG launch does.
+  # ai/native_bridge_paths.py reads CARREL_BUNDLE_MACOS first, then falls
+  # back to .build/{debug,release}; without this export the dev backend
+  # only ever sees the .build fallback (an asymmetry with the Swift
+  # supervisor). The .app bundle is assembled before ensure_backend runs,
+  # so $APP_MACOS already exists here; the Python side tolerates a missing
+  # dir regardless.
+  export CARREL_BUNDLE_MACOS="$APP_MACOS"
 
   # Kill any uvicorn process bound to our slot, not just the one named in
   # the pidfile. Two earlier failure modes prompted this:
@@ -231,14 +250,51 @@ prepare_frontend_resources() {
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-prepare_frontend_resources
+# Coarse build timing. SECONDS is a bash builtin that counts wall-clock
+# seconds since the shell started; we snapshot it at each stage boundary
+# so a regression in any stage is visible in the final summary.
+BUILD_START="$SECONDS"
+
+# The frontend bundle build (pnpm build:macos -> macos-app/Resources/)
+# and `swift build` (-> macos-app/.build/) write to disjoint trees and
+# share no inputs, so they run in parallel. The .app assembly below
+# consumes BOTH outputs and therefore stays strictly after the `wait`.
+echo "Building frontend bundle and Swift shell in parallel..."
+
+prepare_frontend_resources &
+FRONTEND_PID=$!
+
+swift build --package-path "$PROJECT_DIR" --configuration "$BUILD_CONFIG" &
+SWIFT_PID=$!
+
+# Capture each job's exit code explicitly. `wait <pid>` returns that
+# job's status, so a silent build failure in either branch still aborts
+# the script instead of producing a half-assembled bundle.
+FRONTEND_RC=0
+SWIFT_RC=0
+wait "$FRONTEND_PID" || FRONTEND_RC=$?
+wait "$SWIFT_PID" || SWIFT_RC=$?
+
+if [[ $FRONTEND_RC -ne 0 ]]; then
+  echo "Frontend bundle build failed (exit $FRONTEND_RC)." >&2
+fi
+if [[ $SWIFT_RC -ne 0 ]]; then
+  echo "Swift build failed (exit $SWIFT_RC)." >&2
+fi
+if [[ $FRONTEND_RC -ne 0 || $SWIFT_RC -ne 0 ]]; then
+  exit 1
+fi
+
+BUILD_END="$SECONDS"
 
 # Regenerate AppIcon.icns if icon-source.png was updated since the last
 # build. Noops quietly when icon-source.png is absent.
 "$ROOT_DIR/script/generate-icon.sh" || true
 
-swift build --package-path "$PROJECT_DIR"
-BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
+# Resolve the build output dir once. `--show-bin-path` only queries the
+# layout (it does not trigger a second build) now that swift build has
+# already run above.
+BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --configuration "$BUILD_CONFIG" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
@@ -321,11 +377,24 @@ ${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
 </plist>
 PLIST
 
+ASSEMBLE_END="$SECONDS"
+
 launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
 ensure_backend
+
+BACKEND_END="$SECONDS"
+
+# Coarse per-stage timing so a build-time regression is visible at a
+# glance. Stages: parallel build (frontend + swift), .app assembly,
+# backend boot.
+printf 'Build timing: parallel build %ds, assembly %ds, backend %ds, total %ds\n' \
+  "$((BUILD_END - BUILD_START))" \
+  "$((ASSEMBLE_END - BUILD_END))" \
+  "$((BACKEND_END - ASSEMBLE_END))" \
+  "$((BACKEND_END - BUILD_START))"
 
 case "$MODE" in
   run)

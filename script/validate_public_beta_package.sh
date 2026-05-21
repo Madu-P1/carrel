@@ -50,6 +50,22 @@ test -f "$APP_BUNDLE/Contents/Resources/demo-library/carrel-demo-clean-reading.p
 test -f "$APP_BUNDLE/Contents/Resources/demo-library/carrel-demo-table-heavy.pdf"
 test -f "$APP_BUNDLE/Contents/Resources/demo-library/carrel-demo-ocr-boundary.pdf"
 
+# Native Swift sidecar binaries must ship inside the bundle. Without
+# them a DMG-distributed .app has no .build/debug fallback, so Vision
+# OCR (EinsteinIngestionBridge) and Apple Foundation Models
+# (EinsteinAFMBridge) both fail at runtime. build_and_run.sh copies +
+# chmod +x both; this check guards against a regression there.
+if ! test -x "$APP_BUNDLE/Contents/MacOS/EinsteinIngestionBridge"; then
+  echo "Missing or non-executable native bridge: $APP_BUNDLE/Contents/MacOS/EinsteinIngestionBridge" >&2
+  echo "Re-run build_and_run.sh; it copies the sidecar binaries into the bundle." >&2
+  exit 1
+fi
+if ! test -x "$APP_BUNDLE/Contents/MacOS/EinsteinAFMBridge"; then
+  echo "Missing or non-executable native bridge: $APP_BUNDLE/Contents/MacOS/EinsteinAFMBridge" >&2
+  echo "Re-run build_and_run.sh; it copies the sidecar binaries into the bundle." >&2
+  exit 1
+fi
+
 if ! /usr/bin/codesign -dv "$APP_BUNDLE" >/dev/null 2>&1; then
   if [[ $ALLOW_UNSIGNED -eq 1 ]]; then
     echo "Warning: app bundle is not signed." >&2
