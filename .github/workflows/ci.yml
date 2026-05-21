@@ -7,6 +7,14 @@ on:
   schedule:
     - cron: "0 7 * * 1"
 
+# Scope GITHUB_TOKEN to the minimum every job here needs: read-only
+# access to repo contents (for actions/checkout). No job writes to the
+# repo, comments on PRs, or publishes artifacts to a registry, so
+# nothing needs more. A job can add its own `permissions:` block to
+# override if that ever changes.
+permissions:
+  contents: read
+
 jobs:
   python-quality:
     runs-on: ubuntu-latest
