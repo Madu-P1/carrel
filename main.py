@@ -51,6 +51,7 @@ def initialize_database() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
+    _hydrate_ai_settings_into_env()
     from services.retrieval.backfill import maybe_run_backfill
 
     maybe_run_backfill()
@@ -103,6 +104,50 @@ def _kick_startup_calendar_sync() -> None:
             LOGGER,
             logging.WARNING,
             "calendar_startup_sync_skipped",
+            reason=exc.__class__.__name__,
+        )
+
+
+def _hydrate_ai_settings_into_env() -> None:
+    """Bridge persisted AI settings into the environment at startup.
+
+    The provider choice lives in ``app_settings['ai.provider']`` and the
+    Claude API key lives in the secret store (Keychain / memory). Neither
+    is read by ``ai/providers.select_provider`` directly — that function
+    is a pure env reader by design (coupling the AI layer to ``db`` is an
+    anti-pattern, see the plan §Phase 2). This helper copies the two
+    persisted values into ``os.environ`` *before* any provider is first
+    constructed, so the env reader sees the user's saved choice.
+
+    Guards:
+    * Only sets an env var when a persisted value actually exists — a
+      blank persisted value never clobbers an already-set env var (e.g.
+      a key exported by the launching shell / launchd).
+    * Wrapped in try/except so a settings-table or Keychain read failure
+      can never block startup. A failure just leaves the env as-is.
+    """
+    import os
+
+    from routes.settings import ANTHROPIC_KEY_SECRET_NAME, PROVIDER_SETTING_KEY
+
+    try:
+        from services.app_state import get_setting
+        from services.secret_store import get_secret
+
+        with db_module.get_db() as conn:
+            provider = get_setting(conn, PROVIDER_SETTING_KEY, "").strip()
+        if provider and not os.environ.get("CARREL_AI_PROVIDER", "").strip():
+            os.environ["CARREL_AI_PROVIDER"] = provider
+
+        key = (get_secret(ANTHROPIC_KEY_SECRET_NAME) or "").strip()
+        if key and not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+            os.environ["ANTHROPIC_API_KEY"] = key
+    except Exception as exc:
+        # Defensive: a settings/Keychain read must never prevent boot.
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "ai_settings_hydrate_skipped",
             reason=exc.__class__.__name__,
         )
 

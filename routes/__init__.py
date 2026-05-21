@@ -12,6 +12,7 @@ from routes.onboarding import register_onboarding_routes
 from routes.plan import register_plan_routes
 from routes.reader_nodes import register_reader_node_routes
 from routes.search import register_search_routes
+from routes.settings import register_settings_routes
 from routes.studio import register_studio_routes
 from routes.study import register_study_routes
 from routes.synthesis import register_synthesis_routes
@@ -35,6 +36,8 @@ def register_routes(app) -> None:
     register_job_routes(app)
     register_onboarding_routes(app)
     register_system_routes(app)
+    # AI provider selector: provider choice + Claude key (secret store).
+    register_settings_routes(app)
     register_dashboard_routes(app)
     # Hybrid (FTS + vector) library search. Wraps services.retrieval.
     register_search_routes(app)
