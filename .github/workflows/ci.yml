@@ -7,6 +7,14 @@ on:
   schedule:
     - cron: "0 7 * * 1"
 
+# Scope GITHUB_TOKEN to the minimum every job here needs: read-only
+# access to repo contents (for actions/checkout). No job writes to the
+# repo, comments on PRs, or publishes artifacts to a registry, so
+# nothing needs more. A job can add its own `permissions:` block to
+# override if that ever changes.
+permissions:
+  contents: read
+
 jobs:
   python-quality:
     runs-on: ubuntu-latest
@@ -167,3 +175,35 @@ jobs:
         with:
           name: benchmark-phase0
           path: data/benchmarks/ci-latest.json
+
+  swift-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain info
+        run: |
+          swift --version
+          xcode-select -p
+      - name: Build required Swift targets
+        # EinsteinDesktop + EinsteinIngestionBridge must build on any
+        # toolchain. Building them on their own guarantees an optional
+        # target can never abort the core build (the install bug fixed
+        # on fix/afm-bridge-optional-build, where EinsteinAFMBridge's
+        # FoundationModels macros broke the whole build on Macs that had
+        # only the Command Line Tools, not full Xcode).
+        run: |
+          swift build --package-path macos-app \
+            --product EinsteinDesktop \
+            --product EinsteinIngestionBridge
+      - name: Build EinsteinAFMBridge without the FoundationModels macro plugin
+        # Regression guard. Without -DCARREL_AFM the @Generable / @Guide
+        # path is compiled out, so the AFM bridge must build on a
+        # toolchain that lacks the FoundationModelsMacros plugin. If this
+        # step fails, an unguarded macro has been reintroduced.
+        run: swift build --package-path macos-app --product EinsteinAFMBridge
+      - name: Build EinsteinAFMBridge with Apple Intelligence enabled
+        run: |
+          swift build --package-path macos-app \
+            --product EinsteinAFMBridge -Xswiftc -DCARREL_AFM
+      - name: Swift tests
+        run: swift test --package-path macos-app

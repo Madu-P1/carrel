@@ -14,10 +14,18 @@
 //   64  invalid JSON on stdin (bridge_protocol_error)
 //   70  encoding failure or other internal bridge error
 //
-// Mirrors the EinsteinIngestionBridge pattern. macOS 14 build still
-// succeeds (the @available gate keeps Apple Foundation Models out of
-// reach on older OS); at runtime on macOS 14/15 the binary returns a
-// macos_too_old error and exits 1 so Python can fall back cleanly.
+// Mirrors the EinsteinIngestionBridge pattern. The Apple Foundation
+// Models code (the @Generable / @Guide macros and the FoundationModels
+// API) is compiled in ONLY when the build passes -DCARREL_AFM.
+// build_and_run.sh sets that flag only on a toolchain that can build it:
+// full Xcode 26+, not the bare Command Line Tools. The @Generable /
+// @Guide macros need the FoundationModelsMacros compiler plugin, and
+// that plugin ships inside Xcode.app, NOT in the Command Line Tools.
+// @available(macOS 26.0, *) gates RUNTIME use; it cannot guard a
+// COMPILE-TIME macro dependency, which is the whole reason -DCARREL_AFM
+// exists. Without the flag this target still builds cleanly on any
+// toolchain: every request returns foundation_models_unavailable and the
+// Python backend falls back to Claude or Ollama.
 //
 // Request kinds:
 //   availability        -- probe SystemLanguageModel.default.availability
@@ -34,7 +42,7 @@
 
 import Foundation
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && CARREL_AFM
 import FoundationModels
 #endif
 
@@ -127,7 +135,7 @@ struct GroundedAnswerPayload: Codable {
 // verbatim quotes, source page numbers, citation chip rendering) is
 // NOT included here, by design.
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && CARREL_AFM
 
 @available(macOS 26.0, *)
 @Generable
@@ -198,7 +206,7 @@ private func writeOut(_ resp: BridgeResponse) {
 
 // MARK: - Foundation Models handler (gated to macOS 26+)
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && CARREL_AFM
 
 @available(macOS 26.0, *)
 private func availabilityStateString() -> String {
@@ -389,7 +397,7 @@ guard let req = try? decoder.decode(BridgeRequest.self, from: stdinData) else {
     exit(64)
 }
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && CARREL_AFM
 if #available(macOS 26.0, *) {
     let resp = await handle(req)
     writeOut(resp)
@@ -409,7 +417,7 @@ let resp = errorResponse(
     requestId: req.requestId,
     kind: req.kind,
     code: "foundation_models_unavailable",
-    message: "FoundationModels framework not available in this build."
+    message: "Apple Foundation Models was not compiled into this build. Rebuild with full Xcode 26+ to enable on-device AI; meanwhile Carrel runs on Claude or Ollama."
 )
 writeOut(resp)
 exit(1)

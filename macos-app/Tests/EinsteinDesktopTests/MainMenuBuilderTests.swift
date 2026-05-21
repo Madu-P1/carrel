@@ -8,11 +8,22 @@ final class MainMenuBuilderTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        MenuCommandDispatcher._dispatchSinkForTesting = nil
+        // XCTestCase.setUp() / tearDown() are nonisolated on some
+        // toolchains (older XCTest), so they cannot touch the
+        // @MainActor `_dispatchSinkForTesting` seam directly even though
+        // this class is @MainActor — an override cannot add isolation
+        // the superclass method lacks. XCTest runs setUp / tearDown on
+        // the main thread, so MainActor.assumeIsolated is sound and
+        // keeps the build green on every toolchain.
+        MainActor.assumeIsolated {
+            MenuCommandDispatcher._dispatchSinkForTesting = nil
+        }
     }
 
     override func tearDown() {
-        MenuCommandDispatcher._dispatchSinkForTesting = nil
+        MainActor.assumeIsolated {
+            MenuCommandDispatcher._dispatchSinkForTesting = nil
+        }
         super.tearDown()
     }
 
