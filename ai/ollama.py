@@ -35,6 +35,7 @@ import json
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
@@ -132,12 +133,30 @@ _OLLAMA_GROUNDED_SYSTEM = (
 )
 
 
+@dataclass(frozen=True)
+class OllamaReachability:
+    """Result of an Ollama liveness probe.
+
+    ``reachable`` is True only when the daemon answered ``GET /api/tags``
+    with a 2xx. ``detail`` is a short human-readable string for the UI /
+    install probe (e.g. the ``ollama serve`` hint when unreachable).
+    """
+
+    reachable: bool
+    detail: str
+
+
 class OllamaClient:
     """Local LLM provider backed by Ollama's HTTP API.
 
     Same method signatures as `ClaudeRouter`; returns the same
     `ClaudeCallResult` shape so downstream code does not branch on provider.
     """
+
+    # Plain string, not a ``ProviderKind``-annotated attr: ``ai/providers.py``
+    # imports this module, so annotating with the Literal would form an import
+    # cycle. Mirrors the bare-string precedent in ``ai/afm_client.py`` (``kind = "afm"``).
+    kind = "ollama"
 
     def __init__(
         self,
@@ -199,6 +218,57 @@ class OllamaClient:
         contract rather than a pre-check.
         """
         return bool(self.base_url)
+
+    # PROBE_TIMEOUT_SECONDS is short on purpose: the settings UI calls
+    # probe_reachable() live, so it must not block on a wedged daemon.
+    PROBE_TIMEOUT_SECONDS = 1.5
+
+    def probe_reachable(self) -> OllamaReachability:
+        """Check whether the Ollama daemon is up by GETting ``/api/tags``.
+
+        Unlike ``ai_enabled()`` (a config-only check), this makes a real
+        request with a short timeout (``PROBE_TIMEOUT_SECONDS``). Used by
+        the per-provider availability surface. Connection errors and
+        timeouts are caught and returned as ``reachable=False`` — this
+        method never raises, so a UI poll cannot crash on a down daemon.
+
+        Uses the injectable ``_http_client`` seam (same as ``_post_chat``)
+        so tests can mock the transport.
+        """
+        url = f"{self.base_url}/api/tags"
+        headers = self._auth_headers()
+        try:
+            if self._http_client is not None:
+                response = self._http_client.get(url, headers=headers)
+            else:
+                with httpx.Client(timeout=self.PROBE_TIMEOUT_SECONDS) as client:
+                    response = client.get(url, headers=headers)
+            response.raise_for_status()
+        except httpx.TimeoutException:
+            return OllamaReachability(
+                reachable=False,
+                detail=(
+                    f"Ollama did not respond within {self.PROBE_TIMEOUT_SECONDS}s "
+                    f"at {self.base_url}."
+                ),
+            )
+        except httpx.HTTPStatusError as exc:
+            return OllamaReachability(
+                reachable=False,
+                detail=f"Ollama at {self.base_url} returned HTTP {exc.response.status_code}.",
+            )
+        except httpx.HTTPError as exc:
+            return OllamaReachability(
+                reachable=False,
+                detail=(
+                    f"Ollama is not reachable at {self.base_url} "
+                    f"({type(exc).__name__}). Is `ollama serve` running?"
+                ),
+            )
+        return OllamaReachability(
+            reachable=True,
+            detail=f"Ollama is reachable at {self.base_url}.",
+        )
 
     def model_for_task(self, task: ClaudeTask) -> str:
         if task == "fast":

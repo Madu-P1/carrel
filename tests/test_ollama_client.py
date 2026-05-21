@@ -10,7 +10,7 @@ from unittest import mock
 
 import httpx
 
-from ai.ollama import OllamaClient
+from ai.ollama import OllamaClient, OllamaReachability
 from ai.router import ClaudeCallResult
 
 
@@ -346,6 +346,71 @@ class OllamaRequestGroundedAnswerTests(unittest.TestCase):
         # with the schema in force. Tutor consumes this as "no grounded
         # answer available" and renders the fallback UI.
         self.assertFalse(result.ok)
+
+
+class OllamaProbeReachableTests(unittest.TestCase):
+    """`probe_reachable` GETs /api/tags with a short timeout and never
+    raises — the settings UI calls it live."""
+
+    def test_probe_reachable_returns_true_on_200(self) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["method"] = request.method
+            return httpx.Response(200, json={"models": []})
+
+        client = OllamaClient(
+            base_url="http://127.0.0.1:11434",
+            http_client=_mock_transport(handler),
+        )
+        result = client.probe_reachable()
+
+        self.assertIsInstance(result, OllamaReachability)
+        self.assertTrue(result.reachable)
+        # Probe hits the lightweight /api/tags endpoint, not /api/chat.
+        self.assertTrue(captured["url"].endswith("/api/tags"))
+        self.assertEqual(captured["method"], "GET")
+
+    def test_probe_reachable_returns_false_on_connection_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused", request=request)
+
+        client = OllamaClient(
+            base_url="http://127.0.0.1:11434",
+            http_client=_mock_transport(handler),
+        )
+        result = client.probe_reachable()
+        self.assertFalse(result.reachable)
+        self.assertIn("ollama serve", result.detail.lower())
+
+    def test_probe_reachable_returns_false_on_timeout(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.TimeoutException("slow", request=request)
+
+        client = OllamaClient(
+            base_url="http://127.0.0.1:11434",
+            http_client=_mock_transport(handler),
+        )
+        result = client.probe_reachable()
+        self.assertFalse(result.reachable)
+        self.assertIn("did not respond", result.detail.lower())
+
+    def test_probe_reachable_returns_false_on_http_error_status(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, text="boom")
+
+        client = OllamaClient(
+            base_url="http://127.0.0.1:11434",
+            http_client=_mock_transport(handler),
+        )
+        result = client.probe_reachable()
+        self.assertFalse(result.reachable)
+        self.assertIn("500", result.detail)
+
+    def test_probe_timeout_is_short(self) -> None:
+        # The probe must not block a live UI poll; the timeout is capped low.
+        self.assertLessEqual(OllamaClient.PROBE_TIMEOUT_SECONDS, 2.0)
 
 
 class OllamaSchemaSyncTests(unittest.TestCase):

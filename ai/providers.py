@@ -43,6 +43,7 @@ from __future__ import annotations
 import os
 import platform
 import sys
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from ai.afm_client import AFMClient, get_default_afm_client
@@ -417,6 +418,83 @@ def reset_default_provider() -> None:
     _DEFAULT_PROVIDER = None
 
 
+@dataclass(frozen=True)
+class ProviderAvailability:
+    """Per-provider availability verdict for the settings UI / install probe.
+
+    * ``kind`` — one of ``claude`` / ``ollama`` / ``afm``.
+    * ``configured`` — is the provider set up at all (key present, endpoint
+      env set, OS-gate passed)? A config-only check, never a network call.
+    * ``available`` — is it usable *right now*? For ollama / afm this
+      reflects a live probe; for claude it equals ``configured`` (a real
+      Anthropic call to probe would cost tokens — see ``probe_all_providers``).
+    * ``detail`` — short human-readable string.
+    * ``error_code`` — a stable machine code when unavailable (e.g.
+      ``apple_intelligence_not_enabled``); ``None`` when available.
+    """
+
+    kind: str
+    configured: bool
+    available: bool
+    detail: str
+    error_code: str | None
+
+
+def probe_all_providers() -> dict[str, ProviderAvailability]:
+    """Return live availability for every selectable provider.
+
+    Keyed by provider kind: ``claude``, ``ollama``, ``afm``.
+
+    * **claude** — ``configured`` and ``available`` both equal
+      ``_claude_has_key()``. Deliberately no network call: a real probe
+      would cost tokens. The honest "reachable or not" signal for Claude
+      is still the actual call's ``ok`` flag at request time.
+    * **ollama** — ``configured`` is ``_ollama_has_endpoint()`` (the
+      OLLAMA_BASE_URL opt-in); ``available`` is a live
+      ``OllamaClient.probe_reachable()`` (short-timeout GET /api/tags).
+    * **afm** — ``configured`` is ``_afm_available()`` (the OS gate +
+      bridge-binary check); ``available`` / ``error_code`` come from
+      ``AFMClient.probe_availability()`` (the Swift bridge round-trip).
+    """
+    # Claude: config-only. No probe call — see docstring.
+    claude_ok = _claude_has_key()
+    claude = ProviderAvailability(
+        kind="claude",
+        configured=claude_ok,
+        available=claude_ok,
+        detail=(
+            "Claude API key is configured."
+            if claude_ok
+            else "No Claude API key (ANTHROPIC_API_KEY) configured."
+        ),
+        error_code=None if claude_ok else "missing_api_key",
+    )
+
+    # Ollama: live reachability probe.
+    ollama_configured = _ollama_has_endpoint()
+    ollama_reach = get_default_ollama_client().probe_reachable()
+    ollama = ProviderAvailability(
+        kind="ollama",
+        configured=ollama_configured,
+        available=ollama_reach.reachable,
+        detail=ollama_reach.detail,
+        error_code=None if ollama_reach.reachable else "ollama_unreachable",
+    )
+
+    # AFM: OS gate for `configured`, Swift bridge probe for `available`.
+    afm_configured = _afm_available()
+    afm_probe = get_default_afm_client().probe_availability()
+    afm = ProviderAvailability(
+        kind="afm",
+        configured=afm_configured,
+        available=afm_probe.ok,
+        detail=afm_probe.detail,
+        error_code=None if afm_probe.ok else afm_probe.state,
+    )
+
+    return {"claude": claude, "ollama": ollama, "afm": afm}
+
+
 # Re-export for clean import path: `from ai.providers import ClaudeRouter, OllamaClient, AFMClient`
 __all__ = [
     "AFMClient",
@@ -425,8 +503,10 @@ __all__ = [
     "ClaudeRouter",
     "NullProvider",
     "OllamaClient",
+    "ProviderAvailability",
     "ProviderKind",
     "get_default_provider",
+    "probe_all_providers",
     "reset_default_provider",
     "select_provider",
 ]

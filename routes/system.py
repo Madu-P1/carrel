@@ -22,10 +22,12 @@ router = APIRouter()
 
 def _provider_payload() -> Dict[str, Any]:
     provider = get_default_provider()
+    # All four provider classes (ClaudeRouter, OllamaClient, AFMClient,
+    # NullProvider) now carry a `.kind` attribute, so this is the primary
+    # path. The class-name inference is kept only as defence in case a
+    # future provider lands without the attribute.
     kind = getattr(provider, "kind", None)
     if kind is None:
-        # ClaudeRouter / OllamaClient don't carry a `kind` attribute; infer
-        # from class name so the UI sees a stable lowercase token.
         cls = provider.__class__.__name__.lower()
         if "claude" in cls:
             kind = "claude"

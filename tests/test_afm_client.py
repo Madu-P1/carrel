@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from ai.afm_client import AFMClient, GroundedChunk, reset_default_afm_client
+from ai.afm_client import AFMAvailability, AFMClient, GroundedChunk, reset_default_afm_client
 from ai.router import ClaudeCallResult
 
 
@@ -699,6 +699,124 @@ class AFMRequestGroundedAnswerTests(unittest.TestCase):
         )
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "bridge_missing_structured")
+
+
+# ----------------------------------------------------------------------
+# probe_availability
+# ----------------------------------------------------------------------
+
+
+def _bridge_availability_payload(state: str) -> str:
+    """JSON mimicking the Swift bridge's response to ``kind=="availability"``.
+
+    The bridge (main.swift:328) sets ``ok = state == "available"`` and
+    ``error_code = state == "available" ? nil : state``.
+    """
+    ok = state == "available"
+    return json.dumps(
+        {
+            "ok": ok,
+            "request_id": "test-id",
+            "kind": "availability",
+            "text": None,
+            "structured": None,
+            "model": "afm-3b",
+            "input_tokens": None,
+            "output_tokens": None,
+            "latency_ms": 3.2,
+            "stop_reason": None,
+            "error_code": None if ok else state,
+            "error_message": None,
+            "availability_state": state,
+        }
+    )
+
+
+class AFMProbeAvailabilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_default_afm_client()
+
+    def test_probe_availability_happy_path_available(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_run(cmd, input=None, **kwargs):  # type: ignore[no-untyped-def]
+            captured["input"] = json.loads(input)
+            return _completed(_bridge_availability_payload("available"))
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        result = client.probe_availability()
+
+        self.assertIsInstance(result, AFMAvailability)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.state, "available")
+        self.assertIn("available", result.detail.lower())
+        # The bridge is asked with the `availability` kind.
+        self.assertEqual(captured["input"]["kind"], "availability")
+
+    def test_probe_availability_device_not_eligible(self) -> None:
+        def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            return _completed(_bridge_availability_payload("device_not_eligible"))
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        result = client.probe_availability()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.state, "device_not_eligible")
+
+    def test_probe_availability_apple_intelligence_not_enabled(self) -> None:
+        def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            return _completed(_bridge_availability_payload("apple_intelligence_not_enabled"))
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        result = client.probe_availability()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.state, "apple_intelligence_not_enabled")
+        self.assertTrue(result.detail)
+
+    def test_probe_availability_model_not_ready(self) -> None:
+        def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            return _completed(_bridge_availability_payload("model_not_ready"))
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        result = client.probe_availability()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.state, "model_not_ready")
+
+    def test_probe_availability_bridge_missing(self) -> None:
+        # bridge_path=None and discovery also finds nothing → a dedicated
+        # `bridge_missing` state, never a raise, never a subprocess call.
+        with mock.patch("ai.afm_client.find_binary", return_value=None):
+            client = AFMClient(bridge_path=None)
+        result = client.probe_availability()
+        self.assertIsInstance(result, AFMAvailability)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.state, "bridge_missing")
+        self.assertIn("swift build", result.detail)
+
+    def test_probe_availability_transport_failure_does_not_raise(self) -> None:
+        # A subprocess-level failure (not an availability state) is
+        # surfaced as ok=False with the transport error code, no raise.
+        def fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            return _completed(stdout="not json", returncode=0)
+
+        client = AFMClient(
+            bridge_path=Path("/fake/EinsteinAFMBridge"),
+            run_subprocess=fake_run,
+        )
+        result = client.probe_availability()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.state, "bridge_invalid_response")
 
 
 if __name__ == "__main__":

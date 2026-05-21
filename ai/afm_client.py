@@ -36,6 +36,25 @@ PROVIDER_KIND_AFM = "afm"
 
 
 @dataclass(frozen=True)
+class AFMAvailability:
+    """Result of an AFM availability probe.
+
+    ``state`` mirrors the Swift bridge's ``availability_state`` field
+    (``main.swift:204-212``): one of ``available``, ``device_not_eligible``,
+    ``apple_intelligence_not_enabled``, ``model_not_ready``, ``unknown`` —
+    plus ``bridge_missing`` when the bridge binary is not present on disk
+    (a Python-side state the Swift bridge cannot report).
+
+    ``ok`` is True only when ``state == "available"``. ``detail`` is a
+    short human-readable string for surfacing in the UI / install probe.
+    """
+
+    state: str
+    ok: bool
+    detail: str
+
+
+@dataclass(frozen=True)
 class GroundedChunk:
     """Input chunk for AFM's grounded-answer flow.
 
@@ -535,6 +554,65 @@ class AFMClient:
             )
         return replace(result, json_payload=parsed)
 
+    def probe_availability(self) -> AFMAvailability:
+        """Ask the Swift bridge whether Apple Foundation Models is usable now.
+
+        Sends ``{"kind": "availability"}`` through the same ``_call()``
+        round-trip ``request_text`` uses. The bridge handles this kind at
+        ``main.swift:328``: it returns ``ok=True`` + ``availability_state
+        ="available"`` when usable, or ``ok=False`` with ``error_code`` set
+        to the failing state (``device_not_eligible``,
+        ``apple_intelligence_not_enabled``, ``model_not_ready``).
+
+        Returns a typed ``AFMAvailability`` instead of raising. When the
+        bridge binary is missing, returns ``state="bridge_missing"`` rather
+        than going through ``_call`` (which would surface
+        ``error_code="bridge_unavailable"``); the install probe / UI need
+        a stable, dedicated state for "AFM not built on this machine".
+        """
+        if self.bridge_path is None:
+            return AFMAvailability(
+                state="bridge_missing",
+                ok=False,
+                detail=("EinsteinAFMBridge binary not found. Run `cd macos-app && swift build`."),
+            )
+        result = self._call(
+            kind="availability",
+            request_kind="afm.probe_availability",
+            task="balanced",
+            system="",
+            prompt="",
+            max_tokens=1,
+        )
+        if result.ok:
+            return AFMAvailability(
+                state="available",
+                ok=True,
+                detail="Apple Foundation Models is available.",
+            )
+        # The bridge sets error_code to the availability_state string for the
+        # known unavailable states. _call may instead surface its own
+        # transport-level codes (timeout, bridge_invalid_response, ...) when
+        # the subprocess itself fails — those are not availability states.
+        code = result.error_code or "unknown"
+        known_states = {
+            "device_not_eligible",
+            "apple_intelligence_not_enabled",
+            "model_not_ready",
+            "unknown",
+        }
+        if code in known_states:
+            return AFMAvailability(
+                state=code,
+                ok=False,
+                detail=result.error_message or _AFM_STATE_DETAIL.get(code, code),
+            )
+        return AFMAvailability(
+            state=code,
+            ok=False,
+            detail=result.error_message or f"AFM bridge probe failed ({code}).",
+        )
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -687,6 +765,20 @@ class AFMClient:
 # `ai/router.py:parse_or_rescue_json`; AFM aliases the local name to
 # preserve in-module call sites without diverging again.
 _parse_or_rescue = parse_or_rescue_json
+
+
+# Human-readable detail strings for the AFM availability states the Swift
+# bridge can report. Used as a fallback when the bridge does not supply its
+# own error_message on an availability probe.
+_AFM_STATE_DETAIL: dict[str, str] = {
+    "device_not_eligible": ("This Mac is not eligible for Apple Intelligence."),
+    "apple_intelligence_not_enabled": ("Apple Intelligence is off. Enable it in System Settings."),
+    "model_not_ready": (
+        "The on-device model is still downloading. This can take "
+        "1-30 minutes after enabling Apple Intelligence."
+    ),
+    "unknown": "Apple Foundation Models availability could not be determined.",
+}
 
 
 def _bridge_error_result(

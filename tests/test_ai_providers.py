@@ -276,6 +276,134 @@ class ProviderProtocolTests(unittest.TestCase):
         self.assertIsInstance(AFMClient(), AIProvider)
 
 
+class ProviderKindAttributeTests(unittest.TestCase):
+    """All four provider classes must carry a stable lowercase `.kind`
+    string. routes/system.py reads `.kind` as the primary path now."""
+
+    def test_all_provider_classes_carry_kind(self) -> None:
+        from ai.afm_client import AFMClient
+
+        self.assertEqual(ClaudeRouter.kind, "claude")
+        self.assertEqual(OllamaClient.kind, "ollama")
+        self.assertEqual(AFMClient.kind, "afm")
+        self.assertEqual(NullProvider.kind, "null")
+
+    def test_kind_is_accessible_on_instances(self) -> None:
+        # getattr(provider, "kind", ...) — the routes/system.py access
+        # pattern — resolves on instances, not just the class object.
+        self.assertEqual(getattr(ClaudeRouter(), "kind", None), "claude")
+        self.assertEqual(getattr(OllamaClient(), "kind", None), "ollama")
+        self.assertEqual(getattr(NullProvider(), "kind", None), "null")
+
+
+class ProbeAllProvidersTests(unittest.TestCase):
+    """`probe_all_providers` aggregates per-provider availability. The
+    ollama / afm probes are mocked so the test is hermetic and fast —
+    it must not depend on a running daemon or a built Swift bridge."""
+
+    def setUp(self) -> None:
+        reset_default_provider()
+
+    def tearDown(self) -> None:
+        reset_default_provider()
+
+    def _patched_probes(self, *, ollama_reachable: bool, afm_state: str):
+        """Context managers that pin the ollama + afm live probes."""
+        from ai.afm_client import AFMAvailability, AFMClient
+        from ai.ollama import OllamaClient, OllamaReachability
+
+        ollama_result = OllamaReachability(
+            reachable=ollama_reachable,
+            detail="mocked",
+        )
+        afm_result = AFMAvailability(
+            state=afm_state,
+            ok=afm_state == "available",
+            detail="mocked",
+        )
+        return (
+            mock.patch.object(OllamaClient, "probe_reachable", return_value=ollama_result),
+            mock.patch.object(AFMClient, "probe_availability", return_value=afm_result),
+        )
+
+    def test_probe_all_providers_all_configured(self) -> None:
+        from ai.providers import ProviderAvailability, probe_all_providers
+
+        env = {k: v for k, v in os.environ.items()}
+        env["ANTHROPIC_API_KEY"] = "sk-test-key"
+        env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+        ollama_patch, afm_patch = self._patched_probes(ollama_reachable=True, afm_state="available")
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=True),
+            ollama_patch,
+            afm_patch,
+        ):
+            result = probe_all_providers()
+
+        self.assertEqual(set(result), {"claude", "ollama", "afm"})
+        for entry in result.values():
+            self.assertIsInstance(entry, ProviderAvailability)
+
+        self.assertTrue(result["claude"].configured)
+        self.assertTrue(result["claude"].available)
+        self.assertIsNone(result["claude"].error_code)
+
+        self.assertTrue(result["ollama"].configured)
+        self.assertTrue(result["ollama"].available)
+
+        self.assertTrue(result["afm"].configured)
+        self.assertTrue(result["afm"].available)
+        self.assertIsNone(result["afm"].error_code)
+
+    def test_probe_all_providers_none_configured(self) -> None:
+        from ai.providers import probe_all_providers
+
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        env.pop("OLLAMA_BASE_URL", None)
+        ollama_patch, afm_patch = self._patched_probes(
+            ollama_reachable=False, afm_state="apple_intelligence_not_enabled"
+        )
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+            ollama_patch,
+            afm_patch,
+        ):
+            result = probe_all_providers()
+
+        self.assertFalse(result["claude"].configured)
+        self.assertFalse(result["claude"].available)
+        self.assertEqual(result["claude"].error_code, "missing_api_key")
+
+        self.assertFalse(result["ollama"].configured)
+        self.assertFalse(result["ollama"].available)
+        self.assertEqual(result["ollama"].error_code, "ollama_unreachable")
+
+        self.assertFalse(result["afm"].configured)
+        self.assertFalse(result["afm"].available)
+        self.assertEqual(result["afm"].error_code, "apple_intelligence_not_enabled")
+
+    def test_probe_all_providers_does_not_call_anthropic(self) -> None:
+        # Claude's `available` must equal `configured` (key presence) with
+        # no network call — a real probe would cost tokens.
+        from ai.providers import probe_all_providers
+
+        env = {k: v for k, v in os.environ.items()}
+        env["ANTHROPIC_API_KEY"] = "sk-test-key"
+        ollama_patch, afm_patch = self._patched_probes(
+            ollama_reachable=False, afm_state="bridge_missing"
+        )
+        with (
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch("ai.providers._afm_available", return_value=False),
+            ollama_patch,
+            afm_patch,
+        ):
+            result = probe_all_providers()
+        self.assertEqual(result["claude"].available, result["claude"].configured)
+
+
 class DefaultProviderSingletonTests(unittest.TestCase):
     def setUp(self) -> None:
         reset_default_provider()

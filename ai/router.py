@@ -213,6 +213,11 @@ def _classify_claude_exception(exc: BaseException) -> tuple[str, str]:
 
 
 class ClaudeRouter:
+    # Plain string, not a ``ProviderKind``-annotated attr: ``ai/providers.py``
+    # imports this module, so annotating with the Literal would form an import
+    # cycle. Mirrors the bare-string precedent in ``ai/afm_client.py`` (``kind = "afm"``).
+    kind = "claude"
+
     def __init__(self) -> None:
         self._logger = get_logger("ai.claude")
         self.fast_model = os.getenv("ANTHROPIC_MODEL_FAST", "claude-haiku-4-5")
