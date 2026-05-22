@@ -22,6 +22,7 @@ from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
+from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES
 from services.retrieval.typed_hybrid import (
     RetrievedNode,
     retrieval_use_nodes_enabled,
@@ -175,6 +176,10 @@ class HydratedNodeContext:
     verbatim_text: str
     snippet: str
     score: float
+    # Source node_type on the typed-node path (RETRIEVAL_USE_NODES=true);
+    # "body" on the legacy chunks path, which has no structure. Used to
+    # keep structural nodes (heading/header/footer) out of citations.
+    node_type: str = "body"
 
 
 def fetch_notes(
@@ -559,6 +564,31 @@ def tutor_primary_retrieval(
     )
 
 
+def _drop_non_citable_contexts(
+    contexts: list[HydratedNodeContext],
+) -> list[HydratedNodeContext]:
+    """Strip structural nodes (heading/header/footer) from citation context.
+
+    A heading is a section label and a header/footer is page chrome;
+    none can ground a claim, so none may reach the model as evidence
+    (Gate 0 — structural-citation elimination). Typed-node retrieval
+    already keeps them out of the candidate pool via `node_type_router`;
+    this is the backstop for the scope-fallback path and any future
+    caller. A drop is logged, never silent, per CLAUDE.md.
+    """
+    citable = [c for c in contexts if c.node_type not in NON_CITABLE_NODE_TYPES]
+    dropped = len(contexts) - len(citable)
+    if dropped:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "tutor_structural_contexts_dropped",
+            dropped=dropped,
+            kept=len(citable),
+        )
+    return citable
+
+
 def _hydrate_node_context(
     hits: Sequence[ScoredHit] | Sequence[RetrievedNode],
     conn: sqlite3.Connection,
@@ -579,8 +609,10 @@ def _hydrate_node_context(
     if not hits:
         return []
     if isinstance(hits[0], RetrievedNode):
-        return _hydrate_from_nodes(hits, conn)  # type: ignore[arg-type]
-    return _hydrate_from_chunks(hits, conn)  # type: ignore[arg-type]
+        contexts = _hydrate_from_nodes(hits, conn)  # type: ignore[arg-type]
+    else:
+        contexts = _hydrate_from_chunks(hits, conn)  # type: ignore[arg-type]
+    return _drop_non_citable_contexts(contexts)
 
 
 def _hydrate_from_nodes(
@@ -611,7 +643,7 @@ def _hydrate_from_nodes(
             # this is a data-integrity signal, not a normal path.
             log_event(
                 LOGGER,
-                "warning",
+                logging.WARNING,
                 "tutor_hydrate_orphaned_node",
                 node_id=hit.node_id,
                 doc_id=hit.doc_id,
@@ -627,6 +659,7 @@ def _hydrate_from_nodes(
                 verbatim_text=strip_extraction_artifacts(hit.verbatim_text),
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
+                node_type=hit.node_type,
             )
         )
     return contexts
@@ -728,6 +761,7 @@ def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeCo
                 verbatim_text=cleaned,
                 snippet=cleaned[:240],
                 score=0.0,
+                node_type=str(row["node_type"]),
             )
         )
     return contexts
@@ -838,7 +872,7 @@ def _fallback_contexts_from_scope_nodes(
                 rows = conn.execute(
                     f"""
                     SELECT n.id, n.doc_id, n.heading_path AS section,
-                           n.page AS page_num, n.verbatim_text,
+                           n.page AS page_num, n.verbatim_text, n.node_type,
                            d.filename AS document_name
                     FROM nodes n
                     JOIN documents d ON d.id = n.doc_id
@@ -856,7 +890,7 @@ def _fallback_contexts_from_scope_nodes(
         rows = conn.execute(
             f"""
             SELECT n.id, n.doc_id, n.heading_path AS section,
-                   n.page AS page_num, n.verbatim_text,
+                   n.page AS page_num, n.verbatim_text, n.node_type,
                    d.filename AS document_name
             FROM nodes n
             JOIN documents d ON d.id = n.doc_id
@@ -873,7 +907,7 @@ def _fallback_contexts_from_scope_nodes(
         rows = conn.execute(
             """
             SELECT n.id, n.doc_id, n.heading_path AS section,
-                   n.page AS page_num, n.verbatim_text,
+                   n.page AS page_num, n.verbatim_text, n.node_type,
                    d.filename AS document_name
             FROM nodes n
             JOIN documents d ON d.id = n.doc_id
@@ -1362,12 +1396,14 @@ def grounded_tutor_response(
     contexts = _hydrate_node_context(hits, conn)
     scope_fallback_used = False
     if not contexts:
-        contexts = _fallback_contexts_from_scope(
-            conn,
-            doc_ids=resolved_doc_ids,
-            subject_name=_normalized_subject_name(subject_name),
-            concept_id=concept_id,
-            limit=resolved_top_k,
+        contexts = _drop_non_citable_contexts(
+            _fallback_contexts_from_scope(
+                conn,
+                doc_ids=resolved_doc_ids,
+                subject_name=_normalized_subject_name(subject_name),
+                concept_id=concept_id,
+                limit=resolved_top_k,
+            )
         )
         scope_fallback_used = bool(contexts)
     if not contexts:

@@ -4,21 +4,24 @@ from __future__ import annotations
 
 import unittest
 
-from services.retrieval.node_type_router import node_types_for_query
+from services.retrieval.node_type_router import (
+    NON_CITABLE_NODE_TYPES,
+    node_types_for_query,
+)
 
 
 class NodeTypeRouterTests(unittest.TestCase):
     def test_default_query_returns_prose_backbone_only(self) -> None:
         self.assertEqual(
             node_types_for_query("explain photosynthesis"),
-            frozenset({"heading", "body", "list_item"}),
+            frozenset({"body", "list_item"}),
         )
 
     def test_empty_query_still_returns_base_set(self) -> None:
         # An empty query should not crash; callers gate retrieval on it.
         self.assertEqual(
             node_types_for_query(""),
-            frozenset({"heading", "body", "list_item"}),
+            frozenset({"body", "list_item"}),
         )
 
     def test_table_keywords_pull_in_table_cell(self) -> None:
@@ -55,9 +58,7 @@ class NodeTypeRouterTests(unittest.TestCase):
         types = node_types_for_query("the formula in figure 3 references the table")
         self.assertEqual(
             types,
-            frozenset(
-                {"heading", "body", "list_item", "equation", "caption", "footnote", "table_cell"}
-            ),
+            frozenset({"body", "list_item", "equation", "caption", "footnote", "table_cell"}),
         )
 
     def test_header_and_footer_never_returned(self) -> None:
@@ -67,6 +68,33 @@ class NodeTypeRouterTests(unittest.TestCase):
         self.assertNotIn("header", types)
         types = node_types_for_query("running footer on every page")
         self.assertNotIn("footer", types)
+
+    def test_headings_never_retrievable(self) -> None:
+        # A heading is a section label, not answer content. It must never
+        # enter the candidate pool — not even when the query explicitly
+        # names a heading, section, or title.
+        for query in (
+            "explain photosynthesis",
+            "what does the heading on page 2 say",
+            "the section title for chapter 3",
+        ):
+            with self.subTest(query=query):
+                self.assertNotIn("heading", node_types_for_query(query))
+
+    def test_non_citable_types_are_heading_and_chrome(self) -> None:
+        # Single source of truth for the structural (non-answer-bearing)
+        # node types shared by retrieval and the tutor citation path.
+        self.assertEqual(
+            NON_CITABLE_NODE_TYPES,
+            frozenset({"heading", "header", "footer"}),
+        )
+        # None of them is ever produced by the router.
+        for query in ("explain photosynthesis", "the table and figure and formula"):
+            with self.subTest(query=query):
+                self.assertEqual(
+                    node_types_for_query(query) & NON_CITABLE_NODE_TYPES,
+                    frozenset(),
+                )
 
 
 if __name__ == "__main__":

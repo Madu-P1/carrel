@@ -20,6 +20,7 @@ if str(ROOT_DIR) not in sys.path:
 import main  # noqa: E402
 from ai.router import ClaudeRouter, get_default_router  # noqa: E402
 from services.ingestion import ingest_document_record  # noqa: E402
+from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES  # noqa: E402
 from services.retrieval.typed_hybrid import RetrievedNode  # noqa: E402
 from services.tutor import (  # noqa: E402
     GroundedAnswer,
@@ -459,15 +460,23 @@ def run_case(
 
     quote_total = 0
     quote_valid_count = 0
+    structural_citation_count = 0
     for claim in answer.claims:
         for citation in claim.citations:
             quote_total += 1
             if isinstance(citation.node_id, int):
                 row = conn.execute(
-                    "SELECT verbatim_text AS content FROM nodes WHERE id = ?",
+                    "SELECT verbatim_text AS content, node_type FROM nodes WHERE id = ?",
                     (citation.node_id,),
                 ).fetchone()
+                # Gate 0 — a claim grounded on a heading/header/footer
+                # node carries no informational value. This must stay 0.
+                if row is not None and str(row["node_type"]) in NON_CITABLE_NODE_TYPES:
+                    structural_citation_count += 1
             else:
+                # Legacy chunks path is structurally untyped — a chunk
+                # window has no node_type, so structural citations are a
+                # nodes-path metric only (Gate 0).
                 row = conn.execute(
                     "SELECT content FROM chunks WHERE id = ?",
                     (citation.node_id,),
@@ -485,6 +494,10 @@ def run_case(
             "quote_validity": round(quote_valid_count / quote_total, 4) if quote_total else None,
             "quote_valid_count": quote_valid_count,
             "quote_total": quote_total,
+            "structural_citation_count": structural_citation_count,
+            "structural_citation_rate": round(structural_citation_count / quote_total, 4)
+            if quote_total
+            else None,
             "citation_attempt_count": answer.citation_attempt_count,
             "citation_drop_count": answer.citation_drop_count,
             "citation_repair_count": answer.citation_repair_count,
@@ -545,6 +558,9 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
         )
         quote_valid_count = sum(int(result.get("quote_valid_count", 0)) for result in results)
         quote_total = sum(int(result.get("quote_total", 0)) for result in results)
+        structural_citation_count = sum(
+            int(result.get("structural_citation_count", 0)) for result in results
+        )
         fallback_count = sum(1 for result in results if result.get("fallback"))
         scope_fallback_count = sum(1 for result in results if result.get("scope_fallback"))
         latencies = [
@@ -564,6 +580,10 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
                 else None,
                 "quote_valid_count": quote_valid_count,
                 "quote_total": quote_total,
+                "structural_citation_count": structural_citation_count,
+                "structural_citation_rate": round(structural_citation_count / quote_total, 4)
+                if quote_total
+                else None,
                 "citation_drop_rate": round(
                     citation_drop_count / max(citation_attempt_count, 1), 4
                 ),
@@ -594,6 +614,11 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
             summary["warnings"].append("groundedness@8 fell below 0.70")
         if summary["quote_validity"] is not None and summary["quote_validity"] < 0.9:
             summary["warnings"].append("quote_validity fell below 0.90")
+        if structural_citation_count > 0:
+            summary["warnings"].append(
+                "structural citations present — answers grounded on "
+                "heading/header/footer nodes (must be 0)"
+            )
     else:
         if summary["groundedness_at_k"]["value"] < 0.7:
             summary["warnings"].append("groundedness@8 fell below 0.70")
@@ -627,6 +652,7 @@ def _markdown_summary(
                 f"| citation_precision | {summary['citation_precision']:.2f} |",
                 f"| citation_recall | {summary['citation_recall']:.2f} |",
                 f"| quote_validity | {summary['quote_valid_count']}/{summary['quote_total']} ({(summary['quote_validity'] or 0.0):.2f}) |",
+                f"| structural_citation_rate | {summary['structural_citation_count']}/{summary['quote_total']} ({(summary['structural_citation_rate'] or 0.0):.2f}) |",
                 f"| citation_drop_rate | {summary['citation_drop_count']}/{summary['citation_attempt_count']} ({summary['citation_drop_rate']:.1%}) |",
                 f"| citation_repair_rate | {summary['citation_repair_count']}/{summary['citation_attempt_count']} ({summary['citation_repair_rate']:.1%}) |",
                 f"| fallback_rate | {summary['fallback_rate']['count']}/{summary['fallback_rate']['total']} ({summary['fallback_rate']['value']:.1%}) |",
