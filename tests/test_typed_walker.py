@@ -59,14 +59,17 @@ class TypedWalkerTests(unittest.TestCase):
         nodes = walk(
             _FakeDoc(
                 [
-                    _Item("text", "First paragraph"),
+                    _Item("text", "First paragraph."),
                     _Item("text", "   "),  # whitespace-only, must be skipped
-                    _Item("text", "Second paragraph"),
+                    _Item("text", "Second paragraph."),
                 ]
             )
         )
         self.assertEqual([n.reading_order for n in nodes], [0, 1])
-        self.assertEqual([n.verbatim_text for n in nodes], ["First paragraph", "Second paragraph"])
+        self.assertEqual(
+            [n.verbatim_text for n in nodes],
+            ["First paragraph.", "Second paragraph."],
+        )
 
     def test_label_to_node_type_mapping_covers_seven_retrievable_kinds(self) -> None:
         # Every retrievable type lands somewhere in DOCLING_TYPE_MAP.
@@ -99,7 +102,7 @@ class TypedWalkerTests(unittest.TestCase):
         self.assertEqual(paths["chapter-two paragraph"], "Chapter 2")
 
     def test_char_offsets_index_a_canonical_text_with_double_newline_separators(self) -> None:
-        a, b = "alpha", "beta"
+        a, b = "alpha.", "beta."
         nodes = walk(_FakeDoc([_Item("text", a), _Item("text", b)]))
         self.assertEqual(nodes[0].char_start, 0)
         self.assertEqual(nodes[0].char_end, len(a))
@@ -115,8 +118,8 @@ class TypedWalkerTests(unittest.TestCase):
         nodes = walk(
             _FakeDoc(
                 [
-                    _Item("text", "no provenance"),
-                    _Item("text", "page two", page=2),
+                    _Item("text", "no provenance."),
+                    _Item("text", "page two.", page=2),
                 ]
             )
         )
@@ -136,6 +139,87 @@ class TypedWalkerTests(unittest.TestCase):
         )
         with self.assertRaises(Exception):
             node.node_type = "heading"  # type: ignore[misc]
+
+
+class SoftWrapMergeTests(unittest.TestCase):
+    """`_merge_soft_wrapped` rejoins hard-wrapped body fragments."""
+
+    def test_hard_wrapped_paragraph_merges_into_one_body_node(self) -> None:
+        # Docling emits one element per physical line; the three fragments
+        # of one sentence must rejoin so a verbatim quote is contiguous.
+        nodes = walk(
+            _FakeDoc(
+                [
+                    _Item("text", "Written notice shall be served not later than"),
+                    _Item("text", "ninety days after the date of the incident"),
+                    _Item("text", "giving rise to the claim."),
+                ]
+            )
+        )
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(nodes[0].node_type, "body")
+        self.assertEqual(nodes[0].reading_order, 0)
+        self.assertIn(
+            "not later than ninety days after the date of the incident",
+            nodes[0].verbatim_text,
+        )
+
+    def test_sentence_boundary_keeps_paragraphs_separate(self) -> None:
+        nodes = walk(
+            _FakeDoc(
+                [
+                    _Item("text", "First sentence ends here."),
+                    _Item("text", "Second sentence is separate."),
+                ]
+            )
+        )
+        self.assertEqual(
+            [n.verbatim_text for n in nodes],
+            ["First sentence ends here.", "Second sentence is separate."],
+        )
+
+    def test_non_body_types_never_merge(self) -> None:
+        nodes = walk(
+            _FakeDoc(
+                [
+                    _Item("section_header", "A heading with no period", level=1),
+                    _Item("list_item", "a list item with no period"),
+                    _Item("text", "a trailing body line"),
+                ]
+            )
+        )
+        self.assertEqual([n.node_type for n in nodes], ["heading", "list_item", "body"])
+
+    def test_code_block_body_with_newline_is_not_merged(self) -> None:
+        # Docling maps `code` to body and emits a fenced block as one
+        # element with internal newlines; it must never be merged.
+        nodes = walk(
+            _FakeDoc(
+                [
+                    _Item("text", "Intro line without a period"),
+                    _Item("code", "def f():\n    return 1"),
+                    _Item("text", "trailing prose without a period"),
+                ]
+            )
+        )
+        self.assertEqual(len(nodes), 3)
+        self.assertEqual(nodes[1].verbatim_text, "def f():\n    return 1")
+
+    def test_merged_node_offsets_round_trip_through_canonical_text(self) -> None:
+        nodes = walk(
+            _FakeDoc(
+                [
+                    _Item("text", "fragment one"),
+                    _Item("text", "fragment two."),
+                    _Item("text", "Separate paragraph."),
+                ]
+            )
+        )
+        self.assertEqual(len(nodes), 2)
+        self.assertEqual([n.reading_order for n in nodes], [0, 1])
+        canonical = "\n\n".join(n.verbatim_text for n in nodes)
+        for node in nodes:
+            self.assertEqual(canonical[node.char_start : node.char_end], node.verbatim_text)
 
 
 if __name__ == "__main__":
