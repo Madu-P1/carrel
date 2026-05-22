@@ -1,4 +1,4 @@
-"""Walk a DoclingDocument and emit one TypedNode per leaf in reading order.
+"""Walk a DoclingDocument and emit TypedNodes in reading order.
 
 Mirrors what `services.ingestion.concepts.chunk_text` does for the legacy
 chunks pipeline, but at a finer grain — the walker keeps Docling's
@@ -55,6 +55,88 @@ class TypedNode:
     verbatim_text: str
     parent_block_id: int | None
     reading_order: int
+
+
+# Sentence-terminal punctuation. A body fragment that does not end with
+# one of these (after peeling trailing closing quotes/brackets) is a
+# hard-wrap continuation and merges into the next fragment.
+_BOUNDARY = frozenset(".?!:;")
+_TRAILING = frozenset("\"')]”’")
+
+
+def _ends_at_boundary(text: str) -> bool:
+    """True when `text` ends a complete unit (the next body node is separate)."""
+    stripped = text.rstrip()
+    while stripped and stripped[-1] in _TRAILING:
+        stripped = stripped[:-1].rstrip()
+    return bool(stripped) and stripped[-1] in _BOUNDARY
+
+
+def _mergeable(node: TypedNode) -> bool:
+    """Whether `node` may take part in a soft-wrap merge.
+
+    Only plain `body` text qualifies. A body node carrying an internal
+    newline is a fenced code block (Docling maps `code` to `body` and
+    emits the whole block as one element) or other preformatted content,
+    so it is never merged.
+    """
+    return node.node_type == "body" and "\n" not in node.verbatim_text
+
+
+def _merge_soft_wrapped(nodes: list[TypedNode]) -> list[TypedNode]:
+    """Rejoin body fragments that Docling split at physical line wraps.
+
+    Docling emits one element per physical source line, so a hard-wrapped
+    paragraph arrives as several `body` elements split mid-phrase, which
+    makes verbatim citation impossible. A body fragment is merged into
+    the next when it does not end at a sentence boundary and both sides
+    are plain body text under the same heading. Non-body nodes, code
+    blocks, and boundary-ending fragments are left alone. char_start,
+    char_end, and reading_order are recomputed so the canonical
+    "\\n\\n"-joined text stays consistent.
+
+    A fragment ending in an abbreviation ("Inc.", "No.") is treated as a
+    boundary and not merged: a rare, benign mis-split.
+    """
+    if not nodes:
+        return nodes
+
+    groups: list[list[TypedNode]] = []
+    for node in nodes:
+        tail = groups[-1][-1] if groups else None
+        if (
+            tail is not None
+            and _mergeable(tail)
+            and _mergeable(node)
+            and tail.heading_path == node.heading_path
+            and not _ends_at_boundary(tail.verbatim_text)
+        ):
+            groups[-1].append(node)
+        else:
+            groups.append([node])
+
+    merged: list[TypedNode] = []
+    canonical_offset = 0
+    for order, group in enumerate(groups):
+        head = group[0]
+        text = " ".join(item.verbatim_text for item in group)
+        if order > 0:
+            canonical_offset += 2  # the "\n\n" separator, matches `walk`
+        char_start = canonical_offset
+        canonical_offset += len(text)
+        merged.append(
+            TypedNode(
+                node_type=head.node_type,
+                heading_path=head.heading_path,
+                page=head.page,
+                char_start=char_start,
+                char_end=canonical_offset,
+                verbatim_text=text,
+                parent_block_id=head.parent_block_id,
+                reading_order=order,
+            )
+        )
+    return merged
 
 
 def walk(doc: Any) -> list[TypedNode]:
@@ -115,4 +197,4 @@ def walk(doc: Any) -> list[TypedNode]:
         )
         reading_order += 1
 
-    return nodes
+    return _merge_soft_wrapped(nodes)

@@ -7,8 +7,10 @@ the Docling parse for each such document and writes `nodes`,
 `node_embeddings`, and `node_fts` rows. It never reads, writes, or
 deletes `chunks`, so the legacy retrieval path is untouched.
 
-Idempotent: a document that already has at least one `nodes` row is
-skipped, so re-running only picks up the remainder. A document whose
+Idempotent by default: a document that already has at least one `nodes`
+row is skipped, so re-running only picks up the remainder. Pass
+`--rebuild` to re-ingest every document, deleting its existing typed
+nodes first; use this after a change to the walker. A document whose
 original file is missing from UPLOAD_DIR is reported and skipped, not
 failed.
 
@@ -23,7 +25,7 @@ INGEST_USE_DOCLING or INGEST_DOCLING_FORMATS; populating the typed-node
 tables is its entire purpose.
 
 Usage:
-    .venv/bin/python script/reingest_all.py [--db PATH] [--dry-run] [--concurrency N]
+    .venv/bin/python script/reingest_all.py [--db PATH] [--dry-run] [--rebuild] [--concurrency N]
 
 Progress prints to stdout and appends to
 `<data>/migrations/reingest-<UTC-date>.jsonl`, one JSON object per doc.
@@ -46,15 +48,21 @@ if str(ROOT) not in sys.path:
 import db  # noqa: E402
 from services.ingestion import docling_parser, typed_walker  # noqa: E402
 from services.ingestion.persistence import (  # noqa: E402
+    delete_typed_nodes,
     embed_and_index_nodes,
     insert_typed_nodes,
 )
 
 
-def _candidate_documents(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    """Documents that have a stored original file and zero typed nodes."""
-    return conn.execute(
-        """
+def _candidate_documents(conn: sqlite3.Connection, *, rebuild: bool) -> list[sqlite3.Row]:
+    """Documents to (re-)ingest typed nodes for.
+
+    Default: documents with a stored original file and zero typed nodes
+    (backfill). With `rebuild`: every document with a stored file, so
+    existing nodes can be dropped and rebuilt. Use rebuild after a
+    change to the walker.
+    """
+    backfill_only = """
         SELECT id, filename, storage_name
         FROM documents
         WHERE storage_name IS NOT NULL
@@ -62,7 +70,14 @@ def _candidate_documents(conn: sqlite3.Connection) -> list[sqlite3.Row]:
           AND NOT EXISTS (SELECT 1 FROM nodes WHERE nodes.doc_id = documents.id)
         ORDER BY upload_date ASC
         """
-    ).fetchall()
+    rebuild_all = """
+        SELECT id, filename, storage_name
+        FROM documents
+        WHERE storage_name IS NOT NULL
+          AND storage_name != ''
+        ORDER BY upload_date ASC
+        """
+    return conn.execute(rebuild_all if rebuild else backfill_only).fetchall()
 
 
 def _parse_one(doc_id: str, filename: str, path: Path):
@@ -89,6 +104,14 @@ def main() -> int:
         default=4,
         help="Number of parallel Docling parses (default 4).",
     )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help=(
+            "Re-ingest every document, deleting existing typed nodes first. "
+            "Use after a walker change; default backfills only zero-node docs."
+        ),
+    )
     args = parser.parse_args()
 
     if not docling_parser.is_available():
@@ -102,7 +125,7 @@ def main() -> int:
         db.DB_PATH = Path(args.db).resolve()
     conn = db.get_db()
     try:
-        candidates = _candidate_documents(conn)
+        candidates = _candidate_documents(conn, rebuild=args.rebuild)
         todo: list[tuple[str, str, Path]] = []
         missing: list[sqlite3.Row] = []
         for row in candidates:
@@ -112,8 +135,9 @@ def main() -> int:
             else:
                 missing.append(row)
 
+        scope = "document(s)" if args.rebuild else "document(s) without typed nodes"
         print(
-            f"{len(candidates)} document(s) without typed nodes: "
+            f"{len(candidates)} {scope}: "
             f"{len(todo)} re-ingestable, {len(missing)} missing the original file."
         )
         for row in missing:
@@ -155,6 +179,8 @@ def main() -> int:
                         print(f"  fail (parse): {doc_id}  {filename!r}  {parse_error}")
                     else:
                         try:
+                            if args.rebuild:
+                                delete_typed_nodes(conn, doc_id)
                             node_ids = insert_typed_nodes(conn, doc_id, nodes)
                             embedded = embed_and_index_nodes(conn, nodes, node_ids)
                             conn.commit()
