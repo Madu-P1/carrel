@@ -23,6 +23,7 @@ from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.retrieval import ScoredHit, search_hybrid
 from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES
+from services.retrieval.quote_heuristics import chunks_heuristic_enabled, is_structural_quote
 from services.retrieval.typed_hybrid import (
     RetrievedNode,
     retrieval_use_nodes_enabled,
@@ -164,6 +165,12 @@ class GroundedAnswer:
     citation_attempt_count: int
     citation_drop_count: int
     citation_repair_count: int
+    # Gate 1 (T2 / ADR 0004): count of citations dropped because the
+    # cited quote string matched a structural shape (heading, bare
+    # reference, banner). Separate from citation_drop_count so the two
+    # failure modes can be told apart at observability time. Always 0
+    # when RETRIEVAL_CHUNKS_HEURISTIC is off (the default until T4).
+    citation_structural_drop_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -1207,6 +1214,11 @@ def _resolve_grounded_answer(
     citation_attempt_count = 0
     citation_drop_count = 0
     citation_repair_count = 0
+    citation_structural_drop_count = 0
+    # Gate 1 (T2): resolve the heuristic-enabled flag once per answer so
+    # toggling RETRIEVAL_CHUNKS_HEURISTIC mid-request cannot create a
+    # half-filtered answer. ADR 0004 plug-in site.
+    heuristic_on = chunks_heuristic_enabled()
     for raw_claim in payload.get("claims", []):
         if not isinstance(raw_claim, dict):
             continue
@@ -1230,6 +1242,22 @@ def _resolve_grounded_answer(
             matched_quote = validated_citation_quote(quote, context.verbatim_text)
             if matched_quote is None:
                 citation_drop_count += 1
+                continue
+            # Gate 1 (T2 / ADR 0004): drop citations whose shape is
+            # structural (heading, bare reference, banner) even though
+            # the quote is verbatim. Quote-granularity per the plan;
+            # claims whose only citation drops here flow into
+            # unsupported_spans by the existing "if citations:" check.
+            if heuristic_on and is_structural_quote(matched_quote.quote):
+                citation_structural_drop_count += 1
+                log_event(
+                    LOGGER,
+                    logging.WARNING,
+                    "tutor_structural_quote_dropped",
+                    quote_preview=matched_quote.quote[:80],
+                    node_id=context.node_id,
+                    claim_preview=claim_text[:80],
+                )
                 continue
             if matched_quote.repaired:
                 citation_repair_count += 1
@@ -1266,6 +1294,7 @@ def _resolve_grounded_answer(
         citation_attempt_count=citation_attempt_count,
         citation_drop_count=citation_drop_count,
         citation_repair_count=citation_repair_count,
+        citation_structural_drop_count=citation_structural_drop_count,
     )
 
 
@@ -1293,6 +1322,7 @@ def _log_grounded_answer(
         citation_attempt_count=answer.citation_attempt_count,
         citation_drop_count=answer.citation_drop_count,
         citation_repair_count=answer.citation_repair_count,
+        citation_structural_drop_count=answer.citation_structural_drop_count,
     )
 
 
