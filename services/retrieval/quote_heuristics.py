@@ -22,12 +22,18 @@ Both call sites share this single implementation. No drift.
 
 Three structural signals (any one is sufficient):
 
-- **Heading shape**: short, no terminal sentence punctuation, no
-  finite verb, no code/math characters, single line. Catches
-  `"Chapter 3: Contract Formation"`.
+- **Heading shape**: short OR section-numbered, no terminal sentence
+  punctuation, no finite verb, no code/math characters, single line.
+  Catches `"Chapter 3: Contract Formation"` and the long-title
+  variant `"Chapter 14: Modern Trial Procedure In Contemporary
+  American Courts"`. The length cap is bypassed when the quote
+  opens with a section-numbered prefix; the other gates still apply.
 - **Bare reference**: matches a fixed pattern set for numeric-only,
-  author-year (`Smith 2019`), bracketed citation (`[12]`), or
-  see-figure shape (`Fig. 4`, `p. 22`).
+  author-year (`Smith 2019`), bracketed citation (`[12]`),
+  see-figure shape (`Fig. 4`, `p. 22`), chapter/section/part labels
+  (`Chapter 3`, `Sec. 2.1`, `Part IV`), page ranges
+  (`pp. 22-25`), equation refs (`Eq. 3`), and
+  appendix/exhibit refs (`Appendix A`, `Exhibit 3`).
 - **Banner shape**: every word title-cased, at least 2 words, no
   finite verb. Catches `"Photosynthesis And Respiration"`.
 
@@ -172,6 +178,44 @@ _BARE_REFERENCE_PATTERNS = (
         r"^(?:see\s+)?(?:fig(?:ure)?|table|chart|p)\.?\s+\d+[a-z]?\.?$",
         re.IGNORECASE,
     ),
+    # Chapter / section / part reference: "Chapter 3", "Sec. 2.1",
+    # "§ 4.2", "Part IV", "Ch. 5a". Caught here at bare-reference
+    # granularity for the short "just the label" case; the longer
+    # "Chapter 3: Contract Formation" case is handled by the heading
+    # shape's section-numbered-prefix extension below.
+    re.compile(
+        r"^(?:chapter|chap|section|sec|part|pt|ch|§)"
+        r"\.?\s+(?:\d+(?:\.\d+)*[a-z]?|[ivxlcdm]+)\.?$",
+        re.IGNORECASE,
+    ),
+    # Page-range: "pp. 22-25", "pages 100-105", "p.22-25". The hyphen
+    # may be ASCII `-`, en-dash, or em-dash.
+    re.compile(r"^(?:pp?|pages)\.?\s*\d+\s*[\-–—]\s*\d+\.?$", re.IGNORECASE),
+    # Equation / formula reference: "Eq. 3", "Equation 12", "Formula 4.2"
+    re.compile(
+        r"^(?:eq(?:uation)?|formula)\.?\s+\d+(?:\.\d+)*[a-z]?\.?$",
+        re.IGNORECASE,
+    ),
+    # Appendix / exhibit reference: "Appendix A", "App. B", "Exhibit 3",
+    # "Exh. 4.2"
+    re.compile(
+        r"^(?:appendix|app|exhibit|exh)\.?\s+(?:[A-Z]|\d+(?:\.\d+)*)\.?$",
+        re.IGNORECASE,
+    ),
+)
+
+# Leading-prefix recognizer for section-numbered headings. Fires when
+# a quote starts with a chapter/section/part word followed by a
+# number, regardless of total length. Catches "Chapter 14: Modern
+# Trial Procedure In Contemporary American Courts" (> 80 chars) and
+# the like. Negative cases ("Chapter 3 covers contract formation.")
+# are still rejected by the terminal-punctuation and finite-verb
+# gates applied to the whole quote, so this is purely a length-cap
+# bypass, not a new path.
+_SECTION_NUMBERED_PREFIX = re.compile(
+    r"^(?:chapter|chap|section|sec|part|pt|ch|§)"
+    r"\.?\s+(?:\d+(?:\.\d+)*[a-z]?|[IVXLCDM]+)",
+    re.IGNORECASE,
 )
 
 _WORD_PATTERN = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
@@ -199,25 +243,45 @@ def _contains_non_heading_chars(text: str) -> bool:
     return any(ch in _NON_HEADING_CHARS for ch in text)
 
 
+def _starts_with_section_number(text: str) -> bool:
+    """True if `text` opens with Chapter/Section/Part/§ + number.
+
+    Used to bypass the `HEADING_MAX_CHARS` cap on
+    `is_heading_shape`: a quote that opens with a section-numbered
+    prefix is structurally heading-shaped even if the title behind
+    the number runs long. Terminal-punctuation and finite-verb gates
+    still apply, so a sentence opener like
+    `"Chapter 3 covers contract formation in detail."` keeps.
+    """
+    return bool(_SECTION_NUMBERED_PREFIX.match(text))
+
+
 def is_heading_shape(quote: str) -> bool:
-    """Heading detector: short, single line, no terminal punctuation,
-    no finite verb, no code/math characters.
+    """Heading detector: short (or section-numbered), single line, no
+    terminal punctuation, no finite verb, no code/math characters.
 
     The terminal-punctuation gate distinguishes a heading (no period)
     from a short factual sentence ("Photosynthesis." or "Photosynthesis
     is the process."). The non-heading-chars gate excludes code,
     equations, JSON, and multi-line bullets.
+
+    The length cap is bypassed when the quote opens with a
+    section-numbered prefix (Chapter 3, Section 4.2, Part IV, § 7).
+    The other gates still apply, so this is a length bypass, not a
+    bypass of false-drop guards.
     """
     stripped = quote.strip()
     if not stripped:
         return False
-    if len(stripped) > _heading_max_chars():
+    if _contains_non_heading_chars(stripped):
         return False
     if _ends_with_sentence_terminator(stripped):
         return False
-    if _contains_non_heading_chars(stripped):
+    if _has_finite_verb(stripped):
         return False
-    return not _has_finite_verb(stripped)
+    if len(stripped) <= _heading_max_chars():
+        return True
+    return _starts_with_section_number(stripped)
 
 
 def is_bare_reference(quote: str) -> bool:
