@@ -1,34 +1,25 @@
-# Carrel — Deferred Work Backlog
+# Slot 1 — Gate 1: structural-citation chunks-path heuristic
 
-Plans that came out of completed reviews but were intentionally not in scope of the milestone they were surfaced in. Each item lives at the path noted; this file is the index.
+**Owns subtree:** `services/retrieval/` (chunks path), citation-resolve hooks in `services/tutor.py`, `tests/test_retrieval_*`, `tests/test_tutor_grounded*`.
 
-## Active backlog (from `docs/plans/flashcards-focus-2026-05-09.md` autoplan, approved 2026-05-10)
+**Stays out of:** anything under `services/ingestion/`, anything under `evals/` that isn't a smoke harness, `ai/afm_*`, Swift sidecars. Slot 2 owns ingestion.
 
-| Plan | Trigger | Why deferred | Source |
-|---|---|---|---|
-| `paid-tier-infrastructure.md` | PR 0 split surfaced in eng review | Carrel has no users/accounts/licenses table, no auth middleware, no Stripe. The full "BYOK + paid gate" story is multi-week work that should be its own milestone, not an appendix to flashcards. Includes macOS Keychain integration for Anthropic key storage. | autoplan Phase 3 |
-| `flashcard-quality-investigation.md` | User feedback ("card quality is bad") | Auto-gen is paused via PR 0a until card quality is investigated. Needs prompt-engineering pass + eval suite expansion before auto-gen can return behind a feature flag. | autoplan Phase 1 (CEO) |
-| `voice-refresh-app-wide.md` | User directive ("more welcoming") | Flashcard surface gets voice work in this milestone (deferred to week 3 pending telemetry). Library, Reader, Ask, Plan, Dashboard, Session need their own focused voice pass. | autoplan Phase 2 (Design) |
-| `bulk-card-generation-flow.md` | CEO subagent's "generation-first" reframe | If post-PR-7 telemetry shows median active user has <20 cards, the real funnel issue is generation, not review. This plan covers "drop a textbook chapter → 50 cards proposed in 30s, all source-linked → accept-all in one click." | autoplan Phase 1 (CEO) |
-| ~~`flashcards-citation-on-back.md`~~ | ~~Original PR 4~~ | **SHIPPED 2026-05-12** as PR 4 of flashcards-focus. | autoplan Phase 3 |
-| ~~`flashcards-cloze-and-reverse.md`~~ | ~~Original PR 5~~ | **SHIPPED 2026-05-13** as PR 5.1 (cloze, ADR 0002) and PR 5.2 (reverse-pair, ADR 0003) of flashcards-focus. | autoplan Phase 3 |
+**Source:** TODOS.md → "Active backlog (from structural-citation gate, Gate 0 shipped 2026-05-22)" → Gate 1 row. Plan doc shipped 2026-05-25; see `docs/plans/structural-citation-gate-1-chunks-heuristic.md` + ADR `docs/decisions/0004-gate-1-chunks-path-structural-citation-heuristic.md`.
 
-## Active backlog (from `~/.gstack/projects/Codex/madu-feat-audit-pr-p3-provider-singleton-invalidation-design-20260513-210618.md` ingestion-robustness eng review, approved 2026-05-14)
+## Tasks
 
-| Plan | Trigger | Why deferred | Source |
-|---|---|---|---|
-| `afm-ingestion-compatibility.md` | Eng review of B+C-lite ingestion plan | When AFM lands (per `docs/plans/afm-integration-2026-05-10.md`, ACTIVE), verify the new subprocess workers + two-pass ingestion play nicely with `EinsteinAFMBridge`. AFM is a separate Swift sidecar with its own resource footprint; `MemoryPressure.is_safe_to_start_worker()` and adaptive concurrency must account for AFM holding memory. Risk: extraction worker spawns at the same time AFM is loading a model → unified-memory thrash. Acceptance: ingestion + AFM concurrent on a 16GB Mac without page-fault storms. | plan-eng-review 2026-05-14 |
-| `auto-snapshot-before-bulk-batch.md` | Eng review of B+C-lite ingestion plan | A 25-file batch that fails halfway leaves cards/concepts/chunks in inconsistent rows. `chunk_locks` is gone (cards anchor to source spans now), but partial ingestion can still leave orphaned vector entries or half-indexed concepts. Auto-snapshot the SQLite DB before any batch >5 files; expose a one-click revert in the cube companion error UI. Reuses the existing `pg_dump`-equivalent SQLite `.backup` mechanism. Acceptance: dropped batch fails → user can restore pre-batch state in <5s. | plan-eng-review 2026-05-14 |
-| `cross-platform-memory-pressure-fallback.md` | Eng review of B+C-lite ingestion plan | When Carrel ports to Linux (no immediate plan), `MemoryPressure.is_safe_to_start_worker()` needs a psutil-based fallback for the macOS-specific `vm_stat` + `sysctl vm.swapusage` calls. The helper is wrapped exactly so this fallback is a 1-day swap, but capture it now or the macOS-only assumption will calcify. | plan-eng-review 2026-05-14 |
+- [x] T1: Write `docs/plans/structural-citation-gate-1-chunks-heuristic.md` — done 2026-05-25. Proponent/adversary/synthesizer routine ran (transcripts and verdict captured in `docs/decisions/0004-gate-1-chunks-path-structural-citation-heuristic.md`). Plan revised post-debate: predicate operates on cited quote strings at resolve time (not chunk text at hydration time), a new T2.0 ships eval instrumentation before T2, and the labeled-slice question escalates to operator-followup rather than self-resolve.
 
-## Active backlog (from structural-citation gate, Gate 0 shipped 2026-05-22)
+- [ ] T2.0: Sub-PR 0 — extend `evals/run_evals.py:470-490` chunks branch to apply the same `is_structural_quote` shape detector to cited quote strings and increment `structural_citation_count`. Same shape implementation as T2's runtime filter (single source in `services/retrieval/quote_heuristics.py`). Measurement-only: the runtime filter stays unimported here. Acceptance: full-mode eval run with `RETRIEVAL_USE_NODES=false` reports a non-zero `structural_citation_count` and the measured baseline lands at `evals/reports/structural-citation-baseline-2026-05-25.md`. **Scope-amendment note:** this task deliberately edits `evals/run_evals.py`, which the independence assertion below originally forbade. The ADR 0004 synthesizer verdict made it a load-bearing precondition; see the amended assertion.
 
-| Plan | Trigger | Why deferred | Source |
-|---|---|---|---|
-| Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
-| Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
+- [ ] T2: Sub-PR 1 — runtime quote-shape filter. Lands `services/retrieval/quote_heuristics.py` (new module) with `is_structural_quote` covering heading-shape + bare-reference-shape signals, and the closed-class verb detector. Wires `_drop_structural_citations` into `services/tutor.py::_resolve_grounded_answer` after `validated_citation_quote` validates each citation. Behind `RETRIEVAL_CHUNKS_HEURISTIC=true` (default `false`). Tests: unit on each signal, integration on a mocked LLM response with a heading-shaped quote. Acceptance: with the flag on, `structural_citation_rate` on the full-mode eval (chunks branch) is non-zero pre-filter and drops post-filter; `groundedness@8` stays >= 0.7 and within 0.02 of T2.0 baseline.
 
-## Notes
-- Each plan name in `docs/plans/<plan>.md` when written.
-- Pre-commit kill conditions and success metrics live in the originating plan, not here.
-- Re-prioritize this list after every milestone closeout, not continuously.
+- [ ] T3: Sub-PR 2 — tighten banner-shape signal + add bare-reference patterns. Adds Signal 3 (`is_banner_shape`: all-words-titlecase with >=2 words AND no finite verb), tightens existing thresholds based on T2's error analysis, adds 3-5 more bare-reference regex patterns surfaced by T2 measurement. Same env flag, same eval suite. Acceptance: second-round drop measured, recorded in `evals/reports/structural-citation-t3-{date}.md`.
+
+- [ ] T4: Sub-PR 3 — flip `RETRIEVAL_CHUNKS_HEURISTIC` to default-on. Comparison report at `evals/reports/compare-chunks-heuristic-{before,after}.md` runs full-mode evals with the flag explicitly off then on. Acceptance gate: `structural_citation_rate` drops >=30% from the post-T2.0 baseline AND `groundedness@8` stays within 0.02 of baseline.
+
+## Independence assertion (amended 2026-05-25)
+
+If a sub-PR finds itself needing to edit `services/ingestion/`, `services/extraction/`, `ai/afm_*`, or Swift sidecars, STOP. That's slot 2's land or it's net-new coordination work. Document the collision in `.claude/fleet/collisions.md` (create if missing) and halt this slot for operator review.
+
+**Scope amendment (ADR 0004):** measurement-only edits to `evals/run_evals.py` ARE in scope for this slot when (a) they extend instrumentation needed for slot-1 acceptance gates and (b) they do not change the eval suite's pass/fail semantics for any non-slot-1 work. T2.0 ships under this amendment. The amendment is narrow: it does NOT grant authority to add new eval cases, change existing assertions, or modify the eval runner's CLI surface; it grants authority only to extend metric computation. Authoring new labeled slices (e.g. `evals/cases/structural-citation.jsonl`) remains escalated as an operator-followup per the ADR.
