@@ -21,6 +21,13 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 | `auto-snapshot-before-bulk-batch.md` | Eng review of B+C-lite ingestion plan | A 25-file batch that fails halfway leaves cards/concepts/chunks in inconsistent rows. `chunk_locks` is gone (cards anchor to source spans now), but partial ingestion can still leave orphaned vector entries or half-indexed concepts. Auto-snapshot the SQLite DB before any batch >5 files; expose a one-click revert in the cube companion error UI. Reuses the existing `pg_dump`-equivalent SQLite `.backup` mechanism. Acceptance: dropped batch fails → user can restore pre-batch state in <5s. | plan-eng-review 2026-05-14 |
 | `cross-platform-memory-pressure-fallback.md` | Eng review of B+C-lite ingestion plan | When Carrel ports to Linux (no immediate plan), `MemoryPressure.is_safe_to_start_worker()` needs a psutil-based fallback for the macOS-specific `vm_stat` + `sysctl vm.swapusage` calls. The helper is wrapped exactly so this fallback is a 1-day swap, but capture it now or the macOS-only assumption will calcify. | plan-eng-review 2026-05-14 |
 
+## Active backlog (from structural-citation gate, Gate 0 shipped 2026-05-22)
+
+| Plan | Trigger | Why deferred | Source |
+|---|---|---|---|
+| Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
+| Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
+
 ## Notes
 - Each plan name in `docs/plans/<plan>.md` when written.
 - Pre-commit kill conditions and success metrics live in the originating plan, not here.

@@ -1016,6 +1016,52 @@ class HydrateNodeContextDispatchTests(unittest.TestCase):
         self.assertIn("Mitosis", ctx.verbatim_text)
         self.assertAlmostEqual(ctx.score, 0.91)
 
+    def test_heading_nodes_are_filtered_from_citation_context(self) -> None:
+        """Gate 0 — a heading is a section label, not answer content, and
+        must never reach the model as citable context even when it
+        outranks the body node scoped under it."""
+        from services.retrieval.typed_hybrid import RetrievedNode
+
+        with main.get_db() as conn:
+            conn.execute("DELETE FROM documents")
+            conn.execute(
+                """
+                INSERT INTO documents (id, filename, file_type, subject_name, status)
+                VALUES (?, ?, 'txt', ?, 'ready')
+                """,
+                ("doc-nodes-h", "biology.md", "Biology"),
+            )
+            heading = RetrievedNode(
+                node_id=7,
+                doc_id="doc-nodes-h",
+                node_type="heading",
+                heading_path="Cell division",
+                page=1,
+                char_start=0,
+                char_end=13,
+                verbatim_text="Cell division",
+                snippet="Cell division",
+                score=0.99,
+            )
+            body = RetrievedNode(
+                node_id=8,
+                doc_id="doc-nodes-h",
+                node_type="body",
+                heading_path="Cell division",
+                page=1,
+                char_start=14,
+                char_end=72,
+                verbatim_text="Mitosis creates two genetically identical daughter cells.",
+                snippet="Mitosis creates two daughter cells.",
+                score=0.40,
+            )
+            contexts = tutor_service._hydrate_node_context([heading, body], conn)
+
+        # The heading ranked highest yet is dropped; only the body node —
+        # the one that can actually ground a claim — survives.
+        self.assertEqual([c.node_id for c in contexts], [8])
+        self.assertEqual(contexts[0].node_type, "body")
+
     def test_scored_hit_dispatch_to_chunks_path(self) -> None:
         with main.get_db() as conn:
             conn.execute("DELETE FROM chunks")

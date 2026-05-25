@@ -4,13 +4,19 @@ The typed-node retrieval path filters BM25 + vector candidates by
 `node_type` so a question about "the table on page 3" doesn't compete
 against caption text and a question about photosynthesis doesn't surface
 table cells. The mapping is keyword-driven and deliberately conservative
-— if no trigger word fires, retrieval defaults to `heading`, `body`,
-`list_item` (the three node types that always carry prose).
+— if no trigger word fires, retrieval defaults to `body` and `list_item`,
+the node types that carry answer content.
 
-`header` and `footer` are NEVER retrievable. They're page chrome
-(running titles, page numbers) that the ingest path already excluded
-from `node_embeddings`. Including them in the BM25 filter would still
-let them surface from `node_fts`, so the filter clamps them out here.
+`heading`, `header`, and `footer` are NEVER retrievable and never
+citable (see `NON_CITABLE_NODE_TYPES`). They are structure, not answers:
+a heading is a section label, a header/footer is page chrome (running
+titles, page numbers). Grounding a claim on one produces an answer with
+no informational value — it just echoes a title back. The heading text
+is not lost to retrieval: the ingest path copies each node's
+`heading_path` onto its body/list_item rows and `node_fts` indexes that
+column, so a query whose terms appear only in a section title still
+matches the answer-bearing nodes scoped under it. The heading node
+itself stays out of the candidate pool.
 """
 
 from __future__ import annotations
@@ -18,8 +24,15 @@ from __future__ import annotations
 import re
 from typing import FrozenSet
 
-# Default retrievable types — the prose backbone.
-_BASE_TYPES: FrozenSet[str] = frozenset({"heading", "body", "list_item"})
+# Node types that are structure, not answer content. A claim must never
+# be grounded on one: a heading is a section label, header/footer is page
+# chrome. Retrieval keeps them out of the candidate pool and the tutor
+# citation path filters them as a backstop. Single source of truth —
+# imported by services.tutor and evals.run_evals.
+NON_CITABLE_NODE_TYPES: FrozenSet[str] = frozenset({"heading", "header", "footer"})
+
+# Default retrievable types — the answer-bearing prose backbone.
+_BASE_TYPES: FrozenSet[str] = frozenset({"body", "list_item"})
 
 # Trigger word -> additional node_type to include. Order doesn't matter;
 # matches are unioned.
