@@ -135,10 +135,11 @@ case Gate 0 explicitly deferred to Gate 1.
 
 ### Feature flag
 
-- Env: `RETRIEVAL_CHUNKS_HEURISTIC` (boolean, default `false` until
-  T4). Name kept from the original plan despite the predicate now
-  applying to both paths, because the chunks path is what the flag
-  defends; the name documents intent.
+- Env: `RETRIEVAL_CHUNKS_HEURISTIC` (boolean, default `true` since
+  T4 flipped 2026-05-25). Name kept from the original plan despite
+  the predicate now applying to both paths, because the chunks path
+  is what the flag defends; the name documents intent. Operators
+  opt out with `RETRIEVAL_CHUNKS_HEURISTIC=false`.
 - Implementation: a single function in `services/retrieval/
   quote_heuristics.py::chunks_heuristic_enabled()` reading `os.getenv`.
 

@@ -319,12 +319,14 @@ class StructuralQuoteIntegrationTests(unittest.TestCase):
 
 
 class ChunksHeuristicEnabledTests(unittest.TestCase):
-    def test_default_off(self) -> None:
+    def test_default_on(self) -> None:
+        # T4 flipped the default-on 2026-05-25. Operators opt out by
+        # setting RETRIEVAL_CHUNKS_HEURISTIC=false explicitly.
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RETRIEVAL_CHUNKS_HEURISTIC", None)
-            self.assertFalse(chunks_heuristic_enabled())
+            self.assertTrue(chunks_heuristic_enabled())
 
-    def test_true_enables(self) -> None:
+    def test_true_keeps_on(self) -> None:
         with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}):
             self.assertTrue(chunks_heuristic_enabled())
         with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "TRUE"}):

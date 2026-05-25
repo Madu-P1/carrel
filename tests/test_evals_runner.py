@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +73,19 @@ class EvalsRunnerTests(unittest.TestCase):
         self.assertNotIn("quote_validity", report["summary"])
 
     def test_full_mode_computes_metrics_from_stub_router(self) -> None:
+        # The stub LLM emits the quote `"genetically identical daughter
+        # cells"`, which is a heading-shape per
+        # services/retrieval/quote_heuristics.py::is_heading_shape (short,
+        # no terminal punctuation, no closed-class finite verb). T4
+        # flipped `RETRIEVAL_CHUNKS_HEURISTIC` default-on 2026-05-25, so
+        # the runtime filter would drop this stub citation and the
+        # harness-wiring metrics under audit would not be computed. Pin
+        # the env explicitly off; this test is about
+        # `run_case` -> precision/recall/quote-validity wiring, not about
+        # the runtime predicate. Runtime predicate coverage lives in
+        # tests.test_retrieval_quote_heuristics + the chunks-branch
+        # integration test below.
+        self.enterContext(mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "false"}))
         result = ClaudeCallResult(
             ok=True,
             task="balanced",

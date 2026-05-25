@@ -324,7 +324,9 @@ def is_structural_quote(quote: str) -> bool:
 def chunks_heuristic_enabled() -> bool:
     """Whether the runtime structural-citation filter is on.
 
-    Default False until T4 flips the default. The eval-harness
+    Default True after T4 flipped the default (2026-05-25). Explicit
+    `RETRIEVAL_CHUNKS_HEURISTIC=false` (or `0`, `off`, `no`, empty) disables
+    so the operator can opt out without code change. The eval-harness
     instrumentation ignores this flag; it always measures.
     """
-    return os.getenv("RETRIEVAL_CHUNKS_HEURISTIC", "false").lower() == "true"
+    return os.getenv("RETRIEVAL_CHUNKS_HEURISTIC", "true").lower() == "true"
