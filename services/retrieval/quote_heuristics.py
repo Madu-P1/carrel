@@ -10,11 +10,11 @@ emitted it.
 
 Used in two places per the Gate 1 plan §"Where the predicate plugs in":
 
-1. `evals/run_evals.py` chunks branch (T2.0, this PR) — counts how
+1. `evals/run_evals.py` chunks branch (T2.0, this PR): counts how
    often surviving quotes are structural, producing the
    `structural_citation_rate` metric the chunks path has lacked since
    the Gate 0 typed-node-only ship.
-2. (T2, future) `services/tutor.py::_resolve_grounded_answer` — when
+2. (T2, future) `services/tutor.py::_resolve_grounded_answer`: when
    `RETRIEVAL_CHUNKS_HEURISTIC=true`, drop structural quotes and move
    their claims to `unsupported_spans`.
 

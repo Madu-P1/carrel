@@ -480,7 +480,7 @@ def run_case(
                 # instrumentation (ADR 0004): apply the same content-
                 # shape detector the future runtime filter will use
                 # against the cited quote string. Quote granularity, not
-                # chunk granularity — see the ADR for why a chunk-level
+                # chunk granularity; see the ADR for why a chunk-level
                 # filter cannot catch a heading line living inside a body
                 # chunk. The runtime filter ships in T2; this is
                 # measurement-only.
