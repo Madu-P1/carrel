@@ -793,6 +793,205 @@ class GroundedTutorTests(unittest.TestCase):
         self.assertIn("citation_repair_count", response)
         self.assertEqual("claude-sonnet-4-6", response["model"])
 
+    def test_structural_quote_passes_through_when_heuristic_flag_off(self) -> None:
+        """Gate 1 (T2) regression-preservation: with RETRIEVAL_CHUNKS_HEURISTIC
+        off (the default until T4), a heading-shape cited quote survives
+        the new filter and reaches the answer's claims unchanged."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-h", "headings.txt", "Biology")
+            chunk_content = (
+                "Chapter 3: Mitosis Overview\n"
+                "Mitosis separates duplicated chromosomes into two identical cells."
+            )
+            self._insert_chunk(
+                conn,
+                "chunk-heading",
+                "doc-h",
+                chunk_content,
+                section="Mitosis",
+                page_num=2,
+            )
+            conn.commit()
+            hits = [self._hit("chunk-heading", "doc-h", "Mitosis", chunk_content)]
+            router = StubRouter(
+                self._tool_result(
+                    {
+                        "summary": "Mitosis overview.",
+                        "claims": [
+                            {
+                                "text": "Mitosis is the focus of this section.",
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        # Heading-shape: is_heading_shape fires.
+                                        "quote": "Chapter 3: Mitosis Overview",
+                                    }
+                                ],
+                            }
+                        ],
+                        "unsupported_spans": [],
+                    }
+                )
+            )
+            with mock.patch("services.tutor.search_hybrid", return_value=hits):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_CHUNKS_HEURISTIC": "false"},
+                    clear=False,
+                ):
+                    response = tutor_service.grounded_tutor_response(
+                        conn,
+                        "What does chapter 3 say about mitosis?",
+                        doc_ids=["doc-h"],
+                        router=router,
+                    )
+
+        self.assertTrue(response.ok)
+        # Flag off: structural quote keeps its citation.
+        self.assertEqual(1, len(response.claims))
+        self.assertEqual(1, len(response.claims[0].citations))
+        self.assertEqual("Chapter 3: Mitosis Overview", response.claims[0].citations[0].quote)
+        self.assertEqual(0, response.citation_structural_drop_count)
+        self.assertEqual((), response.unsupported_spans)
+
+    def test_structural_quote_dropped_when_heuristic_flag_on(self) -> None:
+        """Gate 1 (T2) primary case: with RETRIEVAL_CHUNKS_HEURISTIC on,
+        a heading-shape cited quote is dropped post-validation, the
+        structural-drop counter increments, the orphaned claim moves to
+        unsupported_spans, and citation_drop_count does NOT double-count
+        the structural drop."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-h", "headings.txt", "Biology")
+            chunk_content = (
+                "Chapter 3: Mitosis Overview\n"
+                "Mitosis separates duplicated chromosomes into two identical cells."
+            )
+            self._insert_chunk(
+                conn,
+                "chunk-heading",
+                "doc-h",
+                chunk_content,
+                section="Mitosis",
+                page_num=2,
+            )
+            conn.commit()
+            hits = [self._hit("chunk-heading", "doc-h", "Mitosis", chunk_content)]
+            router = StubRouter(
+                self._tool_result(
+                    {
+                        "summary": "Mitosis overview.",
+                        "claims": [
+                            {
+                                "text": "Mitosis is the focus of this section.",
+                                "citations": [
+                                    {
+                                        "chunk_index": 1,
+                                        "quote": "Chapter 3: Mitosis Overview",
+                                    }
+                                ],
+                            }
+                        ],
+                        "unsupported_spans": [],
+                    }
+                )
+            )
+            with mock.patch("services.tutor.search_hybrid", return_value=hits):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_CHUNKS_HEURISTIC": "true"},
+                    clear=False,
+                ):
+                    response = tutor_service.grounded_tutor_response(
+                        conn,
+                        "What does chapter 3 say about mitosis?",
+                        doc_ids=["doc-h"],
+                        router=router,
+                    )
+
+        self.assertTrue(response.ok)
+        self.assertEqual(0, len(response.claims))
+        self.assertEqual(1, response.citation_structural_drop_count)
+        # No double-count with the existing drop counter.
+        self.assertEqual(0, response.citation_drop_count)
+        # Orphaned claim text demoted to unsupported_spans, same path the
+        # existing "if citations:" check uses for every claim whose
+        # citations all fail upstream validation.
+        self.assertIn(
+            "Mitosis is the focus of this section.",
+            response.unsupported_spans,
+        )
+
+    def test_mixed_structural_and_prose_keeps_prose_citation(self) -> None:
+        """Gate 1 (T2): with the flag on, a claim with both a structural
+        and a prose citation keeps the prose one. Only the structural
+        citation is dropped; the claim survives because the surviving
+        citation grounds it."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-h", "headings.txt", "Biology")
+            chunk_content = (
+                "Chapter 3: Mitosis Overview\n"
+                "Mitosis separates duplicated chromosomes into two identical cells."
+            )
+            self._insert_chunk(
+                conn,
+                "chunk-heading",
+                "doc-h",
+                chunk_content,
+                section="Mitosis",
+                page_num=2,
+            )
+            conn.commit()
+            hits = [self._hit("chunk-heading", "doc-h", "Mitosis", chunk_content)]
+            router = StubRouter(
+                self._tool_result(
+                    {
+                        "summary": "Mitosis overview.",
+                        "claims": [
+                            {
+                                "text": "Mitosis separates duplicated chromosomes.",
+                                "citations": [
+                                    {
+                                        # Structural — gets dropped.
+                                        "chunk_index": 1,
+                                        "quote": "Chapter 3: Mitosis Overview",
+                                    },
+                                    {
+                                        # Prose substring of the same chunk — survives.
+                                        "chunk_index": 1,
+                                        "quote": "Mitosis separates duplicated chromosomes into two identical cells.",
+                                    },
+                                ],
+                            }
+                        ],
+                        "unsupported_spans": [],
+                    }
+                )
+            )
+            with mock.patch("services.tutor.search_hybrid", return_value=hits):
+                with mock.patch.dict(
+                    os.environ,
+                    {"GROUNDED_TUTOR": "on", "RETRIEVAL_CHUNKS_HEURISTIC": "true"},
+                    clear=False,
+                ):
+                    response = tutor_service.grounded_tutor_response(
+                        conn,
+                        "What does mitosis do?",
+                        doc_ids=["doc-h"],
+                        router=router,
+                    )
+
+        self.assertTrue(response.ok)
+        self.assertEqual(1, len(response.claims))
+        self.assertEqual(1, len(response.claims[0].citations))
+        # The surviving citation is the prose one.
+        self.assertEqual(
+            "Mitosis separates duplicated chromosomes into two identical cells.",
+            response.claims[0].citations[0].quote,
+        )
+        self.assertEqual(1, response.citation_structural_drop_count)
+        self.assertEqual(0, response.citation_drop_count)
+        self.assertEqual((), response.unsupported_spans)
+
 
 class TutorPrimaryRetrievalDispatchTests(unittest.TestCase):
     """T57 — verify `tutor_primary_retrieval` dispatches on
