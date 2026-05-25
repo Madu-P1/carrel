@@ -91,3 +91,5 @@ Run before landing anything. Full list in [CLAUDE.md](CLAUDE.md#verify-chain-run
 ```
 
 Every PR lands green or it does not land.
+
+CI also runs a dedicated `memory-pressure-ubuntu` matrix entry on `ubuntu-latest` with `CARREL_FORCE_PSUTIL_MEMORY=1` so the psutil dispatcher branch of `services/ingestion/memory_pressure.py` is exercised cross-platform (the macOS production path goes through `vm_stat` + `sysctl` shellouts and ships green under `swift-build` / `python-tests` / the local verify chain). See `.github/workflows/ci.yml`.
