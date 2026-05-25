@@ -169,7 +169,7 @@ class GroundedAnswer:
     # cited quote string matched a structural shape (heading, bare
     # reference, banner). Separate from citation_drop_count so the two
     # failure modes can be told apart at observability time. Always 0
-    # when RETRIEVAL_CHUNKS_HEURISTIC is off (the default until T4).
+    # when RETRIEVAL_CHUNKS_HEURISTIC=false (default is on after T4).
     citation_structural_drop_count: int = 0
 
 
