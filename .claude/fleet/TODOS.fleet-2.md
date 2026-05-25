@@ -10,15 +10,15 @@
 
 ## Tasks
 
-- [x] T1: Write `docs/plans/cross-platform-memory-pressure-fallback.md`, run proponent/adversary/synthesizer routine, persist ADR `0005`. Verdict: SUPERSEDED, pivot to consumer-design-first per ADR 0005. **Status:** done — commit + PR TBD on `docs/memory-pressure-fallback-plan` branch.
+- [x] T1: Write `docs/plans/cross-platform-memory-pressure-fallback.md`, run proponent/adversary/synthesizer routine, persist ADR `0005`. Verdict: SUPERSEDED, pivot to consumer-design-first per ADR 0005. **Status:** done — PR #69 (squashed onto main 2026-05-25).
 
-- [ ] T1-redux: Write `docs/plans/adaptive-ingestion-concurrency.md` covering: (a) the two consumer pools (`services/jobs.py:23` request-scoped fixed-2 `ThreadPoolExecutor`; `script/reingest_all.py:163` batch `ThreadPoolExecutor` with `--concurrency` flag), (b) which one becomes the FIRST consumer of the memory-pressure helper and why, (c) the derived helper API shape — binary predicate vs `recommended_worker_count` companion vs async-safe non-blocking check — chosen from the first consumer's actual needs, (d) sub-PR decomposition for helper + first consumer landing as one coherent pair, (e) keep cross-platform support (macOS shellouts + psutil fallback + ubuntu CI matrix) per the original plan's §2-§5 (reused as raw material). Run the proponent/adversary/synthesizer routine on the new plan.
+- [x] T1-redux: Write `docs/plans/adaptive-ingestion-concurrency.md` covering consumer-pool analysis, derived helper API, sub-PR decomposition. Run proponent/adversary/synthesizer routine. **Status:** done 2026-05-25 — plan written, debate ran, **verdict: Position A (reingest_all-first, count-primary public API) with MEDIUM confidence, 5 mandatory plan adjustments applied** (see `docs/decisions/0007-adaptive-ingestion-first-consumer.md`). PR pending on branch `slot-2/adaptive-ingestion-concurrency-plan`.
 
-- [ ] T2-redux: Sub-PR 1 per the new plan — typically the helper module with API derived from the chosen consumer. Specific shape to be set by the new plan.
+- [ ] T2-redux: Sub-PR 1 — Create `services/ingestion/memory_pressure.py` (TypedDict + macOS shellout parsers + psutil dispatcher + `recommended_worker_count` primary + `is_safe_to_start_worker` 10-line wrapper). Wire `script/reingest_all.py` to consult the helper when `--concurrency` is omitted; explicit operator value overrides. ~17 tests. Add psutil to `requirements-dev.txt`. **Slot-coupling constraint per ADR 0007:** T3-redux must ship within the same slot; if runway can't accommodate both, do NOT start T2-redux.
 
-- [ ] T3-redux: Sub-PR 2 per the new plan — typically the first consumer wired through the helper.
+- [ ] T3-redux: Sub-PR 2 — 1480-page-PDF empirical pass with mandatory record format `(snapshot, recommended_count, peak_RSS_per_worker)`. Add `CARREL_MEMORY_HEADROOM_MB` and `CARREL_MEMORY_MAX_SWAP_PCT` env overrides. Write empirics note. Land opt-in macOS integration test. **Kill condition per ADR 0007:** >2x miss between recommended and tolerated count seeds a jobs.py-first follow-up debate (NOT a silent revert).
 
-- [ ] T4-redux: Sub-PR 3 per the new plan — typically the ubuntu CI matrix entry (reused unchanged from the original brief).
+- [ ] T4-redux: Sub-PR 3 — `ubuntu-latest` GitHub Actions matrix entry running `tests/test_memory_pressure.py` with `CARREL_FORCE_PSUTIL_MEMORY=1`. (Unchanged from SUPERSEDED §5 T4.)
 
 ## Independence assertion
 
