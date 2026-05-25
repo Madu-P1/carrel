@@ -437,6 +437,8 @@ and its first consumer land together.
 
 ### T3-redux — Sub-PR 2: hardening + empirical validation
 
+**Status:** done 2026-05-25 — landed on `slot-2/adaptive-ingestion-memory-pressure-helper` (bundled into PR #80 per ADR 0007 slot-coupling). Env overrides + integration test + empirics row 1 shipped. 1480-page-PDF row deferred to operator follow-up (worktree isolation blocks live-DB access from the slot-2 routine). Empirics note: `docs/notes/2026-05-25-memory-pressure-empirics.md`.
+
 Closes the SUPERSEDED plan's §9 open questions empirically.
 
 **Slot-coupling constraint (ADR 0007 synthesizer adjustment 1):** T3-redux

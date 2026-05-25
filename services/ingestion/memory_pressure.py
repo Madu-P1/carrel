@@ -17,6 +17,15 @@ the psutil path on Darwin for CI parity. ``psutil`` is imported inside the
 function so module import does not require it on production macOS, where the
 shellout path is the only one ever executed.
 
+Operator-tunable thresholds (T3-redux per ADR 0007 Consequence 2):
+
+- ``CARREL_MEMORY_HEADROOM_MB`` overrides ``min_free_mb_per_worker`` when the
+  caller does not pass an explicit value. Positive integer; falls back to the
+  static default on parse error.
+- ``CARREL_MEMORY_MAX_SWAP_PCT`` overrides ``max_swap_used_pct`` when the
+  caller does not pass an explicit value. Float in (0, 100]; falls back to
+  the static default on parse error.
+
 See ``docs/plans/adaptive-ingestion-concurrency.md`` §3 and
 ``docs/decisions/0007-adaptive-ingestion-first-consumer.md``.
 """
@@ -45,6 +54,51 @@ class MemorySnapshot(TypedDict, total=False):
 
 _DEFAULT_MIN_FREE_MB_PER_WORKER = 512
 _DEFAULT_MAX_SWAP_USED_PCT = 75.0
+
+_HEADROOM_ENV = "CARREL_MEMORY_HEADROOM_MB"
+_MAX_SWAP_ENV = "CARREL_MEMORY_MAX_SWAP_PCT"
+
+
+def _resolve_min_free_mb_per_worker(explicit: int | None) -> int:
+    """Pick the effective ``min_free_mb_per_worker``.
+
+    Precedence: explicit caller value, then ``CARREL_MEMORY_HEADROOM_MB``,
+    then the static default. Env values that fail to parse as a positive
+    int fall back to the default; the helper is advisory and silent env
+    typos must not propagate as ``ValueError``.
+    """
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get(_HEADROOM_ENV)
+    if raw is None:
+        return _DEFAULT_MIN_FREE_MB_PER_WORKER
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_MIN_FREE_MB_PER_WORKER
+    if value <= 0:
+        return _DEFAULT_MIN_FREE_MB_PER_WORKER
+    return value
+
+
+def _resolve_max_swap_used_pct(explicit: float | None) -> float:
+    """Pick the effective ``max_swap_used_pct``.
+
+    Same precedence rules as ``_resolve_min_free_mb_per_worker``. Env
+    values outside (0, 100] fall back to the default.
+    """
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get(_MAX_SWAP_ENV)
+    if raw is None:
+        return _DEFAULT_MAX_SWAP_USED_PCT
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_MAX_SWAP_USED_PCT
+    if value <= 0.0 or value > 100.0:
+        return _DEFAULT_MAX_SWAP_USED_PCT
+    return value
 
 
 def _parse_vm_stat(text: str) -> dict[str, float | int]:
@@ -238,8 +292,8 @@ def _snapshot() -> MemorySnapshot:
 def recommended_worker_count(
     *,
     max_workers: int,
-    min_free_mb_per_worker: int = _DEFAULT_MIN_FREE_MB_PER_WORKER,
-    max_swap_used_pct: float = _DEFAULT_MAX_SWAP_USED_PCT,
+    min_free_mb_per_worker: int | None = None,
+    max_swap_used_pct: float | None = None,
 ) -> tuple[int, MemorySnapshot]:
     """Recommend a worker-pool size given the live memory snapshot.
 
@@ -253,9 +307,18 @@ def recommended_worker_count(
     error (count is 1, never zero, because the caller has work to do
     and the helper is advisory). The returned count is also written
     back into the snapshot's ``recommended`` field for telemetry.
+
+    Threshold precedence: explicit caller args, then env vars
+    (``CARREL_MEMORY_HEADROOM_MB``, ``CARREL_MEMORY_MAX_SWAP_PCT``),
+    then the static defaults.
     """
     if max_workers < 1:
         raise ValueError("max_workers must be at least 1")
+
+    effective_min_free = _resolve_min_free_mb_per_worker(min_free_mb_per_worker)
+    effective_max_swap = _resolve_max_swap_used_pct(max_swap_used_pct)
+    if effective_min_free <= 0:
+        raise ValueError("min_free_mb_per_worker must be positive")
 
     snapshot = _snapshot()
 
@@ -264,15 +327,12 @@ def recommended_worker_count(
         return 1, snapshot
 
     swap_used_pct = float(snapshot.get("swap_used_pct", 0.0))
-    if swap_used_pct > max_swap_used_pct:
+    if swap_used_pct > effective_max_swap:
         snapshot["recommended"] = 1
         return 1, snapshot
 
     available_mb = float(snapshot.get("available_mb", 0.0))
-    if min_free_mb_per_worker <= 0:
-        raise ValueError("min_free_mb_per_worker must be positive")
-
-    headroom_count = int(available_mb // min_free_mb_per_worker)
+    headroom_count = int(available_mb // effective_min_free)
     count = max(1, min(max_workers, headroom_count))
     snapshot["recommended"] = count
     return count, snapshot
@@ -280,8 +340,8 @@ def recommended_worker_count(
 
 def is_safe_to_start_worker(
     *,
-    min_free_mb: int = _DEFAULT_MIN_FREE_MB_PER_WORKER,
-    max_swap_used_pct: float = _DEFAULT_MAX_SWAP_USED_PCT,
+    min_free_mb: int | None = None,
+    max_swap_used_pct: float | None = None,
 ) -> tuple[bool, MemorySnapshot]:
     """Binary helper for callers that already plan to submit one unit of work.
 
@@ -297,17 +357,23 @@ def is_safe_to_start_worker(
     binary API applies a floor of 0 (real veto for the future
     ``services/jobs.py`` consumer per ADR 0007 Consequence 7). See
     ``docs/plans/adaptive-ingestion-concurrency.md`` §3.2.
+
+    Threshold precedence: explicit caller args, then env vars
+    (``CARREL_MEMORY_HEADROOM_MB``, ``CARREL_MEMORY_MAX_SWAP_PCT``),
+    then the static defaults.
     """
+    effective_min_free = _resolve_min_free_mb_per_worker(min_free_mb)
+    effective_max_swap = _resolve_max_swap_used_pct(max_swap_used_pct)
     snapshot = _snapshot()
     if snapshot.get("error"):
         snapshot["recommended"] = 1
         return True, snapshot
     swap_used_pct = float(snapshot.get("swap_used_pct", 0.0))
-    if swap_used_pct > max_swap_used_pct:
+    if swap_used_pct > effective_max_swap:
         snapshot["recommended"] = 0
         return False, snapshot
     available_mb = float(snapshot.get("available_mb", 0.0))
-    if available_mb >= min_free_mb:
+    if available_mb >= effective_min_free:
         snapshot["recommended"] = 1
         return True, snapshot
     snapshot["recommended"] = 0

@@ -291,6 +291,99 @@ class IsSafeToStartWorkerTests(unittest.TestCase):
         self.assertEqual(snap["recommended"], 0)
 
 
+class EnvVarOverrideTests(unittest.TestCase):
+    """T3-redux per ADR 0007 Consequence 2: CARREL_MEMORY_HEADROOM_MB and
+    CARREL_MEMORY_MAX_SWAP_PCT override the static defaults when the caller
+    does not pass explicit values. Explicit caller args win over env.
+    Garbage env values fall back to the static default (advisory helper
+    must not propagate operator typos as ValueError)."""
+
+    def _patch_snapshot(self, snapshot):
+        return mock.patch.object(memory_pressure, "_snapshot", return_value=snapshot)
+
+    def test_headroom_env_overrides_default(self):
+        # available_mb=800, env=100 → recommended 4 (800//100 capped at 4);
+        # under static default of 512 the recommendation would be 1.
+        env_only = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"CARREL_MEMORY_HEADROOM_MB", "CARREL_MEMORY_MAX_SWAP_PCT"}
+        }
+        env_only["CARREL_MEMORY_HEADROOM_MB"] = "100"
+        with (
+            mock.patch.dict(os.environ, env_only, clear=True),
+            self._patch_snapshot(
+                {"platform": "darwin", "available_mb": 800.0, "swap_used_pct": 5.0}
+            ),
+        ):
+            count, snap = memory_pressure.recommended_worker_count(max_workers=4)
+        self.assertEqual(count, 4)
+        self.assertEqual(snap["recommended"], 4)
+
+    def test_max_swap_env_overrides_default(self):
+        # swap_used_pct=50, env=30 → recommendation falls to 1 even with
+        # plenty of memory (50 > 30); under static default of 75 the
+        # recommendation would be 4.
+        env_only = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"CARREL_MEMORY_HEADROOM_MB", "CARREL_MEMORY_MAX_SWAP_PCT"}
+        }
+        env_only["CARREL_MEMORY_MAX_SWAP_PCT"] = "30"
+        with (
+            mock.patch.dict(os.environ, env_only, clear=True),
+            self._patch_snapshot(
+                {"platform": "darwin", "available_mb": 8000.0, "swap_used_pct": 50.0}
+            ),
+        ):
+            count, snap = memory_pressure.recommended_worker_count(max_workers=4)
+        self.assertEqual(count, 1)
+        self.assertEqual(snap["recommended"], 1)
+
+    def test_explicit_arg_wins_over_env(self):
+        # Env sets a small headroom (100); explicit caller passes 2000.
+        # Effective threshold is 2000 (explicit), so available_mb=800
+        # yields count=1 (800//2000=0, floored to 1).
+        env_only = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"CARREL_MEMORY_HEADROOM_MB", "CARREL_MEMORY_MAX_SWAP_PCT"}
+        }
+        env_only["CARREL_MEMORY_HEADROOM_MB"] = "100"
+        with (
+            mock.patch.dict(os.environ, env_only, clear=True),
+            self._patch_snapshot(
+                {"platform": "darwin", "available_mb": 800.0, "swap_used_pct": 5.0}
+            ),
+        ):
+            count, snap = memory_pressure.recommended_worker_count(
+                max_workers=4, min_free_mb_per_worker=2000
+            )
+        self.assertEqual(count, 1)
+        self.assertEqual(snap["recommended"], 1)
+
+    def test_garbage_env_falls_back_to_default(self):
+        # Operator typo (e.g. "five-hundred") must not raise. Both env
+        # vars fall back to the static defaults; available_mb=800 with
+        # default 512 yields count=1, swap below 75 stays in range.
+        env_only = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"CARREL_MEMORY_HEADROOM_MB", "CARREL_MEMORY_MAX_SWAP_PCT"}
+        }
+        env_only["CARREL_MEMORY_HEADROOM_MB"] = "five-hundred"
+        env_only["CARREL_MEMORY_MAX_SWAP_PCT"] = "not-a-percent"
+        with (
+            mock.patch.dict(os.environ, env_only, clear=True),
+            self._patch_snapshot(
+                {"platform": "darwin", "available_mb": 800.0, "swap_used_pct": 5.0}
+            ),
+        ):
+            count, snap = memory_pressure.recommended_worker_count(max_workers=4)
+        self.assertEqual(count, 1)
+        self.assertEqual(snap["recommended"], 1)
+
+
 class ModuleImportTests(unittest.TestCase):
     """The module's top-level import must succeed without psutil installed.
 
