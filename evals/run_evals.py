@@ -21,6 +21,7 @@ import main  # noqa: E402
 from ai.router import ClaudeRouter, get_default_router  # noqa: E402
 from services.ingestion import ingest_document_record  # noqa: E402
 from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES  # noqa: E402
+from services.retrieval.quote_heuristics import is_structural_quote  # noqa: E402
 from services.retrieval.typed_hybrid import RetrievedNode  # noqa: E402
 from services.tutor import (  # noqa: E402
     GroundedAnswer,
@@ -474,13 +475,21 @@ def run_case(
                 if row is not None and str(row["node_type"]) in NON_CITABLE_NODE_TYPES:
                     structural_citation_count += 1
             else:
-                # Legacy chunks path is structurally untyped — a chunk
-                # window has no node_type, so structural citations are a
-                # nodes-path metric only (Gate 0).
+                # Legacy chunks path is structurally untyped at retrieval
+                # time (no node_type column on chunks). Gate 1
+                # instrumentation (ADR 0004): apply the same content-
+                # shape detector the future runtime filter will use
+                # against the cited quote string. Quote granularity, not
+                # chunk granularity; see the ADR for why a chunk-level
+                # filter cannot catch a heading line living inside a body
+                # chunk. The runtime filter ships in T2; this is
+                # measurement-only.
                 row = conn.execute(
                     "SELECT content FROM chunks WHERE id = ?",
                     (citation.node_id,),
                 ).fetchone()
+                if is_structural_quote(citation.quote):
+                    structural_citation_count += 1
             if row and _normalized_substring_match(citation.quote, str(row["content"] or "")):
                 quote_valid_count += 1
 

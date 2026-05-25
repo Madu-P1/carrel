@@ -35,6 +35,7 @@ evals/reports/*.json
 evals/reports/*.md
 !evals/reports/.gitkeep
 !evals/reports/compare-*.md
+!evals/reports/structural-citation-baseline-*.md
 evals/reports/_*/
 
 frontend/node_modules/

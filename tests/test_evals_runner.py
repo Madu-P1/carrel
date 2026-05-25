@@ -246,6 +246,113 @@ class EvalsRunnerTests(unittest.TestCase):
         self.assertTrue(any(path.suffix == ".md" for path in report_files))
         self.assertIn("reports", report)
 
+    def test_structural_citation_count_increments_on_chunks_branch(self) -> None:
+        """Integration test for T2.0 instrumentation.
+
+        Pins the wiring at evals/run_evals.py:484-485: when a cited
+        quote whose shape matches `is_structural_quote` reaches the
+        chunks-branch scoring loop, `structural_citation_count`
+        increments. The 39 unit tests in
+        tests.test_retrieval_quote_heuristics pin the predicate's
+        behavior; this test pins the call site so a future refactor
+        (moving the increment, swapping the argument, using the wrong
+        field, or omitting the import) is caught end-to-end.
+
+        Mocks `grounded_tutor_response` directly so the test does not
+        depend on the upstream tutor validator surviving a fabricated
+        heading-shape quote. The wiring under audit lives in
+        run_evals.run_case, not in the tutor.
+        """
+        from services.tutor import Citation, Claim, GroundedAnswer
+
+        fixtures = run_evals._load_fixture_manifest()
+        with run_evals._isolated_runtime("full"):
+            mapping = run_evals._ingest_fixtures(fixtures)
+            cases = {case.case_id: case for case in run_evals._load_cases("smoke")}
+            with run_evals.main.get_db() as conn:
+                case = cases["biology-mitosis-001"]
+                expected_chunks = run_evals._resolve_expected_chunks(conn, case, mapping)
+                chunk_id = next(iter(expected_chunks))
+                row = conn.execute(
+                    "SELECT id, doc_id, section, page_num FROM chunks WHERE id = ?",
+                    (chunk_id,),
+                ).fetchone()
+                citation = Citation(
+                    # str UUID on the chunks branch (legacy id-space);
+                    # `isinstance(node_id, int)` dispatches to the else
+                    # branch (chunks) at evals/run_evals.py:467.
+                    node_id=str(row["id"]),
+                    doc_id=str(row["doc_id"]),
+                    page_num=int(row["page_num"]) if row["page_num"] is not None else None,
+                    section=str(row["section"]) if row["section"] else None,
+                    # Heading-shape: short, no terminal punctuation, no
+                    # finite verb, no code/math chars. is_heading_shape
+                    # MUST fire on this quote.
+                    quote="Chapter 3: Mitosis Overview",
+                )
+                claim = Claim(
+                    text="Mitosis creates identical daughter cells.",
+                    citations=(citation,),
+                )
+                fake_answer = GroundedAnswer(
+                    summary="Mitosis creates identical daughter cells.",
+                    claims=(claim,),
+                    unsupported_spans=(),
+                    misconceptions=(),
+                    next_steps=(),
+                    model="claude-sonnet-4-6",
+                    latency_ms=1200.0,
+                    ok=True,
+                    error=None,
+                    cache_hit=False,
+                    input_tokens=100,
+                    output_tokens=40,
+                    scope_fallback_used=False,
+                    citation_attempt_count=1,
+                    citation_drop_count=0,
+                    citation_repair_count=0,
+                )
+                with mock.patch(
+                    "evals.run_evals.grounded_tutor_response",
+                    return_value=fake_answer,
+                ):
+                    metrics = run_evals.run_case(
+                        case,
+                        conn,
+                        "full",
+                        mapping,
+                        router=StubRouter(
+                            # Router is required by the signature but not
+                            # invoked once grounded_tutor_response is
+                            # mocked.
+                            ClaudeCallResult(
+                                ok=True,
+                                task="balanced",
+                                model="claude-sonnet-4-6",
+                                request_kind="tutor.grounded_answer",
+                                text=None,
+                                json_payload={},
+                                error_code=None,
+                                error_message=None,
+                                latency_ms=0.0,
+                                input_tokens=0,
+                                output_tokens=0,
+                                cache_creation_input_tokens=None,
+                                cache_read_input_tokens=0,
+                                cache_hit=False,
+                                service_tier="auto",
+                                stop_reason="tool_use",
+                                request_id="req_unused",
+                            )
+                        ),
+                    )
+
+        # The wiring under test: a heading-shape quote on the chunks
+        # branch increments structural_citation_count.
+        self.assertEqual(1, metrics["structural_citation_count"])
+        # And the rate computes correctly against quote_total.
+        self.assertEqual(1.0, metrics["structural_citation_rate"])
+
     def test_quality_thresholds_lock_invariants_on_both_flag_values(self) -> None:
         """Lock the T08 (re-open) acceptance bar in pure aggregator logic.
 
