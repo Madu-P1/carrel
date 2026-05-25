@@ -135,6 +135,7 @@ Zero runtime motion libraries. CSS + WAAPI only.
 
 - **No silent AI fallbacks.** Every Claude call returns `ClaudeCallResult` with visible ok/error/latency/tokens. Heuristic-only paths are gated behind explicit env vars and marked ok=False.
 - **Every cited quote must be verbatim.** `services/tutor.py::_resolve_grounded_answer` validates + auto-corrects quotes against chunk content. Fabricated quotes get dropped; unsupported claims move to `unsupported_spans`.
+- **Structural nodes are never citable.** `services.retrieval.node_type_router.NON_CITABLE_NODE_TYPES` is the single source of truth for non-citable types (currently `{heading, header, footer}`), imported by `services.tutor` and `evals.run_evals`. New ingestion pipelines and new citation surfaces must import the constant rather than re-deriving the set. Headings reach retrieval as FTS beacons via `node_fts` on `heading_path`, not as direct citations. See `docs/notes/2026-05-22-structural-citation-gate.md` for the design rationale; Gate 1 (chunks-path heuristic for the structurally-untyped path) is tracked in TODOS.md backlog.
 - **Migrations are the schema source of truth.** Never `ALTER TABLE` at startup.
 - **Test-gated, additive PRs.** Every PR ships small, keeps verify green, is independently shippable. Multi-day features land as 3-5 sub-PRs with visible sequencing.
 - **No em dashes in prose. No AI-slop vocabulary.** See `DESIGN.md` voice notes (skill-imported).
