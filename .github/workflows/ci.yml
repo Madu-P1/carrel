@@ -91,6 +91,29 @@ jobs:
       - name: Test frontend
         run: pnpm test
 
+  memory-pressure-ubuntu:
+    # Cross-platform validation gate for services/ingestion/memory_pressure.py
+    # (shipped in PR #80, T2-redux + T3-redux). The helper dispatches to a
+    # macOS-only vm_stat + sysctl path on darwin and a psutil fallback
+    # everywhere else. This job exercises the psutil branch on Linux with the
+    # dispatcher forced via CARREL_FORCE_PSUTIL_MEMORY=1 so a regression on
+    # the cross-platform path surfaces before it reaches macOS users via the
+    # adaptive worker-count helper. Blocking; psutil ships in requirements-dev.txt.
+    runs-on: ubuntu-latest
+    env:
+      CARREL_FORCE_PSUTIL_MEMORY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run memory-pressure tests with psutil path forced
+        run: python -m unittest tests.test_memory_pressure -v
+
   legacy-learning-os-tests:
     runs-on: ubuntu-latest
     continue-on-error: true
