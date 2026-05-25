@@ -250,9 +250,9 @@ def recommended_worker_count(
 
     Conservative on swap pressure (``swap_used_pct > max_swap_used_pct``
     drops the count to 1 regardless of memory headroom) and on snapshot
-    error (count is 1, never zero — the caller has work to do and the
-    helper is advisory). The returned count is also written back into
-    the snapshot's ``recommended`` field for telemetry.
+    error (count is 1, never zero, because the caller has work to do
+    and the helper is advisory). The returned count is also written
+    back into the snapshot's ``recommended`` field for telemetry.
     """
     if max_workers < 1:
         raise ValueError("max_workers must be at least 1")
@@ -287,7 +287,7 @@ def is_safe_to_start_worker(
 
     Returns ``(safe, snapshot)``. ``safe`` is True iff the host has at
     least ``min_free_mb`` MB available and swap usage is at or below
-    ``max_swap_used_pct``. On snapshot error the predicate yields True —
+    ``max_swap_used_pct``. On snapshot error the predicate yields True;
     the helper is advisory, not a veto, and the caller has work to do.
 
     This function shares the underlying snapshot + thresholds with
