@@ -47,11 +47,15 @@ if str(ROOT) not in sys.path:
 
 import db  # noqa: E402
 from services.ingestion import docling_parser, typed_walker  # noqa: E402
+from services.ingestion.memory_pressure import recommended_worker_count  # noqa: E402
 from services.ingestion.persistence import (  # noqa: E402
     delete_typed_nodes,
     embed_and_index_nodes,
     insert_typed_nodes,
 )
+
+_CONCURRENCY_CAP = 4
+_CONCURRENCY_UNSET = -1
 
 
 def _candidate_documents(conn: sqlite3.Connection, *, rebuild: bool) -> list[sqlite3.Row]:
@@ -80,6 +84,32 @@ def _candidate_documents(conn: sqlite3.Connection, *, rebuild: bool) -> list[sql
     return conn.execute(rebuild_all if rebuild else backfill_only).fetchall()
 
 
+def _print_host_snapshot(
+    snapshot: dict,
+    effective_concurrency: int,
+    recommended: int,
+    explicit_concurrency: bool,
+) -> None:
+    """Log one line describing the memory snapshot and chosen pool size."""
+    available = snapshot.get("available_mb")
+    available_str = "unknown" if available is None else f"{float(available):.0f}MB"
+    swap_pct = snapshot.get("swap_used_pct")
+    swap_str = "unknown" if swap_pct is None else f"{float(swap_pct):.1f}%"
+    suffix = ""
+    if snapshot.get("error"):
+        suffix = f" [snapshot error: {snapshot['error']}]"
+    print(
+        f"host snapshot: available={available_str}, swap={swap_str}, "
+        f"using {effective_concurrency} workers (cap={_CONCURRENCY_CAP}, "
+        f"recommended={recommended}){suffix}"
+    )
+    if explicit_concurrency and recommended < effective_concurrency:
+        print(
+            f"  note: --concurrency {effective_concurrency} overrides recommended "
+            f"{recommended}; operator value wins."
+        )
+
+
 def _parse_one(doc_id: str, filename: str, path: Path):
     """Worker: Docling-parse one file. Returns (doc_id, filename, nodes, error)."""
     try:
@@ -101,8 +131,12 @@ def main() -> int:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=4,
-        help="Number of parallel Docling parses (default 4).",
+        default=_CONCURRENCY_UNSET,
+        help=(
+            "Number of parallel Docling parses (cap %d). "
+            "When omitted, the host memory-pressure helper picks a value in "
+            "[1, cap]; pass an explicit value to override." % _CONCURRENCY_CAP
+        ),
     )
     parser.add_argument(
         "--rebuild",
@@ -117,9 +151,18 @@ def main() -> int:
     if not docling_parser.is_available():
         print("Docling is not installed; cannot backfill typed nodes.", file=sys.stderr)
         return 1
-    if args.concurrency < 1:
-        print("--concurrency must be at least 1.", file=sys.stderr)
-        return 2
+    if args.concurrency == _CONCURRENCY_UNSET:
+        recommended, snapshot = recommended_worker_count(max_workers=_CONCURRENCY_CAP)
+        effective_concurrency = recommended
+        explicit_concurrency = False
+    else:
+        if args.concurrency < 1:
+            print("--concurrency must be at least 1.", file=sys.stderr)
+            return 2
+        recommended, snapshot = recommended_worker_count(max_workers=args.concurrency)
+        effective_concurrency = args.concurrency
+        explicit_concurrency = True
+    _print_host_snapshot(snapshot, effective_concurrency, recommended, explicit_concurrency)
 
     if args.db:
         db.DB_PATH = Path(args.db).resolve()
@@ -160,7 +203,7 @@ def main() -> int:
         done = 0
         failed = 0
         with log_path.open("a", encoding="utf-8") as log_file:
-            with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
+            with ThreadPoolExecutor(max_workers=effective_concurrency) as pool:
                 futures = [
                     pool.submit(_parse_one, doc_id, filename, path)
                     for doc_id, filename, path in todo
