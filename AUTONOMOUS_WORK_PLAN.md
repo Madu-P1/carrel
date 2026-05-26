@@ -10,6 +10,20 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
+## Operator decisions — 2026-05-26 (T64+ autonomous run, supersedes operator-led note below)
+
+Operator explicit override (revised 2026-05-26 23:46): run **T64 and beyond** in the autonomous loop on `claude-opus-4-7` with `bypassPermissions`. The prior block's "operator-led, not autonomous" note for T64-T67 is **fully lifted**. The loop is allowed to drift through T64 → T65 → T66 → T67 in order, claiming each in turn per the normal task-picker rules.
+
+Justification for T64: plan doc (`docs/plans/answer-quality-2026-05-26.md`) is already drafted, the root cause is already characterized (silent provider fallback to AFM/Ollama when `ANTHROPIC_API_KEY` is missing — see `.claude/projects/-Users-madu-Desktop-Codex/memory/answer-quality-root-cause.md`), and the deliverable is a code task: fail-loud gate on high-stakes flows (Ask, Verify), preserve graceful degradation on low-stakes flows (flashcards, dialogue follow-ups), plus tests.
+
+Justification for letting the loop drift into T65/T66/T67: operator is opting to let the loop handle whatever code/instrumentation surface each task contains and surface decisions back via `.claude/logs/status.md` rather than gating per-task. The loop's audit-gate hook still blocks irreversible/outward actions (commits, migrations, dep changes, `gh pr ready`, external sends) until the independent-auditor agent approves, so "let it drift" is bounded by the existing safety net, not a free hand. Tasks with no autonomous-able surface (e.g. T66's actual 30-day litigator sessions) should naturally halt the loop because there's no code to ship — the loop is allowed to detect that and write a status memo rather than fabricate work.
+
+Constraints the loop must still respect:
+- **Read each plan doc first.** For T64: `docs/plans/answer-quality-2026-05-26.md`. For T65-T67: produce a `docs/plans/<name>.md` via `make-plan` as the first action when claiming the task, then implement against it. Do not invent investigation shapes ad-hoc.
+- **Build-only scope still enforced.** No outreach, no DMs, no marketing posts, no live external API calls in tests, drafts only (no `gh pr ready`). See `.claude/AUTONOMOUS_SCOPE.md`.
+- **Halt when there is nothing autonomous-able left.** If a task body is dominated by operator-only work (recruiting, live sessions, founder calls), claim it, write the plan doc, ship whatever instrumentation/UX/prep code DOES exist, then write `.claude/logs/status.md` with a "X autonomous-able portion complete, Y operator-led portion remaining" memo and exit gracefully. The watchdog's graceful-halt detection will stop relaunches at that point.
+- **Model:** `claude-opus-4-7` (passed via `CARREL_MODEL=opus` to `start-autonomous.sh`).
+
 ## Operator decisions — 2026-05-26 (validation-first reset)
 
 Operator returned to the desk after the V2 polish push block (below) was authored and reviewed the queue against the actual V2 design doc (`/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`). The design doc named the 30-day validation test as the explicit decision gate for committing to Approach B vs. falling back to A or killing the category. The polish push override sequenced more shipping ahead of that gate. This block corrects the sequencing per [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md).
@@ -748,8 +762,8 @@ Conventions per task:
 
 ## T64 — V2 blocker: answer-quality investigation (kill the header-only response pattern)
 
-**Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue").
-**Status:** pending
+**Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue"); plan doc [`docs/plans/answer-quality-2026-05-26.md`](docs/plans/answer-quality-2026-05-26.md).
+**Status:** in_progress — claimed 2026-05-26 by autonomous loop per "Operator decisions — 2026-05-26 (T64 autonomous run)" override. Loop will ship Phase 1 (reproduction test) + Phase 2 (provider provenance instrumentation) autonomously, then halt at Phase 3 (operator-led policy decision).
 **Blocks:** T65, T66, T67, and the entire paused V2 polish queue (T59-T63). Until T64 ships, every litigator-facing demo risks surfacing hollow output.
 **Deps:** none
 **Effort:** unknown until investigation completes — likely 1-3 iterations. Operator-led: needs a `docs/plans/answer-quality-2026-05-26.md` produced by `make-plan` BEFORE any code touches.

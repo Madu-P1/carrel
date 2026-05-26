@@ -99,6 +99,52 @@ class ScoreLoopEnvelopeTests(unittest.TestCase):
         self.assertNotIn("hookSpecificOutput", out)
         self.assertEqual(out.get("decision"), "block")
 
+    def test_gate_subagent_stop_is_silent(self) -> None:
+        """Gate-role subagents (auditor, rater, debate roles) must not be nudged.
+
+        Diagnosed 2026-05-26: when the implementing agent spawned the
+        independent-auditor and the auditor finished without writing its
+        APPROVED/REJECTED JSON, the score-loop's SubagentStop nudge told
+        the auditor to "respond with a brief status summary and stop",
+        which the auditor adopted in place of writing its verdict file.
+        The routine wedged because the audit-gate hook treats a missing
+        verdict file as "still pending". Fix: skip gate subagents in the
+        score-loop entirely.
+        """
+        for gate_type in (
+            "independent-auditor",
+            "quality-rater",
+            "proponent",
+            "adversary",
+            "synthesizer",
+        ):
+            out = self._run(
+                {
+                    "hook_event_name": "SubagentStop",
+                    "session_id": f"test-gate-{gate_type}",
+                    "subagent_type": gate_type,
+                }
+            )
+            self.assertEqual(out, {}, f"score-loop must be silent for gate subagent '{gate_type}'")
+
+    def test_gate_subagent_alt_key_locations(self) -> None:
+        """The subagent_type field arrives under several possible JSON keys
+        depending on Claude Code version. The hook checks all four
+        plausible locations defensively; this test pins each one."""
+        for payload_extra in (
+            {"agent_type": "independent-auditor"},
+            {"subagent": {"type": "independent-auditor"}},
+            {"agent": {"type": "independent-auditor"}},
+        ):
+            payload = {"hook_event_name": "SubagentStop", "session_id": "test-alt"}
+            payload.update(payload_extra)
+            out = self._run(payload)
+            self.assertEqual(
+                out,
+                {},
+                f"score-loop must detect gate type under alt key location: {payload_extra}",
+            )
+
     def test_halt_signal_emits_systemMessage_not_hookSpecificOutput(self) -> None:
         (self.project_dir / ".claude" / "HALT").touch()
         out = self._run({"hook_event_name": "Stop", "session_id": "test-halt"})
