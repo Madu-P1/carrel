@@ -10,7 +10,18 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
-## Operator decisions — 2026-05-26 (V2 polish push)
+## Operator decisions — 2026-05-26 (validation-first reset)
+
+Operator returned to the desk after the V2 polish push block (below) was authored and reviewed the queue against the actual V2 design doc (`/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`). The design doc named the 30-day validation test as the explicit decision gate for committing to Approach B vs. falling back to A or killing the category. The polish push override sequenced more shipping ahead of that gate. This block corrects the sequencing per [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md).
+
+Priority override (active until exit conditions in ADR-0008 fire):
+- **Pause T59-T63.** They stay `pending` but the loop must skip them. Pause-reasons recorded in each task body. They resume on ADR-0008 exit conditions (1) or (2).
+- **Pick T64 → T65 → T66 → T67 in order.** T64 (answer-quality investigation) is a hard blocker on every downstream task: a litigator watch session against a hollow-answer demo is the worst possible signal. T65 + T66 are the 30-day validation test (prep + run). T67 is the post-test Stage 2/3 design work, conditional on T66 outcome.
+- **Skip T09-T58 unless a T64-T67 task has a blocking dep on one (T13 has a real conflict with V2's chunks-fallback path — see T13's note on EPUB/TXT — but the conflict is dormant until T15 attempts to drop the chunks table, which is not in scope here).**
+- **Operator-led, not autonomous.** T64-T67 each need a `docs/plans/<name>.md` produced by `make-plan` before the loop is allowed to claim them. The autonomous loop must not invent its own answer-quality investigation; the failure modes are too varied (prompt-engineering vs. retrieval ceiling vs. model limit vs. UX-side flattening) and each implies a different fix. The 30-day test is even more operator-led (recruiting, sessions, observation, decision call all involve the founder directly).
+- **Build-only scope still enforced** on the small portion that IS autonomous (e.g. test instrumentation under T64). No outreach, no live CourtListener calls in tests, no `gh pr ready`.
+
+## Operator decisions — 2026-05-26 (V2 polish push) [SUPERSEDED by validation-first reset above]
 
 Operator stepped off after V2 Stage 1 backend + UI scaffold landed (7 commits, latest `b1d7ccfb`). The autonomous loop should work the V2 polish queue (T59-T63 below) BEFORE picking up older T09-T56 tasks. These five tasks are tightly scoped and high-confidence — the loop can ship them cleanly without operator input.
 
@@ -19,6 +30,8 @@ Priority override (until T59-T63 are all `done` or `blocked`):
 - After T59-T63 land, resume normal lowest-numbered-pending picking from T09.
 - DO NOT autonomously start the deeper V2 thesis work (sentence-level claim alignment, streaming verdicts, semantic narrowing of long opinions, multi-opinion handling, verify-only env mode). Those need operator design input and are out of scope for unattended polish.
 - Build-only scope still enforced. No CourtListener live calls in tests (mocked transport only); the COURTLISTENER_API_TOKEN env stays unset on the routine's process so the no-token failure path is what runs.
+
+**Why superseded:** the design doc set a validation gate the polish push tried to ship past. See ADR-0008.
 
 ## Operator decisions — 2026-05-19 (max-autonomy directive)
 
@@ -192,7 +205,7 @@ Conventions per task:
 ## T12 — Phase 4.3: flip 3 typed-node flags to default-on + run re-ingest
 
 **Plan ref:** Phase 4 task 1 + 4 + 5.
-**Status:** pending
+**Status:** done — PR #82, commit `fbd745d4` ("feat(retrieval,ingestion): flip typed-node defaults on for Carrel V2"), squash-merged on main 2026-05-26 as part of the V2 Stage 1 bundle. Test migration completed (RETRIEVAL_USE_NODES default-on pinned-false on legacy chunks-path tests, see ADR-0006 Test-Surface Changes). Re-ingest deferred: existing 4 docs without `nodes` covered by the ADR-0006 exit scenario 2 fallback (operator runs `script/reingest_all.py` on their schedule); no `app_settings('chunks_to_nodes_migration_complete', ...)` marker inserted because the live corpus is intentionally mixed during the gradual re-ingest, not migration-complete.
 **Deps:** T11
 **Effort:** 1 iteration (plus overnight re-ingest)
 **Acceptance:** flip the 3 typed-node default flags on: `INGEST_USE_DOCLING` in `services/ingestion/orchestrator.py::_docling_enabled_for` (default `false` to `true`), `RETRIEVAL_USE_NODES` in `services/retrieval/typed_hybrid.py::retrieval_use_nodes_enabled` (default `false` to `true`), and the `VITE_RETRIEVAL_USE_NODES` build flag in `frontend/src/features/ask/AskView.tsx` (change `=== "true"` to `!== "false"`). Run `script/reingest_all.py` against the live DB; verify `SELECT COUNT(*) FROM documents WHERE id NOT IN (SELECT DISTINCT doc_id FROM nodes)` returns 0. Insert an `app_settings('chunks_to_nodes_migration_complete', '<date>')` row. **Scope correction (2026-05-20, T12 review):** the original acceptance said "5 flags" and listed `typed_hybrid.py:74`. That line is `RETRIEVAL_USE_RERANKER`, which is independent of the chunks-to-nodes migration; turning it on forces a roughly 1 GB cross-encoder model download on every user, so it is out of T12 scope and stays off. There are 3 typed-node flags, not 5. **Test migration (part of T12):** flipping `RETRIEVAL_USE_NODES` default-on routes retrieval through `nodes` and breaks about 15 backend tests that seed only `chunks` and assumed the old default (verified 2026-05-20: the canonical backend `unittest` list yields 13 failures + 2 errors with the flag on). T12 must migrate them: pin `RETRIEVAL_USE_NODES=false` on tests that specifically cover the legacy chunks path (for example `test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts`), seed `nodes` for tests that should now exercise the default path, until the canonical verify chain is green. **Re-ingest is the overnight step:** `script/reingest_all.py` runs Docling OCR over real documents at roughly 30 minutes per document; the live library currently has 4 documents without `nodes`, so budget about 2 hours. The script is idempotent, so a watchdog kill mid-run resumes cleanly.
@@ -674,6 +687,7 @@ Conventions per task:
 
 **Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 b1d7ccfb auditor.
 **Status:** pending
+**Pause:** validation-first override (ADR-0008). Polish surface hardening waits behind T64-T66 to avoid demoing a hollow-answer surface to litigators.
 **Deps:** none (b1d7ccfb is on origin)
 **Effort:** ~1 iteration
 **Acceptance:** new `frontend/src/features/verify/VerifyView.test.tsx` covers (a) verdict-badge color for `verified` / `unsupported` / `unknown`, (b) holding-match sub-line for each of the four states (`supports`, `contradicts`, `ambiguous`, `unavailable`), (c) absence of holding-line when no case_verdicts present, (d) summary header counts roll up. Use the same vitest pattern as `CitationChip.test.tsx`. Render via `@testing-library/preact`. Mock `verify.draft` is not required since the tests exercise pure rendering of VerifyResponse-shaped props.
@@ -684,6 +698,7 @@ Conventions per task:
 
 **Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 verify-mode auditor (follow-up #2).
 **Status:** pending
+**Pause:** validation-first override (ADR-0008).
 **Deps:** none
 **Effort:** ~0.5 iteration
 **Acceptance:** `frontend/src/features/verify/VerifyView.tsx::VerdictCard` no longer uses `as unknown as CitationRecord[]`. Add a small normalizer `function normalizeCitations(raw: VerifyClaimVerdict["citations"]): CitationRecord[]` that maps the API shape (which has `node_id: int | str | null` + optional fields) to the strict CitationRecord shape CitationChip consumes. Inline-document the field mapping. Type-narrow at the boundary, not via cast.
@@ -694,6 +709,7 @@ Conventions per task:
 
 **Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 c6d5ec08 auditor (follow-up #2).
 **Status:** pending
+**Pause:** validation-first override (ADR-0008).
 **Deps:** none
 **Effort:** ~1 iteration
 **Acceptance:** `services/legal/case_verification.py::verify_claims_for_cases` builds a per-call cache keyed on the normalized citation string. When the same citation appears in 2+ claims of the same draft (very common in legal briefs), CourtListener + opinion fetch + holding-match all run ONCE; subsequent claims reuse the result. Cache is per-call (lives only for the duration of `verify_claims_for_cases`); no cross-request state. Holding-match still runs per-(claim, citation) pair because the model's verdict may differ across claim contexts — but the lookup + opinion fetch are cached. Add a counter `cache_hits` to `ClaimCaseVerdict` so observability can confirm the cache fires.
@@ -704,6 +720,7 @@ Conventions per task:
 
 **Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 verify-wiring-fixup auditor (follow-up #4).
 **Status:** pending
+**Pause:** validation-first override (ADR-0008).
 **Deps:** none
 **Effort:** ~0.5 iteration
 **Acceptance:** TWO concrete edits. Scope is intentionally narrow:
@@ -719,6 +736,7 @@ Conventions per task:
 
 **Plan ref:** V2 Stage 1 polish — auditor follow-ups from c6d5ec08 (operator follow-up #1) and ADR-0006 exit scenario #2.
 **Status:** pending
+**Pause:** validation-first override (ADR-0008). Item 2 (AskView empty-result re-ingest hint) has independent value but the polish queue is paused as a unit; if T64 surfaces an ingest-side cause, this item may be promoted out of T63.
 **Deps:** none
 **Effort:** ~0.5 iteration
 **Acceptance:** three small doc / UX fixes in one PR:
@@ -727,6 +745,55 @@ Conventions per task:
 3. `services/legal/case_verification.py::verify_claims_for_cases` docstring mentions the per-turn cache once T61 lands (mark this third item `blocked-on: T61` if T61 hasn't shipped; otherwise include).
 **Verify:** canonical chain.
 **Guards:** doc-only — no behavior change. If item 2 requires touching a feature flag or component prop, mark `blocked-on: scope-clarification` and surface to operator.
+
+## T64 — V2 blocker: answer-quality investigation (kill the header-only response pattern)
+
+**Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue").
+**Status:** pending
+**Blocks:** T65, T66, T67, and the entire paused V2 polish queue (T59-T63). Until T64 ships, every litigator-facing demo risks surfacing hollow output.
+**Deps:** none
+**Effort:** unknown until investigation completes — likely 1-3 iterations. Operator-led: needs a `docs/plans/answer-quality-2026-05-26.md` produced by `make-plan` BEFORE any code touches.
+**Acceptance:** (1) reproduce the header-only / title-only answer pattern on a deterministic case in `tests/test_tutor_grounded.py` (or a new file). (2) root-cause it: prompt template, retrieval ceiling, model failure mode, post-processing, or UX-side flattening. (3) ship the fix on a branch with a passing regression test. (4) re-run the full-mode evals suite; `groundedness@8 >= 0.7` and `quote_validity >= 0.95` must hold; add a new substantive-answer-rate metric (definition produced in the plan, candidate: "fraction of answers whose body length exceeds the longest cited heading length by >2x"). (5) the new metric reports `>= 0.95` on the smoke + full eval sets. (6) the original failing case from step (1) now produces a substantive answer with valid citations.
+**Verify:** canonical chain + the new substantive-answer-rate metric + the regression test from step (1).
+**Guards:** no silent fallbacks (CLAUDE.md). If the root cause is a model limit (e.g. Sonnet 4.6 producing skeletons under specific prompt shapes), the fix is a prompt + retrieval change, NOT a model swap — swapping models is a separate decision that needs operator sign-off and a re-run of the cost analysis.
+
+## T65 — V2 validation: 30-day test prep (memo seeding + recruiting + watch-session protocol)
+
+**Plan ref:** ADR-0008 §"Decision" item 3; design doc §"The Assignment".
+**Status:** pending
+**Deps:** T64 (a litigator session against the pre-T64 build is the worst possible signal — see ADR-0008 §"Why This Path").
+**Effort:** 1-2 weeks of operator calendar. Needs a `docs/plans/validation-test-prep-2026-05-26.md` produced by `make-plan`.
+**Acceptance:** five deliverables, all operator-led:
+1. **Seeded memo.** An AI-drafted legal memo (or two — one civil, one criminal, to span practice areas) with 8-12 cited cases: real + accurate (~70%), real but holding-mismatched (~20%), and fabricated (~10%). Source content from a public-domain matter so the artifact itself is freely shareable. Run through Carrel's current validator end-to-end; the validator must catch every fabrication and every holding mismatch. Iterate the memo if any seeded errors slip through (that is itself a T64 signal).
+2. **Recruiting funnel.** Outreach script + a short list of bar-association / CLE / legal-tech communities to post in. Goal: 15-20 litigators (mix of solo + small firm + biglaw associates) committed to a 30-min watch session. Plus 4-6 non-lawyer liability-bearers (analyst OR auditor OR clinician OR consultant — pick one in this plan).
+3. **Watch-session protocol.** Founder runs the demo, then the participant takes the keyboard. Founder stays silent. Questions are open-ended ("what did you just see, in your words?"). Observation rubric: did they reach for the verification before filing? did they describe it as a budget line or a "nice to have"? did they ask about pricing unprompted? did they ask to install it now? did they say a phrase resembling "my AI already cites"?
+4. **Decision-rule operationalization.** The design doc's three branches (commit B / fall back to A / kill the category) translated into specific session-count thresholds. Worked example: "if >=10/20 litigators AND >=2/6 non-lawyers reach for the verification unprompted AND describe it as a separately-paid budget line, commit to B". Specific enough that the founder cannot rationalize the result.
+5. **Pre-test failure-mode list.** Top five ways the test itself produces a false signal (e.g. participants are nice to founders; participants are recruited from a self-selected pool; the demo memo is too obviously seeded; non-lawyer second vertical was the wrong pick). Mitigations baked into the protocol.
+**Verify:** the deliverables ship as `docs/validation/30-day-test-2026-05-26/` (memo, protocol, rubric, decision-rule sheet) plus a one-pager `docs/validation/30-day-test-2026-05-26/README.md` linking everything. No code verify; this is an operator artifact.
+**Guards:** zero new code in T65. If a deliverable surfaces a code need, it gets a separate task — don't let scope creep eat the calendar.
+
+## T66 — V2 validation: 30-day test run
+
+**Plan ref:** ADR-0008 §"Decision" item 3; design doc §"Success Criteria".
+**Status:** pending
+**Deps:** T65
+**Effort:** ~4 calendar weeks. Operator-led, not in autonomous-loop scope; the loop watches for the closeout note and acts on the decision.
+**Acceptance:** all 15-20 litigator sessions + 4-6 non-lawyer sessions completed. Session notes filed under `docs/validation/30-day-test-2026-05-26/sessions/<date>-<participant-id>.md` (anonymized; no participant names, no firm names, no client names). Closeout note `docs/validation/30-day-test-2026-05-26/closeout.md` applies the decision rule from T65 §4 to the aggregate observations and writes one of three verdicts: COMMIT_B, FALLBACK_A, or KILL.
+**Verify:** the closeout note is checked in. There is no test-suite gate on this task — it is a strategic-decision artifact.
+**Guards:** the decision rule from T65 §4 is binding. Resist the founder-instinct urge to re-interpret a no-signal result as a maybe-signal result. If sessions surface a non-binary verdict that the rule doesn't cover, the rule itself needs amendment (a follow-up task) before the verdict is written.
+
+## T67 — V2 design: Stage 2 + Stage 3 scoping (conditional on T66)
+
+**Plan ref:** ADR-0008 §"Decision" item 4; design doc §"Recommended Approach" Stages 2-3.
+**Status:** pending
+**Deps:** T66
+**Effort:** 1-2 iterations of operator design work, not autonomous-loop scope.
+**Acceptance:** branch-on-verdict:
+- **COMMIT_B:** produce two plans — `docs/plans/stage-2-vertical-expansion-2026-XX-XX.md` (second-vertical selection, repointing existing engine to the chosen profession's source/citation conventions, anonymized verification-corpus design) and `docs/plans/stage-3-verify-api-2026-XX-XX.md` (API surface design, pricing model sketch, regulatory-tailwind alignment, app-vs-API revenue model). Each gets a corresponding ADR. T59-T63 resume in parallel.
+- **FALLBACK_A:** produce one plan — `docs/plans/vertical-only-product-2026-XX-XX.md` (a good single-vertical legal-verification company; no platform leap). T59-T63 resume; Stage 2/3 design is shelved without ADR.
+- **KILL:** write a postmortem `docs/decisions/v2-pivot-postmortem-2026-XX-XX.md` (what we learned about the category; what the engine is now useful for outside the verification thesis). T59-T63 are killed (status: blocked, reason: "V2 thesis red-lighted; surface decommitted"). Revert priority to whatever the pre-V2 tutor roadmap had (Phase 3 retrieval polish, reranker, job queue).
+**Verify:** the conditional artifact above exists on main.
+**Guards:** no Stage 2/3 work starts before T66 ships its verdict. The temptation to "get a head start" on Stage 2 plans during T66 is the same anti-pattern this ADR is correcting.
 
 ---
 

@@ -1,12 +1,33 @@
 # Carrel — repo entry point
 
-Picking up `/Users/madu/Desktop/Codex` after a session that closed the
-8-ship premium-UI roadmap, shipped Plan + Coach Phase 1, and renamed
-the product from Einstein Tutor to **Carrel**.
+Picking up `/Users/madu/Desktop/Codex` after the **2026-05-22 V2
+strategic pivot** repositioned the product as an **independent AI
+verification layer for high-stakes AI output**, with litigation
+pre-flight as the wedge. The tutor surface is still in the codebase
+and still works; it is now the structural substrate for the
+verification engine, not the product. See
+[ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md)
+for the pivot decision + validation-first sequencing, and the V2
+design doc at `/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`
+for the strategic frame.
 
-Last green snapshot: commit **`169b84f`** (`feat(plan): Phase 1 — calendar feed sync + WeekTimeGrid + stub coach`).
-Latest commit at handoff: see `git log -1 --oneline` (most recent
-commit at the time of this read carries the rename).
+Active V2 surface on main: `/api/verify` route, [VerifyView](frontend/src/features/verify/VerifyView.tsx),
+CourtListener case-existence ([courtlistener.py](services/legal/courtlistener.py)),
+holding-match verifier ([case_verification.py](services/legal/case_verification.py)),
+non-prose citation drop gate in [tutor.py](services/tutor.py),
+typed-node retrieval default-on ([ADR-0006](docs/adr/ADR-0006-typed-node-defaults-on.md)).
+All shipped in PR #82 (commit `57188d81`, 2026-05-26).
+
+**Current focus (per ADR-0008 validation-first reset):** T64
+answer-quality investigation → T65/T66 30-day validation test →
+T67 Stage 2/3 design conditional on T66 verdict. V2 polish queue
+(T59-T63) is paused, NOT killed. Pre-pivot tutor roadmap (T13-T58
+chunks→nodes migration) is deferred behind the validation outcome.
+
+Historical context (pre-pivot work that still informs the codebase):
+this repo previously closed the 8-ship premium-UI roadmap, shipped
+Plan + Coach Phase 1, and renamed the product from Einstein Tutor to
+**Carrel**. Last green pre-pivot snapshot: commit **`169b84f`**.
 
 This file isn't a template. It's specific to Carrel, specific to
 this session's work, and specific to what the next agent (or future-

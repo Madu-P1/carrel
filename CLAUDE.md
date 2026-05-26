@@ -140,6 +140,12 @@ Zero runtime motion libraries. CSS + WAAPI only.
 - **Test-gated, additive PRs.** Every PR ships small, keeps verify green, is independently shippable. Multi-day features land as 3-5 sub-PRs with visible sequencing.
 - **No em dashes in prose. No AI-slop vocabulary.** See `DESIGN.md` voice notes (skill-imported).
 
+## V2 strategic state (2026-05-26)
+
+Carrel was repositioned on **2026-05-22** as an **independent AI verification layer for high-stakes AI output** (litigation pre-flight wedge). See [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) for the pivot decision and validation-first sequencing; design doc at `/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`. V2 Stage 1 shipped on main 2026-05-26 (PR #82): typed-node defaults flipped on ([ADR-0006](docs/adr/ADR-0006-typed-node-defaults-on.md)), `Citation.node_type` + non-prose drop gate, CourtListener case-existence, holding-match verifier, `/api/verify` route, `VerifyView` UX. The tutor surface is structurally intact; it is the substrate for the verification engine, not the product.
+
+**Active queue:** T64 (answer-quality investigation, blocker) → T65 (30-day validation test prep) → T66 (validation test run) → T67 (Stage 2/3 design, conditional on T66 verdict). V2 polish (T59-T63) paused. Chunks→nodes migration (T13-T58) deferred. See AUTONOMOUS_WORK_PLAN.md.
+
 ## Current phase state (2026-04-29)
 
 - Phase 0 + 1: complete.
