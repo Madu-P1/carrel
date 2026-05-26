@@ -1,9 +1,9 @@
-# Plan: T64 Answer-Quality Investigation — Eliminate the Header-Only Response
+# Plan: T64 Answer-Quality Investigation: Eliminate the Header-Only Response
 
 - **Status:** drafted 2026-05-26, awaiting operator approval
 - **Owner:** operator-led with autonomous loop assist on instrumented phases
 - **Tracks:** AUTONOMOUS_WORK_PLAN.md T64 (blocker for T65/T66 validation test)
-- **Strategic frame:** [ADR-0008](../adr/ADR-0008-v2-pivot-validation-first-sequencing.md) — V2 validation-first reset
+- **Strategic frame:** [ADR-0008](../adr/ADR-0008-v2-pivot-validation-first-sequencing.md), V2 validation-first reset
 - **Memory:** [answer-quality-root-cause](../../../../../.claude/projects/-Users-madu-Desktop-Codex/memory/answer-quality-root-cause.md)
 
 ---
@@ -13,38 +13,38 @@
 The header-only / title-only Ask response pattern is NOT a prompt-engineering problem on the Claude path. It is the silent provider fallback in `ai/providers.py` when `ANTHROPIC_API_KEY` is missing. Auto-mode falls back per:
 
 1. Claude (if API key set)
-2. AFM (if Apple Silicon + macOS 26+ + bridge present) — **too weak for the grounded-answer task; returns headings as answers**
-3. Ollama (only if `OLLAMA_BASE_URL` explicitly set per `_ollama_has_endpoint()` at [ai/providers.py:68](../../ai/providers.py)) — too much RAM strain to be a viable default
+2. AFM (if Apple Silicon + macOS 26+ + bridge present). **Too weak for the grounded-answer task; returns headings as answers.**
+3. Ollama (only if `OLLAMA_BASE_URL` explicitly set per `_ollama_has_endpoint()` at [ai/providers.py:267](../../ai/providers.py)). Too much RAM strain to be a viable default.
 4. NullProvider (returns `ok=False` with `error_code="ai_disabled"`)
 
-The "no silent AI fallbacks" rule in CLAUDE.md is satisfied technically (each `ClaudeCallResult` carries `ok=True` and real latency/tokens from AFM, see [ai/router.py:35-53](../../ai/router.py)) but fails practically — the user sees hollow output without knowing the provider was degraded. The plan reconciles this.
+The "no silent AI fallbacks" rule in CLAUDE.md is satisfied technically (each `ClaudeCallResult` carries `ok=True` and real latency/tokens from AFM, see [ai/router.py:35-53](../../ai/router.py)) but fails practically: the user sees hollow output without knowing the provider was degraded. The plan reconciles this.
 
-Trade-off the plan must hold open: Carrel's local-first thesis cares about the offline / no-API-key user experience. The fix cannot be "always require Claude" — that breaks local-first. The likely shape is: fail-loud on high-stakes flows (Ask, Verify), allow on low-stakes flows (flashcard generation, dialogue follow-ups).
+Trade-off the plan must hold open: Carrel's local-first thesis cares about the offline / no-API-key user experience. The fix cannot be "always require Claude", since that breaks local-first. The likely shape is: fail-loud on high-stakes flows (Ask, Verify), allow on low-stakes flows (flashcard generation, dialogue follow-ups).
 
 ---
 
-## Phase 0 — Documentation discovery (DONE 2026-05-26)
+## Phase 0: Documentation discovery (DONE 2026-05-26)
 
 ### Allowed APIs (verified by direct read)
 
 | Symbol | Location | Notes |
 |---|---|---|
 | `ClaudeCallResult` dataclass | [ai/router.py:35-53](../../ai/router.py) | Frozen. Fields: `ok`, `task`, `model`, `request_kind`, `text`, `json_payload`, `error_code`, `error_message`, `latency_ms`, `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `cache_hit`, `service_tier`, `stop_reason`, `request_id`. **No `provider` / `provider_name` field today.** |
-| `AIProvider` Protocol | [ai/providers.py:55-153](../../ai/providers.py) | `ai_enabled`, `model_for_task`, `request_text`, `request_json`, `request_tool_call`, `supports_grounded_answer`, `request_grounded_answer`. Every concrete provider also exposes a `kind: ProviderKind` literal attribute. |
+| `AIProvider` Protocol | [ai/providers.py:56-153](../../ai/providers.py) | `ai_enabled`, `model_for_task`, `request_text`, `request_json`, `request_tool_call`, `supports_grounded_answer`, `request_grounded_answer`. Every concrete provider also exposes a `kind: ProviderKind` literal attribute. |
 | `ProviderKind` literal | [ai/providers.py:52](../../ai/providers.py) | `Literal["claude", "ollama", "afm", "null"]`. The plan reuses this; do NOT introduce a parallel string. |
-| `select_provider(kind)` | [ai/providers.py:112-150](../../ai/providers.py) | Bypasses singleton; tests use this with explicit kind. |
-| `get_default_provider()` | [ai/providers.py:189-208](../../ai/providers.py) | Singleton with env-signature cache. Settings UI invalidation lives in `_provider_selection_signature`. |
-| `reset_default_provider()` | [ai/providers.py:211-218](../../ai/providers.py) | **Tests must call this in setUp and tearDown when mutating provider env vars.** Pattern: see [tests/test_tutor_grounded.py:541-587](../../tests/test_tutor_grounded.py) `test_pro_tutor_fails_closed_on_null_provider`. |
+| `select_provider(kind)` | [ai/providers.py:311-355](../../ai/providers.py) | Bypasses singleton; tests use this with explicit kind. |
+| `get_default_provider()` | [ai/providers.py:388-407](../../ai/providers.py) | Singleton with env-signature cache. Settings UI invalidation lives in `_provider_selection_signature`. |
+| `reset_default_provider()` | [ai/providers.py:410-417](../../ai/providers.py) | **Tests must call this in setUp and tearDown when mutating provider env vars.** Pattern: see [tests/test_tutor_grounded.py:541-587](../../tests/test_tutor_grounded.py) `test_pro_tutor_fails_closed_on_null_provider`. |
 | `Citation` / `Claim` / `GroundedAnswer` dataclasses | [services/tutor.py:137-194](../../services/tutor.py) | Frozen. `GroundedAnswer` has `model`, `latency_ms`, `ok`, `error`, `cache_hit`, `input_tokens`, `output_tokens`, `scope_fallback_used`, `citation_attempt_count`, `citation_drop_count`, `citation_repair_count`, `citation_structural_drop_count` (default 0), `citation_non_prose_drop_count` (default 0). **No `provider` field today.** |
 | `_resolve_grounded_answer` | [services/tutor.py:1264](../../services/tutor.py) | Central citation-validation function. |
-| AFM provider call site | [services/tutor.py:1631](../../services/tutor.py) | `afm_router.request_grounded_answer(...)` — different code path from Claude. |
-| Claude provider call site | [services/tutor.py:1644](../../services/tutor.py) | `router.request_tool_call(...)` — uses `SUBMIT_GROUNDED_ANSWER_TOOL`. |
+| AFM provider call site | [services/tutor.py:1631](../../services/tutor.py) | `afm_router.request_grounded_answer(...)`, a different code path from Claude. |
+| Claude provider call site | [services/tutor.py:1644](../../services/tutor.py) | `router.request_tool_call(...)` using `SUBMIT_GROUNDED_ANSWER_TOOL`. |
 | `grounded_tutor_response` | invoked at [routes/tutor.py:39-46](../../routes/tutor.py) via `tutor_service.grounded_tutor_envelope` | The Ask endpoint. |
 | Verify endpoint | [routes/verify.py:22-33](../../routes/verify.py) | Calls `services.verify.verify_draft`. Per [services/verify.py:11](../../services/verify.py), the engine reuses `services.tutor.grounded_tutor_response`. **One fix to tutor serves both Ask and Verify.** |
 | `TutorQueryResponse` Pydantic model | [api_models.py:237-258](../../api_models.py) | Has `model: str = ""` but no `provider` field. |
 | `VerifyResponse` Pydantic model | [api_models.py:299-306](../../api_models.py) | Has `model: str = ""` but no `provider` field. |
 | `groundedness_at_k` metric | [evals/run_evals.py:435](../../evals/run_evals.py) (compute), [evals/run_evals.py:549](../../evals/run_evals.py) (summary), [evals/run_evals.py:622-623](../../evals/run_evals.py) (threshold guard `< 0.70`) | Smoke + full mode both compute. |
-| `quote_validity` metric | [evals/run_evals.py:503](../../evals/run_evals.py) (compute), [evals/run_evals.py:587](../../evals/run_evals.py) (summary), [evals/run_evals.py:624-625](../../evals/run_evals.py) (threshold guard `< 0.90`). | Full mode only — smoke skips (see harness `if mode == "smoke": return metrics` at [evals/run_evals.py:443-444](../../evals/run_evals.py)). |
+| `quote_validity` metric | [evals/run_evals.py:503](../../evals/run_evals.py) (compute), [evals/run_evals.py:587](../../evals/run_evals.py) (summary), [evals/run_evals.py:624-625](../../evals/run_evals.py) (threshold guard `< 0.90`). | Full mode only; smoke skips (see harness `if mode == "smoke": return metrics` at [evals/run_evals.py:443-444](../../evals/run_evals.py)). |
 | Summary report table | [evals/run_evals.py:656-663](../../evals/run_evals.py) | Markdown table f-strings. New metric rows append here. |
 
 ### Anti-patterns to avoid (read from prior memory, not invented)
@@ -64,7 +64,7 @@ Trade-off the plan must hold open: Carrel's local-first thesis cares about the o
 
 ---
 
-## Phase 1 — Reproduction
+## Phase 1: Reproduction
 
 Goal: a failing test in `tests/` that demonstrates the header-only response pattern. Confirms the founder's diagnosis before any fix touches code.
 
@@ -76,26 +76,26 @@ Goal: a failing test in `tests/` that demonstrates the header-only response patt
    - Pins `CARREL_AI_PROVIDER=afm` via `mock.patch.dict` with `reset_default_provider()` bracketing.
    - Stubs `ai.afm_client.AFMClient.request_grounded_answer` to return a `ClaudeCallResult` whose `json_payload` is the documented AFM hollow-output shape: a `summary` and `claims` where every claim text equals a chunk's heading line.
    - Calls `tutor_service.grounded_tutor_response(conn, "Explain mitosis.")`.
-   - Asserts: this test SHOULD FAIL on the current main commit. Either the response surfaces `ok=True` with a hollow summary (current buggy behavior — the test asserts the failing state and is marked `@unittest.expectedFailure` for the diagnostic phase), or it surfaces a fail-loud signal (post-fix behavior — remove the expectedFailure decorator).
+   - Asserts: this test SHOULD FAIL on the current main commit. Either the response surfaces `ok=True` with a hollow summary (current buggy behavior; the test asserts the failing state and is marked `@unittest.expectedFailure` for the diagnostic phase), or it surfaces a fail-loud signal (post-fix behavior; remove the expectedFailure decorator).
 3. Second test method `test_claude_path_produces_substantive_answer` as a control. Uses `StubRouter` (existing pattern, see [tests/test_tutor_grounded.py:201](../../tests/test_tutor_grounded.py) `test_happy_path_resolves_claims_and_citations`) wired to return a substantive `claims` payload. Asserts substantive output. Should PASS on current main.
 
 ### Documentation references
 
 - Test pattern to copy: [tests/test_tutor_grounded.py:534-587](../../tests/test_tutor_grounded.py).
-- AFM `request_grounded_answer` JSON shape: memory observation 4094 plus direct read of [ai/afm_client.py](../../ai/afm_client.py) around `request_grounded_answer` (read in this phase before writing the stub — do not assume).
-- `reset_default_provider` usage: [ai/providers.py:211](../../ai/providers.py).
+- AFM `request_grounded_answer` JSON shape: memory observation 4094 plus direct read of [ai/afm_client.py](../../ai/afm_client.py) around `request_grounded_answer` (read in this phase before writing the stub; do not assume).
+- `reset_default_provider` usage: [ai/providers.py:410](../../ai/providers.py).
 
 ### Verification checklist
 
 - [ ] `./.venv/bin/python -m unittest tests.test_tutor_provider_fallback -v` runs both methods.
 - [ ] `test_afm_path_produces_substantive_answer_or_documents_degradation` runs and currently surfaces the buggy state (expectedFailure or documented mismatch).
 - [ ] `test_claude_path_produces_substantive_answer` passes.
-- [ ] No real Claude or AFM calls — stubs only.
+- [ ] No real Claude or AFM calls; stubs only.
 
 ### Anti-pattern guards
 
 - Do NOT call real Claude or real AFM. Pure stub.
-- Do NOT skip the `reset_default_provider()` in setUp / tearDown — without it, singleton state leaks across tests and the AFM pin silently reverts to whatever was selected at process start.
+- Do NOT skip the `reset_default_provider()` in setUp / tearDown. Without it, singleton state leaks across tests and the AFM pin silently reverts to whatever was selected at process start.
 - Do NOT write the test against `grounded_tutor_envelope` (the Pydantic-serializing wrapper). Test against `grounded_tutor_response` to keep the assertion surface on the dataclass.
 
 ### Phase exit
@@ -104,7 +104,7 @@ Test file lands on a branch (`fix/t64-reproduce-afm-hollow`). PR review confirms
 
 ---
 
-## Phase 2 — Provider provenance instrumentation
+## Phase 2: Provider provenance instrumentation
 
 Goal: every `ClaudeCallResult`, `GroundedAnswer`, and public API response carries a `provider: str` field so the eval harness and the UI can stratify behavior by provider.
 
@@ -114,7 +114,7 @@ Goal: every `ClaudeCallResult`, `GroundedAnswer`, and public API response carrie
    - `ClaudeRouter.request_text` / `request_json` / `request_tool_call`: `provider="claude"`.
    - `AFMClient.request_text` / `request_json` / `request_tool_call` / `request_grounded_answer`: `provider="afm"`.
    - `OllamaClient.*`: `provider="ollama"`.
-   - `NullProvider.*` (in `_null_result` at [ai/providers.py:42-61](../../ai/providers.py)): `provider="null"`.
+   - `NullProvider.*` (in `_null_result` at [ai/providers.py:241-260](../../ai/providers.py)): `provider="null"`.
 2. **`GroundedAnswer` field addition.** Add `provider: str = ""` to the dataclass at [services/tutor.py:168-194](../../services/tutor.py). Populated from `result.provider` at the provider call sites ([services/tutor.py:1631, 1644](../../services/tutor.py)) and propagated through `_passages_only_fallback` and `_resolve_grounded_answer`.
 3. **Pydantic response model additions.**
    - `TutorQueryResponse.provider: str = ""` at [api_models.py:237-258](../../api_models.py).
@@ -124,15 +124,15 @@ Goal: every `ClaudeCallResult`, `GroundedAnswer`, and public API response carrie
 
 ### Documentation references
 
-- Existing additive field pattern on `ClaudeCallResult`: `cache_hit: bool` at [ai/router.py:50](../../ai/router.py) — added similarly without breaking older constructors.
-- Existing additive field pattern on `GroundedAnswer`: `citation_non_prose_drop_count: int = 0` at [services/tutor.py:194](../../services/tutor.py) — landed in PR #82, copy the shape.
+- Existing additive field pattern on `ClaudeCallResult`: `cache_hit: bool` at [ai/router.py:50](../../ai/router.py), added similarly without breaking older constructors.
+- Existing additive field pattern on `GroundedAnswer`: `citation_non_prose_drop_count: int = 0` at [services/tutor.py:194](../../services/tutor.py), landed in PR #82; copy the shape.
 - API type regen: per CLAUDE.md verify-chain line `./script/generate-api-types.sh`.
 
 ### Verification checklist
 
-- [ ] `./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded -v` passes (no test should break — additive default-valued field).
+- [ ] `./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded -v` passes (no test should break; additive default-valued field).
 - [ ] `corepack pnpm --dir frontend typecheck` passes after the regen.
-- [ ] Existing eval harness output unchanged (the new field exists but no metric reads it yet — that is Phase 5).
+- [ ] Existing eval harness output unchanged (the new field exists but no metric reads it yet; that is Phase 5).
 - [ ] `grep -rn "provider:" services/tutor.py routes/ api_models.py | wc -l` confirms the field is plumbed in all four locations.
 
 ### Anti-pattern guards
@@ -147,7 +147,7 @@ PR lands on `fix/t64-provider-provenance`. Field plumbing visible in API respons
 
 ---
 
-## Phase 3 — Policy decision (operator-led, no code)
+## Phase 3: Policy decision (operator-led, no code)
 
 Goal: operator picks the fix policy. Plan default ranking baked in, but operator owns the call.
 
@@ -156,14 +156,14 @@ Goal: operator picks the fix policy. Plan default ranking baked in, but operator
 | Policy | Definition | Aligns with | Breaks |
 |---|---|---|---|
 | **(a) Fail-loud** | When `provider != "claude"` AND `request_kind` is in the high-stakes list, `_resolve_grounded_answer` returns `ok=False` with `error_code="provider_below_quality_bar"`. Frontend renders "AI verification requires a Claude API key. Open Settings to add yours." | CLAUDE.md "no silent fallbacks" most strictly. V2 thesis (verification layer cannot ship degraded). | The offline / no-API-key litigator's first-launch experience. Local-first thesis takes a partial hit: AFM still available for non-verification flows, but the headline feature requires the key. |
-| **(b) Visible provenance badge** | All providers ship answers, but fallback-provider answers carry a UI badge: "Answered by on-device AFM. May be limited; add a Claude API key in Settings for full-quality verification." | Local-first thesis fully. User informed consent. | "No silent fallbacks" — technically the fallback is visible, but the user can ignore the badge and still surface a hollow answer to a third party. False-positive verifications still possible during the validation test. |
+| **(b) Visible provenance badge** | All providers ship answers, but fallback-provider answers carry a UI badge: "Answered by on-device AFM. May be limited; add a Claude API key in Settings for full-quality verification." | Local-first thesis fully. User informed consent. | "No silent fallbacks", technically. The fallback is visible, but the user can ignore the badge and still surface a hollow answer to a third party. False-positive verifications still possible during the validation test. |
 | **(c) Fix the provider chain** | Improve AFM grounded-answer prompt + post-processing until substantive_answer_rate >= 0.95 on AFM. Improve Ollama, or remove it from auto-mode entirely. Add a new provider tier between AFM and Claude (e.g., Selene Mini per memory 8670) if the gap is unbridgeable. | Local-first thesis fully. Long-run product. | Unknown effort. AFM model is fixed by Apple; we can only iterate the prompt + post-processing. Memory 4094 already documents the Swift @Guide annotation pattern; there may be limited headroom. |
 
 ### Recommended sequencing
 
 The plan recommends **(a) + partial (c)**: fail-loud on Ask + Verify (high-stakes), keep AFM in non-verification flows (flashcards, dialogue) so local-first stays alive where degradation is tolerable. Pursue (c) as a parallel longer-arc investigation but do not gate T64 on it.
 
-Counter-argument considered: (b) is gentler and might preserve the local-first user. Rejected because the validation test (T66) is the one event where a false-positive verification poisons the entire test premise. The cost of (a) is a worse first-launch experience for users without an API key; the cost of (b) is a worse 30-day test result. ADR-0008 already paid the cost of pausing polish for the test — paying it again here in product policy is consistent.
+Counter-argument considered: (b) is gentler and might preserve the local-first user. Rejected because the validation test (T66) is the one event where a false-positive verification poisons the entire test premise. The cost of (a) is a worse first-launch experience for users without an API key; the cost of (b) is a worse 30-day test result. ADR-0008 already paid the cost of pausing polish for the test; paying it again here in product policy is consistent.
 
 ### What to implement (this phase)
 
@@ -175,11 +175,11 @@ ONE file: append the operator's decision to this plan doc as a `## Policy decisi
 
 ### Phase exit
 
-Decision committed on the same branch as Phase 2 or a new branch — operator choice.
+Decision committed on the same branch as Phase 2 or a new branch, at operator choice.
 
 ---
 
-## Phase 4 — Implement chosen policy
+## Phase 4: Implement chosen policy
 
 Goal: ship the policy decision from Phase 3 with regression tests.
 
@@ -200,7 +200,7 @@ Goal: ship the policy decision from Phase 3 with regression tests.
 3. **Wire the gate.** Before the provider call at [services/tutor.py:1631, 1644](../../services/tutor.py), check `_provider_meets_quality_bar(provider.kind, "tutor.grounded_answer")`. When False, short-circuit with a `GroundedAnswer(ok=False, error="provider_below_quality_bar", model="", provider=provider.kind, ...)` and skip the provider call entirely. The `_passages_only_fallback` path then runs with the new error_code so the frontend can surface a specific "add API key" message.
 4. **Frontend banner (minimal).** [VerifyView.tsx](../../frontend/src/features/verify/VerifyView.tsx) and the Ask result view check `response.error === "provider_below_quality_bar"` and render: "Verification requires a Claude API key. Open Settings to add yours." with a button that opens Settings. No model picker UI change in this PR.
 5. **Regression test.** New test in `tests/test_tutor_provider_fallback.py`: `test_high_stakes_path_fails_loud_under_afm` asserts `ok=False`, `error="provider_below_quality_bar"`, no AFM call made (verify by `mock.patch` counter on `AFMClient.request_grounded_answer`).
-6. **Sibling test for low-stakes pass-through.** `test_low_stakes_path_allows_afm` — pin `CARREL_AI_PROVIDER=afm`, exercise `notes_expand_service.expand_note_content` (or another non-tutor request_kind), assert the AFM call goes through.
+6. **Sibling test for low-stakes pass-through.** `test_low_stakes_path_allows_afm`: pin `CARREL_AI_PROVIDER=afm`, exercise `notes_expand_service.expand_note_content` (or another non-tutor request_kind), assert the AFM call goes through.
 7. **Update the Phase 1 reproduction test.** Remove `@unittest.expectedFailure` from `test_afm_path_produces_substantive_answer_or_documents_degradation`; the test now passes because the behavior is fail-loud rather than hollow-substantive.
 
 ### Documentation references
@@ -220,7 +220,7 @@ Goal: ship the policy decision from Phase 3 with regression tests.
 ### Anti-pattern guards
 
 - Do NOT make the gate a runtime env var that can be turned off. The whole point is to enforce in the production binary. (Test override via `select_provider(kind="claude")` bypasses the gate naturally because `provider == "claude"`.)
-- Do NOT use `getattr(provider, "kind", "unknown")` in the gate — every provider is required to expose `kind` per the Protocol; if a custom provider in a test omits it, fix the test, not the gate.
+- Do NOT use `getattr(provider, "kind", "unknown")` in the gate. Every provider is required to expose `kind` per the Protocol; if a custom provider in a test omits it, fix the test, not the gate.
 - Do NOT touch the `_GROUNDED_TUTOR_SYSTEM` prompt or `SUBMIT_GROUNDED_ANSWER_TOOL` definition. Out of scope.
 - Do NOT add a "force allow" admin flag. The validation test demands consistency; an admin override would invite "let me just enable it for this demo" footgun.
 
@@ -230,13 +230,13 @@ PR lands on `fix/t64-provider-quality-gate`. Manual smoke confirms fail-loud ren
 
 ---
 
-## Phase 5 — Substantive-answer-rate metric in evals
+## Phase 5: Substantive-answer-rate metric in evals
 
 Goal: a CI-grade metric that catches a future regression of the same family (hollow generator output).
 
 ### What to implement
 
-1. **Metric definition.** A response is "substantive" when `len(answer.summary.strip())` exceeds `2 * max(len(citation.quote) for citation in all_citations)` AND the summary is not a verbatim prefix of any cited quote. Edge case: zero citations → metric defined as `1.0` (vacuously substantive — the failure mode being targeted is "non-empty answer that copies the heading," not "no answer at all," which is covered by the existing `ok=False` machinery).
+1. **Metric definition.** A response is "substantive" when `len(answer.summary.strip())` exceeds `2 * max(len(citation.quote) for citation in all_citations)` AND the summary is not a verbatim prefix of any cited quote. Edge case: zero citations → metric defined as `1.0` (vacuously substantive; the failure mode being targeted is "non-empty answer that copies the heading," not "no answer at all," which is covered by the existing `ok=False` machinery).
 2. **Compute it.** New function `_compute_substantive_answer_rate(answer: GroundedAnswer) -> float` in `evals/run_evals.py`, alongside `quote_validity` compute at [evals/run_evals.py:503](../../evals/run_evals.py). Return `1.0` or `0.0` per case; aggregate to a rate at the suite level (copy the `quote_valid_count / quote_total` pattern at [evals/run_evals.py:587](../../evals/run_evals.py)).
 3. **Stratify by provider.** Bucket cases by `answer.provider`. Report per-provider rates: `substantive_answer_rate.claude`, `substantive_answer_rate.afm`, `substantive_answer_rate.ollama`. Overall rate is the aggregate across all buckets. Use the new `provider` field shipped in Phase 2.
 4. **Threshold guard.** New check at [evals/run_evals.py:622+](../../evals/run_evals.py): if `substantive_answer_rate.claude < 0.95`, warn. AFM and Ollama do not have a threshold guard (they are now expected to short-circuit on high-stakes paths per Phase 4, so their substantive_answer_rate on those cases will be the vacuous-zero case; they may still surface in low-stakes evals).
@@ -271,7 +271,7 @@ PR lands on `feat/t64-substantive-answer-rate`. Comparison report committed.
 
 ---
 
-## Phase 6 — Final verification
+## Phase 6: Final verification
 
 Goal: prove the bug is fixed and protected against recurrence.
 
