@@ -12,7 +12,12 @@ from typing import Any, Dict, List, Optional, Sequence
 from fastapi import HTTPException
 
 from ai.prompt_sanitization import escape_chunk_xml
-from ai.providers import AIProvider, get_default_provider
+from ai.providers import (
+    AIProvider,
+    ProviderUnavailableError,
+    ensure_provider_allowed,
+    get_default_provider,
+)
 from ai.router import (
     ClaudeCallResult,
     ClaudeRouter,
@@ -1553,6 +1558,53 @@ def grounded_tutor_response(
     # Ollama otherwise. Tests still pass a ClaudeRouter stub directly, which
     # satisfies the AIProvider protocol structurally.
     router = router or get_default_provider()
+
+    # T64 Phase 4 fail-loud gate: tutor.grounded_answer is high-stakes
+    # (litigator-facing Ask + Verify surface). When the resolved provider
+    # is not Claude, short-circuit with ok=False so the frontend can
+    # render the "Claude API required" remediation banner instead of
+    # serving a hollow AFM/Ollama payload. Low-stakes flows
+    # (flashcard_generation, dialogue_followup, etc.) call ensure_provider_allowed
+    # with their own request_kind and stay graceful per the policy.
+    #
+    # The kind-default below is "claude" rather than "unknown" so that
+    # legacy test stubs that don't set a `kind` attribute (the bare
+    # `StubRouter` pattern in `tests/test_tutor_grounded.py` standing in
+    # for Claude) pass through the gate unchanged. Production providers
+    # always set `kind`; explicit non-Claude test fixtures (AFM/Ollama
+    # stubs in `tests/test_tutor_provider_fallback.py`) set kind="afm"
+    # or kind="ollama" and correctly trigger the gate.
+    router_kind = str(getattr(router, "kind", "claude"))
+    try:
+        ensure_provider_allowed("tutor.grounded_answer", router_kind)
+    except ProviderUnavailableError as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "tutor_provider_below_quality_bar",
+            request_kind="tutor.grounded_answer",
+            provider=exc.provider,
+        )
+        return GroundedAnswer(
+            summary="",
+            claims=(),
+            unsupported_spans=(),
+            misconceptions=(),
+            next_steps=(),
+            model="",
+            latency_ms=0.0,
+            ok=False,
+            error="provider_below_quality_bar",
+            cache_hit=False,
+            input_tokens=None,
+            output_tokens=None,
+            scope_fallback_used=False,
+            citation_attempt_count=0,
+            citation_drop_count=0,
+            citation_repair_count=0,
+            provider=exc.provider,
+        )
+
     concept = _resolve_concept_context(conn, concept_id)
     resolved_doc_ids = doc_ids or (
         [str(concept["doc_id"])] if concept and concept.get("doc_id") else None

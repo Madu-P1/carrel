@@ -587,7 +587,17 @@ class GroundedTutorTests(unittest.TestCase):
                 reset_default_provider()
 
         self.assertFalse(response.ok)
-        self.assertEqual("grounded_tutor_unavailable", response.error)
+        # T64 Phase 4 (2026-05-27): the fail-loud gate at the top of
+        # grounded_tutor_response fires BEFORE the existing
+        # `if not use_claude` branch that previously produced
+        # `grounded_tutor_unavailable`. NullProvider's kind="null" trips
+        # `ensure_provider_allowed("tutor.grounded_answer", "null")` and
+        # short-circuits with error="provider_below_quality_bar". The
+        # intent of T09 (no silent fallback to a heuristic answer) is
+        # preserved verbatim and now strengthened: the response is
+        # ok=False with an empty summary, no LLM call, no heuristic
+        # claims. The error_code rename reflects which gate caught it.
+        self.assertEqual("provider_below_quality_bar", response.error)
         self.assertEqual("", response.summary)
         self.assertEqual("", response.model)
         self.assertEqual(0, response.citation_attempt_count)

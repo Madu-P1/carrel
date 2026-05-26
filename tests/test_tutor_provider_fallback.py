@@ -182,28 +182,19 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
             sources=("fts",),
         )
 
-    @unittest.expectedFailure
     def test_afm_path_produces_substantive_answer_or_documents_degradation(self) -> None:
-        """T64 Phase 1 diagnostic: AFM hollow-answer path on current main.
+        """T64 Phase 1 reproduction, post-Phase-4 contract.
 
-        Demonstrates the documented header-only response pattern:
-        when the provider's grounded-answer JSON has a `summary` that
-        equals a citable chunk's section heading and `claims` whose
-        text is just that heading, the tutor surfaces the hollow
-        answer to the user with ok=True.
-
-        Assertion is the substantive-answer rule defined by the T64
-        plan's substantive-answer-rate metric (Phase 5): if the
-        response is ok and has non-empty content, the content body
-        must exceed 2x the longest heading length. This fails on
-        current main because the tutor accepts the hollow payload
-        verbatim. expectedFailure flips a failing assertion into a
-        passing test result during the diagnostic phase. Phase 4
-        landing flips this: the post-fix behavior is fail-loud
-        (ok=False with error="provider_below_quality_bar") which
-        means the assertion succeeds (vacuously, since the
-        ok-with-content guard short-circuits), and this decorator
-        must be removed at that point.
+        The Phase 1 diagnostic test was decorated `@unittest.expectedFailure`
+        while the hollow-answer bug existed on main. T64 Phase 4 landed the
+        fail-loud quality gate (`ai.providers.ensure_provider_allowed`)
+        which short-circuits before the AFM call when `request_kind` is in
+        `HIGH_STAKES_REQUEST_KINDS` and the provider is not Claude. The
+        substantive-answer rule (Phase 5 metric: if response.ok AND
+        summary is non-empty, summary length > 2x longest heading)
+        is now vacuously satisfied because the response is `ok=False`
+        with `error="provider_below_quality_bar"` and empty summary.
+        Decorator removed.
         """
         heading = "MITOSIS"
         body = (
@@ -240,11 +231,30 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
                         conn, "Explain mitosis.", router=stub_afm
                     )
 
-        self.assertEqual(1, len(stub_afm.calls), "AFM-like provider should be called once")
+        # Post-Phase-4: the fail-loud gate short-circuits before the
+        # AFM call. The stub provider must therefore NOT be invoked.
+        self.assertEqual(
+            0,
+            len(stub_afm.calls),
+            "Phase 4 gate must short-circuit before any non-Claude grounded-answer call.",
+        )
+
+        # Phase 4 fail-loud contract.
+        self.assertFalse(response.ok, "Hollow AFM payload must surface ok=False post-Phase-4.")
+        self.assertEqual("provider_below_quality_bar", response.error)
+        self.assertEqual("", response.summary)
+        self.assertEqual(
+            "afm",
+            response.provider,
+            "provider_below_quality_bar response must still carry the offending provider name.",
+        )
 
         # Substantive-answer rule from the T64 plan (Phase 5 metric
         # definition): if the response is ok and has non-empty
         # content, the body must exceed 2x the longest heading.
+        # Post-Phase-4 this is vacuously satisfied (response.ok is
+        # False), but keep the assertion shape as a future regression
+        # guard against accidental re-enablement of the hollow path.
         if response.ok and response.summary.strip():
             self.assertGreater(
                 len(response.summary.strip()),
@@ -400,21 +410,39 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
         )
 
     def test_provider_provenance_default_empty_on_fallback_paths(self) -> None:
-        """T64 Phase 2: when retrieval returns empty (no LLM call made),
-        the tutor's _empty_retrieval_answer path produces a GroundedAnswer
-        with provider="" (no provider was consulted). This pins the
-        empty-string default contract."""
+        """T64 Phase 2: when retrieval returns empty AND the active provider
+        is Claude (so Phase 4's fail-loud gate does not fire), the tutor's
+        `_empty_retrieval_answer` path produces a GroundedAnswer with
+        `provider=""` because no provider call was made. This pins the
+        empty-string default contract.
+
+        Note: the AFM provider would short-circuit at Phase 4's
+        `ensure_provider_allowed` gate BEFORE reaching the empty-retrieval
+        path, so the Claude stub is the right vehicle for this specific
+        post-retrieval contract."""
+
+        class _MinimalClaudeStub:
+            kind = "claude"
+
+            def ai_enabled(self) -> bool:
+                return True
+
+            def supports_grounded_answer(self) -> bool:
+                return False
+
+            def request_tool_call(self, **kwargs: Any) -> ClaudeCallResult:
+                raise AssertionError("Claude path should not be called when retrieval is empty")
+
         with main.get_db() as conn:
             self._insert_document(conn, "doc-bio", "bio.txt", "Biology")
             conn.commit()
-            stub_afm = _StubAFMLikeProvider(_afm_grounded_result({"summary": "", "claims": []}))
+            stub_claude = _MinimalClaudeStub()
             with mock.patch("services.tutor.search_hybrid", return_value=[]):
                 with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
                     response = tutor_service.grounded_tutor_response(
-                        conn, "Question with no matching source.", router=stub_afm
+                        conn, "Question with no matching source.", router=stub_claude
                     )
 
-        self.assertEqual(0, len(stub_afm.calls), "No retrieval hits should mean no LLM call")
         self.assertFalse(response.ok)
         self.assertEqual("empty_retrieval", response.error)
         self.assertEqual(
@@ -422,6 +450,46 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
             response.provider,
             "empty_retrieval path made no provider call; provider must stay ''.",
         )
+
+    def test_phase4_gate_short_circuits_on_high_stakes_with_non_claude_provider(self) -> None:
+        """T64 Phase 4: the fail-loud gate at `ensure_provider_allowed` fires
+        BEFORE any retrieval or LLM work when the active provider is not
+        Claude on a high-stakes request_kind. Asserts the gate's
+        observable contract on `grounded_tutor_response`:
+        - ok=False
+        - error="provider_below_quality_bar"
+        - summary=""
+        - provider=<the offending kind, e.g. "afm">
+        - the stubbed AFM provider's request_grounded_answer is NEVER
+          invoked (call count == 0)
+        - search_hybrid is never reached either (the gate is at the
+          top of grounded_tutor_response, before any retrieval).
+        """
+
+        class _SearchHybridSpy:
+            calls = 0
+
+            def __call__(self, *args: Any, **kwargs: Any) -> list[Any]:
+                _SearchHybridSpy.calls += 1
+                return []
+
+        spy = _SearchHybridSpy()
+        with main.get_db() as conn:
+            stub_afm = _StubAFMLikeProvider(
+                _afm_grounded_result({"summary": "Hello", "claims": []})
+            )
+            with mock.patch("services.tutor.search_hybrid", side_effect=spy):
+                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Explain anything.", router=stub_afm
+                    )
+
+        self.assertEqual(0, _SearchHybridSpy.calls, "Phase 4 gate fires before retrieval.")
+        self.assertEqual(0, len(stub_afm.calls), "Phase 4 gate fires before any LLM call.")
+        self.assertFalse(response.ok)
+        self.assertEqual("provider_below_quality_bar", response.error)
+        self.assertEqual("", response.summary)
+        self.assertEqual("afm", response.provider)
 
 
 if __name__ == "__main__":
