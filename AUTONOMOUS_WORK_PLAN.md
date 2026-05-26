@@ -34,8 +34,9 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 ## How the loop picks tasks
 
 1. Read this file top-to-bottom.
+1a. **Honor the most recent `Operator decisions` override.** Active override as of 2026-05-26: pick from the V2 polish queue (T59 → T63 in order) before any older `pending` task. Only after every V2 polish task is `done` or `blocked` do you fall back to step 3.
 2. Skip every task with `Status: done` or `Status: blocked`.
-3. Among remaining `pending` tasks, find the lowest-numbered task whose `Dependencies:` line lists only tasks already `done` (or `none`).
+3. Among remaining `pending` tasks, find the lowest-numbered task whose `Dependencies:` line lists only tasks already `done` (or `none`). Step 1a takes precedence when an active override applies.
 4. Mark that task `Status: in_progress` (commit the status flip on the feature branch).
 5. Execute per the master plan section referenced by the task.
 6. On commit / push / `gh pr create`, audit-gate fires; auditor subagent approves per `.claude/RATER_RUBRIC.md` §"Audit checklist".
@@ -699,15 +700,20 @@ Conventions per task:
 **Verify:** canonical chain. New test in `tests/test_legal_case_verification.py` asserting that a draft with the same cite in 2 claims triggers only one `lookup_citations_in_text` call (via call counter on a `MockTransport`).
 **Guards:** cache MUST NOT cross requests (per-call only). Cite normalization key: use `normalized_citations[0]` from the first lookup, fall back to the raw citation string.
 
-## T62 — V2 polish: ⌘⇧V hotkey + command palette entry for /verify
+## T62 — V2 polish: ⌘⇧V binding via Swift menu + visual-hint update
 
 **Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 verify-wiring-fixup auditor (follow-up #4).
 **Status:** pending
 **Deps:** none
 **Effort:** ~0.5 iteration
-**Acceptance:** ⌘⇧V navigates to /verify from anywhere in the app shell. `frontend/src/app/shell/AppShell.tsx` nav entry `commandHint: "⌘⇧V"` replaces the empty string. Keyboard-shortcut registration goes wherever the existing ⌘1-9 shortcuts are wired (find via `grep -rn "⌘1\|metaKey.*1" frontend/src/`). The Swift menu (`macos-app/Sources/EinsteinDesktopApp/MainMenuBuilder.swift`) gets a parallel Verify menu item under View. If the command palette (⌘K) is implemented, add a "Verify draft" action. If the palette is still stubbed (per CLAUDE.md "Open debts": command palette stubbed, not implemented), only land the keyboard shortcut + Swift menu.
-**Verify:** canonical chain + `swift test --package-path /Users/madu/Desktop/Codex/macos-app` if Swift menu touched.
-**Guards:** ⌘⇧V must not collide with existing macOS or Carrel shortcuts (verify against `frontend/src/` shortcut registrations + macOS reserved keys).
+**Acceptance:** TWO concrete edits. Scope is intentionally narrow:
+1. `macos-app/Sources/EinsteinDesktopApp/MainMenuBuilder.swift`: add a "Verify Draft" menu item under the existing View (or Window) menu with keyEquivalent `"v"` + modifier `[.command, .shift]`. The handler posts the existing navigate-to-path command (whatever the Ask / Library entries use); look up the existing pattern in MainMenuBuilder and mirror it. The route target is `/verify`.
+2. `frontend/src/app/shell/AppShell.tsx` nav-entry for Verify Draft updates `commandHint: ""` → `commandHint: "⌘⇧V"` so the sidebar visual hint matches the new menu binding.
+**OUT OF SCOPE** (do NOT attempt these, the ground truth differs from what I described in the prior commit message):
+- DO NOT add a JS keyboard handler for ⌘1-9 or ⌘⇧V. The existing `commandHint` strings are DISPLAY ONLY — there is no JS handler in AppShell.tsx that binds them; the bindings come from the Swift menu. Adding a JS handler would create a duplicate (Swift menu fires the IPC AND a JS listener fires too), risking double-navigation.
+- DO NOT touch the command palette (⌘K) — it is stubbed per CLAUDE.md "Open debts" and integrating against it would unblock a much larger refactor that is out of scope.
+**Verify:** canonical chain + `swift test --package-path /Users/madu/Desktop/Codex/macos-app` (mandatory since MainMenuBuilder is touched + has XCTest coverage per CLAUDE.md).
+**Guards:** ⌘⇧V must not collide with any existing macOS or Carrel shortcut (sanity-check via `grep -rn "keyEquivalent.*v" macos-app/`). The Swift test suite already exercises MainMenuBuilder structure; new menu item must keep that suite green.
 
 ## T63 — V2 polish: docstring sweep + AskView empty-result re-ingest hint
 
