@@ -159,6 +159,12 @@ class TutorCitationItem(BaseModel):
     content: str = ""
     score: float = 0.0
     label: str = ""
+    # Carrel V2: source node_type so the frontend can render prose
+    # vs. structural cites distinctly. "body" on the legacy chunks
+    # path (no node-level provenance); the originating
+    # nodes.node_type on the typed-node path. See
+    # services.tutor.Citation.node_type.
+    node_type: str = "body"
 
 
 class TutorClaimItem(BaseModel):

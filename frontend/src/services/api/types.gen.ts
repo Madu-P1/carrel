@@ -2874,6 +2874,11 @@ export interface components {
              * @default
              */
             label: string;
+            /**
+             * Node Type
+             * @default body
+             */
+            node_type: string;
         };
         /** TutorClaimItem */
         TutorClaimItem: {

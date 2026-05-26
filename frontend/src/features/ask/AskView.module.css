@@ -307,6 +307,24 @@
   letter-spacing: var(--tracking-mono);
 }
 
+/* Carrel V2: non-prose source badge. Body/list_item cites hide the
+ * badge; structural sources (table_cell, caption, equation, footnote)
+ * surface their type so a verifier can tell at a glance that a claim
+ * is backed by a diagram label / table cell / equation rather than
+ * prose. */
+.citationChipNodeType {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .citationPreviewCard {
   position: absolute;
   left: 0;

@@ -544,6 +544,11 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
         "content": context.verbatim_text,
         "score": round(context.score, 6),
         "label": f"{context.document_name} · {section_label}",
+        # Carrel V2: source node_type so the frontend can render
+        # prose vs. structural cites distinctly. "body" on the
+        # legacy chunks path (no node-level provenance); the
+        # originating nodes.node_type on the typed-node path.
+        "node_type": context.node_type,
     }
 
 
