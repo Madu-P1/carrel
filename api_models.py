@@ -245,6 +245,54 @@ class TutorQueryResponse(BaseModel):
     momentum: Dict[str, Any] = Field(default_factory=dict)
 
 
+class VerifyRequest(BaseModel):
+    """Carrel V2 Stage 1 — Verify-mode request.
+
+    `draft` is the text to verify (a brief, a memo, a paragraph).
+    Optional `doc_ids` scopes verification to a subset of the user's
+    corpus (e.g., the case-file folder for the matter). When unset,
+    verification runs against the user's full library.
+    """
+
+    draft: str = Field(..., min_length=1, max_length=200_000)
+    doc_ids: Optional[List[str]] = None
+    subject_name: Optional[str] = Field(default=None, max_length=240)
+
+
+class VerifyClaimVerdictItem(BaseModel):
+    """One per-claim verdict the verifier UX renders.
+
+    `verdict` is the headline: "verified" (engine grounded the
+    claim in retrieved chunks), "unsupported" (claim landed in
+    the engine's unsupported_spans), or "unknown" (engine itself
+    failed — error_code in `unsupported_reason`).
+    """
+
+    claim_index: int
+    claim_text: str
+    verdict: Literal["verified", "unsupported", "unknown"]
+    citations: List[TutorCitationItem] = Field(default_factory=list)
+    case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
+    unsupported_reason: Optional[str] = None
+
+
+class VerifySummaryItem(BaseModel):
+    total: int
+    verified: int
+    unsupported: int
+    unknown: int
+
+
+class VerifyResponse(BaseModel):
+    draft_text: str
+    claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
+    summary: VerifySummaryItem
+    latency_ms: float = 0.0
+    model: str = ""
+    ok: bool = True
+    error: Optional[str] = None
+
+
 class NoteUpsertRequest(BaseModel):
     note_id: Optional[str] = Field(default=None, max_length=128)
     doc_id: Optional[str] = Field(default=None, max_length=128)

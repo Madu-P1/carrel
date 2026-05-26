@@ -3,6 +3,7 @@ import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 import { ErrorBoundary } from "@/design-system";
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
 import { AskView } from "@/features/ask/AskView";
+import { VerifyView } from "@/features/verify/VerifyView";
 import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
 import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
@@ -106,6 +107,10 @@ function renderBundledRoute(rawPath: string) {
     return <AskView />;
   }
 
+  if (path.startsWith("/verify")) {
+    return <VerifyView />;
+  }
+
   if (path.startsWith("/study")) {
     return <StudyView />;
   }
@@ -171,6 +176,7 @@ function BoundedRoutes() {
         <Route component={LibraryView} path="/library" />
         <Route component={BrowserReaderRoute} path="/reader/:id?" />
         <Route component={AskView} path="/ask" />
+            <Route component={VerifyView} path="/verify" />
         <Route component={StudyView} path="/study" />
         <Route component={SearchView} path="/search" />
         <Route component={ConceptGraphView} path="/concepts" />

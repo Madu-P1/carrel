@@ -64,6 +64,9 @@ const navLinks: SidebarNavItem[] = [
   { key: "notes", label: "Notes", commandHint: "", icon: "notes", path: "/notes" },
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "reader", path: "/reader" },
   { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
+  // Carrel V2 Stage 1 — Verify-mode entry. No ⌘ hotkey yet (1-9
+  // slots are full); ⌘⇧V is the natural addition in a polish pass.
+  { key: "verify", label: "Verify Draft", commandHint: "", icon: "verify", path: "/verify" },
   { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
@@ -83,6 +86,10 @@ function routeLabel(path: string): string {
 
   if (path.startsWith("/ask")) {
     return "Ask";
+  }
+
+  if (path.startsWith("/verify")) {
+    return "Verify";
   }
 
   if (path.startsWith("/study")) {

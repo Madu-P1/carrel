@@ -14,6 +14,10 @@ export type UpdateDocumentSubjectRequest = components["schemas"]["DocumentSubjec
 export type TutorQueryRequest = components["schemas"]["TutorQueryRequest"];
 export type TutorQueryResponse =
   paths["/api/tutor/query"]["post"]["responses"][200]["content"]["application/json"];
+export type VerifyRequest = components["schemas"]["VerifyRequest"];
+export type VerifyResponse =
+  paths["/api/verify"]["post"]["responses"][200]["content"]["application/json"];
+export type VerifyClaimVerdict = NonNullable<VerifyResponse["claim_verdicts"]>[number];
 
 export const documents = {
   list: () => api<DocumentRow[]>("/api/documents"),
@@ -884,6 +888,16 @@ export const notes = {
 export const tutor = {
   ask: (payload: TutorQueryRequest) =>
     api<TutorQueryResponse>("/api/tutor/query", {
+      method: "POST",
+      body: payload,
+      timeoutMs: 180_000
+    })
+};
+
+// Carrel V2 Stage 1 — Verify-mode endpoint.
+export const verify = {
+  draft: (payload: VerifyRequest) =>
+    api<VerifyResponse>("/api/verify", {
       method: "POST",
       body: payload,
       timeoutMs: 180_000

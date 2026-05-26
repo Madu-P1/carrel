@@ -133,7 +133,13 @@ export const icons = {
   // row." Used by the global Notes page for folder rename affordance;
   // any future inline-edit cue can reuse it.
   edit:
-    "M11.5 2.5 l2 2 -8 8 H3.5 v-2 z M10 4 l2 2"
+    "M11.5 2.5 l2 2 -8 8 H3.5 v-2 z M10 4 l2 2",
+
+  // verify: shield with a checkmark inside. Signals "this output has
+  // been verified against the source." Used by the Carrel V2 Stage 1
+  // Verify-mode nav entry. Shield outline + interior check stroke.
+  verify:
+    "M8 2 L13 4 V8.5 c0 3 -2 5 -5 5.5 c-3 -0.5 -5 -2.5 -5 -5.5 V4 z M5.5 8 l2 2 3 -3.5"
 } as const;
 
 export type IconName = keyof typeof icons;
