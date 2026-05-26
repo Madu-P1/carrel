@@ -111,7 +111,15 @@ class HappyPathTests(unittest.TestCase):
         self.assertEqual(1, len(hit.clusters))
         cluster = hit.clusters[0]
         self.assertEqual("Obergefell v. Hodges", cluster.case_name)
-        self.assertTrue(cluster.absolute_url.startswith("https://www.courtlistener.com"))
+        # Strict host check (not a substring/prefix match) — closes
+        # CodeQL py/incomplete-url-substring-sanitization on test
+        # assertions. Production code uses the same urlparse-based
+        # _is_trusted_url helper.
+        from urllib.parse import urlparse as _url_parse
+
+        parsed_absolute = _url_parse(cluster.absolute_url or "")
+        self.assertEqual("https", parsed_absolute.scheme)
+        self.assertEqual("www.courtlistener.com", parsed_absolute.netloc)
         self.assertEqual("scotus", cluster.court)
         self.assertEqual("2015-06-26", cluster.date_filed)
 
@@ -227,7 +235,7 @@ class FetchOpinionTextTests(unittest.TestCase):
     def test_missing_token_returns_no_token_error(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("COURTLISTENER_API_TOKEN", None)
-            result = cl.fetch_opinion_text("https://example.com/opinion/1/")
+            result = cl.fetch_opinion_text("https://www.courtlistener.com/api/rest/v4/opinions/1/")
         self.assertFalse(result.ok)
         self.assertEqual("courtlistener_no_api_token", result.error_code)
 
@@ -256,7 +264,9 @@ class FetchOpinionTextTests(unittest.TestCase):
         body = {"plain_text": "The holding is X."}
         client = _client_with_response(lambda req: httpx.Response(200, json=body))
         with self._with_token():
-            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
         self.assertTrue(result.ok)
         self.assertEqual("plain_text", result.source_field)
         self.assertEqual("The holding is X.", result.text)
@@ -266,7 +276,11 @@ class FetchOpinionTextTests(unittest.TestCase):
         body = {"plain_text": long_text}
         client = _client_with_response(lambda req: httpx.Response(200, json=body))
         with self._with_token():
-            result = cl.fetch_opinion_text("https://x/op/1/", client=client, max_chars=100)
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/",
+                client=client,
+                max_chars=100,
+            )
         self.assertTrue(result.ok)
         self.assertLessEqual(len(result.text), 110, "truncated + ellipsis suffix")
         self.assertTrue(result.text.endswith("…"))
@@ -275,14 +289,18 @@ class FetchOpinionTextTests(unittest.TestCase):
         body = {"id": 1, "case_name": "X v Y"}  # no text fields populated
         client = _client_with_response(lambda req: httpx.Response(200, json=body))
         with self._with_token():
-            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
         self.assertFalse(result.ok)
         self.assertEqual("courtlistener_no_text_field", result.error_code)
 
     def test_http_404_returns_http_status(self) -> None:
         client = _client_with_response(lambda req: httpx.Response(404))
         with self._with_token():
-            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
         self.assertFalse(result.ok)
         self.assertEqual("courtlistener_http_status", result.error_code)
 
@@ -290,7 +308,9 @@ class FetchOpinionTextTests(unittest.TestCase):
         body = {"html_with_citations": "<p>A &amp; B &lt; C &#65;</p>"}
         client = _client_with_response(lambda req: httpx.Response(200, json=body))
         with self._with_token():
-            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
         self.assertTrue(result.ok)
         self.assertIn("A & B < C A", result.text)
 
@@ -327,6 +347,106 @@ class ClusterSubOpinionsTests(unittest.TestCase):
         cluster = result.hits[0].clusters[0]
         self.assertEqual(2, len(cluster.sub_opinions))
         self.assertTrue(cluster.sub_opinions[0].endswith("/2812209/"))
+
+
+class HostAllowlistTests(unittest.TestCase):
+    """Carrel V2 hardening: never trust an absolute URL or opinion URI
+    whose host is not the configured CourtListener base. Closes the
+    credential-leak vector where a spoofed citation-lookup response
+    could exfiltrate the Bearer token via the auth header."""
+
+    def _with_token(self):
+        return mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False)
+
+    def test_absolute_url_to_attacker_is_dropped_from_cluster(self) -> None:
+        body = [
+            {
+                "citation": "576 U.S. 644",
+                "normalized_citations": ["576 U.S. 644"],
+                "start_index": 0,
+                "end_index": 12,
+                "status": 200,
+                "error_message": "",
+                "clusters": [
+                    {
+                        "case_name": "Obergefell v. Hodges",
+                        # Looks like the trusted host but is actually a
+                        # subdomain attack — would pass a naive
+                        # `startswith("https://www.courtlistener.com")`
+                        # check.
+                        "absolute_url": "https://www.courtlistener.com.attacker.com/opinion/3038/",
+                        "sub_opinions": [],
+                    }
+                ],
+            }
+        ]
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.lookup_citations_in_text("576 U.S. 644", client=client)
+        self.assertTrue(result.ok)
+        # Cluster preserved, but the spoofed absolute_url is dropped.
+        cluster = result.hits[0].clusters[0]
+        self.assertIsNone(cluster.absolute_url)
+
+    def test_sub_opinions_to_attacker_are_filtered(self) -> None:
+        body = [
+            {
+                "citation": "576 U.S. 644",
+                "normalized_citations": ["576 U.S. 644"],
+                "start_index": 0,
+                "end_index": 12,
+                "status": 200,
+                "error_message": "",
+                "clusters": [
+                    {
+                        "case_name": "X",
+                        "sub_opinions": [
+                            "https://www.courtlistener.com/api/rest/v4/opinions/1/",
+                            "https://attacker.com/opinions/1/",
+                            "https://www.courtlistener.com.attacker.com/opinions/2/",
+                        ],
+                    }
+                ],
+            }
+        ]
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.lookup_citations_in_text("576 U.S. 644", client=client)
+        cluster = result.hits[0].clusters[0]
+        # Only the genuine courtlistener.com URI survives.
+        self.assertEqual(1, len(cluster.sub_opinions))
+        self.assertTrue(cluster.sub_opinions[0].startswith("https://www.courtlistener.com/"))
+
+    def test_fetch_opinion_text_refuses_untrusted_host(self) -> None:
+        sockets_opened = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sockets_opened.append(str(request.url))
+            return httpx.Response(200, json={"plain_text": "leaked"})
+
+        client = _client_with_response(handler)
+        with self._with_token():
+            result = cl.fetch_opinion_text(
+                "https://attacker.com/api/rest/v4/opinions/1/", client=client
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_untrusted_host", result.error_code)
+        self.assertEqual([], sockets_opened, "no socket may open for untrusted host")
+
+    def test_non_http_scheme_rejected(self) -> None:
+        with self._with_token():
+            result = cl.fetch_opinion_text("file:///etc/passwd")
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_untrusted_host", result.error_code)
+
+    def test_trusted_host_passes(self) -> None:
+        body = {"plain_text": "We hold..."}
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
+        self.assertTrue(result.ok)
 
 
 if __name__ == "__main__":

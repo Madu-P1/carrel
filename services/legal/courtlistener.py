@@ -40,6 +40,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -154,6 +155,42 @@ def _base_url() -> str:
     return (os.getenv("COURTLISTENER_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
 
 
+def _trusted_host() -> str:
+    """The host the auth token is valid for. Defaults to the public
+    CourtListener host; can be overridden via COURTLISTENER_BASE_URL
+    for self-hosted or test deployments.
+    """
+    parsed = urlparse(_base_url())
+    return (parsed.netloc or "").lower()
+
+
+def _is_trusted_url(url: str) -> bool:
+    """Strict host-allowlist check.
+
+    Returns True iff `url` is an http(s) URL whose host matches
+    `_trusted_host()` exactly (case-insensitive). Rejects bare
+    paths, non-http(s) schemes, missing hosts, and any host that
+    only superficially looks like the trusted one (so
+    `https://www.courtlistener.com.attacker.com` is rejected).
+
+    Used as a defense-in-depth gate before:
+      - rendering an `absolute_url` as a clickable link in the UX,
+      - GETting an opinion URI with the auth token in the header.
+
+    Closes the credential-leak vector where a spoofed citation-lookup
+    response could exfiltrate the Bearer token to an attacker host.
+    """
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() not in ("http", "https"):
+        return False
+    return (parsed.netloc or "").lower() == _trusted_host()
+
+
 def _timeout_seconds() -> float:
     raw = os.getenv("COURTLISTENER_TIMEOUT_SECONDS")
     if not raw:
@@ -176,14 +213,42 @@ def _coerce_cluster(payload: Any) -> CitationCluster:
         # payload; absolutize against the configured base so the
         # verifier UX can render a working link.
         absolute_url = _base_url() + absolute_url
+    # Defense-in-depth: drop absolute_url that doesn't point at the
+    # trusted host. A spoofed response (compromised CourtListener,
+    # MITM with stripped TLS, or a malicious fixture in a test) could
+    # otherwise render a UX link to an attacker domain.
+    if absolute_url and not _is_trusted_url(absolute_url):
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "courtlistener_untrusted_absolute_url_dropped",
+            url_preview=absolute_url[:120],
+        )
+        absolute_url = None
     court_raw = payload.get("court") or payload.get("court_id")
     court = str(court_raw).strip() if court_raw else None
     date_filed_raw = payload.get("date_filed") or payload.get("dateFiled")
     date_filed = str(date_filed_raw).strip() if date_filed_raw else None
     sub_opinions_raw = payload.get("sub_opinions") or payload.get("subOpinions") or []
-    sub_opinions = tuple(
+    # Same defense-in-depth on the sub_opinions URIs. fetch_opinion_text
+    # also validates per-call, but filtering at coercion keeps untrusted
+    # URIs from ever reaching the caller's iteration.
+    sub_opinions_candidates = (
         str(uri).strip() for uri in sub_opinions_raw if isinstance(uri, str) and uri.strip()
     )
+    sub_opinions: tuple[str, ...] = ()
+    kept: list[str] = []
+    for uri in sub_opinions_candidates:
+        if _is_trusted_url(uri):
+            kept.append(uri)
+        else:
+            log_event(
+                LOGGER,
+                logging.WARNING,
+                "courtlistener_untrusted_sub_opinion_dropped",
+                url_preview=uri[:120],
+            )
+    sub_opinions = tuple(kept)
     return CitationCluster(
         case_name=case_name,
         absolute_url=absolute_url,
@@ -455,6 +520,29 @@ def fetch_opinion_text(
             source_field=None,
             error_code="courtlistener_no_opinion_uri",
             error_message="Empty opinion URI.",
+        )
+    # Defense-in-depth: never send the auth token to an untrusted host.
+    # A spoofed citation-lookup response could otherwise return a
+    # sub_opinions URI like "https://attacker.com/opinions/1/" and
+    # exfiltrate the Bearer token via the request header. _coerce_cluster
+    # already filters sub_opinions at coercion, but this gate guarantees
+    # the invariant at the call site too — both layers must agree before
+    # the socket opens.
+    if not _is_trusted_url(uri):
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "courtlistener_opinion_fetch_untrusted_host",
+            url_preview=uri[:120],
+        )
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_untrusted_host",
+            error_message=(
+                f"Opinion URI host is not trusted: refusing to send auth token to {uri[:120]}."
+            ),
         )
 
     headers = {

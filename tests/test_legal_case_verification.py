@@ -315,7 +315,7 @@ class VerifyClaimsWithHoldingMatchTests(unittest.TestCase):
         from services.legal.case_verification import verify_claims_for_cases
 
         lookup_body = self._lookup_body(
-            status=200, sub_opinions=["https://example.com/opinions/1/"]
+            status=200, sub_opinions=["https://www.courtlistener.com/api/rest/v4/opinions/1/"]
         )
         opinion_body = {"plain_text": "We hold that same-sex couples may marry."}
         client = _transport(self._handler(lookup_body=lookup_body, opinion_body=opinion_body))
@@ -375,7 +375,7 @@ class VerifyClaimsWithHoldingMatchTests(unittest.TestCase):
         from services.legal.case_verification import verify_claims_for_cases
 
         lookup_body = self._lookup_body(
-            status=200, sub_opinions=["https://example.com/opinions/1/"]
+            status=200, sub_opinions=["https://www.courtlistener.com/api/rest/v4/opinions/1/"]
         )
         opinion_calls = []
 
