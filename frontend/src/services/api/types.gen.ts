@@ -2219,6 +2219,14 @@ export interface components {
             date_filed?: string | null;
             /** Error Message */
             error_message?: string | null;
+            /** Holding Match */
+            holding_match?: boolean | null;
+            /** Holding Concern */
+            holding_concern?: string | null;
+            /** Holding Excerpt */
+            holding_excerpt?: string | null;
+            /** Holding Error */
+            holding_error?: string | null;
         };
         /**
          * ClaimCaseVerdictItem

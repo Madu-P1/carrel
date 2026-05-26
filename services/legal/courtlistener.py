@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -58,16 +59,42 @@ class CitationCluster:
     CourtListener returns the full case-law cluster shape in the
     `clusters` array of each response item. The subset surfaced here
     is what the verifier UX needs to render: case name + URL +
-    court + filing year. Anything richer (full opinion text, judges,
-    citation graph) stays in the raw payload accessible via
-    `raw` for callers that need it.
+    court + filing year + the opinion URIs (`sub_opinions`) that
+    the holding-match step follows up on. Anything richer (judges,
+    citation graph, full opinion text) stays in the raw payload
+    accessible via `raw` for callers that need it.
     """
 
     case_name: str
     absolute_url: str | None
     court: str | None
     date_filed: str | None
+    # Carrel V2 half-2: opinion URIs the holding-match step follows up
+    # to fetch the actual decision text. CourtListener cluster payloads
+    # carry a `sub_opinions` array of opinion-resource URLs; each is a
+    # GET that returns the opinion record (html_with_citations,
+    # plain_text, etc.). See `fetch_opinion_text` below.
+    sub_opinions: tuple[str, ...] = ()
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OpinionTextResult:
+    """Result envelope for a fetch_opinion_text call.
+
+    `ok=True` means the opinion URI returned a parseable record with
+    extractable text. `ok=False` means the fetch itself failed (no
+    token, HTTP error, no text fields populated). The holding-match
+    step surfaces `error_code` to the operator instead of degrading
+    to "holding verified" on a fetch failure (CLAUDE.md "no silent
+    AI fallbacks").
+    """
+
+    ok: bool
+    text: str
+    source_field: str | None
+    error_code: str | None
+    error_message: str | None
 
 
 @dataclass(frozen=True)
@@ -153,11 +180,16 @@ def _coerce_cluster(payload: Any) -> CitationCluster:
     court = str(court_raw).strip() if court_raw else None
     date_filed_raw = payload.get("date_filed") or payload.get("dateFiled")
     date_filed = str(date_filed_raw).strip() if date_filed_raw else None
+    sub_opinions_raw = payload.get("sub_opinions") or payload.get("subOpinions") or []
+    sub_opinions = tuple(
+        str(uri).strip() for uri in sub_opinions_raw if isinstance(uri, str) and uri.strip()
+    )
     return CitationCluster(
         case_name=case_name,
         absolute_url=absolute_url,
         court=court,
         date_filed=date_filed,
+        sub_opinions=sub_opinions,
         raw=payload,
     )
 
@@ -325,4 +357,200 @@ def lookup_citations_in_text(
         hits=tuple(hits),
         error_code=None,
         error_message=None,
+    )
+
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITY_RE = re.compile(r"&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);")
+_HTML_ENTITY_MAP = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&apos;": "'",
+    "&nbsp;": " ",
+}
+_WHITESPACE_RUN = re.compile(r"\s+")
+# CourtListener opinion text-field preference order. Per the public
+# docs: "prefer the html_with_citations field instead of plain_text;
+# it contains the raw text of the decision, and is the most reliable
+# field for most purposes." Walk in order, take the first non-empty.
+_OPINION_TEXT_FIELDS = (
+    "html_with_citations",
+    "html_columbia",
+    "html_lawbox",
+    "html_anon_2020",
+    "html",
+    "xml_harvard",
+    "plain_text",
+)
+
+
+def _decode_entity(match: "re.Match[str]") -> str:
+    raw = match.group(0)
+    if raw in _HTML_ENTITY_MAP:
+        return _HTML_ENTITY_MAP[raw]
+    body = raw[1:-1]
+    try:
+        if body.startswith("#x") or body.startswith("#X"):
+            return chr(int(body[2:], 16))
+        if body.startswith("#"):
+            return chr(int(body[1:]))
+    except (ValueError, OverflowError):
+        return raw
+    return raw
+
+
+def _html_to_text(html: str) -> str:
+    """Cheap HTML-to-text. Avoids the BeautifulSoup dependency for one
+    file's worth of stripping — opinion HTML is well-structured enough
+    that a tag-strip + entity-decode is faithful."""
+    if not html:
+        return ""
+    no_tags = _HTML_TAG_RE.sub(" ", html)
+    decoded = _HTML_ENTITY_RE.sub(_decode_entity, no_tags)
+    collapsed = _WHITESPACE_RUN.sub(" ", decoded).strip()
+    return collapsed
+
+
+def fetch_opinion_text(
+    opinion_uri: str,
+    *,
+    client: httpx.Client | None = None,
+    max_chars: int = 8_000,
+) -> OpinionTextResult:
+    """GET an opinion resource URI and return its text content.
+
+    The CourtListener citation-lookup response's cluster carries a
+    `sub_opinions` array of opinion-resource URIs; this function
+    fetches one of them and extracts the most reliable text field
+    (html_with_citations preferred; falls back through the documented
+    source-specific variants). HTML is stripped to plain text.
+
+    `max_chars` truncates the returned text from the front. V1
+    holding-match runs near the start of the opinion (the holding
+    is typically in the first 5-15K characters). A future half can
+    add semantic narrowing for opinions where the holding lives
+    deeper.
+
+    Honest fallback per CLAUDE.md "no silent AI fallbacks": every
+    failure mode returns `ok=False` with an explicit error_code so
+    the holding-match step surfaces "Holding check unavailable"
+    instead of silently treating the cite as verified.
+    """
+    token = _api_token()
+    if not token:
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_no_api_token",
+            error_message=("COURTLISTENER_API_TOKEN is not set; cannot fetch opinion text."),
+        )
+    uri = (opinion_uri or "").strip()
+    if not uri:
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_no_opinion_uri",
+            error_message="Empty opinion URI.",
+        )
+
+    headers = {
+        "Authorization": f"Token {token}",
+        "Accept": "application/json",
+    }
+    owns_client = client is None
+    http = client or httpx.Client(timeout=_timeout_seconds())
+    try:
+        response = http.get(uri, headers=headers)
+    except httpx.HTTPError as exc:
+        log_event(
+            LOGGER,
+            logging.WARNING,
+            "courtlistener_opinion_fetch_failed",
+            error_code="courtlistener_http_error",
+            error_class=exc.__class__.__name__,
+        )
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_http_error",
+            error_message=f"Opinion fetch failed: {exc.__class__.__name__}",
+        )
+    finally:
+        if owns_client:
+            http.close()
+
+    if response.status_code == 429:
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_rate_limited",
+            error_message="CourtListener rate limit hit on opinion fetch.",
+        )
+    if response.status_code in (401, 403):
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_auth_rejected",
+            error_message=(
+                f"CourtListener rejected the token on opinion fetch ({response.status_code})."
+            ),
+        )
+    if response.status_code >= 400:
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_http_status",
+            error_message=f"Opinion endpoint returned HTTP {response.status_code}.",
+        )
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_invalid_json",
+            error_message="Opinion response was not valid JSON.",
+        )
+    if not isinstance(payload, dict):
+        return OpinionTextResult(
+            ok=False,
+            text="",
+            source_field=None,
+            error_code="courtlistener_invalid_shape",
+            error_message="Opinion response was not a JSON object.",
+        )
+
+    for field_name in _OPINION_TEXT_FIELDS:
+        raw = payload.get(field_name)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        text = _html_to_text(raw) if field_name != "plain_text" else raw.strip()
+        if not text:
+            continue
+        if max_chars and len(text) > max_chars:
+            text = text[:max_chars].rstrip() + " …"
+        return OpinionTextResult(
+            ok=True,
+            text=text,
+            source_field=field_name,
+            error_code=None,
+            error_message=None,
+        )
+
+    return OpinionTextResult(
+        ok=False,
+        text="",
+        source_field=None,
+        error_code="courtlistener_no_text_field",
+        error_message="Opinion record has no populated text field.",
     )

@@ -1159,6 +1159,13 @@ def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
                 "court": case.court,
                 "date_filed": case.date_filed,
                 "error_message": case.error_message,
+                # Carrel V2 half-2: holding-match fields. None on
+                # cites where the follow-up wasn't run or couldn't
+                # decide; populated when fetch + verifier succeeded.
+                "holding_match": case.holding_match,
+                "holding_concern": case.holding_concern,
+                "holding_excerpt": case.holding_excerpt,
+                "holding_error": case.holding_error,
             }
             for case in verdict.verdicts
         ],

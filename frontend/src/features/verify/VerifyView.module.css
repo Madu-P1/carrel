@@ -233,6 +233,58 @@
   font-style: italic;
 }
 
+/* Carrel V2 half-2 holding-match sub-line. Rendered indented under
+ * each case-verdict line, with a smaller dot and dimmer copy so the
+ * primary "case exists" verdict reads first and the holding nuance
+ * reads second. */
+.caseVerdictGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.holdingMatchLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-left: 16px;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.holdingDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentcolor;
+  display: inline-block;
+  align-self: center;
+}
+
+.holdingLabel {
+  font-weight: 600;
+}
+
+.holdingDetail {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.holdingExcerpt {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  color: var(--text-secondary);
+  font-style: italic;
+  font-family: var(--font-sans);
+  line-height: 1.4;
+}
+
 .emptyState {
   padding: var(--space-6);
   border-radius: var(--radius-2);

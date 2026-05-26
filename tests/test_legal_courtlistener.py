@@ -215,5 +215,119 @@ class HttpErrorTests(unittest.TestCase):
         self.assertEqual("courtlistener_http_error", result.error_code)
 
 
+class FetchOpinionTextTests(unittest.TestCase):
+    """Carrel V2 half-2: fetch_opinion_text follows the cluster's
+    sub_opinions URI and extracts the most reliable text field
+    (html_with_citations preferred, plain_text fallback). All failure
+    modes return ok=False with explicit error_code."""
+
+    def _with_token(self):
+        return mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False)
+
+    def test_missing_token_returns_no_token_error(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COURTLISTENER_API_TOKEN", None)
+            result = cl.fetch_opinion_text("https://example.com/opinion/1/")
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_no_api_token", result.error_code)
+
+    def test_empty_uri_returns_no_uri_error(self) -> None:
+        with self._with_token():
+            result = cl.fetch_opinion_text("   ")
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_no_opinion_uri", result.error_code)
+
+    def test_html_with_citations_preferred(self) -> None:
+        body = {
+            "html_with_citations": "<p>The <b>holding</b> is X.</p>",
+            "plain_text": "fallback text",
+        }
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text(
+                "https://www.courtlistener.com/api/rest/v4/opinions/1/", client=client
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual("html_with_citations", result.source_field)
+        self.assertIn("holding", result.text)
+        self.assertNotIn("<", result.text, "HTML must be stripped")
+
+    def test_plain_text_used_when_no_html(self) -> None:
+        body = {"plain_text": "The holding is X."}
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+        self.assertTrue(result.ok)
+        self.assertEqual("plain_text", result.source_field)
+        self.assertEqual("The holding is X.", result.text)
+
+    def test_truncation_caps_at_max_chars(self) -> None:
+        long_text = "A" * 20_000
+        body = {"plain_text": long_text}
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text("https://x/op/1/", client=client, max_chars=100)
+        self.assertTrue(result.ok)
+        self.assertLessEqual(len(result.text), 110, "truncated + ellipsis suffix")
+        self.assertTrue(result.text.endswith("…"))
+
+    def test_no_text_fields_returns_error(self) -> None:
+        body = {"id": 1, "case_name": "X v Y"}  # no text fields populated
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_no_text_field", result.error_code)
+
+    def test_http_404_returns_http_status(self) -> None:
+        client = _client_with_response(lambda req: httpx.Response(404))
+        with self._with_token():
+            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+        self.assertFalse(result.ok)
+        self.assertEqual("courtlistener_http_status", result.error_code)
+
+    def test_html_entity_decoding(self) -> None:
+        body = {"html_with_citations": "<p>A &amp; B &lt; C &#65;</p>"}
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with self._with_token():
+            result = cl.fetch_opinion_text("https://x/op/1/", client=client)
+        self.assertTrue(result.ok)
+        self.assertIn("A & B < C A", result.text)
+
+
+class ClusterSubOpinionsTests(unittest.TestCase):
+    """Cluster coercion must surface the sub_opinions URIs so the
+    holding-match step can follow them."""
+
+    def test_cluster_carries_sub_opinions(self) -> None:
+        body = [
+            {
+                "citation": "576 U.S. 644",
+                "normalized_citations": ["576 U.S. 644"],
+                "start_index": 0,
+                "end_index": 12,
+                "status": 200,
+                "error_message": "",
+                "clusters": [
+                    {
+                        "case_name": "Obergefell v. Hodges",
+                        "absolute_url": "/opinion/3038/obergefell-v-hodges/",
+                        "sub_opinions": [
+                            "https://www.courtlistener.com/api/rest/v4/opinions/2812209/",
+                            "https://www.courtlistener.com/api/rest/v4/opinions/2812210/",
+                        ],
+                    }
+                ],
+            }
+        ]
+        client = _client_with_response(lambda req: httpx.Response(200, json=body))
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False):
+            result = cl.lookup_citations_in_text("576 U.S. 644", client=client)
+        self.assertTrue(result.ok)
+        cluster = result.hits[0].clusters[0]
+        self.assertEqual(2, len(cluster.sub_opinions))
+        self.assertTrue(cluster.sub_opinions[0].endswith("/2812209/"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -240,12 +240,23 @@ class VerifyRouteSmokeTests(unittest.TestCase):
             "error": None,
         }
 
-        with mock.patch(
-            "services.verify.tutor_service.grounded_tutor_envelope",
-            return_value=stub_envelope,
-        ):
-            client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
-            response = client.post("/api/verify", json={"draft": "Mitosis is the process."})
+        # Mock db.get_db so the route doesn't hit the filesystem.
+        # Prior tests in the broader sweep may have left main.DB_PATH
+        # pointing at a torn-down temp dir; the route's engine call
+        # is already stubbed so the conn is unused.
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_db():
+            yield None
+
+        with mock.patch("routes.verify.db.get_db", fake_db):
+            with mock.patch(
+                "services.verify.tutor_service.grounded_tutor_envelope",
+                return_value=stub_envelope,
+            ):
+                client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+                response = client.post("/api/verify", json={"draft": "Mitosis is the process."})
 
         self.assertEqual(200, response.status_code)
         body = response.json()

@@ -47,6 +47,13 @@ interface CaseLineProps {
     court?: string | null;
     date_filed?: string | null;
     error_message?: string | null;
+    // Carrel V2 half-2 holding-match fields. Populated when the
+    // cite exists (status=200) and the opinion fetch + Claude
+    // verifier succeeded.
+    holding_match?: boolean | null;
+    holding_concern?: string | null;
+    holding_excerpt?: string | null;
+    holding_error?: string | null;
   };
 }
 
@@ -68,21 +75,89 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
         : verdict.status === 400
           ? "Malformed citation"
           : "Verification error";
+  // Carrel V2 half-2: derive a holding-match sub-line state.
+  // Each case-line can optionally render one of four sub-lines
+  // underneath: green "supports", amber "ambiguous" (model refused
+  // to decide), red "contradicts", or gray "unavailable" (fetch /
+  // verifier failed).
+  type HoldingState = {
+    kind: "supports" | "ambiguous" | "contradicts" | "unavailable";
+    label: string;
+    detail?: string;
+    excerpt?: string;
+  };
+  let holding: HoldingState | null = null;
+  if (verdict.exists) {
+    if (verdict.holding_error) {
+      holding = {
+        kind: "unavailable",
+        label: "Holding check unavailable",
+        detail: verdict.holding_error
+      };
+    } else if (verdict.holding_match === true) {
+      holding = {
+        kind: "supports",
+        label: "Opinion supports the claim",
+        detail: verdict.holding_concern ?? undefined,
+        excerpt: verdict.holding_excerpt ?? undefined
+      };
+    } else if (verdict.holding_match === false) {
+      holding = {
+        kind: "contradicts",
+        label: "Opinion does NOT support the claim",
+        detail: verdict.holding_concern ?? undefined,
+        excerpt: verdict.holding_excerpt ?? undefined
+      };
+    } else if (
+      verdict.holding_match === null
+      && (verdict.holding_concern || verdict.holding_excerpt)
+    ) {
+      holding = {
+        kind: "ambiguous",
+        label: "Holding ambiguous",
+        detail: verdict.holding_concern ?? undefined
+      };
+    }
+  }
+  const holdingColorClass =
+    holding === null
+      ? ""
+      : holding.kind === "supports"
+        ? styles.caseExists
+        : holding.kind === "contradicts"
+          ? styles.caseMissing
+          : holding.kind === "ambiguous"
+            ? styles.caseAmbiguous
+            : styles.caseError;
   return (
-    <div className={[styles.caseVerdictLine, colorClass].join(" ")}>
-      <span className={styles.caseDot} aria-hidden />
-      <span>{verdict.citation}</span>
-      <span style={{ opacity: 0.7 }}>— {label}</span>
-      {verdict.case_name ? <span>· {verdict.case_name}</span> : null}
-      {verdict.absolute_url ? (
-        <a
-          href={verdict.absolute_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.caseLink}
-        >
-          source
-        </a>
+    <div className={styles.caseVerdictGroup}>
+      <div className={[styles.caseVerdictLine, colorClass].join(" ")}>
+        <span className={styles.caseDot} aria-hidden />
+        <span>{verdict.citation}</span>
+        <span style={{ opacity: 0.7 }}>— {label}</span>
+        {verdict.case_name ? <span>· {verdict.case_name}</span> : null}
+        {verdict.absolute_url ? (
+          <a
+            href={verdict.absolute_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.caseLink}
+          >
+            source
+          </a>
+        ) : null}
+      </div>
+      {holding ? (
+        <div className={[styles.holdingMatchLine, holdingColorClass].join(" ")}>
+          <span className={styles.holdingDot} aria-hidden />
+          <span className={styles.holdingLabel}>{holding.label}</span>
+          {holding.detail ? (
+            <span className={styles.holdingDetail}>— {holding.detail}</span>
+          ) : null}
+          {holding.excerpt ? (
+            <div className={styles.holdingExcerpt}>“{holding.excerpt}”</div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

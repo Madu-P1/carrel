@@ -133,5 +133,273 @@ class FailurePropagationTests(unittest.TestCase):
         self.assertEqual("courtlistener_rate_limited", results[0].error_code)
 
 
+class _StubProvider:
+    """Minimal stand-in for AIProvider's request_tool_call surface.
+    Returns a pre-baked ClaudeCallResult so the holding-match tests
+    never touch a real model."""
+
+    def __init__(self, payload: dict, *, ok: bool = True, error_code: str | None = None):
+        self._payload = payload
+        self._ok = ok
+        self._error_code = error_code
+
+    def request_tool_call(self, **kwargs):
+        from ai.router import ClaudeCallResult
+
+        return ClaudeCallResult(
+            ok=self._ok,
+            task=kwargs.get("task", "balanced"),
+            model="claude-sonnet-4-6",
+            request_kind=kwargs.get("request_kind", "legal.holding_match"),
+            text=None,
+            json_payload=self._payload if self._ok else None,
+            error_code=self._error_code,
+            error_message=self._error_code,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_holding_test",
+        )
+
+
+class CheckHoldingMatchTests(unittest.TestCase):
+    """Carrel V2 half-2: check_holding_match runs the Claude verifier
+    on (claim_text, opinion_text) and returns a typed verdict. Honest
+    fallbacks cover empty inputs, missing provider, model errors, and
+    null-supports refusals."""
+
+    from services.legal.case_verification import check_holding_match  # noqa: E402
+
+    def test_empty_claim_returns_no_claim_error(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="   ",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="opinion body here",
+            provider=_StubProvider({}),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual("holding_match_no_claim", result.error_code)
+
+    def test_empty_opinion_returns_no_opinion_text_error(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="The claim",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="",
+            provider=_StubProvider({}),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual("holding_match_no_opinion_text", result.error_code)
+
+    def test_supports_true_verdict(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="Per X v Y the rule is A.",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="We hold that the rule is A. " * 5,
+            provider=_StubProvider(
+                {
+                    "supports": True,
+                    "concern": "Opinion explicitly states the rule is A.",
+                    "excerpt": "We hold that the rule is A.",
+                }
+            ),
+        )
+        self.assertTrue(result.ok)
+        self.assertTrue(result.supports)
+        self.assertIn("rule is A", result.excerpt or "")
+
+    def test_supports_false_verdict(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="Per X v Y the rule is A.",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="We hold that the rule is B, not A.",
+            provider=_StubProvider(
+                {
+                    "supports": False,
+                    "concern": "Opinion holds the rule is B, opposite of A.",
+                    "excerpt": "We hold that the rule is B, not A.",
+                }
+            ),
+        )
+        self.assertTrue(result.ok)
+        self.assertFalse(result.supports)
+        self.assertIn("opposite", result.concern or "")
+
+    def test_supports_null_means_model_refused_to_decide(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="The claim is vague.",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="A short snippet.",
+            provider=_StubProvider(
+                {"supports": None, "concern": "Excerpt insufficient.", "excerpt": ""}
+            ),
+        )
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.supports)
+
+    def test_provider_error_returns_ok_false(self) -> None:
+        from services.legal.case_verification import check_holding_match as fn
+
+        result = fn(
+            claim_text="The claim",
+            case_name="X v Y",
+            citation="1 U.S. 1",
+            opinion_text="The opinion text",
+            provider=_StubProvider({}, ok=False, error_code="anthropic_overloaded"),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual("anthropic_overloaded", result.error_code)
+
+
+class VerifyClaimsWithHoldingMatchTests(unittest.TestCase):
+    """End-to-end: a status=200 cite with sub_opinions triggers the
+    holding-match follow-up; the returned CaseVerdict carries
+    holding_match + holding_concern + holding_excerpt. A status=200
+    cite with NO sub_opinions returns holding_error='no_sub_opinions'.
+    A status=404 cite skips the follow-up entirely."""
+
+    def _lookup_body(self, *, status: int, sub_opinions: list[str]) -> list:
+        return [
+            {
+                "citation": "576 U.S. 644",
+                "normalized_citations": ["576 U.S. 644"],
+                "start_index": 0,
+                "end_index": 12,
+                "status": status,
+                "error_message": "",
+                "clusters": (
+                    [
+                        {
+                            "case_name": "Obergefell v. Hodges",
+                            "absolute_url": "/opinion/3038/",
+                            "sub_opinions": sub_opinions,
+                        }
+                    ]
+                    if status in {200, 300}
+                    else []
+                ),
+            }
+        ]
+
+    def _handler(self, *, lookup_body, opinion_body=None):
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "citation-lookup" in url:
+                return httpx.Response(200, json=lookup_body)
+            if "opinions/" in url and opinion_body is not None:
+                return httpx.Response(200, json=opinion_body)
+            return httpx.Response(404)
+
+        return handler
+
+    def test_status_200_with_sub_opinion_runs_holding_match(self) -> None:
+        from services.legal.case_verification import verify_claims_for_cases
+
+        lookup_body = self._lookup_body(
+            status=200, sub_opinions=["https://example.com/opinions/1/"]
+        )
+        opinion_body = {"plain_text": "We hold that same-sex couples may marry."}
+        client = _transport(self._handler(lookup_body=lookup_body, opinion_body=opinion_body))
+        provider = _StubProvider(
+            {
+                "supports": True,
+                "concern": "Holding directly affirms claim.",
+                "excerpt": "We hold that same-sex couples may marry.",
+            }
+        )
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False):
+            results = verify_claims_for_cases(
+                ["Same-sex marriage was recognized in 576 U.S. 644."],
+                client=client,
+                ai_provider=provider,
+            )
+        self.assertEqual(1, len(results))
+        verdict = results[0].verdicts[0]
+        self.assertTrue(verdict.exists)
+        self.assertTrue(verdict.holding_match)
+        self.assertIn("same-sex", verdict.holding_excerpt or "")
+        self.assertIsNone(verdict.holding_error)
+
+    def test_status_200_with_no_sub_opinion_emits_no_sub_opinions_error(self) -> None:
+        from services.legal.case_verification import verify_claims_for_cases
+
+        lookup_body = self._lookup_body(status=200, sub_opinions=[])
+        client = _transport(self._handler(lookup_body=lookup_body))
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False):
+            results = verify_claims_for_cases(
+                ["Per 576 U.S. 644 ..."],
+                client=client,
+                ai_provider=_StubProvider({}),
+            )
+        verdict = results[0].verdicts[0]
+        self.assertTrue(verdict.exists)
+        self.assertIsNone(verdict.holding_match)
+        self.assertEqual("no_sub_opinions", verdict.holding_error)
+
+    def test_status_404_skips_holding_match(self) -> None:
+        from services.legal.case_verification import verify_claims_for_cases
+
+        lookup_body = self._lookup_body(status=404, sub_opinions=[])
+        client = _transport(self._handler(lookup_body=lookup_body))
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False):
+            results = verify_claims_for_cases(
+                ["Per 1 U.S. 200 ..."],
+                client=client,
+                ai_provider=_StubProvider({}),
+            )
+        verdict = results[0].verdicts[0]
+        self.assertFalse(verdict.exists)
+        self.assertIsNone(verdict.holding_match)
+        self.assertIsNone(verdict.holding_error)
+
+    def test_enable_holding_match_false_skips_follow_up(self) -> None:
+        from services.legal.case_verification import verify_claims_for_cases
+
+        lookup_body = self._lookup_body(
+            status=200, sub_opinions=["https://example.com/opinions/1/"]
+        )
+        opinion_calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "citation-lookup" in url:
+                return httpx.Response(200, json=lookup_body)
+            opinion_calls.append(url)
+            return httpx.Response(200, json={"plain_text": "x"})
+
+        client = _transport(handler)
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "tok"}, clear=False):
+            results = verify_claims_for_cases(
+                ["Per 576 U.S. 644 ..."],
+                client=client,
+                ai_provider=_StubProvider({}),
+                enable_holding_match=False,
+            )
+        verdict = results[0].verdicts[0]
+        self.assertTrue(verdict.exists)
+        self.assertIsNone(verdict.holding_match)
+        self.assertIsNone(verdict.holding_error)
+        self.assertEqual([], opinion_calls, "no opinion fetch when flag off")
+
+
 if __name__ == "__main__":
     unittest.main()

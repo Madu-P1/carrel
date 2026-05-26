@@ -187,6 +187,19 @@ class CaseVerdictItem(BaseModel):
     court: Optional[str] = None
     date_filed: Optional[str] = None
     error_message: Optional[str] = None
+    # Carrel V2 half-2 (holding-match). Populated only when `exists`
+    # is True and the opinion fetch + Claude verifier succeeded.
+    # `holding_match` is the headline: True = opinion supports the
+    # claim, False = contradicts or unrelated, None = verifier ran
+    # but explicitly refused to decide (excerpt insufficient).
+    holding_match: Optional[bool] = None
+    holding_concern: Optional[str] = None
+    holding_excerpt: Optional[str] = None
+    # When set, the holding-match step failed (no token, fetch
+    # error, no provider, model error). UX surfaces "Holding check
+    # unavailable" with this code instead of treating the cite as
+    # supported.
+    holding_error: Optional[str] = None
 
 
 class ClaimCaseVerdictItem(BaseModel):
