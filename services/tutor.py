@@ -139,6 +139,16 @@ class Citation:
     page_num: int | None
     section: str | None
     quote: str
+    # Source node_type (Carrel V2 verification prerequisite). On the
+    # typed-node retrieval path this carries the originating
+    # nodes.node_type ("body", "list_item", "table_cell", "caption",
+    # "equation", "footnote"). On the legacy chunks path it stays
+    # "body" because chunk text concatenates multiple nodes and the
+    # matched quote cannot be attributed to one of them without
+    # char-range provenance through chunk assembly. Surfaces can
+    # render prose vs. structural cites differently and a future
+    # verification mode can gate on the value here.
+    node_type: str = "body"
 
 
 @dataclass(frozen=True)
@@ -171,6 +181,13 @@ class GroundedAnswer:
     # failure modes can be told apart at observability time. Always 0
     # when RETRIEVAL_CHUNKS_HEURISTIC=false (default is on after T4).
     citation_structural_drop_count: int = 0
+    # Carrel V2: count of citations dropped at quote-validation time
+    # because the originating context's node_type is in
+    # NON_CITABLE_NODE_TYPES (heading/header/footer). Backstop for
+    # _drop_non_citable_contexts upstream; expected to be 0 on the
+    # nominal path. Non-zero values flag either a regression in the
+    # upstream filter or a future path that bypasses it.
+    citation_non_prose_drop_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -1215,6 +1232,7 @@ def _resolve_grounded_answer(
     citation_drop_count = 0
     citation_repair_count = 0
     citation_structural_drop_count = 0
+    citation_non_prose_drop_count = 0
     # Gate 1 (T2): resolve the heuristic-enabled flag once per answer so
     # toggling RETRIEVAL_CHUNKS_HEURISTIC mid-request cannot create a
     # half-filtered answer. ADR 0004 plug-in site.
@@ -1239,6 +1257,24 @@ def _resolve_grounded_answer(
                 citation_drop_count += 1
                 continue
             context = contexts[chunk_index - 1]
+            # Carrel V2: defense-in-depth gate on the source node_type.
+            # _drop_non_citable_contexts strips heading/header/footer
+            # upstream so this should normally be a no-op; the second
+            # check guarantees a structural node can never ground a
+            # claim even if a future caller bypasses the upstream
+            # filter. Counted separately so a non-zero value is a
+            # clear signal of upstream regression, not noise.
+            if context.node_type in NON_CITABLE_NODE_TYPES:
+                citation_non_prose_drop_count += 1
+                log_event(
+                    LOGGER,
+                    logging.WARNING,
+                    "tutor_non_prose_citation_dropped",
+                    node_id=context.node_id,
+                    node_type=context.node_type,
+                    claim_preview=claim_text[:80],
+                )
+                continue
             matched_quote = validated_citation_quote(quote, context.verbatim_text)
             if matched_quote is None:
                 citation_drop_count += 1
@@ -1268,6 +1304,7 @@ def _resolve_grounded_answer(
                     page_num=context.page_num,
                     section=context.section,
                     quote=matched_quote.quote,
+                    node_type=context.node_type,
                 )
             )
         if citations:
@@ -1295,6 +1332,7 @@ def _resolve_grounded_answer(
         citation_drop_count=citation_drop_count,
         citation_repair_count=citation_repair_count,
         citation_structural_drop_count=citation_structural_drop_count,
+        citation_non_prose_drop_count=citation_non_prose_drop_count,
     )
 
 
@@ -1323,6 +1361,7 @@ def _log_grounded_answer(
         citation_drop_count=answer.citation_drop_count,
         citation_repair_count=answer.citation_repair_count,
         citation_structural_drop_count=answer.citation_structural_drop_count,
+        citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
     )
 
 
@@ -1557,6 +1596,8 @@ def grounded_tutor_response(
                 citation_attempt_count=answer.citation_attempt_count,
                 citation_drop_count=answer.citation_drop_count,
                 citation_repair_count=answer.citation_repair_count,
+                citation_structural_drop_count=answer.citation_structural_drop_count,
+                citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
             )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer

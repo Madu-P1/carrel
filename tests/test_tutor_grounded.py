@@ -1776,5 +1776,153 @@ class HydrateCitedContextsTests(unittest.TestCase):
         self.assertEqual([], contexts)
 
 
+class CitationNodeTypeGateTests(unittest.TestCase):
+    """Carrel V2: every Citation must carry its source node_type so a
+    verification surface can tell prose from structural cites, and
+    _resolve_grounded_answer must refuse to ground a claim on a
+    structural context as a backstop to _drop_non_citable_contexts."""
+
+    def _result(self, payload: dict[str, object]) -> ClaudeCallResult:
+        return ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-sonnet-4-6",
+            request_kind="tutor.grounded_answer",
+            text=None,
+            json_payload=payload,
+            error_code=None,
+            error_message=None,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_node_type_gate",
+        )
+
+    def _ctx(self, *, node_type: str, text: str) -> tutor_service.HydratedNodeContext:
+        return tutor_service.HydratedNodeContext(
+            node_id=1,
+            doc_id="doc-1",
+            document_name="Source.pdf",
+            section="Intro",
+            page_num=1,
+            verbatim_text=text,
+            snippet=text,
+            score=0.5,
+            node_type=node_type,
+        )
+
+    def test_body_citation_carries_node_type_through(self) -> None:
+        ctx = self._ctx(node_type="body", text="Mitosis separates chromosomes.")
+        payload = {
+            "summary": "Mitosis fact.",
+            "claims": [
+                {
+                    "text": "Mitosis separates chromosomes.",
+                    "citations": [{"chunk_index": 1, "quote": "Mitosis separates chromosomes."}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [ctx],
+            question="What does mitosis do?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual("body", answer.claims[0].citations[0].node_type)
+        self.assertEqual(0, answer.citation_non_prose_drop_count)
+
+    def test_heading_context_is_dropped_at_validation_time(self) -> None:
+        """Backstop path. If a heading/header/footer context somehow
+        reaches _resolve_grounded_answer (e.g. a future caller skips
+        _drop_non_citable_contexts), the cite must be dropped, the new
+        counter must increment, and the claim must demote to
+        unsupported_spans without inflating the verbatim-quote drop
+        counter."""
+        ctx = self._ctx(
+            node_type="heading",
+            text="Chapter 3: Mitosis Overview",
+        )
+        payload = {
+            "summary": "Mitosis is the focus.",
+            "claims": [
+                {
+                    "text": "Mitosis is the focus of this section.",
+                    "citations": [{"chunk_index": 1, "quote": "Chapter 3: Mitosis Overview"}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [ctx],
+            question="What is chapter 3 about?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(0, len(answer.claims))
+        self.assertEqual(1, answer.citation_non_prose_drop_count)
+        self.assertEqual(0, answer.citation_drop_count)
+        self.assertEqual(0, answer.citation_structural_drop_count)
+        self.assertIn(
+            "Mitosis is the focus of this section.",
+            answer.unsupported_spans,
+        )
+
+    def test_mixed_body_and_heading_keeps_body_citation(self) -> None:
+        body = self._ctx(node_type="body", text="Mitosis separates chromosomes.")
+        heading = tutor_service.HydratedNodeContext(
+            node_id=2,
+            doc_id="doc-1",
+            document_name="Source.pdf",
+            section="Intro",
+            page_num=1,
+            verbatim_text="Chapter 3: Mitosis Overview",
+            snippet="Chapter 3: Mitosis Overview",
+            score=0.4,
+            node_type="heading",
+        )
+        payload = {
+            "summary": "Mitosis fact.",
+            "claims": [
+                {
+                    "text": "Mitosis separates chromosomes.",
+                    "citations": [
+                        {"chunk_index": 2, "quote": "Chapter 3: Mitosis Overview"},
+                        {"chunk_index": 1, "quote": "Mitosis separates chromosomes."},
+                    ],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [body, heading],
+            question="What does mitosis do?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual("body", answer.claims[0].citations[0].node_type)
+        self.assertEqual(
+            "Mitosis separates chromosomes.",
+            answer.claims[0].citations[0].quote,
+        )
+        self.assertEqual(1, answer.citation_non_prose_drop_count)
+        self.assertEqual((), answer.unsupported_spans)
+
+
 if __name__ == "__main__":
     unittest.main()
