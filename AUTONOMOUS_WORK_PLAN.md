@@ -10,7 +10,21 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
-## Operator decisions — 2026-05-26 (T64+ autonomous run, supersedes operator-led note below)
+## Operator decisions — 2026-05-27 (T64 Phase 4 lifted + T68 added, supersedes the 2026-05-26 block below)
+
+Operator decisions at 2026-05-27 01:25 GMT+2 after the T64 Phase 1+2 autonomous run succeeded (PR #88 open) and halted cleanly on Phase 3:
+
+- **T64 Phase 3 policy: (a) fail-loud + (c) bounded provider-chain improvements.** Decision section now committed in `docs/plans/answer-quality-2026-05-26.md::Policy decision`. High-stakes `request_kind` list: `tutor_grounded_answer`, `verify_draft`. Low-stakes: `flashcard_generation`, `dialogue_followup`, `note_expansion`, `srs_review`.
+- **T64 Phase 4 (implement the policy) is autonomous.** Loop is authorized to implement `ensure_provider_allowed`, ship the provenance badge, refine the AFM grounded-answer prompt, write the regression tests, and update PR #88. Acceptance criteria in the plan doc's Policy-decision section.
+- **T64 Phases 5-6 (substantive-answer-rate metric + final verification) follow Phase 4 autonomously.** No separate operator gate between Phase 4 and Phase 6 closeout. Loop ships them as one coherent commit set.
+- **T68 (routine hardening) is new and autonomous.** Plan doc at `docs/plans/routine-hardening-2026-05-27.md`. Scope cut for the autonomous run: Tier 1 minimum (Phases 1-3 of that plan: verdict timeout + required-artifact contract on gate-role agents + wedge postmortem `.jsonl`). Tier 2 (Phases 4-5: smoke test + orphan detection) if budget allows. Tier 3 explicitly out-of-scope.
+- **Task pick order:** T64 (close out Phases 4-6) → T68 (Tier 1 minimum, Tier 2 if budget) → halt and surface to operator for T65 review. Do NOT auto-claim T65, T66, T67 — those return to operator-led after T64 + T68 close.
+- **Build-only scope still enforced** on everything autonomous: no outreach, no DMs, no `gh pr ready` (drafts only), no live external API calls in tests.
+- **Model:** `claude-opus-4-7` (passed via `CARREL_MODEL=opus` to `start-autonomous.sh`).
+
+---
+
+## Operator decisions — 2026-05-26 (T64+ autonomous run) [SUPERSEDED by 2026-05-27 block above]
 
 Operator explicit override (revised 2026-05-26 23:46): run **T64 and beyond** in the autonomous loop on `claude-opus-4-7` with `bypassPermissions`. The prior block's "operator-led, not autonomous" note for T64-T67 is **fully lifted**. The loop is allowed to drift through T64 → T65 → T66 → T67 in order, claiming each in turn per the normal task-picker rules.
 
@@ -763,7 +777,7 @@ Conventions per task:
 ## T64 — V2 blocker: answer-quality investigation (kill the header-only response pattern)
 
 **Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue"); plan doc [`docs/plans/answer-quality-2026-05-26.md`](docs/plans/answer-quality-2026-05-26.md).
-**Status:** in_progress — Phase 1 shipped on `claude/nice-buck-bf3d70` as commit `1d67f261` (test reproduction with `@unittest.expectedFailure`, hollow-answer pattern pinned deterministically). Phase 2 shipped as commit `32a3cd30` (provider provenance field on `ClaudeCallResult`, `GroundedAnswer`, `VerifyResult`, `TutorQueryResponse`, `VerifyResponse`, all wired end-to-end through tutor + verify + regen'd frontend types). Routine-infra fixups (model arg passthrough + gate-subagent score-loop skip + auditor verdict mandate) shipped as commit `5e89083f` on the same branch. **Loop halts at Phase 3** (operator-led policy decision: which fail-loud policy + which high-stakes request_kind list). Phases 4-6 follow once the operator commits a `## Policy decision` section in the plan doc. The full T64 deliverable closes when phases 4-6 (the policy implementation, the substantive-answer-rate metric, and final verification) ship; this entry stays `in_progress` until then.
+**Status:** in_progress — Phase 1 shipped on `claude/nice-buck-bf3d70` as commit `1d67f261` (test reproduction with `@unittest.expectedFailure`, hollow-answer pattern pinned deterministically). Phase 2 shipped as commit `32a3cd30` (provider provenance field on `ClaudeCallResult`, `GroundedAnswer`, `VerifyResult`, `TutorQueryResponse`, `VerifyResponse`, all wired end-to-end through tutor + verify + regen'd frontend types). Routine-infra fixups (model arg passthrough + gate-subagent score-loop skip + auditor verdict mandate) shipped as commit `5e89083f` on the same branch. **Phase 3 policy decision committed by operator 2026-05-27 00:30 GMT+2**: (a) fail-loud on high-stakes flows (`tutor_grounded_answer`, `verify_draft`) + (c) bounded provider-chain improvements (UI provenance badge + AFM grounded-answer system-prompt refinement). See `## Policy decision` section in [`docs/plans/answer-quality-2026-05-26.md`](docs/plans/answer-quality-2026-05-26.md). **Phase 4 lifted to autonomous** per operator override at top of this file: loop is authorized to implement the policy, ship the badge, refine the AFM prompt, write the regression tests, and open commits on `claude/nice-buck-bf3d70`. The full T64 deliverable closes when phases 4-6 (policy implementation, substantive-answer-rate metric, final verification) ship.
 **Blocks:** T65, T66, T67, and the entire paused V2 polish queue (T59-T63). Until T64 ships, every litigator-facing demo risks surfacing hollow output.
 **Deps:** none
 **Effort:** unknown until investigation completes — likely 1-3 iterations. Operator-led: needs a `docs/plans/answer-quality-2026-05-26.md` produced by `make-plan` BEFORE any code touches.
@@ -849,6 +863,18 @@ If every task is `done` or `blocked`, write a closeout summary to `.claude/logs/
 
 Then exit cleanly.
 
+## T68 — Routine hardening: code-enforced invariants on the autonomous gate machinery
+
+**Plan ref:** [`docs/plans/routine-hardening-2026-05-27.md`](docs/plans/routine-hardening-2026-05-27.md).
+**Status:** pending — claimable by autonomous loop after T64 fully lands (Phase 4-6 done).
+**Blocks:** trustworthy unattended overnight runs. Each future wedge class that surfaces silently without this work costs operator time at debug rates.
+**Deps:** none on T64 (the Phases 1-3 of this hardening plan are independent of T64's product work).
+**Effort:** Tier 1 (Phases 1-3 of the plan doc) ~1.75 hr. Tier 2 (Phases 4-5) ~1.75 hr. Tier 3 (Phases 6-7) deferred until after T66 validation test.
+**Scope per operator 2026-05-27:** ship Tier 1 minimum. Tier 2 if budget allows on the same iteration. Tier 3 explicitly out-of-scope for this task.
+**Acceptance:** (1) `.claude/hooks/audit-gate.py` auto-REJECTs pending files older than `AUDIT_TIMEOUT_SECONDS` (300s). (2) All 5 gate-role agents (`.claude/agents/{independent-auditor,quality-rater,proponent,adversary,synthesizer}.md`) have the MANDATORY-write-output section. (3) `.claude/logs/wedge-postmortems.jsonl` is the durable lesson capture file; backfilled with the 2026-05-26 wedge as line 1. (4) New unit tests in `tests/test_routine_hooks.py` covering the timeout path. (5) If Tier 2 shipped: `tests/test_routine_gate_smoke.py` exists and is wired into the watchdog startup; `tests/test_watchdog_kill.sh` extended for orphan detection.
+**Verify:** canonical chain on any Python/shell files touched; `python -c "import json; [json.loads(l) for l in open('.claude/logs/wedge-postmortems.jsonl')]"` is clean; manual smoke of the timeout path per `docs/plans/routine-hardening-2026-05-27.md::Verification plan`.
+**Guards:** do NOT change the auditor agent's verdict-JSON schema (only add the MANDATORY section). Do NOT touch product code. Do NOT change the audit-gate's hashing logic. Do NOT add the queue-index (Phase 6) or session-goal (Phase 7); operator explicitly punted both.
+
 ---
 
-*Last updated 2026-05-18. Authored alongside `docs/plans/everything-to-100-2026-05-17.md`. The master plan is the contract; this file is the queue.*
+*Last updated 2026-05-27. Authored alongside `docs/plans/everything-to-100-2026-05-17.md` and `docs/plans/routine-hardening-2026-05-27.md`. The master plan is the contract; this file is the queue.*
