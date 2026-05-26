@@ -195,6 +195,14 @@ class GroundedAnswer:
     # nominal path. Non-zero values flag either a regression in the
     # upstream filter or a future path that bypasses it.
     citation_non_prose_drop_count: int = 0
+    # T64 Phase 2 (answer-quality provenance): which provider produced
+    # this answer. Default "" so existing constructors stay
+    # source-compatible. Populated from result.provider at the AFM
+    # and Claude dispatch sites; propagated through fallback paths so
+    # the eval harness can stratify substantive_answer_rate by
+    # provider (Phase 5) and so the API surface can render a
+    # provenance badge or fail-loud banner (Phase 4).
+    provider: str = ""
 
 
 @dataclass(frozen=True)
@@ -1204,6 +1212,7 @@ def _passages_only_fallback(
     cache_hit: bool = False,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
+    provider: str = "",
 ) -> GroundedAnswer:
     claims = tuple(
         Claim(
@@ -1237,6 +1246,7 @@ def _passages_only_fallback(
         citation_attempt_count=0,
         citation_drop_count=0,
         citation_repair_count=0,
+        provider=provider,
     )
 
 
@@ -1378,6 +1388,7 @@ def _resolve_grounded_answer(
         citation_repair_count=citation_repair_count,
         citation_structural_drop_count=citation_structural_drop_count,
         citation_non_prose_drop_count=citation_non_prose_drop_count,
+        provider=result.provider,
     )
 
 
@@ -1427,6 +1438,7 @@ def _attach_case_verdicts(answer: GroundedAnswer) -> GroundedAnswer:
         citation_repair_count=answer.citation_repair_count,
         citation_structural_drop_count=answer.citation_structural_drop_count,
         citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
+        provider=answer.provider,
     )
 
 
@@ -1578,7 +1590,9 @@ def grounded_tutor_response(
     use_claude = mode == "on" or (mode == "auto" and router.ai_enabled())
     if not use_claude:
         error = "grounded_tutor_disabled" if mode == "off" else "grounded_tutor_unavailable"
-        answer = _passages_only_fallback(contexts, error=error)
+        answer = _passages_only_fallback(
+            contexts, error=error, provider=getattr(router, "kind", "")
+        )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
 
@@ -1596,6 +1610,7 @@ def grounded_tutor_response(
         answer = _passages_only_fallback(
             contexts,
             error="weak_coverage",
+            provider=getattr(router, "kind", ""),
         )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
@@ -1671,6 +1686,7 @@ def grounded_tutor_response(
             cache_hit=result.cache_hit,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
+            provider=result.provider,
         )
         if scope_fallback_used:
             answer = GroundedAnswer(
@@ -1692,6 +1708,7 @@ def grounded_tutor_response(
                 citation_repair_count=answer.citation_repair_count,
                 citation_structural_drop_count=answer.citation_structural_drop_count,
                 citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
+                provider=answer.provider,
             )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
@@ -1802,6 +1819,7 @@ def grounded_tutor_envelope(
         "citation_attempt_count": grounded.citation_attempt_count,
         "citation_drop_count": grounded.citation_drop_count,
         "citation_repair_count": grounded.citation_repair_count,
+        "provider": grounded.provider,
         "momentum": build_momentum_engine(conn, fetch_recent_events=fetch_recent_events),
     }
 

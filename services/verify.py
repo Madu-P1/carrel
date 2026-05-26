@@ -74,6 +74,11 @@ class VerifyResult:
     model: str
     ok: bool
     error: str | None
+    # T64 Phase 2 (answer-quality provenance): which provider produced
+    # this verification result. Mirrors GroundedAnswer.provider; threaded
+    # through grounded_tutor_envelope so the API surface can render a
+    # provenance badge or fail-loud banner.
+    provider: str = ""
 
 
 def _verify_framed_question(draft: str) -> str:
@@ -215,6 +220,7 @@ def verify_draft(
             model="",
             ok=False,
             error="empty_draft",
+            provider="",
         )
 
     payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
@@ -278,6 +284,7 @@ def verify_draft(
         model=model_name,
         ok=engine_error is None,
         error=engine_error,
+        provider=str(envelope.get("provider") or ""),
     )
 
 
@@ -306,4 +313,5 @@ def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
         "model": result.model,
         "ok": result.ok,
         "error": result.error,
+        "provider": result.provider,
     }

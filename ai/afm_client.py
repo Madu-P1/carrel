@@ -671,6 +671,7 @@ class AFMClient:
             service_tier=None,
             stop_reason=data.get("stop_reason"),
             request_id=request_id,
+            provider="afm",
         )
 
 
@@ -716,6 +717,7 @@ def _bridge_error_result(
         service_tier=None,
         stop_reason=None,
         request_id=request_id,
+        provider="afm",
     )
 
 

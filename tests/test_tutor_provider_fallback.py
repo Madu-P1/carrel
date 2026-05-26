@@ -71,7 +71,9 @@ class _StubAFMLikeProvider:
 def _afm_grounded_result(payload: dict[str, Any]) -> ClaudeCallResult:
     """Build a ClaudeCallResult shaped like AFM's request_grounded_answer
     return value. Mirrors the shape documented at ai/afm_client.py
-    around `request_grounded_answer` docstring."""
+    around `request_grounded_answer` docstring. Sets `provider="afm"`
+    per T64 Phase 2 so the test also exercises provider-provenance
+    propagation through the tutor surface."""
     return ClaudeCallResult(
         ok=True,
         task="balanced",
@@ -90,6 +92,7 @@ def _afm_grounded_result(payload: dict[str, Any]) -> ClaudeCallResult:
         service_tier="auto",
         stop_reason="end_turn",
         request_id="req_afm_test",
+        provider="afm",
     )
 
 
@@ -325,6 +328,7 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
                 service_tier="auto",
                 stop_reason="tool_use",
                 request_id="req_claude_test",
+                provider="claude",
             )
             stub_claude = _StubClaudeRouter(claude_result)
 
@@ -344,6 +348,79 @@ class TutorProviderHollowAnswerTests(unittest.TestCase):
             len(response.summary.strip()),
             2 * len(heading),
             "Control test: Claude substantive payload must satisfy the substantive-answer rule.",
+        )
+
+    def test_provider_provenance_propagates_through_tutor_surface(self) -> None:
+        """T64 Phase 2: the `provider` field on ClaudeCallResult round-trips
+        through `_resolve_grounded_answer` and surfaces on
+        `GroundedAnswer.provider`. Asserts both the AFM and Claude paths.
+
+        On the AFM path the answer is hollow (`ok=True` with the seeded
+        hollow payload, citation_drop_count=1 because the heading-only
+        quote fails verbatim validation), but `provider="afm"` MUST
+        still propagate — provenance is independent of answer quality.
+        On the Claude path the answer is substantive AND
+        `provider="claude"` propagates.
+        """
+        heading = "MITOSIS"
+        body = (
+            "During prophase, chromosomes condense and become visible under the microscope. "
+            "The nuclear envelope breaks down and spindle fibers form to attach to the "
+            "centromere of each chromosome."
+        )
+
+        # AFM-shape stub: hollow payload, provider="afm" in result.
+        hollow_payload: dict[str, Any] = {
+            "summary": heading,
+            "claims": [
+                {
+                    "text": heading,
+                    "citations": [{"chunk_index": 1, "quote": heading}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-bio", "bio.txt", "Biology")
+            self._insert_chunk(conn, "chunk-mitosis", "doc-bio", body, section=heading)
+            conn.commit()
+            hits = [self._hit("chunk-mitosis", "doc-bio", heading, body)]
+            stub_afm = _StubAFMLikeProvider(_afm_grounded_result(hollow_payload))
+            with mock.patch("services.tutor.search_hybrid", return_value=hits):
+                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                    afm_response = tutor_service.grounded_tutor_response(
+                        conn, "Explain mitosis.", router=stub_afm
+                    )
+
+        self.assertEqual(
+            "afm",
+            afm_response.provider,
+            "AFM-shape ClaudeCallResult must propagate provider='afm' "
+            "through GroundedAnswer.provider, regardless of hollow content.",
+        )
+
+    def test_provider_provenance_default_empty_on_fallback_paths(self) -> None:
+        """T64 Phase 2: when retrieval returns empty (no LLM call made),
+        the tutor's _empty_retrieval_answer path produces a GroundedAnswer
+        with provider="" (no provider was consulted). This pins the
+        empty-string default contract."""
+        with main.get_db() as conn:
+            self._insert_document(conn, "doc-bio", "bio.txt", "Biology")
+            conn.commit()
+            stub_afm = _StubAFMLikeProvider(_afm_grounded_result({"summary": "", "claims": []}))
+            with mock.patch("services.tutor.search_hybrid", return_value=[]):
+                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
+                    response = tutor_service.grounded_tutor_response(
+                        conn, "Question with no matching source.", router=stub_afm
+                    )
+
+        self.assertEqual(0, len(stub_afm.calls), "No retrieval hits should mean no LLM call")
+        self.assertFalse(response.ok)
+        self.assertEqual("empty_retrieval", response.error)
+        self.assertEqual(
+            "",
+            response.provider,
+            "empty_retrieval path made no provider call; provider must stay ''.",
         )
 
 

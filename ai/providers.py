@@ -257,6 +257,7 @@ def _null_result(*, task: Any, request_kind: str) -> ClaudeCallResult:
         service_tier=None,
         stop_reason=None,
         request_id=None,
+        provider="null",
     )
 
 
