@@ -21,6 +21,7 @@ from app_logging import get_logger, log_event
 from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
+from services.legal.case_verification import ClaimCaseVerdict, verify_claims_for_cases
 from services.retrieval import ScoredHit, search_hybrid
 from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES
 from services.retrieval.quote_heuristics import chunks_heuristic_enabled, is_structural_quote
@@ -155,6 +156,12 @@ class Citation:
 class Claim:
     text: str
     citations: tuple[Citation, ...]
+    # Carrel V2: per-claim case-existence verdicts populated when the
+    # claim text contains Bluebook-shape case citations and a
+    # CourtListener token is configured. Empty tuple is the dominant
+    # case (non-legal corpora) and the explicit no-key fallback.
+    # See services.legal.case_verification.
+    case_verdicts: tuple["ClaimCaseVerdict", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1135,6 +1142,29 @@ def _flatten_claim_citations(
     return flattened
 
 
+def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
+    return {
+        "claim_index": verdict.claim_index,
+        "ok": verdict.ok,
+        "error_code": verdict.error_code,
+        "error_message": verdict.error_message,
+        "verdicts": [
+            {
+                "citation": case.citation,
+                "normalized_citation": case.normalized_citation,
+                "status": case.status,
+                "exists": case.exists,
+                "case_name": case.case_name,
+                "absolute_url": case.absolute_url,
+                "court": case.court,
+                "date_filed": case.date_filed,
+                "error_message": case.error_message,
+            }
+            for case in verdict.verdicts
+        ],
+    }
+
+
 def _serialize_claims(
     claims: Sequence[Claim],
     contexts: Sequence[HydratedNodeContext],
@@ -1149,6 +1179,9 @@ def _serialize_claims(
                     _citation_payload(context_by_node_id[citation.node_id], quote=citation.quote)
                     for citation in claim.citations
                     if citation.node_id in context_by_node_id
+                ],
+                "case_verdicts": [
+                    _serialize_case_verdict(verdict) for verdict in claim.case_verdicts
                 ],
             }
         )
@@ -1338,6 +1371,55 @@ def _resolve_grounded_answer(
         citation_repair_count=citation_repair_count,
         citation_structural_drop_count=citation_structural_drop_count,
         citation_non_prose_drop_count=citation_non_prose_drop_count,
+    )
+
+
+def _attach_case_verdicts(answer: GroundedAnswer) -> GroundedAnswer:
+    """Carrel V2: run CourtListener case-existence verification on each
+    claim's text and attach per-claim verdicts.
+
+    Cheap pre-filter inside `verify_claims_for_cases` skips the
+    network when no claim text contains a citation-shape substring
+    (the dominant case for non-legal corpora). When CourtListener is
+    unconfigured (no token) or unreachable, the per-claim verdict
+    carries an explicit `ok=False` + error_code instead of degrading
+    to "case verified" — surfaces the state honestly to the operator
+    per CLAUDE.md "no silent AI fallbacks".
+
+    Returns a rebuilt `GroundedAnswer` with claims carrying their
+    verdicts; if the answer has no claims, returns it unchanged.
+    """
+    if not answer.claims:
+        return answer
+    claim_texts = [claim.text for claim in answer.claims]
+    verdicts_per_claim = verify_claims_for_cases(claim_texts)
+    rebuilt = tuple(
+        Claim(
+            text=claim.text,
+            citations=claim.citations,
+            case_verdicts=(verdicts_per_claim[index],) if index < len(verdicts_per_claim) else (),
+        )
+        for index, claim in enumerate(answer.claims)
+    )
+    return GroundedAnswer(
+        summary=answer.summary,
+        claims=rebuilt,
+        unsupported_spans=answer.unsupported_spans,
+        misconceptions=answer.misconceptions,
+        next_steps=answer.next_steps,
+        model=answer.model,
+        latency_ms=answer.latency_ms,
+        ok=answer.ok,
+        error=answer.error,
+        cache_hit=answer.cache_hit,
+        input_tokens=answer.input_tokens,
+        output_tokens=answer.output_tokens,
+        scope_fallback_used=answer.scope_fallback_used,
+        citation_attempt_count=answer.citation_attempt_count,
+        citation_drop_count=answer.citation_drop_count,
+        citation_repair_count=answer.citation_repair_count,
+        citation_structural_drop_count=answer.citation_structural_drop_count,
+        citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
     )
 
 
@@ -1615,6 +1697,7 @@ def grounded_tutor_response(
         learner_confidence=learner_confidence,
         scope_fallback_used=scope_fallback_used,
     )
+    answer = _attach_case_verdicts(answer)
     _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
     return answer
 

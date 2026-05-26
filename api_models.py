@@ -167,9 +167,53 @@ class TutorCitationItem(BaseModel):
     node_type: str = "body"
 
 
+class CaseVerdictItem(BaseModel):
+    """Carrel V2: per-case CourtListener verification result.
+
+    Surfaces case-existence verdicts when a claim text contains a
+    Bluebook-shape citation. `status` mirrors CourtListener's
+    per-citation code (200 found, 300 ambiguous, 404 not found,
+    400 malformed reporter, 429 rate limited). `exists=True` only
+    when `status==200`; the verifier UX should treat 300 as
+    ambiguous, not as confirmed.
+    """
+
+    citation: str
+    normalized_citation: Optional[str] = None
+    status: int
+    exists: bool
+    case_name: Optional[str] = None
+    absolute_url: Optional[str] = None
+    court: Optional[str] = None
+    date_filed: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class ClaimCaseVerdictItem(BaseModel):
+    """Carrel V2: per-claim batch of CourtListener verdicts.
+
+    `ok=False` + `error_code` signals the verification itself
+    failed (no token, network error, rate limited). `ok=True` +
+    empty `verdicts` means the claim text was scanned but contained
+    no citation-shape substring — the dominant case for non-legal
+    corpora.
+    """
+
+    claim_index: int
+    ok: bool
+    verdicts: List[CaseVerdictItem] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 class TutorClaimItem(BaseModel):
     text: str
     citations: List[TutorCitationItem] = Field(default_factory=list)
+    # Carrel V2: per-claim case-existence verdicts. Empty when the
+    # claim text contains no Bluebook-shape citations or when
+    # CourtListener is unconfigured / unreachable (the per-claim
+    # batch carries the error_code in that case).
+    case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
 
 
 class TutorActionItem(BaseModel):

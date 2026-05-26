@@ -2172,6 +2172,59 @@ export interface components {
              */
             card_type: string;
         };
+        /**
+         * CaseVerdictItem
+         * @description Carrel V2: per-case CourtListener verification result.
+         *
+         *     Surfaces case-existence verdicts when a claim text contains a
+         *     Bluebook-shape citation. `status` mirrors CourtListener's
+         *     per-citation code (200 found, 300 ambiguous, 404 not found,
+         *     400 malformed reporter, 429 rate limited). `exists=True` only
+         *     when `status==200`; the verifier UX should treat 300 as
+         *     ambiguous, not as confirmed.
+         */
+        CaseVerdictItem: {
+            /** Citation */
+            citation: string;
+            /** Normalized Citation */
+            normalized_citation?: string | null;
+            /** Status */
+            status: number;
+            /** Exists */
+            exists: boolean;
+            /** Case Name */
+            case_name?: string | null;
+            /** Absolute Url */
+            absolute_url?: string | null;
+            /** Court */
+            court?: string | null;
+            /** Date Filed */
+            date_filed?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /**
+         * ClaimCaseVerdictItem
+         * @description Carrel V2: per-claim batch of CourtListener verdicts.
+         *
+         *     `ok=False` + `error_code` signals the verification itself
+         *     failed (no token, network error, rate limited). `ok=True` +
+         *     empty `verdicts` means the claim text was scanned but contained
+         *     no citation-shape substring — the dominant case for non-legal
+         *     corpora.
+         */
+        ClaimCaseVerdictItem: {
+            /** Claim Index */
+            claim_index: number;
+            /** Ok */
+            ok: boolean;
+            /** Verdicts */
+            verdicts?: components["schemas"]["CaseVerdictItem"][];
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
         /** CompareRequest */
         CompareRequest: {
             /** Left Id */
@@ -2886,6 +2939,8 @@ export interface components {
             text: string;
             /** Citations */
             citations?: components["schemas"]["TutorCitationItem"][];
+            /** Case Verdicts */
+            case_verdicts?: components["schemas"]["ClaimCaseVerdictItem"][];
         };
         /** TutorExchangeCreateRequest */
         TutorExchangeCreateRequest: {

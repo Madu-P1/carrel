@@ -1937,5 +1937,140 @@ class CitationNodeTypeGateTests(unittest.TestCase):
         self.assertEqual((), answer.unsupported_spans)
 
 
+class CaseVerdictHookTests(unittest.TestCase):
+    """Carrel V2: _attach_case_verdicts hooks CourtListener
+    verification onto each claim after _resolve_grounded_answer
+    returns. Default behavior with no COURTLISTENER_API_TOKEN: every
+    legal claim carries an ok=False verdict with error_code, every
+    non-legal claim carries an ok=True empty-verdicts batch. No
+    network in either case."""
+
+    def _result(self, payload: dict[str, object]) -> ClaudeCallResult:
+        return ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-sonnet-4-6",
+            request_kind="tutor.grounded_answer",
+            text=None,
+            json_payload=payload,
+            error_code=None,
+            error_message=None,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_case_hook",
+        )
+
+    def _ctx(self, *, text: str) -> tutor_service.HydratedNodeContext:
+        return tutor_service.HydratedNodeContext(
+            node_id=1,
+            doc_id="doc-1",
+            document_name="Brief.pdf",
+            section="Argument",
+            page_num=1,
+            verbatim_text=text,
+            snippet=text,
+            score=0.5,
+            node_type="body",
+        )
+
+    def test_non_legal_claim_carries_empty_ok_verdict_batch(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COURTLISTENER_API_TOKEN", None)
+            ctx = self._ctx(text="Mitosis separates duplicated chromosomes.")
+            payload = {
+                "summary": "Cell-bio fact.",
+                "claims": [
+                    {
+                        "text": "Mitosis separates duplicated chromosomes.",
+                        "citations": [
+                            {
+                                "chunk_index": 1,
+                                "quote": "Mitosis separates duplicated chromosomes.",
+                            }
+                        ],
+                    }
+                ],
+                "unsupported_spans": [],
+            }
+            answer = tutor_service._resolve_grounded_answer(
+                self._result(payload),
+                [ctx],
+                question="What does mitosis do?",
+                concept_name=None,
+                learner_confidence=None,
+                scope_fallback_used=False,
+            )
+            attached = tutor_service._attach_case_verdicts(answer)
+
+        self.assertEqual(1, len(attached.claims))
+        claim = attached.claims[0]
+        self.assertEqual(1, len(claim.case_verdicts))
+        batch = claim.case_verdicts[0]
+        self.assertTrue(batch.ok)
+        self.assertEqual((), batch.verdicts)
+
+    def test_legal_claim_without_token_carries_no_token_failure_verdict(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COURTLISTENER_API_TOKEN", None)
+            ctx = self._ctx(text="Per 576 U.S. 644 the rule is X.")
+            payload = {
+                "summary": "Legal claim.",
+                "claims": [
+                    {
+                        "text": "Per 576 U.S. 644 the rule is X.",
+                        "citations": [
+                            {
+                                "chunk_index": 1,
+                                "quote": "Per 576 U.S. 644 the rule is X.",
+                            }
+                        ],
+                    }
+                ],
+                "unsupported_spans": [],
+            }
+            answer = tutor_service._resolve_grounded_answer(
+                self._result(payload),
+                [ctx],
+                question="What does 576 U.S. 644 say?",
+                concept_name=None,
+                learner_confidence=None,
+                scope_fallback_used=False,
+            )
+            attached = tutor_service._attach_case_verdicts(answer)
+
+        self.assertEqual(1, len(attached.claims))
+        batch = attached.claims[0].case_verdicts[0]
+        self.assertFalse(batch.ok)
+        self.assertEqual("courtlistener_no_api_token", batch.error_code)
+
+    def test_no_claims_returns_unchanged(self) -> None:
+        empty = tutor_service.GroundedAnswer(
+            summary="",
+            claims=(),
+            unsupported_spans=(),
+            misconceptions=(),
+            next_steps=(),
+            model="m",
+            latency_ms=0.0,
+            ok=False,
+            error="empty_retrieval",
+            cache_hit=False,
+            input_tokens=None,
+            output_tokens=None,
+            scope_fallback_used=False,
+            citation_attempt_count=0,
+            citation_drop_count=0,
+            citation_repair_count=0,
+        )
+        attached = tutor_service._attach_case_verdicts(empty)
+        self.assertIs(empty, attached)
+
+
 if __name__ == "__main__":
     unittest.main()
