@@ -30,6 +30,15 @@ class StubRouter:
 
 class GroundedTutorTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Carrel V2: RETRIEVAL_USE_NODES default flipped to true. This
+        # suite inserts rows into the chunks table and exercises the
+        # chunks-path retrieval; pin the flag false at the class level
+        # so each test runs against the chunks branch it was written
+        # for. Tests that need the nodes path on still wrap their own
+        # mock.patch.dict block which overrides this pin.
+        self._env_patch = mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False)
+        self._env_patch.start()
+
         self.temp_dir = tempfile.TemporaryDirectory()
         self.base_dir = Path(self.temp_dir.name)
         self.original_base_dir = main.BASE_DIR
@@ -53,6 +62,7 @@ class GroundedTutorTests(unittest.TestCase):
         main.DB_PATH = self.original_db_path
         main.SCHEMA_PATH = self.original_schema_path
         self.temp_dir.cleanup()
+        self._env_patch.stop()
 
     def clear_seed_data(self) -> None:
         with main.get_db() as conn:
@@ -1738,12 +1748,15 @@ class HydrateCitedContextsTests(unittest.TestCase):
         self.assertEqual("Mitosis separates duplicated chromosomes.", ctx.verbatim_text)
 
     def test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts(self) -> None:
-        # RETRIEVAL_USE_NODES default is false; rely on it.
-        with main.get_db() as conn:
-            self._insert_document(conn, "doc-a", "bio.txt")
-            self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
-            conn.commit()
-            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
+        # Carrel V2: default flipped to true. The chunks path is now
+        # the explicit opt-out, so pin RETRIEVAL_USE_NODES=false here
+        # to exercise it deterministically.
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
 
         self.assertEqual(1, len(contexts))
         ctx = contexts[0]
@@ -1774,6 +1787,289 @@ class HydrateCitedContextsTests(unittest.TestCase):
             contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-missing"])
 
         self.assertEqual([], contexts)
+
+
+class CitationNodeTypeGateTests(unittest.TestCase):
+    """Carrel V2: every Citation must carry its source node_type so a
+    verification surface can tell prose from structural cites, and
+    _resolve_grounded_answer must refuse to ground a claim on a
+    structural context as a backstop to _drop_non_citable_contexts."""
+
+    def _result(self, payload: dict[str, object]) -> ClaudeCallResult:
+        return ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-sonnet-4-6",
+            request_kind="tutor.grounded_answer",
+            text=None,
+            json_payload=payload,
+            error_code=None,
+            error_message=None,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_node_type_gate",
+        )
+
+    def _ctx(self, *, node_type: str, text: str) -> tutor_service.HydratedNodeContext:
+        return tutor_service.HydratedNodeContext(
+            node_id=1,
+            doc_id="doc-1",
+            document_name="Source.pdf",
+            section="Intro",
+            page_num=1,
+            verbatim_text=text,
+            snippet=text,
+            score=0.5,
+            node_type=node_type,
+        )
+
+    def test_body_citation_carries_node_type_through(self) -> None:
+        ctx = self._ctx(node_type="body", text="Mitosis separates chromosomes.")
+        payload = {
+            "summary": "Mitosis fact.",
+            "claims": [
+                {
+                    "text": "Mitosis separates chromosomes.",
+                    "citations": [{"chunk_index": 1, "quote": "Mitosis separates chromosomes."}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [ctx],
+            question="What does mitosis do?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual("body", answer.claims[0].citations[0].node_type)
+        self.assertEqual(0, answer.citation_non_prose_drop_count)
+
+    def test_heading_context_is_dropped_at_validation_time(self) -> None:
+        """Backstop path. If a heading/header/footer context somehow
+        reaches _resolve_grounded_answer (e.g. a future caller skips
+        _drop_non_citable_contexts), the cite must be dropped, the new
+        counter must increment, and the claim must demote to
+        unsupported_spans without inflating the verbatim-quote drop
+        counter."""
+        ctx = self._ctx(
+            node_type="heading",
+            text="Chapter 3: Mitosis Overview",
+        )
+        payload = {
+            "summary": "Mitosis is the focus.",
+            "claims": [
+                {
+                    "text": "Mitosis is the focus of this section.",
+                    "citations": [{"chunk_index": 1, "quote": "Chapter 3: Mitosis Overview"}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [ctx],
+            question="What is chapter 3 about?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(0, len(answer.claims))
+        self.assertEqual(1, answer.citation_non_prose_drop_count)
+        self.assertEqual(0, answer.citation_drop_count)
+        self.assertEqual(0, answer.citation_structural_drop_count)
+        self.assertIn(
+            "Mitosis is the focus of this section.",
+            answer.unsupported_spans,
+        )
+
+    def test_mixed_body_and_heading_keeps_body_citation(self) -> None:
+        body = self._ctx(node_type="body", text="Mitosis separates chromosomes.")
+        heading = tutor_service.HydratedNodeContext(
+            node_id=2,
+            doc_id="doc-1",
+            document_name="Source.pdf",
+            section="Intro",
+            page_num=1,
+            verbatim_text="Chapter 3: Mitosis Overview",
+            snippet="Chapter 3: Mitosis Overview",
+            score=0.4,
+            node_type="heading",
+        )
+        payload = {
+            "summary": "Mitosis fact.",
+            "claims": [
+                {
+                    "text": "Mitosis separates chromosomes.",
+                    "citations": [
+                        {"chunk_index": 2, "quote": "Chapter 3: Mitosis Overview"},
+                        {"chunk_index": 1, "quote": "Mitosis separates chromosomes."},
+                    ],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+        answer = tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [body, heading],
+            question="What does mitosis do?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual("body", answer.claims[0].citations[0].node_type)
+        self.assertEqual(
+            "Mitosis separates chromosomes.",
+            answer.claims[0].citations[0].quote,
+        )
+        self.assertEqual(1, answer.citation_non_prose_drop_count)
+        self.assertEqual((), answer.unsupported_spans)
+
+
+class CaseVerdictHookTests(unittest.TestCase):
+    """Carrel V2: _attach_case_verdicts hooks CourtListener
+    verification onto each claim after _resolve_grounded_answer
+    returns. Default behavior with no COURTLISTENER_API_TOKEN: every
+    legal claim carries an ok=False verdict with error_code, every
+    non-legal claim carries an ok=True empty-verdicts batch. No
+    network in either case."""
+
+    def _result(self, payload: dict[str, object]) -> ClaudeCallResult:
+        return ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-sonnet-4-6",
+            request_kind="tutor.grounded_answer",
+            text=None,
+            json_payload=payload,
+            error_code=None,
+            error_message=None,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_case_hook",
+        )
+
+    def _ctx(self, *, text: str) -> tutor_service.HydratedNodeContext:
+        return tutor_service.HydratedNodeContext(
+            node_id=1,
+            doc_id="doc-1",
+            document_name="Brief.pdf",
+            section="Argument",
+            page_num=1,
+            verbatim_text=text,
+            snippet=text,
+            score=0.5,
+            node_type="body",
+        )
+
+    def test_non_legal_claim_carries_empty_ok_verdict_batch(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COURTLISTENER_API_TOKEN", None)
+            ctx = self._ctx(text="Mitosis separates duplicated chromosomes.")
+            payload = {
+                "summary": "Cell-bio fact.",
+                "claims": [
+                    {
+                        "text": "Mitosis separates duplicated chromosomes.",
+                        "citations": [
+                            {
+                                "chunk_index": 1,
+                                "quote": "Mitosis separates duplicated chromosomes.",
+                            }
+                        ],
+                    }
+                ],
+                "unsupported_spans": [],
+            }
+            answer = tutor_service._resolve_grounded_answer(
+                self._result(payload),
+                [ctx],
+                question="What does mitosis do?",
+                concept_name=None,
+                learner_confidence=None,
+                scope_fallback_used=False,
+            )
+            attached = tutor_service._attach_case_verdicts(answer)
+
+        self.assertEqual(1, len(attached.claims))
+        claim = attached.claims[0]
+        self.assertEqual(1, len(claim.case_verdicts))
+        batch = claim.case_verdicts[0]
+        self.assertTrue(batch.ok)
+        self.assertEqual((), batch.verdicts)
+
+    def test_legal_claim_without_token_carries_no_token_failure_verdict(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("COURTLISTENER_API_TOKEN", None)
+            ctx = self._ctx(text="Per 576 U.S. 644 the rule is X.")
+            payload = {
+                "summary": "Legal claim.",
+                "claims": [
+                    {
+                        "text": "Per 576 U.S. 644 the rule is X.",
+                        "citations": [
+                            {
+                                "chunk_index": 1,
+                                "quote": "Per 576 U.S. 644 the rule is X.",
+                            }
+                        ],
+                    }
+                ],
+                "unsupported_spans": [],
+            }
+            answer = tutor_service._resolve_grounded_answer(
+                self._result(payload),
+                [ctx],
+                question="What does 576 U.S. 644 say?",
+                concept_name=None,
+                learner_confidence=None,
+                scope_fallback_used=False,
+            )
+            attached = tutor_service._attach_case_verdicts(answer)
+
+        self.assertEqual(1, len(attached.claims))
+        batch = attached.claims[0].case_verdicts[0]
+        self.assertFalse(batch.ok)
+        self.assertEqual("courtlistener_no_api_token", batch.error_code)
+
+    def test_no_claims_returns_unchanged(self) -> None:
+        empty = tutor_service.GroundedAnswer(
+            summary="",
+            claims=(),
+            unsupported_spans=(),
+            misconceptions=(),
+            next_steps=(),
+            model="m",
+            latency_ms=0.0,
+            ok=False,
+            error="empty_retrieval",
+            cache_hit=False,
+            input_tokens=None,
+            output_tokens=None,
+            scope_fallback_used=False,
+            citation_attempt_count=0,
+            citation_drop_count=0,
+            citation_repair_count=0,
+        )
+        attached = tutor_service._attach_case_verdicts(empty)
+        self.assertIs(empty, attached)
 
 
 if __name__ == "__main__":

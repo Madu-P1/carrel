@@ -10,6 +10,16 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
+## Operator decisions — 2026-05-26 (V2 polish push)
+
+Operator stepped off after V2 Stage 1 backend + UI scaffold landed (7 commits, latest `b1d7ccfb`). The autonomous loop should work the V2 polish queue (T59-T63 below) BEFORE picking up older T09-T56 tasks. These five tasks are tightly scoped and high-confidence — the loop can ship them cleanly without operator input.
+
+Priority override (until T59-T63 are all `done` or `blocked`):
+- Skip T09-T56 unless a V2 polish task has a blocking dep on one of them (none do).
+- After T59-T63 land, resume normal lowest-numbered-pending picking from T09.
+- DO NOT autonomously start the deeper V2 thesis work (sentence-level claim alignment, streaming verdicts, semantic narrowing of long opinions, multi-opinion handling, verify-only env mode). Those need operator design input and are out of scope for unattended polish.
+- Build-only scope still enforced. No CourtListener live calls in tests (mocked transport only); the COURTLISTENER_API_TOKEN env stays unset on the routine's process so the no-token failure path is what runs.
+
 ## Operator decisions — 2026-05-19 (max-autonomy directive)
 
 Operator authorized the routine to run at maximum autonomy within the existing build-only scope. The two T03 questions surfaced in `.claude/logs/status.md` (2026-05-18) are answered:
@@ -24,8 +34,9 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 ## How the loop picks tasks
 
 1. Read this file top-to-bottom.
+1a. **Honor the most recent `Operator decisions` override.** Active override as of 2026-05-26: pick from the V2 polish queue (T59 → T63 in order) before any older `pending` task. Only after every V2 polish task is `done` or `blocked` do you fall back to step 3.
 2. Skip every task with `Status: done` or `Status: blocked`.
-3. Among remaining `pending` tasks, find the lowest-numbered task whose `Dependencies:` line lists only tasks already `done` (or `none`).
+3. Among remaining `pending` tasks, find the lowest-numbered task whose `Dependencies:` line lists only tasks already `done` (or `none`). Step 1a takes precedence when an active override applies.
 4. Mark that task `Status: in_progress` (commit the status flip on the feature branch).
 5. Execute per the master plan section referenced by the task.
 6. On commit / push / `gh pr create`, audit-gate fires; auditor subagent approves per `.claude/RATER_RUBRIC.md` §"Audit checklist".
@@ -658,6 +669,64 @@ Conventions per task:
 3. The eval invocation pattern documented in CLAUDE.md and the comparison-report runbook updated to include `INGEST_USE_DOCLING=true` on the USE_NODES=true run path (so the fixtures populate the nodes tables). The chunks-path run keeps the default. This is the documented invocation pattern, not a code change in the runner itself.
 **Verify:** canonical chain + new dispatch unit test + a fresh side-by-side eval comparison run that produces real divergence numbers (chunks branch vs nodes branch).
 **Guards:** no silent fallbacks; the nodes-branch primary retrieval surfaces ok=False rather than falling back to chunks. The eval-harness id-space dispatch is symmetric (chunks lookups stay on the chunks branch, nodes lookups on the nodes branch). After T57 lands, reopen T08 (`Status: pending`) and re-run the comparison.
+
+## T59 — V2 polish: VerifyView render tests (5 holding-match + 4 verdict-badge states)
+
+**Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 b1d7ccfb auditor.
+**Status:** pending
+**Deps:** none (b1d7ccfb is on origin)
+**Effort:** ~1 iteration
+**Acceptance:** new `frontend/src/features/verify/VerifyView.test.tsx` covers (a) verdict-badge color for `verified` / `unsupported` / `unknown`, (b) holding-match sub-line for each of the four states (`supports`, `contradicts`, `ambiguous`, `unavailable`), (c) absence of holding-line when no case_verdicts present, (d) summary header counts roll up. Use the same vitest pattern as `CitationChip.test.tsx`. Render via `@testing-library/preact`. Mock `verify.draft` is not required since the tests exercise pure rendering of VerifyResponse-shaped props.
+**Verify:** canonical chain + `pnpm test -- --run src/features/verify/VerifyView.test.tsx`.
+**Guards:** no real API calls; pure component rendering. Don't introduce `@testing-library/jest-dom` (prior commit established `.toBeTruthy()` over `.toBeInTheDocument()`).
+
+## T60 — V2 polish: replace `as unknown as CitationRecord[]` cast in VerifyView with typed boundary normalizer
+
+**Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 verify-mode auditor (follow-up #2).
+**Status:** pending
+**Deps:** none
+**Effort:** ~0.5 iteration
+**Acceptance:** `frontend/src/features/verify/VerifyView.tsx::VerdictCard` no longer uses `as unknown as CitationRecord[]`. Add a small normalizer `function normalizeCitations(raw: VerifyClaimVerdict["citations"]): CitationRecord[]` that maps the API shape (which has `node_id: int | str | null` + optional fields) to the strict CitationRecord shape CitationChip consumes. Inline-document the field mapping. Type-narrow at the boundary, not via cast.
+**Verify:** canonical chain. `pnpm typecheck` must stay green with zero `as unknown` casts in `frontend/src/features/verify/`.
+**Guards:** do not loosen `CitationRecord` — keep the strict shape and bend the input to fit at the boundary.
+
+## T61 — V2 polish: per-turn cite cache so identical case-citations across claims don't refetch
+
+**Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 c6d5ec08 auditor (follow-up #2).
+**Status:** pending
+**Deps:** none
+**Effort:** ~1 iteration
+**Acceptance:** `services/legal/case_verification.py::verify_claims_for_cases` builds a per-call cache keyed on the normalized citation string. When the same citation appears in 2+ claims of the same draft (very common in legal briefs), CourtListener + opinion fetch + holding-match all run ONCE; subsequent claims reuse the result. Cache is per-call (lives only for the duration of `verify_claims_for_cases`); no cross-request state. Holding-match still runs per-(claim, citation) pair because the model's verdict may differ across claim contexts — but the lookup + opinion fetch are cached. Add a counter `cache_hits` to `ClaimCaseVerdict` so observability can confirm the cache fires.
+**Verify:** canonical chain. New test in `tests/test_legal_case_verification.py` asserting that a draft with the same cite in 2 claims triggers only one `lookup_citations_in_text` call (via call counter on a `MockTransport`).
+**Guards:** cache MUST NOT cross requests (per-call only). Cite normalization key: use `normalized_citations[0]` from the first lookup, fall back to the raw citation string.
+
+## T62 — V2 polish: ⌘⇧V binding via Swift menu + visual-hint update
+
+**Plan ref:** V2 Stage 1 polish — recommended by 2026-05-26 verify-wiring-fixup auditor (follow-up #4).
+**Status:** pending
+**Deps:** none
+**Effort:** ~0.5 iteration
+**Acceptance:** TWO concrete edits. Scope is intentionally narrow:
+1. `macos-app/Sources/EinsteinDesktopApp/MainMenuBuilder.swift`: add a "Verify Draft" menu item under the existing View (or Window) menu with keyEquivalent `"v"` + modifier `[.command, .shift]`. The handler posts the existing navigate-to-path command (whatever the Ask / Library entries use); look up the existing pattern in MainMenuBuilder and mirror it. The route target is `/verify`.
+2. `frontend/src/app/shell/AppShell.tsx` nav-entry for Verify Draft updates `commandHint: ""` → `commandHint: "⌘⇧V"` so the sidebar visual hint matches the new menu binding.
+**OUT OF SCOPE** (do NOT attempt these, the ground truth differs from what I described in the prior commit message):
+- DO NOT add a JS keyboard handler for ⌘1-9 or ⌘⇧V. The existing `commandHint` strings are DISPLAY ONLY — there is no JS handler in AppShell.tsx that binds them; the bindings come from the Swift menu. Adding a JS handler would create a duplicate (Swift menu fires the IPC AND a JS listener fires too), risking double-navigation.
+- DO NOT touch the command palette (⌘K) — it is stubbed per CLAUDE.md "Open debts" and integrating against it would unblock a much larger refactor that is out of scope.
+**Verify:** canonical chain + `swift test --package-path /Users/madu/Desktop/Codex/macos-app` (mandatory since MainMenuBuilder is touched + has XCTest coverage per CLAUDE.md).
+**Guards:** ⌘⇧V must not collide with any existing macOS or Carrel shortcut (sanity-check via `grep -rn "keyEquivalent.*v" macos-app/`). The Swift test suite already exercises MainMenuBuilder structure; new menu item must keep that suite green.
+
+## T63 — V2 polish: docstring sweep + AskView empty-result re-ingest hint
+
+**Plan ref:** V2 Stage 1 polish — auditor follow-ups from c6d5ec08 (operator follow-up #1) and ADR-0006 exit scenario #2.
+**Status:** pending
+**Deps:** none
+**Effort:** ~0.5 iteration
+**Acceptance:** three small doc / UX fixes in one PR:
+1. `evals/run_evals.py:252` docstring describes pre-flip RETRIEVAL_USE_NODES default state; rewrite to reflect the 2026-05-26 default-on flip (`fbd745d4`, ADR-0006).
+2. `frontend/src/features/ask/AskView.tsx` (or wherever the "no results" empty state lives) names the `script/reingest_all.py` command in its copy when a query returns zero retrieved nodes against a doc that has chunks but no nodes — covers the ADR-0006 exit scenario #2 case (pre-V2 corpus needs re-ingest to populate nodes).
+3. `services/legal/case_verification.py::verify_claims_for_cases` docstring mentions the per-turn cache once T61 lands (mark this third item `blocked-on: T61` if T61 hasn't shipped; otherwise include).
+**Verify:** canonical chain.
+**Guards:** doc-only — no behavior change. If item 2 requires touching a feature flag or component prop, mark `blocked-on: scope-clarification` and surface to operator.
 
 ---
 

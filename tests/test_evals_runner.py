@@ -85,7 +85,20 @@ class EvalsRunnerTests(unittest.TestCase):
         # the runtime predicate. Runtime predicate coverage lives in
         # tests.test_retrieval_quote_heuristics + the chunks-branch
         # integration test below.
+        #
+        # Carrel V2: RETRIEVAL_USE_NODES default flipped to true. This
+        # test constructs a chunks-path ScoredHit and mocks
+        # search_hybrid; pin the flag false so _resolve_expected_chunks
+        # walks the chunks branch the harness wiring under audit was
+        # built for.
         self.enterContext(mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "false"}))
+        self.enterContext(mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}))
+        # Carrel V2: INGEST_USE_DOCLING default flipped to true. Pin it
+        # off here so the fixture ingest only populates the chunks
+        # table — `_resolve_expected_chunks` walks both id spaces, and
+        # the chunks-branch recall the test asserts (1.0) is only
+        # exact when the expected set is single-space chunks.
+        self.enterContext(mock.patch.dict(os.environ, {"INGEST_USE_DOCLING": "false"}))
         result = ClaudeCallResult(
             ok=True,
             task="balanced",
@@ -123,7 +136,14 @@ class EvalsRunnerTests(unittest.TestCase):
             with run_evals.main.get_db() as conn:
                 case = cases["biology-mitosis-001"]
                 expected_chunks = run_evals._resolve_expected_chunks(conn, case, mapping)
-                expected_chunk_id = next(iter(expected_chunks))
+                # Carrel V2: `_resolve_expected_chunks` returns both
+                # str chunk UUIDs and int node ids when both pipelines
+                # populated. This test exercises the chunks branch
+                # (ScoredHit + mocked search_hybrid), so filter to the
+                # str UUID space before picking the seed id.
+                expected_chunk_id = next(
+                    iter(eid for eid in expected_chunks if isinstance(eid, str))
+                )
                 row = conn.execute(
                     "SELECT id, doc_id, section, content FROM chunks WHERE id = ?",
                     (expected_chunk_id,),
@@ -279,6 +299,12 @@ class EvalsRunnerTests(unittest.TestCase):
         """
         from services.tutor import Citation, Claim, GroundedAnswer
 
+        # Carrel V2: INGEST_USE_DOCLING default flipped to true. Pin
+        # off so this chunks-branch wiring test ingests into chunks
+        # only and the next(iter()) below selects a chunk UUID, not
+        # an int node id.
+        self.enterContext(mock.patch.dict(os.environ, {"INGEST_USE_DOCLING": "false"}))
+
         fixtures = run_evals._load_fixture_manifest()
         with run_evals._isolated_runtime("full"):
             mapping = run_evals._ingest_fixtures(fixtures)
@@ -286,7 +312,10 @@ class EvalsRunnerTests(unittest.TestCase):
             with run_evals.main.get_db() as conn:
                 case = cases["biology-mitosis-001"]
                 expected_chunks = run_evals._resolve_expected_chunks(conn, case, mapping)
-                chunk_id = next(iter(expected_chunks))
+                # Filter to str UUID space (chunks). With Docling
+                # pinned off above the set is single-space already,
+                # but the filter is honest under both pinnings.
+                chunk_id = next(iter(eid for eid in expected_chunks if isinstance(eid, str)))
                 row = conn.execute(
                     "SELECT id, doc_id, section, page_num FROM chunks WHERE id = ?",
                     (chunk_id,),

@@ -36,6 +36,14 @@ class LearningOSBackendTests(unittest.TestCase):
         self._original_auto_card_draft = os.environ.get("CARREL_AUTO_CARD_DRAFT")
         os.environ["CARREL_AUTO_CARD_DRAFT"] = "true"
 
+        # Carrel V2 default-flip (ADR-0006, fbd745d): RETRIEVAL_USE_NODES
+        # default is now true. This suite inserts rows into the chunks
+        # table and exercises the chunks-path retrieval; pin the flag
+        # false here so the legacy chunks branch runs deterministically.
+        # Matches the pin pattern in tests/test_tutor_grounded.py.
+        self._original_retrieval_use_nodes = os.environ.get("RETRIEVAL_USE_NODES")
+        os.environ["RETRIEVAL_USE_NODES"] = "false"
+
         main.BASE_DIR = self.base_dir
         main.DATA_DIR = self.base_dir / "data"
         main.UPLOAD_DIR = main.DATA_DIR / "uploads"
@@ -54,6 +62,10 @@ class LearningOSBackendTests(unittest.TestCase):
             os.environ.pop("CARREL_AUTO_CARD_DRAFT", None)
         else:
             os.environ["CARREL_AUTO_CARD_DRAFT"] = self._original_auto_card_draft
+        if self._original_retrieval_use_nodes is None:
+            os.environ.pop("RETRIEVAL_USE_NODES", None)
+        else:
+            os.environ["RETRIEVAL_USE_NODES"] = self._original_retrieval_use_nodes
         self.temp_dir.cleanup()
 
     def clear_seed_data(self) -> None:

@@ -77,9 +77,12 @@ class RetrievalUseNodesFlagTests(unittest.TestCase):
     """Pure flag-reader tests — no DB setup required."""
 
     @mock.patch.dict("os.environ", {}, clear=False)
-    def test_flag_defaults_off_when_unset(self) -> None:
+    def test_flag_defaults_on_when_unset(self) -> None:
+        # Carrel V2: default flipped to true. The typed-node retrieval
+        # path is the credibility-grade pipeline; the chunks path is
+        # the explicit-opt-out fallback for pre-Docling-ingested docs.
         os.environ.pop("RETRIEVAL_USE_NODES", None)
-        self.assertFalse(retrieval_use_nodes_enabled())
+        self.assertTrue(retrieval_use_nodes_enabled())
 
     @mock.patch.dict("os.environ", {"RETRIEVAL_USE_NODES": "true"}, clear=False)
     def test_true_string_enables_flag(self) -> None:

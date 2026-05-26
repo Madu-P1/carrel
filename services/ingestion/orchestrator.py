@@ -35,7 +35,20 @@ LOGGER = get_logger("ingestion.orchestrator")
 def _docling_enabled_for(extension: str) -> bool:
     """Two env-var feature flags gate the typed-node ingest path.
 
-    INGEST_USE_DOCLING (default false) — master switch.
+    INGEST_USE_DOCLING (Carrel V2: default true) — master switch.
+    The typed-node ingest path is the credibility-grade pipeline
+    behind the V2 verification engine: it preserves Docling's
+    structural typing (heading / body / list_item / table_cell /
+    caption / equation / footnote) so retrieval and the citation
+    chip can tell prose from structural sources. The legacy chunks
+    pipeline still runs alongside as a fallback so a doc remains
+    queryable even when Docling fails or is absent (graceful
+    degradation handled in `is_available()` below).
+
+    Set `INGEST_USE_DOCLING=false` to skip the typed-node path on
+    machines where the ~1-2 GB Docling install is not desired and
+    chunks-only retrieval is acceptable.
+
     INGEST_DOCLING_FORMATS (default 'pdf,docx,html,md,pptx,tex') —
     comma-separated allowlist of file extensions to route through
     Docling. Every default entry maps to a registered Docling
@@ -43,7 +56,7 @@ def _docling_enabled_for(extension: str) -> bool:
     file extension for `InputFormat.LATEX`. EPUB and TXT stay on the
     legacy extraction path — Docling has no InputFormat for either.
     """
-    if os.getenv("INGEST_USE_DOCLING", "false").lower() not in ("1", "true", "yes"):
+    if os.getenv("INGEST_USE_DOCLING", "true").lower() not in ("1", "true", "yes"):
         return False
     formats = os.getenv("INGEST_DOCLING_FORMATS", "pdf,docx,html,md,pptx,tex").lower().split(",")
     allowed = {fmt.strip() for fmt in formats if fmt.strip()}

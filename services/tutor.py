@@ -21,6 +21,7 @@ from app_logging import get_logger, log_event
 from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
+from services.legal.case_verification import ClaimCaseVerdict, verify_claims_for_cases
 from services.retrieval import ScoredHit, search_hybrid
 from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES
 from services.retrieval.quote_heuristics import chunks_heuristic_enabled, is_structural_quote
@@ -139,12 +140,28 @@ class Citation:
     page_num: int | None
     section: str | None
     quote: str
+    # Source node_type (Carrel V2 verification prerequisite). On the
+    # typed-node retrieval path this carries the originating
+    # nodes.node_type ("body", "list_item", "table_cell", "caption",
+    # "equation", "footnote"). On the legacy chunks path it stays
+    # "body" because chunk text concatenates multiple nodes and the
+    # matched quote cannot be attributed to one of them without
+    # char-range provenance through chunk assembly. Surfaces can
+    # render prose vs. structural cites differently and a future
+    # verification mode can gate on the value here.
+    node_type: str = "body"
 
 
 @dataclass(frozen=True)
 class Claim:
     text: str
     citations: tuple[Citation, ...]
+    # Carrel V2: per-claim case-existence verdicts populated when the
+    # claim text contains Bluebook-shape case citations and a
+    # CourtListener token is configured. Empty tuple is the dominant
+    # case (non-legal corpora) and the explicit no-key fallback.
+    # See services.legal.case_verification.
+    case_verdicts: tuple["ClaimCaseVerdict", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -171,6 +188,13 @@ class GroundedAnswer:
     # failure modes can be told apart at observability time. Always 0
     # when RETRIEVAL_CHUNKS_HEURISTIC=false (default is on after T4).
     citation_structural_drop_count: int = 0
+    # Carrel V2: count of citations dropped at quote-validation time
+    # because the originating context's node_type is in
+    # NON_CITABLE_NODE_TYPES (heading/header/footer). Backstop for
+    # _drop_non_citable_contexts upstream; expected to be 0 on the
+    # nominal path. Non-zero values flag either a regression in the
+    # upstream filter or a future path that bypasses it.
+    citation_non_prose_drop_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -527,6 +551,11 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
         "content": context.verbatim_text,
         "score": round(context.score, 6),
         "label": f"{context.document_name} · {section_label}",
+        # Carrel V2: source node_type so the frontend can render
+        # prose vs. structural cites distinctly. "body" on the
+        # legacy chunks path (no node-level provenance); the
+        # originating nodes.node_type on the typed-node path.
+        "node_type": context.node_type,
     }
 
 
@@ -1113,6 +1142,36 @@ def _flatten_claim_citations(
     return flattened
 
 
+def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
+    return {
+        "claim_index": verdict.claim_index,
+        "ok": verdict.ok,
+        "error_code": verdict.error_code,
+        "error_message": verdict.error_message,
+        "verdicts": [
+            {
+                "citation": case.citation,
+                "normalized_citation": case.normalized_citation,
+                "status": case.status,
+                "exists": case.exists,
+                "case_name": case.case_name,
+                "absolute_url": case.absolute_url,
+                "court": case.court,
+                "date_filed": case.date_filed,
+                "error_message": case.error_message,
+                # Carrel V2 half-2: holding-match fields. None on
+                # cites where the follow-up wasn't run or couldn't
+                # decide; populated when fetch + verifier succeeded.
+                "holding_match": case.holding_match,
+                "holding_concern": case.holding_concern,
+                "holding_excerpt": case.holding_excerpt,
+                "holding_error": case.holding_error,
+            }
+            for case in verdict.verdicts
+        ],
+    }
+
+
 def _serialize_claims(
     claims: Sequence[Claim],
     contexts: Sequence[HydratedNodeContext],
@@ -1127,6 +1186,9 @@ def _serialize_claims(
                     _citation_payload(context_by_node_id[citation.node_id], quote=citation.quote)
                     for citation in claim.citations
                     if citation.node_id in context_by_node_id
+                ],
+                "case_verdicts": [
+                    _serialize_case_verdict(verdict) for verdict in claim.case_verdicts
                 ],
             }
         )
@@ -1215,6 +1277,7 @@ def _resolve_grounded_answer(
     citation_drop_count = 0
     citation_repair_count = 0
     citation_structural_drop_count = 0
+    citation_non_prose_drop_count = 0
     # Gate 1 (T2): resolve the heuristic-enabled flag once per answer so
     # toggling RETRIEVAL_CHUNKS_HEURISTIC mid-request cannot create a
     # half-filtered answer. ADR 0004 plug-in site.
@@ -1239,6 +1302,24 @@ def _resolve_grounded_answer(
                 citation_drop_count += 1
                 continue
             context = contexts[chunk_index - 1]
+            # Carrel V2: defense-in-depth gate on the source node_type.
+            # _drop_non_citable_contexts strips heading/header/footer
+            # upstream so this should normally be a no-op; the second
+            # check guarantees a structural node can never ground a
+            # claim even if a future caller bypasses the upstream
+            # filter. Counted separately so a non-zero value is a
+            # clear signal of upstream regression, not noise.
+            if context.node_type in NON_CITABLE_NODE_TYPES:
+                citation_non_prose_drop_count += 1
+                log_event(
+                    LOGGER,
+                    logging.WARNING,
+                    "tutor_non_prose_citation_dropped",
+                    node_id=context.node_id,
+                    node_type=context.node_type,
+                    claim_preview=claim_text[:80],
+                )
+                continue
             matched_quote = validated_citation_quote(quote, context.verbatim_text)
             if matched_quote is None:
                 citation_drop_count += 1
@@ -1268,6 +1349,7 @@ def _resolve_grounded_answer(
                     page_num=context.page_num,
                     section=context.section,
                     quote=matched_quote.quote,
+                    node_type=context.node_type,
                 )
             )
         if citations:
@@ -1295,6 +1377,56 @@ def _resolve_grounded_answer(
         citation_drop_count=citation_drop_count,
         citation_repair_count=citation_repair_count,
         citation_structural_drop_count=citation_structural_drop_count,
+        citation_non_prose_drop_count=citation_non_prose_drop_count,
+    )
+
+
+def _attach_case_verdicts(answer: GroundedAnswer) -> GroundedAnswer:
+    """Carrel V2: run CourtListener case-existence verification on each
+    claim's text and attach per-claim verdicts.
+
+    Cheap pre-filter inside `verify_claims_for_cases` skips the
+    network when no claim text contains a citation-shape substring
+    (the dominant case for non-legal corpora). When CourtListener is
+    unconfigured (no token) or unreachable, the per-claim verdict
+    carries an explicit `ok=False` + error_code instead of degrading
+    to "case verified" — surfaces the state honestly to the operator
+    per CLAUDE.md "no silent AI fallbacks".
+
+    Returns a rebuilt `GroundedAnswer` with claims carrying their
+    verdicts; if the answer has no claims, returns it unchanged.
+    """
+    if not answer.claims:
+        return answer
+    claim_texts = [claim.text for claim in answer.claims]
+    verdicts_per_claim = verify_claims_for_cases(claim_texts)
+    rebuilt = tuple(
+        Claim(
+            text=claim.text,
+            citations=claim.citations,
+            case_verdicts=(verdicts_per_claim[index],) if index < len(verdicts_per_claim) else (),
+        )
+        for index, claim in enumerate(answer.claims)
+    )
+    return GroundedAnswer(
+        summary=answer.summary,
+        claims=rebuilt,
+        unsupported_spans=answer.unsupported_spans,
+        misconceptions=answer.misconceptions,
+        next_steps=answer.next_steps,
+        model=answer.model,
+        latency_ms=answer.latency_ms,
+        ok=answer.ok,
+        error=answer.error,
+        cache_hit=answer.cache_hit,
+        input_tokens=answer.input_tokens,
+        output_tokens=answer.output_tokens,
+        scope_fallback_used=answer.scope_fallback_used,
+        citation_attempt_count=answer.citation_attempt_count,
+        citation_drop_count=answer.citation_drop_count,
+        citation_repair_count=answer.citation_repair_count,
+        citation_structural_drop_count=answer.citation_structural_drop_count,
+        citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
     )
 
 
@@ -1323,6 +1455,7 @@ def _log_grounded_answer(
         citation_drop_count=answer.citation_drop_count,
         citation_repair_count=answer.citation_repair_count,
         citation_structural_drop_count=answer.citation_structural_drop_count,
+        citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
     )
 
 
@@ -1557,6 +1690,8 @@ def grounded_tutor_response(
                 citation_attempt_count=answer.citation_attempt_count,
                 citation_drop_count=answer.citation_drop_count,
                 citation_repair_count=answer.citation_repair_count,
+                citation_structural_drop_count=answer.citation_structural_drop_count,
+                citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
             )
         _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
         return answer
@@ -1569,6 +1704,7 @@ def grounded_tutor_response(
         learner_confidence=learner_confidence,
         scope_fallback_used=scope_fallback_used,
     )
+    answer = _attach_case_verdicts(answer)
     _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
     return answer
 

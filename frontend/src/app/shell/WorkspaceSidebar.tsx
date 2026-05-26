@@ -24,7 +24,8 @@ export interface SidebarNavItem {
     | "notes"
     | "flashcards"
     | "session"
-    | "plan";
+    | "plan"
+    | "verify";
   path: string;
   key:
     | "dashboard"
@@ -32,6 +33,7 @@ export interface SidebarNavItem {
     | "library"
     | "reader"
     | "ask"
+    | "verify"
     | "study"
     | "search"
     | "concepts"

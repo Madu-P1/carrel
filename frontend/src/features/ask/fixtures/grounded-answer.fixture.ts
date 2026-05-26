@@ -10,6 +10,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
   citation_repair_count: 0,
   citations: [
     {
+      node_type: "body",
       node_id: "demo-1",
       content:
         "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
@@ -23,6 +24,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
         "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance."
     },
     {
+      node_type: "body",
       node_id: "demo-2",
       content:
         "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
@@ -41,6 +43,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
       text: "Mitosis creates two genetically identical daughter cells.",
       citations: [
         {
+          node_type: "body",
           node_id: "demo-1",
           content:
             "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
@@ -59,6 +62,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
       text: "Checkpoints pause progression if DNA is damaged.",
       citations: [
         {
+          node_type: "body",
           node_id: "demo-2",
           content:
             "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
@@ -100,10 +104,10 @@ export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
   error: "claude_call_failed",
   claims: [
     {
-      text:
-        "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
+      text: "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
       citations: [
         {
+          node_type: "body",
           node_id: "demo-fallback-1",
           content:
             "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
@@ -119,10 +123,10 @@ export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
       ]
     },
     {
-      text:
-        "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
+      text: "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
       citations: [
         {
+          node_type: "body",
           node_id: "demo-fallback-2",
           content:
             "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",

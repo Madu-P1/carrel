@@ -159,11 +159,74 @@ class TutorCitationItem(BaseModel):
     content: str = ""
     score: float = 0.0
     label: str = ""
+    # Carrel V2: source node_type so the frontend can render prose
+    # vs. structural cites distinctly. "body" on the legacy chunks
+    # path (no node-level provenance); the originating
+    # nodes.node_type on the typed-node path. See
+    # services.tutor.Citation.node_type.
+    node_type: str = "body"
+
+
+class CaseVerdictItem(BaseModel):
+    """Carrel V2: per-case CourtListener verification result.
+
+    Surfaces case-existence verdicts when a claim text contains a
+    Bluebook-shape citation. `status` mirrors CourtListener's
+    per-citation code (200 found, 300 ambiguous, 404 not found,
+    400 malformed reporter, 429 rate limited). `exists=True` only
+    when `status==200`; the verifier UX should treat 300 as
+    ambiguous, not as confirmed.
+    """
+
+    citation: str
+    normalized_citation: Optional[str] = None
+    status: int
+    exists: bool
+    case_name: Optional[str] = None
+    absolute_url: Optional[str] = None
+    court: Optional[str] = None
+    date_filed: Optional[str] = None
+    error_message: Optional[str] = None
+    # Carrel V2 half-2 (holding-match). Populated only when `exists`
+    # is True and the opinion fetch + Claude verifier succeeded.
+    # `holding_match` is the headline: True = opinion supports the
+    # claim, False = contradicts or unrelated, None = verifier ran
+    # but explicitly refused to decide (excerpt insufficient).
+    holding_match: Optional[bool] = None
+    holding_concern: Optional[str] = None
+    holding_excerpt: Optional[str] = None
+    # When set, the holding-match step failed (no token, fetch
+    # error, no provider, model error). UX surfaces "Holding check
+    # unavailable" with this code instead of treating the cite as
+    # supported.
+    holding_error: Optional[str] = None
+
+
+class ClaimCaseVerdictItem(BaseModel):
+    """Carrel V2: per-claim batch of CourtListener verdicts.
+
+    `ok=False` + `error_code` signals the verification itself
+    failed (no token, network error, rate limited). `ok=True` +
+    empty `verdicts` means the claim text was scanned but contained
+    no citation-shape substring — the dominant case for non-legal
+    corpora.
+    """
+
+    claim_index: int
+    ok: bool
+    verdicts: List[CaseVerdictItem] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class TutorClaimItem(BaseModel):
     text: str
     citations: List[TutorCitationItem] = Field(default_factory=list)
+    # Carrel V2: per-claim case-existence verdicts. Empty when the
+    # claim text contains no Bluebook-shape citations or when
+    # CourtListener is unconfigured / unreachable (the per-claim
+    # batch carries the error_code in that case).
+    case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
 
 
 class TutorActionItem(BaseModel):
@@ -193,6 +256,54 @@ class TutorQueryResponse(BaseModel):
     citation_drop_count: int = 0
     citation_repair_count: int = 0
     momentum: Dict[str, Any] = Field(default_factory=dict)
+
+
+class VerifyRequest(BaseModel):
+    """Carrel V2 Stage 1 — Verify-mode request.
+
+    `draft` is the text to verify (a brief, a memo, a paragraph).
+    Optional `doc_ids` scopes verification to a subset of the user's
+    corpus (e.g., the case-file folder for the matter). When unset,
+    verification runs against the user's full library.
+    """
+
+    draft: str = Field(..., min_length=1, max_length=200_000)
+    doc_ids: Optional[List[str]] = None
+    subject_name: Optional[str] = Field(default=None, max_length=240)
+
+
+class VerifyClaimVerdictItem(BaseModel):
+    """One per-claim verdict the verifier UX renders.
+
+    `verdict` is the headline: "verified" (engine grounded the
+    claim in retrieved chunks), "unsupported" (claim landed in
+    the engine's unsupported_spans), or "unknown" (engine itself
+    failed — error_code in `unsupported_reason`).
+    """
+
+    claim_index: int
+    claim_text: str
+    verdict: Literal["verified", "unsupported", "unknown"]
+    citations: List[TutorCitationItem] = Field(default_factory=list)
+    case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
+    unsupported_reason: Optional[str] = None
+
+
+class VerifySummaryItem(BaseModel):
+    total: int
+    verified: int
+    unsupported: int
+    unknown: int
+
+
+class VerifyResponse(BaseModel):
+    draft_text: str
+    claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
+    summary: VerifySummaryItem
+    latency_ms: float = 0.0
+    model: str = ""
+    ok: bool = True
+    error: Optional[str] = None
 
 
 class NoteUpsertRequest(BaseModel):

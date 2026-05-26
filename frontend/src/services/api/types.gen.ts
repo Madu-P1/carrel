@@ -1006,6 +1006,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Endpoint */
+        post: operations["verify_endpoint_api_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/anchors": {
         parameters: {
             query?: never;
@@ -2172,6 +2189,67 @@ export interface components {
              */
             card_type: string;
         };
+        /**
+         * CaseVerdictItem
+         * @description Carrel V2: per-case CourtListener verification result.
+         *
+         *     Surfaces case-existence verdicts when a claim text contains a
+         *     Bluebook-shape citation. `status` mirrors CourtListener's
+         *     per-citation code (200 found, 300 ambiguous, 404 not found,
+         *     400 malformed reporter, 429 rate limited). `exists=True` only
+         *     when `status==200`; the verifier UX should treat 300 as
+         *     ambiguous, not as confirmed.
+         */
+        CaseVerdictItem: {
+            /** Citation */
+            citation: string;
+            /** Normalized Citation */
+            normalized_citation?: string | null;
+            /** Status */
+            status: number;
+            /** Exists */
+            exists: boolean;
+            /** Case Name */
+            case_name?: string | null;
+            /** Absolute Url */
+            absolute_url?: string | null;
+            /** Court */
+            court?: string | null;
+            /** Date Filed */
+            date_filed?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Holding Match */
+            holding_match?: boolean | null;
+            /** Holding Concern */
+            holding_concern?: string | null;
+            /** Holding Excerpt */
+            holding_excerpt?: string | null;
+            /** Holding Error */
+            holding_error?: string | null;
+        };
+        /**
+         * ClaimCaseVerdictItem
+         * @description Carrel V2: per-claim batch of CourtListener verdicts.
+         *
+         *     `ok=False` + `error_code` signals the verification itself
+         *     failed (no token, network error, rate limited). `ok=True` +
+         *     empty `verdicts` means the claim text was scanned but contained
+         *     no citation-shape substring — the dominant case for non-legal
+         *     corpora.
+         */
+        ClaimCaseVerdictItem: {
+            /** Claim Index */
+            claim_index: number;
+            /** Ok */
+            ok: boolean;
+            /** Verdicts */
+            verdicts?: components["schemas"]["CaseVerdictItem"][];
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
         /** CompareRequest */
         CompareRequest: {
             /** Left Id */
@@ -2874,6 +2952,11 @@ export interface components {
              * @default
              */
             label: string;
+            /**
+             * Node Type
+             * @default body
+             */
+            node_type: string;
         };
         /** TutorClaimItem */
         TutorClaimItem: {
@@ -2881,6 +2964,8 @@ export interface components {
             text: string;
             /** Citations */
             citations?: components["schemas"]["TutorCitationItem"][];
+            /** Case Verdicts */
+            case_verdicts?: components["schemas"]["ClaimCaseVerdictItem"][];
         };
         /** TutorExchangeCreateRequest */
         TutorExchangeCreateRequest: {
@@ -3076,6 +3161,85 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VerifyClaimVerdictItem
+         * @description One per-claim verdict the verifier UX renders.
+         *
+         *     `verdict` is the headline: "verified" (engine grounded the
+         *     claim in retrieved chunks), "unsupported" (claim landed in
+         *     the engine's unsupported_spans), or "unknown" (engine itself
+         *     failed — error_code in `unsupported_reason`).
+         */
+        VerifyClaimVerdictItem: {
+            /** Claim Index */
+            claim_index: number;
+            /** Claim Text */
+            claim_text: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "verified" | "unsupported" | "unknown";
+            /** Citations */
+            citations?: components["schemas"]["TutorCitationItem"][];
+            /** Case Verdicts */
+            case_verdicts?: components["schemas"]["ClaimCaseVerdictItem"][];
+            /** Unsupported Reason */
+            unsupported_reason?: string | null;
+        };
+        /**
+         * VerifyRequest
+         * @description Carrel V2 Stage 1 — Verify-mode request.
+         *
+         *     `draft` is the text to verify (a brief, a memo, a paragraph).
+         *     Optional `doc_ids` scopes verification to a subset of the user's
+         *     corpus (e.g., the case-file folder for the matter). When unset,
+         *     verification runs against the user's full library.
+         */
+        VerifyRequest: {
+            /** Draft */
+            draft: string;
+            /** Doc Ids */
+            doc_ids?: string[] | null;
+            /** Subject Name */
+            subject_name?: string | null;
+        };
+        /** VerifyResponse */
+        VerifyResponse: {
+            /** Draft Text */
+            draft_text: string;
+            /** Claim Verdicts */
+            claim_verdicts?: components["schemas"]["VerifyClaimVerdictItem"][];
+            summary: components["schemas"]["VerifySummaryItem"];
+            /**
+             * Latency Ms
+             * @default 0
+             */
+            latency_ms: number;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** VerifySummaryItem */
+        VerifySummaryItem: {
+            /** Total */
+            total: number;
+            /** Verified */
+            verified: number;
+            /** Unsupported */
+            unsupported: number;
+            /** Unknown */
+            unknown: number;
         };
     };
     responses: never;
@@ -4893,6 +5057,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_endpoint_api_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResponse"];
                 };
             };
             /** @description Validation Error */

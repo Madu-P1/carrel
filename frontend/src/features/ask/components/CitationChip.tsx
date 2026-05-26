@@ -14,6 +14,36 @@ interface CitationChipProps {
   onClick?: (citation: CitationRecord) => void;
 }
 
+// Carrel V2: map a non-prose source node_type to a short uppercase
+// badge label. Body and list_item are prose-bearing — the common
+// case — and return "" so the chip stays uncluttered. Anything else
+// surfaces a tiny badge so a verifier can tell at a glance that a
+// claim is backed by a table cell, figure caption, equation, or
+// footnote rather than running prose. Heading/header/footer should
+// never reach the chip (services.tutor drops them), but if they do,
+// the badge surfaces the leak rather than silently rendering it as
+// prose.
+function nodeTypeBadge(nodeType: string | undefined): string {
+  switch (nodeType) {
+    case "table_cell":
+      return "Table";
+    case "caption":
+      return "Figure";
+    case "equation":
+      return "Eq";
+    case "footnote":
+      return "Note";
+    case "heading":
+      return "Heading";
+    case "header":
+      return "Header";
+    case "footer":
+      return "Footer";
+    default:
+      return "";
+  }
+}
+
 // Pick the best short preview text for the tooltip. Snippet is already
 // designed for preview; content is the full chunk and gets truncated. Returns
 // "" when neither is present — the chip then renders without a tooltip wrap.
@@ -162,6 +192,14 @@ export function CitationChip({ citation, index, delayMs = 0, onClick }: Citation
       <span className={styles.citationChipMeta} aria-hidden>
         {label}
       </span>
+      {nodeTypeBadge(citation.node_type) ? (
+        <span
+          className={styles.citationChipNodeType}
+          title={`Source node type: ${citation.node_type}`}
+        >
+          {nodeTypeBadge(citation.node_type)}
+        </span>
+      ) : null}
     </button>
   );
 

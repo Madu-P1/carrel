@@ -17,6 +17,7 @@ from routes.study import register_study_routes
 from routes.synthesis import register_synthesis_routes
 from routes.system import register_system_routes
 from routes.tutor import register_tutor_routes
+from routes.verify import register_verify_routes
 from routes.workspace import register_workspace_routes
 
 
@@ -26,6 +27,9 @@ def register_routes(app) -> None:
     register_concept_routes(app)
     register_study_routes(app)
     register_tutor_routes(app)
+    # Carrel V2 Stage 1 — Verify-mode endpoint over the existing
+    # grounded-tutor engine. See services/verify.py + ADR-0006.
+    register_verify_routes(app)
     register_anchor_routes(app)
     register_studio_routes(app)
     register_synthesis_routes(app)

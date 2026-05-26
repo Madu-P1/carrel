@@ -57,10 +57,16 @@ class RetrievedNode:
 def retrieval_use_nodes_enabled() -> bool:
     """Top-level flag — callers above retrieval gate which path to use.
 
-    Defaults off so deploying PR 2 alone never changes user-facing
-    behavior. PR 4 (Free-tier card UI) flips it on for new sessions.
+    Carrel V2: defaults ON. The typed-node retrieval path preserves
+    Docling's structural typing (heading / body / list_item /
+    table_cell / caption / equation / footnote) so the citation
+    surface can tell prose from structural at quote-validation time
+    and the chip can render the source-type badge. The legacy chunks
+    path remains reachable by setting `RETRIEVAL_USE_NODES=false`
+    for documents that were ingested before INGEST_USE_DOCLING was
+    enabled and therefore have no node rows.
     """
-    return os.getenv("RETRIEVAL_USE_NODES", "false").lower() in ("1", "true", "yes")
+    return os.getenv("RETRIEVAL_USE_NODES", "true").lower() in ("1", "true", "yes")
 
 
 def retrieval_use_reranker_enabled() -> bool:
