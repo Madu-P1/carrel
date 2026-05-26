@@ -1,4 +1,4 @@
-# ADR-0008: V2 Pivot — Validation-First Sequencing
+# ADR-0008: Validation-First Sequencing for the V2 Pivot
 
 - Status: Accepted
 - Date: 2026-05-26
@@ -9,7 +9,7 @@
 - References: `/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`
   (V2 design doc, APPROVED 2026-05-22),
   [ADR-0006](ADR-0006-typed-node-defaults-on.md) (typed-node defaults
-  on — the structural prerequisite for V2 verification),
+  on, the structural prerequisite for V2 verification),
   PR #82 (V2 Stage 1 backend + UI scaffold, commit `57188d81`).
 
 ## Context
@@ -35,7 +35,7 @@ It then set an explicit assignment:
 
 Between 2026-05-22 and 2026-05-26 the engineering response was
 inverted: V2 Stage 1 backend + UI scaffold shipped (PR #82, 7
-commits) — typed-node defaults flipped on (closing the prior T12),
+commits): typed-node defaults flipped on (closing the prior T12),
 `Citation.node_type` + non-prose drop gate, CourtListener
 case-existence verifier, holding-match verifier, `/api/verify`
 route, `VerifyView` UX scaffold. A polish queue (T59-T63) was then
@@ -49,7 +49,7 @@ This put Carrel in a position where:
    substantive, and the answering surface has a known regression:
    the generator produces header-only / title-only answers in a
    non-trivial fraction of cases (memory observation 8672,
-   2026-05-22 — flagged as the prerequisite issue before any other
+   2026-05-22, flagged as the prerequisite issue before any other
    pipeline improvement can deliver value).
 
 A litigator watch session on the current build risks the worst
@@ -77,9 +77,9 @@ Reshape the queue around the design doc's own sequencing:
    roughly zero in build effort, a few hundred dollars in recruiting,
    30 days of founder calendar time.
 4. **Queue Stage 2/3 design work behind the test outcome (T67).**
-   The validation test has three decision branches per the doc — only
-   one of them leads to Approach B execution. Designing for the wrong
-   branch wastes weeks.
+   The validation test has three decision branches per the doc, and
+   only one of them leads to Approach B execution. Designing for the
+   wrong branch wastes weeks.
 5. **Retire T12 from the queue.** It shipped as part of PR #82
    commit `fbd745d4`. The status flip on this file is overdue.
 6. **Defer (do not kill) T13-T58.** The chunks-to-nodes migration
@@ -95,7 +95,7 @@ Reshape the queue around the design doc's own sequencing:
   that ends companies. Honoring the design doc is the simplest
   correction.
 - **The counter-argument is real but loses.** "T59-T63 are small,
-  let them run, then validate" — seductive because the loop is set
+  let them run, then validate" is seductive because the loop is set
   up and the tasks are scoped. It loses because the validation test
   is not gated on V2 polish landing; it is gated on the generator
   producing substantive answers and on the verifier catching seeded
@@ -104,7 +104,7 @@ Reshape the queue around the design doc's own sequencing:
   it, the polish was wasted anyway.
 - **A failing 30-day test is a hard outcome to recover from.** If
   litigators watch hollow-answer demos and shrug, the founder cannot
-  re-run the same test in 60 days with a better build — the
+  re-run the same test in 60 days with a better build. The
   recruiting well is poisoned, the message ("I showed you something
   that wasn't ready") sticks. The asymmetric downside justifies a
   4-6 week delay on the polish queue.
@@ -130,7 +130,7 @@ Reshape the queue around the design doc's own sequencing:
    (T64 blocked).** If the generator quality is bounded by something
    we cannot fix in <2 weeks (model limit, retrieval ceiling,
    product-shape mismatch), surface to operator before continuing
-   the test prep — the test premise might shift.
+   the test prep; the test premise might shift.
 
 ## Non-Goals
 
@@ -147,10 +147,9 @@ Reshape the queue around the design doc's own sequencing:
 ## Updates To `AUTONOMOUS_WORK_PLAN.md`
 
 - T12 status flipped to `done` (PR #82 commit `fbd745d4`).
-- New "Operator decisions — 2026-05-26 (validation-first reset)"
-  override block inserted ABOVE the prior "V2 polish push" block.
-  The prior block stays for the historical record but is marked
-  SUPERSEDED.
+- The new validation-first override block (dated 2026-05-26) is
+  inserted ABOVE the prior V2 polish push block. The prior block
+  stays for the historical record but is marked SUPERSEDED.
 - T59-T63 stay `pending` with new `**Pause:**` lines pointing to
   this ADR.
 - New tasks T64 (answer-quality investigation), T65 (validation
@@ -165,14 +164,14 @@ Reshape the queue around the design doc's own sequencing:
   proper `docs/plans/answer-quality-2026-05-26.md` produced by
   `make-plan` with documentation discovery, since the root cause is
   not yet known. Done before T64 work starts.
-- **T65 (validation test prep) plan ownership.** Same — needs
-  `docs/plans/validation-test-prep-2026-05-26.md`. Includes memo
-  seeding protocol, litigator recruiting script, watch session
+- **T65 (validation test prep) plan ownership.** Same applies, and
+  needs `docs/plans/validation-test-prep-2026-05-26.md`. Includes
+  memo seeding protocol, litigator recruiting script, watch session
   guide, decision-rule operationalization, observation rubric.
 - **Non-lawyer second-vertical selection.** Doc lists analyst /
   auditor / clinician / consultant. T65 must pick one before
   recruiting opens.
 - **HANDOFF.md + CLAUDE.md V2 framing.** Updated in this commit
   pass so new sessions load the V2 lens. Tutor framing kept in the
-  exit-scenario sections so the legacy surface is still
-  legible — V2 is a repositioning, not a deletion.
+  exit-scenario sections so the legacy surface is still legible.
+  V2 is a repositioning, not a deletion.
