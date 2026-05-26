@@ -44,7 +44,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
       citations: [
         {
           node_type: "body",
-      node_id: "demo-1",
+          node_id: "demo-1",
           content:
             "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
           document_id: "demo-doc-biology",
@@ -63,7 +63,7 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
       citations: [
         {
           node_type: "body",
-      node_id: "demo-2",
+          node_id: "demo-2",
           content:
             "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
           document_id: "demo-doc-biology",
@@ -104,12 +104,11 @@ export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
   error: "claude_call_failed",
   claims: [
     {
-      text:
-        "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
+      text: "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
       citations: [
         {
           node_type: "body",
-      node_id: "demo-fallback-1",
+          node_id: "demo-fallback-1",
           content:
             "Mitosis creates two genetically identical daughter cells and is used for growth and maintenance.",
           document_id: "demo-doc-biology",
@@ -124,12 +123,11 @@ export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
       ]
     },
     {
-      text:
-        "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
+      text: "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
       citations: [
         {
           node_type: "body",
-      node_id: "demo-fallback-2",
+          node_id: "demo-fallback-2",
           content:
             "Cell-cycle checkpoints pause progression if DNA is damaged or if spindle attachment is incomplete.",
           document_id: "demo-doc-biology",

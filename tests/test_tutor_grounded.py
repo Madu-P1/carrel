@@ -30,6 +30,15 @@ class StubRouter:
 
 class GroundedTutorTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Carrel V2: RETRIEVAL_USE_NODES default flipped to true. This
+        # suite inserts rows into the chunks table and exercises the
+        # chunks-path retrieval; pin the flag false at the class level
+        # so each test runs against the chunks branch it was written
+        # for. Tests that need the nodes path on still wrap their own
+        # mock.patch.dict block which overrides this pin.
+        self._env_patch = mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False)
+        self._env_patch.start()
+
         self.temp_dir = tempfile.TemporaryDirectory()
         self.base_dir = Path(self.temp_dir.name)
         self.original_base_dir = main.BASE_DIR
@@ -53,6 +62,7 @@ class GroundedTutorTests(unittest.TestCase):
         main.DB_PATH = self.original_db_path
         main.SCHEMA_PATH = self.original_schema_path
         self.temp_dir.cleanup()
+        self._env_patch.stop()
 
     def clear_seed_data(self) -> None:
         with main.get_db() as conn:
@@ -1738,12 +1748,15 @@ class HydrateCitedContextsTests(unittest.TestCase):
         self.assertEqual("Mitosis separates duplicated chromosomes.", ctx.verbatim_text)
 
     def test_chunks_path_resolves_uuid_chunk_ids_to_hydrated_contexts(self) -> None:
-        # RETRIEVAL_USE_NODES default is false; rely on it.
-        with main.get_db() as conn:
-            self._insert_document(conn, "doc-a", "bio.txt")
-            self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
-            conn.commit()
-            contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
+        # Carrel V2: default flipped to true. The chunks path is now
+        # the explicit opt-out, so pin RETRIEVAL_USE_NODES=false here
+        # to exercise it deterministically.
+        with mock.patch.dict(os.environ, {"RETRIEVAL_USE_NODES": "false"}, clear=False):
+            with main.get_db() as conn:
+                self._insert_document(conn, "doc-a", "bio.txt")
+                self._insert_chunk(conn, "chunk-a", "doc-a", "Meiosis halves chromosome number.")
+                conn.commit()
+                contexts = tutor_service._hydrate_cited_contexts(conn, ["chunk-a"])
 
         self.assertEqual(1, len(contexts))
         ctx = contexts[0]
