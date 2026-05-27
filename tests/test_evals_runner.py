@@ -270,6 +270,178 @@ class EvalsRunnerTests(unittest.TestCase):
         self.assertEqual(3, summary["quote_total"])
         self.assertEqual(3, summary["quote_valid_count"])
 
+    def _make_grounded_answer(
+        self,
+        *,
+        summary: str,
+        claims: tuple,
+        provider: str = "claude",
+    ):
+        """Build a minimal GroundedAnswer with all required fields defaulted."""
+        from services.tutor import GroundedAnswer
+
+        return GroundedAnswer(
+            summary=summary,
+            claims=claims,
+            unsupported_spans=(),
+            misconceptions=(),
+            next_steps=(),
+            model="test-model",
+            latency_ms=0.0,
+            ok=True,
+            error=None,
+            cache_hit=False,
+            input_tokens=None,
+            output_tokens=None,
+            scope_fallback_used=False,
+            citation_attempt_count=0,
+            citation_drop_count=0,
+            citation_repair_count=0,
+            provider=provider,
+        )
+
+    def _make_citation(self, *, quote: str, node_id: int = 1):
+        from services.tutor import Citation
+
+        return Citation(
+            node_id=node_id,
+            doc_id="d1",
+            page_num=1,
+            section=None,
+            quote=quote,
+        )
+
+    def test_answer_is_substantive_rejects_heading_echo(self) -> None:
+        """T64 Phase 5: hollow-answer pattern (heading echoed back) fails."""
+        from services.tutor import Claim
+
+        # Summary is "MITOSIS"; cited quote starts with the same string.
+        # Prefix-of-quote rule catches this even though the length
+        # rule alone would let it through on a small quote.
+        citation = self._make_citation(
+            quote="MITOSIS is the process by which a cell divides into two genetically identical daughter cells."
+        )
+        claim = Claim(text="", citations=(citation,))
+
+        hollow_answer = self._make_grounded_answer(
+            summary="MITOSIS",
+            claims=(claim,),
+            provider="afm",
+        )
+        self.assertFalse(run_evals._answer_is_substantive(hollow_answer))
+
+    def test_answer_is_substantive_accepts_synthesized_summary(self) -> None:
+        """T64 Phase 5: a real synthesized answer (>2x longest quote, not a prefix) passes."""
+        from services.tutor import Claim
+
+        short_quote = "Mitosis produces two daughter cells."
+        citation = self._make_citation(quote=short_quote)
+        claim = Claim(text="", citations=(citation,))
+
+        # Summary is longer than 2 * len(short_quote) and not a prefix of the quote.
+        synthesized = (
+            "Mitosis is the division of a parent cell into two genetically "
+            "identical daughter cells, supporting growth and repair."
+        )
+        substantive_answer = self._make_grounded_answer(
+            summary=synthesized,
+            claims=(claim,),
+            provider="claude",
+        )
+        self.assertTrue(run_evals._answer_is_substantive(substantive_answer))
+
+    def test_answer_is_substantive_vacuous_on_zero_citations(self) -> None:
+        """T64 Phase 5: zero citations → metric defined as True per the plan."""
+        empty_answer = self._make_grounded_answer(
+            summary="anything goes here",
+            claims=(),
+            provider="",
+        )
+        self.assertTrue(run_evals._answer_is_substantive(empty_answer))
+
+    def test_aggregate_substantive_answer_rate_stratifies_by_provider(self) -> None:
+        """T64 Phase 5: per-provider buckets + Claude threshold guard."""
+        summary = run_evals._aggregate(
+            [
+                {
+                    "groundedness_at_k": 1,
+                    "citation_precision": 1.0,
+                    "citation_recall": 1.0,
+                    "quote_validity": 1.0,
+                    "quote_valid_count": 1,
+                    "quote_total": 1,
+                    "citation_attempt_count": 1,
+                    "citation_drop_count": 0,
+                    "citation_repair_count": 0,
+                    "fallback": False,
+                    "scope_fallback": False,
+                    "latency_ms": 1000.0,
+                    "model": "claude-sonnet-4-6",
+                    "substantive_answer": True,
+                    "provider": "claude",
+                },
+                {
+                    "groundedness_at_k": 1,
+                    "citation_precision": 1.0,
+                    "citation_recall": 1.0,
+                    "quote_validity": 1.0,
+                    "quote_valid_count": 1,
+                    "quote_total": 1,
+                    "citation_attempt_count": 1,
+                    "citation_drop_count": 0,
+                    "citation_repair_count": 0,
+                    "fallback": False,
+                    "scope_fallback": False,
+                    "latency_ms": 1000.0,
+                    "model": "claude-sonnet-4-6",
+                    "substantive_answer": False,
+                    "provider": "claude",
+                },
+                {
+                    "groundedness_at_k": 1,
+                    "citation_precision": 1.0,
+                    "citation_recall": 1.0,
+                    "quote_validity": 1.0,
+                    "quote_valid_count": 1,
+                    "quote_total": 1,
+                    "citation_attempt_count": 1,
+                    "citation_drop_count": 0,
+                    "citation_repair_count": 0,
+                    "fallback": False,
+                    "scope_fallback": False,
+                    "latency_ms": 1000.0,
+                    "model": "afm-3b",
+                    "substantive_answer": False,
+                    "provider": "afm",
+                },
+            ],
+            mode="full",
+        )
+
+        rate = summary["substantive_answer_rate"]
+        self.assertEqual(0.5, rate["by_provider"]["claude"])
+        self.assertEqual(0.0, rate["by_provider"]["afm"])
+        # Overall is 1/3 across all 3 cases.
+        self.assertAlmostEqual(round(1 / 3, 4), rate["overall"])
+        # Claude rate (0.5) trips the < 0.95 warning.
+        self.assertTrue(
+            any("substantive_answer_rate.claude" in w for w in summary["warnings"]),
+            f"expected Claude threshold warning, got {summary['warnings']}",
+        )
+
+    def test_aggregate_substantive_answer_rate_skipped_in_smoke_mode(self) -> None:
+        """T64 Phase 5: smoke mode does not compute the metric."""
+        summary = run_evals._aggregate(
+            [
+                {
+                    "groundedness_at_k": 1,
+                    "load_errors": [],
+                },
+            ],
+            mode="smoke",
+        )
+        self.assertNotIn("substantive_answer_rate", summary)
+
     def test_report_writes_json_and_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             report_dir = Path(temp_dir)
