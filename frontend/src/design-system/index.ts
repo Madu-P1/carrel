@@ -12,6 +12,8 @@ export type { AnimationSpec } from "./hooks/useAnimation";
 
 export { Badge } from "./primitives/Badge";
 export type { BadgeProps } from "./primitives/Badge";
+export { ProvenanceBadge } from "./primitives/ProvenanceBadge";
+export type { ProvenanceBadgeProps } from "./primitives/ProvenanceBadge";
 export { Box } from "./primitives/Box";
 export type { BoxProps } from "./primitives/Box";
 export { Button } from "./primitives/Button";

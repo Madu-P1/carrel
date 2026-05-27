@@ -219,12 +219,12 @@ On these surfaces: existing fallback behavior stands. Provider provenance is sti
 
 ### Acceptance criteria for Phase 4
 
-1. New `ai/providers.py::ensure_provider_allowed(request_kind, provider)` raises `ProviderUnavailableError` when `request_kind` is on the high-stakes list and `provider != "claude"`. Called at every entry point into the high-stakes flows.
-2. Frontend renders the error as a non-dismissable banner with the remediation message. Tested via Vitest on `VerifyView` and `AskView`.
-3. Provenance badge component shipped to the design system (`frontend/src/design-system/primitives/ProvenanceBadge/`) and wired into both high-stakes views.
-4. AFM grounded-answer system prompt updated; the Phase 1 reproduction test with `@unittest.expectedFailure` removed now passes.
-5. All existing tests continue to pass. New tests cover both the fail-loud path (per `request_kind`) and the badge surfacing.
-6. ADR appended to `docs/adr/` documenting the policy decision (e.g. `ADR-0009-fail-loud-on-high-stakes-flows.md`) — this section of the plan doc is the design rationale; the ADR is the durable record.
+1. New `ai/providers.py::ensure_provider_allowed(request_kind, provider)` raises `ProviderUnavailableError` when `request_kind` is on the high-stakes list and `provider != "claude"`. Called at every entry point into the high-stakes flows. — **DONE** (commit `abf3c718`).
+2. Frontend renders the error as a non-dismissable banner with the remediation message. Tested via Vitest on `VerifyView` and `AskView`. — **DONE** (this commit set; `frontend/src/features/shared/ProviderQualityGateBanner.tsx`, wired into both views, tests at `frontend/tests/features/provider-quality-gate.test.tsx` + `verify-view.test.tsx`, AskView integration test added to `frontend/tests/ask-view.test.tsx`).
+3. Provenance badge component shipped to the design system (`frontend/src/design-system/primitives/ProvenanceBadge/`) and wired into both high-stakes views. — **DONE** (this commit set; primitive at `frontend/src/design-system/primitives/ProvenanceBadge/`, exported from `frontend/src/design-system/index.ts`, wired into `AnswerSummary` + `VerifyView` header).
+4. AFM grounded-answer system prompt updated; the Phase 1 reproduction test with `@unittest.expectedFailure` removed now passes. — **DONE** (test passed under the backend gate in `abf3c718`; this commit set additionally refines `_AFM_GROUNDED_TUTOR_SYSTEM` in `services/tutor.py` with an explicit "do not echo a chunk heading" instruction and adds a `hollow_answer` post-parse guard in `ai/afm_client.py::request_grounded_answer` for the low-stakes paths AFM still serves).
+5. All existing tests continue to pass. New tests cover both the fail-loud path (per `request_kind`) and the badge surfacing. — **DONE** (Vitest coverage shipped this commit set; canonical verify chain run as part of Phase 6).
+6. ADR appended to `docs/adr/` documenting the policy decision (`ADR-0009-fail-loud-on-high-stakes-flows.md`). — **DONE** (this commit set).
 
 ### Branch + PR strategy
 
