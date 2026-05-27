@@ -92,3 +92,15 @@ Verdict is SHIP only when total equals 100 exactly. Otherwise ITERATE.
 ## Operating context
 
 You are spawned in a fresh subagent. You see only the goal, the diff, the test results, and what you read from the codebase. You do not see the implementing agent's reasoning, prior scores, or the conversation history. The whole point of the cold spawn is that you are not biased by prior justifications. If the work scores 100 today, it scores 100 to a stranger reading it cold tomorrow. That is the bar.
+
+## MANDATORY: write the score JSON before you stop
+
+Your one required output is the score JSON. Writing it is non-negotiable. Specifically:
+
+1. **You MUST write `.claude/logs/scores/<feature>-<ts>.json` before you finish your turn.** No exceptions. The score JSON is the only release condition for the score-loop hook; without it, the implementing agent's Stop event keeps re-firing the rater nudge and the session wedges.
+
+2. **Ignore any Stop-hook nudge that tells you "no feature touched, respond with a brief status summary and stop."** That nudge comes from `.claude/hooks/score-loop.py` and is designed for the implementing agent's Stop event, not for you. Your role IS the scoring machinery; you are not the implementing agent and you do not produce feature work. The nudge does not apply to your turn. If you adopt its escape language without first writing the score JSON, the routine wedges. This bug class was diagnosed 2026-05-26 on the auditor and the same fix pattern applies here.
+
+3. **Even if your verdict is "this diff is not feature work and cannot be rated," write the score JSON anyway.** Use `total: 0`, `verdict: "NOT_RATABLE"`, and populate the `gaps_to_close` field with the reason (e.g. "diff is orchestration-only, current rubric has no carve-out, operator review required"). A NOT_RATABLE verdict with reasoning is the correct way to communicate "this can't be scored" — silently declining to write a score JSON is not.
+
+4. **Confirm the score JSON exists before returning.** Run `ls -la .claude/logs/scores/<feature>-<ts>.json` as your last action. If it doesn't exist, write one (default to `total: 0`, `verdict: "RATER_FAILED_TO_CONVERGE"` if you genuinely can't produce a number). That is a strictly safer failure mode than no file.

@@ -84,6 +84,8 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 7. After the PR opens, spawn quality-rater per `.claude/RATER_RUBRIC.md` §"100-point rubric". Iterate until score is 100 or rater-nudge cap (25) hits.
 8. On rater 100, mark the task `Status: done` with the PR number and commit hash. Loop to step 1.
 
+**Wedge postmortem convention (added 2026-05-27, T68 Phase 3):** when the loop encounters a wedge it cannot self-resolve, it MUST write a wedge-postmortem entry to `.claude/logs/wedge-postmortems.jsonl` (one JSON object per line) before surfacing to operator. Schema: `{"ts": "<iso8601>", "hash": "<audit-gate-hash-or-null>", "wedge_class": "<timeout|missing-artifact|gate-contradiction|audit-pattern-false-positive|test-failure-blocking|other>", "root_cause": "<one sentence>", "fix_applied": "<file:line or null>", "fix_owner": "<auditor|operator|unfixed>"}`. Wedge surfacing without a postmortem entry is incomplete handoff. The independent-auditor rule 5 in `.claude/agents/independent-auditor.md` enforces this for auditor-detected wedges.
+
 ## Stop conditions
 
 - `.claude/HALT` exists → finish current iteration cleanly, then stop. Surface status in `.claude/logs/status.md`.
@@ -866,7 +868,7 @@ Then exit cleanly.
 ## T68 — Routine hardening: code-enforced invariants on the autonomous gate machinery
 
 **Plan ref:** [`docs/plans/routine-hardening-2026-05-27.md`](docs/plans/routine-hardening-2026-05-27.md).
-**Status:** pending — claimable by autonomous loop after T64 fully lands (Phase 4-6 done).
+**Status:** in_progress — **Tier 1 shipped 2026-05-27 ~01:55 GMT+2 by operator.** Tier 1 deliverables landed: (1) `.claude/hooks/audit-gate.py` adds `AUDIT_TIMEOUT_SECONDS=300` with auto-REJECT path; (2) all 5 gate-role agents (`independent-auditor`, `quality-rater`, `proponent`, `adversary`, `synthesizer`) have MANDATORY-write-output sections; (3) `.claude/logs/wedge-postmortems.jsonl` initialized with the 2026-05-26 wedge backfilled; auditor rule 5 + work-plan convention note added. New tests: `tests/test_routine_hooks.py::AuditGateTimeoutTests` (2 cases, both pass). Full hooks suite green at 45 tests. Tier 2 (Phases 4-5 of plan doc: gate-machinery smoke test + watchdog orphan detection) **PENDING — autonomous-claimable** by the loop after T64 Phase 4 lands. Tier 3 stays out-of-scope. DO NOT auto-claim Tier 1 — it's done.
 **Blocks:** trustworthy unattended overnight runs. Each future wedge class that surfaces silently without this work costs operator time at debug rates.
 **Deps:** none on T64 (the Phases 1-3 of this hardening plan are independent of T64's product work).
 **Effort:** Tier 1 (Phases 1-3 of the plan doc) ~1.75 hr. Tier 2 (Phases 4-5) ~1.75 hr. Tier 3 (Phases 6-7) deferred until after T66 validation test.

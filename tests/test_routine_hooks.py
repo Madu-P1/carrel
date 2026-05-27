@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -863,6 +864,151 @@ class RouteTaskRoutingTests(unittest.TestCase):
                     out["hookSpecificOutput"]["additionalContext"],
                     f"expected {expected!r} suggestion for prompt {prompt!r}",
                 )
+
+
+class AuditGateTimeoutTests(unittest.TestCase):
+    """Verify the T68 Phase 1 verdict-timeout behavior.
+
+    The audit-gate auto-REJECTs a pending action whose pending file is
+    older than AUDIT_TIMEOUT_SECONDS with no matching approved/rejected
+    sibling. This prevents the wedge class diagnosed 2026-05-26 where
+    an auditor subagent silently exited without writing a verdict.
+    """
+
+    def _setup_project_dir(self) -> str:
+        tmp = tempfile.mkdtemp(prefix="carrel-timeout-test-")
+        for sub in ("audits/pending", "audits/approved", "audits/rejected"):
+            (Path(tmp) / ".claude" / "logs" / sub).mkdir(parents=True, exist_ok=True)
+        return tmp
+
+    def test_stale_pending_triggers_auto_reject(self) -> None:
+        """A pending file older than AUDIT_TIMEOUT_SECONDS with no matching
+        verdict triggers an auto-REJECTED file + denial on the next gate hit."""
+        tmp = self._setup_project_dir()
+        try:
+            project = Path(tmp)
+            payload = {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {
+                    "command": "git commit -m 'timeout-test synthetic action'",
+                    "description": "synthetic timeout test",
+                },
+            }
+
+            # First invocation: writes pending, denies with major-action gate.
+            rc1, out1, _err1 = run_hook(
+                "audit-gate.py",
+                payload,
+                env_extra={"CARREL_AUTONOMOUS": "true"},
+                project_dir=tmp,
+            )
+            self.assertEqual(rc1, 0, "first invocation should exit 0")
+            self.assertTrue(out1.strip(), "first invocation must emit a JSON envelope")
+
+            pending_files = list((project / ".claude/logs/audits/pending").glob("*.json"))
+            self.assertEqual(len(pending_files), 1, f"expected 1 pending file, got {pending_files}")
+            pending_path = pending_files[0]
+            stale_hash = pending_path.stem
+
+            # Backdate the pending file's mtime to AUDIT_TIMEOUT_SECONDS + 60s ago.
+            stale_mtime = time.time() - (300 + 60)
+            os.utime(pending_path, (stale_mtime, stale_mtime))
+
+            # Second invocation with the SAME payload (same hash). Should detect
+            # the stale pending and auto-REJECT.
+            rc2, out2, _err2 = run_hook(
+                "audit-gate.py",
+                payload,
+                env_extra={"CARREL_AUTONOMOUS": "true"},
+                project_dir=tmp,
+            )
+            self.assertEqual(rc2, 0, "second invocation should exit 0")
+            out2_json = json.loads(out2) if out2.strip() else {}
+            reason2 = out2_json.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+            self.assertIn(
+                "AUDIT-GATE TIMEOUT",
+                reason2,
+                f"second denial should be a timeout, got: {reason2!r}",
+            )
+            self.assertIn(stale_hash, reason2, "timeout denial should cite the same hash")
+
+            # Rejected file written with auto_timeout=true.
+            rejected_path = project / ".claude/logs/audits/rejected" / f"{stale_hash}.json"
+            self.assertTrue(rejected_path.exists(), "rejected file should be written")
+            rejected = json.loads(rejected_path.read_text())
+            self.assertEqual(rejected.get("verdict"), "REJECTED")
+            self.assertTrue(rejected.get("auto_timeout"), "auto_timeout flag must be true")
+            self.assertGreaterEqual(rejected.get("age_seconds", 0), 300)
+
+            # Wedge-postmortem appended.
+            postmortem_path = project / ".claude/logs/wedge-postmortems.jsonl"
+            self.assertTrue(
+                postmortem_path.exists(),
+                "wedge-postmortems.jsonl should be created when auto-timeout fires",
+            )
+            lines = [
+                json.loads(line)
+                for line in postmortem_path.read_text().splitlines()
+                if line.strip()
+            ]
+            self.assertTrue(
+                any(line.get("hash") == stale_hash for line in lines),
+                "postmortem entry for stale_hash should be present",
+            )
+            self.assertTrue(
+                any(line.get("wedge_class") == "timeout" for line in lines),
+                "postmortem should classify the wedge as 'timeout'",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_fresh_pending_does_not_trigger_timeout(self) -> None:
+        """A pending file younger than AUDIT_TIMEOUT_SECONDS does not trigger
+        the auto-REJECT path. The normal major-action gate fires instead."""
+        tmp = self._setup_project_dir()
+        try:
+            project = Path(tmp)
+            payload = {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {
+                    "command": "git commit -m 'fresh-pending synthetic'",
+                    "description": "synthetic fresh test",
+                },
+            }
+
+            rc1, _out1, _err1 = run_hook(
+                "audit-gate.py",
+                payload,
+                env_extra={"CARREL_AUTONOMOUS": "true"},
+                project_dir=tmp,
+            )
+            self.assertEqual(rc1, 0)
+
+            rc2, out2, _err2 = run_hook(
+                "audit-gate.py",
+                payload,
+                env_extra={"CARREL_AUTONOMOUS": "true"},
+                project_dir=tmp,
+            )
+            self.assertEqual(rc2, 0)
+            out2_json = json.loads(out2) if out2.strip() else {}
+            reason2 = out2_json.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+            self.assertNotIn(
+                "AUDIT-GATE TIMEOUT",
+                reason2,
+                "fresh pending must not trigger the timeout path",
+            )
+
+            rejected_files = list((project / ".claude/logs/audits/rejected").glob("*.json"))
+            self.assertEqual(
+                rejected_files,
+                [],
+                f"no rejected file should be written for fresh pending; got {rejected_files}",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

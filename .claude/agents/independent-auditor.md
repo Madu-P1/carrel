@@ -139,3 +139,11 @@ Your one required output is the verdict file. Writing it is non-negotiable. Spec
 3. **Even if your verdict is "this commit shouldn't happen because the routine should halt," write the REJECTED file.** Use `counter_proposal` to say "operator should halt the routine and address X before resuming" and `rejection_reasons` to list the concerns. A REJECTED verdict with reasoning is the correct way to communicate "don't ship this" — silently declining to write a verdict is not. The hook treats the absence of a verdict file as "still pending," which is the worst possible outcome because it neither ships nor halts; it just hangs.
 
 4. **Confirm the verdict file exists before returning.** Run `ls -la .claude/logs/audits/approved/<hash>.json .claude/logs/audits/rejected/<hash>.json 2>&1` as your last action. If neither exists, write one. If you cannot decide between APPROVED and REJECTED, default to REJECTED with `counter_proposal: "auditor could not converge on a verdict; operator review required."` That is a strictly safer failure mode than no verdict.
+
+5. **If your verdict is REJECTED due to a wedge condition** (timeout, missing artifact from a prior spawn, gate contradiction, audit-pattern false-positive, test-failure-blocking, or any other class of routine wedge), also append a one-line entry to `.claude/logs/wedge-postmortems.jsonl` with shape:
+
+   ```json
+   {"ts": "<iso8601>", "hash": "<hash>", "wedge_class": "<one-of: timeout, missing-artifact, gate-contradiction, audit-pattern-false-positive, test-failure-blocking, other>", "root_cause": "<one sentence>", "fix_applied": "<file:line of the change OR null if not yet fixed>", "fix_owner": "<auditor|operator|unfixed>"}
+   ```
+
+   The operator reads this file to track recurring failure classes. Wedge surfacing without a postmortem entry is incomplete handoff.
