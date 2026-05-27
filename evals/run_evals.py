@@ -664,10 +664,12 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
         )
         # T64 Phase 5: substantive-answer-rate (stratified by provider).
         # Per-provider buckets so a hollow-answer regression on Claude is
-        # visible even if AFM/Ollama cases drag the overall rate down
-        # (they're now expected to short-circuit on high-stakes flows
-        # per the Phase 4 gate, so their substantive rate is the
-        # vacuous-zero case and does not need a threshold).
+        # visible regardless of what AFM/Ollama buckets report. Under the
+        # Phase 4 high-stakes gate, AFM and Ollama short-circuit with
+        # empty claims, which the heuristic treats as vacuously
+        # substantive (True). Their bucket rate is therefore the
+        # vacuous-True floor and needs no threshold of its own; only
+        # the Claude bucket carries the >= 0.95 guard.
         substantive_by_provider: dict[str, dict[str, int]] = {}
         for result in results:
             if "substantive_answer" not in result:
