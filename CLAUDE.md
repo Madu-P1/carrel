@@ -112,6 +112,16 @@ The HALT file is checked at the top of every watchdog iteration, inside
 the poller, and during the retry sleep, so a graceful stop registers
 within seconds. Verify the kill path with `bash tests/test_watchdog_kill.sh`.
 
+At launch the watchdog runs a pre-flight gate-machinery smoke test
+(`tests/test_routine_gate_smoke.py`) that spawns the auditor on a
+synthetic pending action and asserts a verdict file appears within 60s.
+On failure the watchdog refuses to launch so the loop cannot wedge
+silently waiting for verdict files. Override with `CARREL_SKIP_SMOKE=1`
+when you genuinely need to bypass (e.g., no claude CLI on PATH in a
+diagnostic shell). The poller's kill block also sweeps any orphaned
+claude process whose CWD matches the worktree, closing the
+`script(1) -> exec claude` parent-linkage class observed 2026-05-26.
+
 ## Benchmarks + budgets
 
 - **Cold launch:** p50 ≤ 800ms target, current 465ms p50, warm 200-250ms. Gate: `script/measure_cold_launch.sh` + `benchmarks/cold_launch_diff.py`.
