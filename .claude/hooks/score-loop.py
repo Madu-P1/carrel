@@ -23,6 +23,25 @@ from pathlib import Path
 MAX_NUDGES_PER_SESSION = 25
 RECENT_PERFECT_WINDOW_S = 1800  # 30 minutes
 
+# Subagent types that are part of the scoring/audit machinery itself.
+# When ONE of these stops, the score-loop hook must stay silent — they are
+# not feature work and they must not be nudged to spawn the rater. Worse,
+# the nudge's "if no feature touched, respond with brief status and stop"
+# escape clause gets adopted by these subagents as their own response,
+# causing them to skip writing their required verdict/output file
+# (e.g. the auditor's APPROVED/REJECTED JSON, the rater's score JSON).
+# This bug was diagnosed 2026-05-26 in .claude/logs/status.md after the
+# T64 autonomous run wedged on an unsigned audit-gate verdict.
+GATE_SUBAGENT_TYPES = frozenset(
+    {
+        "independent-auditor",
+        "quality-rater",
+        "proponent",
+        "adversary",
+        "synthesizer",
+    }
+)
+
 
 def has_recent_perfect_score(score_dir: Path) -> bool:
     try:
@@ -54,6 +73,21 @@ def main() -> None:
     event = data.get("hook_event_name", "")
     if event not in ("Stop", "SubagentStop"):
         sys.exit(0)
+
+    # Skip gate-role subagents. They are the scoring/audit machinery and
+    # must not be nudged to spawn the rater (see GATE_SUBAGENT_TYPES note).
+    # The subagent_type field appears under several possible keys depending
+    # on Claude Code version: check all plausible locations defensively.
+    if event == "SubagentStop":
+        subagent_type = (
+            data.get("subagent_type")
+            or data.get("agent_type")
+            or (data.get("subagent") or {}).get("type")
+            or (data.get("agent") or {}).get("type")
+            or ""
+        )
+        if subagent_type in GATE_SUBAGENT_TYPES:
+            sys.exit(0)
 
     session = data.get("session_id", "default")
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "")

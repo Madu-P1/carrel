@@ -51,6 +51,54 @@ from ai.router import ClaudeCallResult, ClaudeRouter, get_default_router
 
 ProviderKind = Literal["claude", "ollama", "afm", "null"]
 
+# T64 Phase 4: high-stakes request kinds that MUST be served by Claude.
+# Per docs/plans/answer-quality-2026-05-26.md "Policy decision" (2026-05-27),
+# both the Ask flow (POST /api/tutor/query) and the Verify flow (POST
+# /api/verify) issue request_kind="tutor.grounded_answer" because Verify
+# reuses grounded_tutor_envelope (services/verify.py::verify_draft calls
+# tutor_service.grounded_tutor_envelope). One gate string covers both
+# litigator-facing surfaces. The plan's conceptual "tutor_grounded_answer"
+# and "verify_draft" labels map to the single concrete request_kind below;
+# if a future PR splits Verify onto its own call path, add its identifier
+# to this set in the same commit.
+HIGH_STAKES_REQUEST_KINDS: frozenset[str] = frozenset(
+    {
+        "tutor.grounded_answer",
+    }
+)
+
+
+class ProviderUnavailableError(Exception):
+    """Raised by ensure_provider_allowed when a high-stakes request_kind
+    is dispatched to a non-Claude provider. Tutor + verify callers
+    catch this and convert to a user-visible ok=False response with
+    error_code="provider_below_quality_bar". Carries the offending
+    (request_kind, provider) on the exception so the structured log
+    can surface both.
+    """
+
+    def __init__(self, request_kind: str, provider: str) -> None:
+        super().__init__(
+            f"request_kind={request_kind!r} requires the Claude provider; "
+            f"got provider={provider!r}. Set ANTHROPIC_API_KEY to enable."
+        )
+        self.request_kind = request_kind
+        self.provider = provider
+
+
+def ensure_provider_allowed(request_kind: str, provider: str) -> None:
+    """Fail-loud gate per the T64 Phase 3 policy decision.
+
+    Raises ProviderUnavailableError when request_kind is in
+    HIGH_STAKES_REQUEST_KINDS and provider != "claude". Low-stakes
+    request kinds (flashcard_generation, dialogue_followup,
+    note_expansion, srs_review, etc.) are not gated; they keep the
+    existing graceful-degradation behavior so local-first stays alive
+    where degradation is tolerable.
+    """
+    if request_kind in HIGH_STAKES_REQUEST_KINDS and provider != "claude":
+        raise ProviderUnavailableError(request_kind, provider)
+
 
 @runtime_checkable
 class AIProvider(Protocol):
@@ -257,6 +305,7 @@ def _null_result(*, task: Any, request_kind: str) -> ClaudeCallResult:
         service_tier=None,
         stop_reason=None,
         request_id=None,
+        provider="null",
     )
 
 

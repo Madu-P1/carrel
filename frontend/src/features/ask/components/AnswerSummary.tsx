@@ -1,4 +1,4 @@
-import { Stack, toast } from "@/design-system";
+import { ProvenanceBadge, Stack, toast } from "@/design-system";
 
 import { copyAskCardText, saveCitationAnchor } from "../anchorDrafts";
 import type { CitationRecord } from "../types";
@@ -11,6 +11,7 @@ interface AnswerSummaryProps {
   cacheHit: boolean;
   latencyMs: number;
   model: string;
+  provider?: string;
   onRetry?: () => void;
 }
 
@@ -37,6 +38,7 @@ export function AnswerSummary({
   cacheHit,
   latencyMs,
   model,
+  provider,
   onRetry
 }: AnswerSummaryProps) {
   if (!summary) {
@@ -95,6 +97,7 @@ export function AnswerSummary({
       evidence={
         <Stack className={styles.summaryEvidence} gap={1}>
           <div className={styles.summaryMetaTokens}>
+            {provider ? <ProvenanceBadge provider={provider} /> : null}
             <span>{model || "no-model"}</span>
             <span aria-hidden>·</span>
             <span>{latencyToken}</span>

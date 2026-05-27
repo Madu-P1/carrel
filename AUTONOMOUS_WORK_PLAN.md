@@ -10,6 +10,34 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
+## Operator decisions — 2026-05-27 (T64 Phase 4 lifted + T68 added, supersedes the 2026-05-26 block below)
+
+Operator decisions at 2026-05-27 01:25 GMT+2 after the T64 Phase 1+2 autonomous run succeeded (PR #88 open) and halted cleanly on Phase 3:
+
+- **T64 Phase 3 policy: (a) fail-loud + (c) bounded provider-chain improvements.** Decision section now committed in `docs/plans/answer-quality-2026-05-26.md::Policy decision`. High-stakes `request_kind` list: `tutor_grounded_answer`, `verify_draft`. Low-stakes: `flashcard_generation`, `dialogue_followup`, `note_expansion`, `srs_review`.
+- **T64 Phase 4 (implement the policy) is autonomous.** Loop is authorized to implement `ensure_provider_allowed`, ship the provenance badge, refine the AFM grounded-answer prompt, write the regression tests, and update PR #88. Acceptance criteria in the plan doc's Policy-decision section.
+- **T64 Phases 5-6 (substantive-answer-rate metric + final verification) follow Phase 4 autonomously.** No separate operator gate between Phase 4 and Phase 6 closeout. Loop ships them as one coherent commit set.
+- **T68 (routine hardening) is new and autonomous.** Plan doc at `docs/plans/routine-hardening-2026-05-27.md`. Scope cut for the autonomous run: Tier 1 minimum (Phases 1-3 of that plan: verdict timeout + required-artifact contract on gate-role agents + wedge postmortem `.jsonl`). Tier 2 (Phases 4-5: smoke test + orphan detection) if budget allows. Tier 3 explicitly out-of-scope.
+- **Task pick order:** T64 (close out Phases 4-6) → T68 (Tier 1 minimum, Tier 2 if budget) → halt and surface to operator for T65 review. Do NOT auto-claim T65, T66, T67 — those return to operator-led after T64 + T68 close.
+- **Build-only scope still enforced** on everything autonomous: no outreach, no DMs, no `gh pr ready` (drafts only), no live external API calls in tests.
+- **Model:** `claude-opus-4-7` (passed via `CARREL_MODEL=opus` to `start-autonomous.sh`).
+
+---
+
+## Operator decisions — 2026-05-26 (T64+ autonomous run) [SUPERSEDED by 2026-05-27 block above]
+
+Operator explicit override (revised 2026-05-26 23:46): run **T64 and beyond** in the autonomous loop on `claude-opus-4-7` with `bypassPermissions`. The prior block's "operator-led, not autonomous" note for T64-T67 is **fully lifted**. The loop is allowed to drift through T64 → T65 → T66 → T67 in order, claiming each in turn per the normal task-picker rules.
+
+Justification for T64: plan doc (`docs/plans/answer-quality-2026-05-26.md`) is already drafted, the root cause is already characterized (silent provider fallback to AFM/Ollama when `ANTHROPIC_API_KEY` is missing — see `.claude/projects/-Users-madu-Desktop-Codex/memory/answer-quality-root-cause.md`), and the deliverable is a code task: fail-loud gate on high-stakes flows (Ask, Verify), preserve graceful degradation on low-stakes flows (flashcards, dialogue follow-ups), plus tests.
+
+Justification for letting the loop drift into T65/T66/T67: operator is opting to let the loop handle whatever code/instrumentation surface each task contains and surface decisions back via `.claude/logs/status.md` rather than gating per-task. The loop's audit-gate hook still blocks irreversible/outward actions (commits, migrations, dep changes, `gh pr ready`, external sends) until the independent-auditor agent approves, so "let it drift" is bounded by the existing safety net, not a free hand. Tasks with no autonomous-able surface (e.g. T66's actual 30-day litigator sessions) should naturally halt the loop because there's no code to ship — the loop is allowed to detect that and write a status memo rather than fabricate work.
+
+Constraints the loop must still respect:
+- **Read each plan doc first.** For T64: `docs/plans/answer-quality-2026-05-26.md`. For T65-T67: produce a `docs/plans/<name>.md` via `make-plan` as the first action when claiming the task, then implement against it. Do not invent investigation shapes ad-hoc.
+- **Build-only scope still enforced.** No outreach, no DMs, no marketing posts, no live external API calls in tests, drafts only (no `gh pr ready`). See `.claude/AUTONOMOUS_SCOPE.md`.
+- **Halt when there is nothing autonomous-able left.** If a task body is dominated by operator-only work (recruiting, live sessions, founder calls), claim it, write the plan doc, ship whatever instrumentation/UX/prep code DOES exist, then write `.claude/logs/status.md` with a "X autonomous-able portion complete, Y operator-led portion remaining" memo and exit gracefully. The watchdog's graceful-halt detection will stop relaunches at that point.
+- **Model:** `claude-opus-4-7` (passed via `CARREL_MODEL=opus` to `start-autonomous.sh`).
+
 ## Operator decisions — 2026-05-26 (validation-first reset)
 
 Operator returned to the desk after the V2 polish push block (below) was authored and reviewed the queue against the actual V2 design doc (`/Users/madu/.gstack/projects/Codex/madu-main-design-20260522-015141.md`). The design doc named the 30-day validation test as the explicit decision gate for committing to Approach B vs. falling back to A or killing the category. The polish push override sequenced more shipping ahead of that gate. This block corrects the sequencing per [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md).
@@ -55,6 +83,8 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 6. On commit / push / `gh pr create`, audit-gate fires; auditor subagent approves per `.claude/RATER_RUBRIC.md` §"Audit checklist".
 7. After the PR opens, spawn quality-rater per `.claude/RATER_RUBRIC.md` §"100-point rubric". Iterate until score is 100 or rater-nudge cap (25) hits.
 8. On rater 100, mark the task `Status: done` with the PR number and commit hash. Loop to step 1.
+
+**Wedge postmortem convention (added 2026-05-27, T68 Phase 3):** when the loop encounters a wedge it cannot self-resolve, it MUST write a wedge-postmortem entry to `.claude/logs/wedge-postmortems.jsonl` (one JSON object per line) before surfacing to operator. Schema: `{"ts": "<iso8601>", "hash": "<audit-gate-hash-or-null>", "wedge_class": "<timeout|missing-artifact|gate-contradiction|audit-pattern-false-positive|test-failure-blocking|other>", "root_cause": "<one sentence>", "fix_applied": "<file:line or null>", "fix_owner": "<auditor|operator|unfixed>"}`. Wedge surfacing without a postmortem entry is incomplete handoff. The independent-auditor rule 5 in `.claude/agents/independent-auditor.md` enforces this for auditor-detected wedges.
 
 ## Stop conditions
 
@@ -748,8 +778,8 @@ Conventions per task:
 
 ## T64 — V2 blocker: answer-quality investigation (kill the header-only response pattern)
 
-**Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue").
-**Status:** pending
+**Plan ref:** [ADR-0008](docs/adr/ADR-0008-v2-pivot-validation-first-sequencing.md) §"Decision" item 2; memory observation 8672 (2026-05-22, "Carrel Answer Quality Problem Identified as Blocking Issue"); plan doc [`docs/plans/answer-quality-2026-05-26.md`](docs/plans/answer-quality-2026-05-26.md).
+**Status:** done — PR #88 on `claude/nice-buck-bf3d70`. Phases 1-5 shipped on the sequence `1d67f261` (Phase 1 reproduction), `32a3cd30` (Phase 2 provider provenance), `abf3c718` (Phase 4 backend fail-loud gate), `6932095e` (Phase 4 close-out — frontend banner + ProvenanceBadge + ADR-0009 + AFM prompt refinement), `686ddb8c` (Phase 5 substantive-answer-rate metric in evals harness). Routine-infra fixups (model arg passthrough + gate-subagent score-loop skip + auditor verdict mandate) shipped earlier on the same branch as `5e89083f`. Phase 3 policy decision committed by operator 2026-05-27 00:30 GMT+2 (fail-loud on high-stakes + bounded provider-chain improvements, codified in [ADR-0009](docs/adr/ADR-0009-fail-loud-on-high-stakes-flows.md)). Phase 6 verify chain green locally on 2026-05-27. Phase 6 operator-deferred items (full-mode evals run with `ANTHROPIC_API_KEY` set, and the four manual-smoke flows in plan doc §"Phase 6" item 4) are surfaced to `.claude/logs/operator-followups.jsonl`. Rater date follows PR #88 merge to main.
 **Blocks:** T65, T66, T67, and the entire paused V2 polish queue (T59-T63). Until T64 ships, every litigator-facing demo risks surfacing hollow output.
 **Deps:** none
 **Effort:** unknown until investigation completes — likely 1-3 iterations. Operator-led: needs a `docs/plans/answer-quality-2026-05-26.md` produced by `make-plan` BEFORE any code touches.
@@ -761,7 +791,7 @@ Conventions per task:
 
 **Plan ref:** ADR-0008 §"Decision" item 3; design doc §"The Assignment".
 **Status:** pending
-**Deps:** T64 (a litigator session against the pre-T64 build is the worst possible signal — see ADR-0008 §"Why This Path").
+**Deps:** T64 (satisfied 2026-05-27 — PR #88 closes the answer-quality wedge per ADR-0009; the litigator demo no longer surfaces hollow output).
 **Effort:** 1-2 weeks of operator calendar. Needs a `docs/plans/validation-test-prep-2026-05-26.md` produced by `make-plan`.
 **Acceptance:** five deliverables, all operator-led:
 1. **Seeded memo.** An AI-drafted legal memo (or two — one civil, one criminal, to span practice areas) with 8-12 cited cases: real + accurate (~70%), real but holding-mismatched (~20%), and fabricated (~10%). Source content from a public-domain matter so the artifact itself is freely shareable. Run through Carrel's current validator end-to-end; the validator must catch every fabrication and every holding mismatch. Iterate the memo if any seeded errors slip through (that is itself a T64 signal).
@@ -835,6 +865,18 @@ If every task is `done` or `blocked`, write a closeout summary to `.claude/logs/
 
 Then exit cleanly.
 
+## T68 — Routine hardening: code-enforced invariants on the autonomous gate machinery
+
+**Plan ref:** [`docs/plans/routine-hardening-2026-05-27.md`](docs/plans/routine-hardening-2026-05-27.md).
+**Status:** in_progress — **Tier 1 shipped 2026-05-27 ~01:55 GMT+2 by operator.** Tier 1 deliverables landed: (1) `.claude/hooks/audit-gate.py` adds `AUDIT_TIMEOUT_SECONDS=300` with auto-REJECT path; (2) all 5 gate-role agents (`independent-auditor`, `quality-rater`, `proponent`, `adversary`, `synthesizer`) have MANDATORY-write-output sections; (3) `.claude/logs/wedge-postmortems.jsonl` initialized with the 2026-05-26 wedge backfilled; auditor rule 5 + work-plan convention note added. New tests: `tests/test_routine_hooks.py::AuditGateTimeoutTests` (2 cases, both pass). Full hooks suite green at 45 tests. Tier 2 (Phases 4-5 of plan doc: gate-machinery smoke test + watchdog orphan detection) **PENDING — autonomous-claimable** by the loop after T64 Phase 4 lands. Tier 3 stays out-of-scope. DO NOT auto-claim Tier 1 — it's done.
+**Blocks:** trustworthy unattended overnight runs. Each future wedge class that surfaces silently without this work costs operator time at debug rates.
+**Deps:** none on T64 (the Phases 1-3 of this hardening plan are independent of T64's product work).
+**Effort:** Tier 1 (Phases 1-3 of the plan doc) ~1.75 hr. Tier 2 (Phases 4-5) ~1.75 hr. Tier 3 (Phases 6-7) deferred until after T66 validation test.
+**Scope per operator 2026-05-27:** ship Tier 1 minimum. Tier 2 if budget allows on the same iteration. Tier 3 explicitly out-of-scope for this task.
+**Acceptance:** (1) `.claude/hooks/audit-gate.py` auto-REJECTs pending files older than `AUDIT_TIMEOUT_SECONDS` (300s). (2) All 5 gate-role agents (`.claude/agents/{independent-auditor,quality-rater,proponent,adversary,synthesizer}.md`) have the MANDATORY-write-output section. (3) `.claude/logs/wedge-postmortems.jsonl` is the durable lesson capture file; backfilled with the 2026-05-26 wedge as line 1. (4) New unit tests in `tests/test_routine_hooks.py` covering the timeout path. (5) If Tier 2 shipped: `tests/test_routine_gate_smoke.py` exists and is wired into the watchdog startup; `tests/test_watchdog_kill.sh` extended for orphan detection.
+**Verify:** canonical chain on any Python/shell files touched; `python -c "import json; [json.loads(l) for l in open('.claude/logs/wedge-postmortems.jsonl')]"` is clean; manual smoke of the timeout path per `docs/plans/routine-hardening-2026-05-27.md::Verification plan`.
+**Guards:** do NOT change the auditor agent's verdict-JSON schema (only add the MANDATORY section). Do NOT touch product code. Do NOT change the audit-gate's hashing logic. Do NOT add the queue-index (Phase 6) or session-goal (Phase 7); operator explicitly punted both.
+
 ---
 
-*Last updated 2026-05-18. Authored alongside `docs/plans/everything-to-100-2026-05-17.md`. The master plan is the contract; this file is the queue.*
+*Last updated 2026-05-27. Authored alongside `docs/plans/everything-to-100-2026-05-17.md` and `docs/plans/routine-hardening-2026-05-27.md`. The master plan is the contract; this file is the queue.*

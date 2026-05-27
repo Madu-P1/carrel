@@ -3098,6 +3098,11 @@ export interface components {
             momentum?: {
                 [key: string]: unknown;
             };
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
         };
         /**
          * TutorStreamRequest
@@ -3229,6 +3234,11 @@ export interface components {
             ok: boolean;
             /** Error */
             error?: string | null;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {

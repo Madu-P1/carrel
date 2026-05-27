@@ -1,8 +1,9 @@
 import { useState } from "preact/hooks";
 
-import { Button, Spinner, Stack, Text } from "@/design-system";
+import { Button, ProvenanceBadge, Spinner, Stack, Text } from "@/design-system";
 import { CitationChip } from "@/features/ask/components/CitationChip";
 import type { CitationRecord } from "@/features/ask/types";
+import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   verify as verifyApi,
   type VerifyClaimVerdict,
@@ -327,19 +328,34 @@ export function VerifyView() {
 
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
 
-      {summary ? <VerifySummaryRow summary={summary} /> : null}
+      {response?.error === "provider_below_quality_bar" ? (
+        <ProviderQualityGateBanner
+          provider={response.provider ?? ""}
+          surface="verification"
+        />
+      ) : (
+        <>
+          {response && response.provider ? (
+            <div className={styles.provenanceRow}>
+              <ProvenanceBadge provider={response.provider} />
+            </div>
+          ) : null}
 
-      {cards.length > 0 ? (
-        <div className={styles.verdictList}>
-          {cards.map((card, i) => (
-            <VerdictCard key={`${card.claim_index}-${i}`} card={card} index={i} />
-          ))}
-        </div>
-      ) : response ? (
-        <div className={styles.emptyState}>
-          No claims came back from the engine. Try a different draft.
-        </div>
-      ) : null}
+          {summary ? <VerifySummaryRow summary={summary} /> : null}
+
+          {cards.length > 0 ? (
+            <div className={styles.verdictList}>
+              {cards.map((card, i) => (
+                <VerdictCard key={`${card.claim_index}-${i}`} card={card} index={i} />
+              ))}
+            </div>
+          ) : response ? (
+            <div className={styles.emptyState}>
+              No claims came back from the engine. Try a different draft.
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

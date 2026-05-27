@@ -520,9 +520,52 @@ def run_case(
             "model": answer.model,
             "input_tokens": answer.input_tokens,
             "output_tokens": answer.output_tokens,
+            # T64 Phase 5: per-case substantive flag + provider for the
+            # aggregate substantive_answer_rate (stratified by provider).
+            "substantive_answer": _answer_is_substantive(answer),
+            "provider": answer.provider,
         }
     )
     return metrics
+
+
+def _answer_is_substantive(answer: GroundedAnswer) -> bool:
+    """Substantive-answer rule per T64 Phase 5.
+
+    A response is "substantive" when EITHER it carries no citations
+    (vacuously substantive — the no-fabrication contract is enforced
+    elsewhere by the `ok=False` / `fallback` machinery), OR its summary
+    is materially longer than the longest cited quote AND the summary is
+    not a verbatim prefix of any cited quote.
+
+    The two-part check catches the hollow-answer failure mode this metric
+    exists for: a model echoing a chunk heading as the answer.
+    "MITOSIS" cited against a chunk starting with "MITOSIS is the
+    process of..." would pass the length test only if the threshold is
+    weak; the prefix test catches it anyway because the summary is a
+    verbatim prefix of the cited quote.
+
+    The 2x multiplier on the longest cited quote is the threshold the
+    plan doc names. A genuine grounded answer typically synthesizes
+    across multiple chunks, so its summary is longer than any single
+    quote; a hollow answer that just repeats a quote (or a chunk
+    fragment) sits at roughly the same length and trips this check.
+
+    Returns True for substantive, False for hollow.
+    """
+    summary = (answer.summary or "").strip()
+    all_quotes = [(citation.quote or "") for claim in answer.claims for citation in claim.citations]
+    all_quotes = [q for q in all_quotes if q]
+    if not all_quotes:
+        # No citations: rely on the upstream ok/fallback machinery.
+        return True
+    max_quote_len = max(len(q) for q in all_quotes)
+    if len(summary) <= 2 * max_quote_len:
+        return False
+    for quote in all_quotes:
+        if quote.startswith(summary):
+            return False
+    return True
 
 
 def _mean(values: Sequence[float]) -> float:
@@ -619,6 +662,42 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
                 "model": models[0] if len(models) == 1 else ", ".join(models),
             }
         )
+        # T64 Phase 5: substantive-answer-rate (stratified by provider).
+        # Per-provider buckets so a hollow-answer regression on Claude is
+        # visible regardless of what AFM/Ollama buckets report. Under the
+        # Phase 4 high-stakes gate, AFM and Ollama short-circuit with
+        # empty claims, which the heuristic treats as vacuously
+        # substantive (True). Their bucket rate is therefore the
+        # vacuous-True floor and needs no threshold of its own; only
+        # the Claude bucket carries the >= 0.95 guard.
+        substantive_by_provider: dict[str, dict[str, int]] = {}
+        for result in results:
+            if "substantive_answer" not in result:
+                continue
+            provider = str(result.get("provider") or "unknown") or "unknown"
+            bucket = substantive_by_provider.setdefault(provider, {"hits": 0, "total": 0})
+            bucket["total"] += 1
+            if result.get("substantive_answer"):
+                bucket["hits"] += 1
+        by_provider_rates = {
+            provider: round(bucket["hits"] / bucket["total"], 4) if bucket["total"] else None
+            for provider, bucket in substantive_by_provider.items()
+        }
+        substantive_total_hits = sum(b["hits"] for b in substantive_by_provider.values())
+        substantive_total_cases = sum(b["total"] for b in substantive_by_provider.values())
+        summary.update(
+            {
+                "substantive_answer_rate": {
+                    "overall": round(substantive_total_hits / substantive_total_cases, 4)
+                    if substantive_total_cases
+                    else None,
+                    "overall_hits": substantive_total_hits,
+                    "overall_total": substantive_total_cases,
+                    "by_provider": by_provider_rates,
+                    "by_provider_counts": substantive_by_provider,
+                }
+            }
+        )
         if summary["groundedness_at_k"]["value"] < 0.7:
             summary["warnings"].append("groundedness@8 fell below 0.70")
         if summary["quote_validity"] is not None and summary["quote_validity"] < 0.9:
@@ -627,6 +706,11 @@ def _aggregate(results: Sequence[dict[str, Any]], *, mode: str) -> dict[str, Any
             summary["warnings"].append(
                 "structural citations present — answers grounded on "
                 "heading/header/footer nodes (must be 0)"
+            )
+        claude_rate = by_provider_rates.get("claude")
+        if claude_rate is not None and claude_rate < 0.95:
+            summary["warnings"].append(
+                f"substantive_answer_rate.claude fell below 0.95 ({claude_rate:.2f})"
             )
     else:
         if summary["groundedness_at_k"]["value"] < 0.7:
@@ -670,6 +754,21 @@ def _markdown_summary(
                 f"| p95 latency | {summary['latency_ms']['p95'] / 1000:.1f}s |",
             ]
         )
+        substantive = summary.get("substantive_answer_rate")
+        if substantive and substantive.get("overall_total"):
+            overall = substantive.get("overall") or 0.0
+            lines.append(
+                f"| substantive_answer_rate (overall) | "
+                f"{substantive['overall_hits']}/{substantive['overall_total']} ({overall:.2f}) |"
+            )
+            for provider, rate in sorted((substantive.get("by_provider") or {}).items()):
+                counts = (substantive.get("by_provider_counts") or {}).get(provider, {})
+                hits = counts.get("hits", 0)
+                tot = counts.get("total", 0)
+                rate_str = "n/a" if rate is None else f"{rate:.2f}"
+                lines.append(
+                    f"| substantive_answer_rate ({provider}) | {hits}/{tot} ({rate_str}) |"
+                )
     if summary["warnings"]:
         lines.extend(["", "## Warnings"])
         for warning in summary["warnings"]:

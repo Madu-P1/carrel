@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { appShell, navigateTo } from "@/app/shell/useAppShell";
 import { Badge, Button, Card, Divider, Icon, Stack, Text } from "@/design-system";
+import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   documents as documentsApi,
   study as studyApi,
@@ -383,38 +384,46 @@ export function AskView() {
               />
             ) : null}
             {!CARDS_MODE && !pending.value && !error.value && activeAnswer ? (
-              <Stack gap={3} key={answerRevealKey}>
-                {isGrounded ? (
-                  <AnswerSummary
-                    cacheHit={Boolean(activeAnswer.cache_hit)}
-                    citations={activeAnswer.citations}
-                    latencyMs={activeAnswer.latency_ms ?? 0}
-                    model={activeAnswer.model ?? ""}
-                    onRetry={() => {
-                      void retry();
-                    }}
-                    summary={activeAnswer.answer ?? ""}
-                  />
-                ) : null}
-                {isGrounded ? (
-                  <ClaimList claims={claims} onCitationClick={handleCitationClick} />
-                ) : (
-                  <FallbackAnswer
-                    claims={claims}
-                    error={activeAnswer.error ?? undefined}
-                    onBroadenScope={() => {
-                      setScope({ kind: "library", readiness: "ready" });
-                    }}
-                    onRephrase={() => {
-                      focusQuestionInput();
-                    }}
-                    onRetry={() => {
-                      void retry();
-                    }}
-                  />
-                )}
-                <UnsupportedSpans claimCount={claims.length} items={unsupportedSpans} />
-              </Stack>
+              activeAnswer.error === "provider_below_quality_bar" ? (
+                <ProviderQualityGateBanner
+                  provider={activeAnswer.provider ?? ""}
+                  surface="grounded answers"
+                />
+              ) : (
+                <Stack gap={3} key={answerRevealKey}>
+                  {isGrounded ? (
+                    <AnswerSummary
+                      cacheHit={Boolean(activeAnswer.cache_hit)}
+                      citations={activeAnswer.citations}
+                      latencyMs={activeAnswer.latency_ms ?? 0}
+                      model={activeAnswer.model ?? ""}
+                      provider={activeAnswer.provider ?? ""}
+                      onRetry={() => {
+                        void retry();
+                      }}
+                      summary={activeAnswer.answer ?? ""}
+                    />
+                  ) : null}
+                  {isGrounded ? (
+                    <ClaimList claims={claims} onCitationClick={handleCitationClick} />
+                  ) : (
+                    <FallbackAnswer
+                      claims={claims}
+                      error={activeAnswer.error ?? undefined}
+                      onBroadenScope={() => {
+                        setScope({ kind: "library", readiness: "ready" });
+                      }}
+                      onRephrase={() => {
+                        focusQuestionInput();
+                      }}
+                      onRetry={() => {
+                        void retry();
+                      }}
+                    />
+                  )}
+                  <UnsupportedSpans claimCount={claims.length} items={unsupportedSpans} />
+                </Stack>
+              )
             ) : null}
           </Stack>
         </Card>

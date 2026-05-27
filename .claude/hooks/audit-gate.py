@@ -30,6 +30,14 @@ import sys
 import time
 from pathlib import Path
 
+# Auto-REJECT pending actions older than this many seconds with no auditor
+# verdict. Prevents the wedge class diagnosed 2026-05-26: an auditor subagent
+# that silently exits without writing approved/rejected/. The gate can never
+# silently hang past this window; operator review is forced by the auto-
+# REJECTED file with auto_timeout=true. Tracked in T68 Phase 1 (routine
+# hardening) and the wedge postmortem at .claude/logs/wedge-postmortems.jsonl.
+AUDIT_TIMEOUT_SECONDS = 300
+
 
 def compute_staged_diff_hash(project_dir: str) -> str:
     """Hash the current staged diff so that approval invalidates on staged-content edits.
@@ -349,6 +357,104 @@ def main() -> None:
         except Exception:
             pass
         sys.exit(0)
+
+    # Verdict timeout (T68 Phase 1). If a pending file already exists for this
+    # hash and is older than AUDIT_TIMEOUT_SECONDS with no matching approved/
+    # rejected sibling, auto-write a REJECTED verdict with auto_timeout=true.
+    # This prevents the wedge class diagnosed 2026-05-26 where an auditor
+    # subagent exits silently without writing its verdict, leaving the gate
+    # blocked indefinitely. After this fires, the operator sees an explicit
+    # rejection with the cause; the implementing agent does NOT silently hang.
+    stale_pending = pending_dir / f"{h}.json"
+    rejected_file = audit_dir / "rejected" / f"{h}.json"
+    if stale_pending.exists() and not rejected_file.exists():
+        try:
+            age = time.time() - stale_pending.stat().st_mtime
+        except Exception:
+            age = 0
+        if age > AUDIT_TIMEOUT_SECONDS:
+            try:
+                rejected_file.parent.mkdir(parents=True, exist_ok=True)
+                rejected_file.write_text(
+                    json.dumps(
+                        {
+                            "hash": h,
+                            "verdict": "REJECTED",
+                            "auditor_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "auto_timeout": True,
+                            "age_seconds": int(age),
+                            "goal_understood": "unknown — auditor did not converge within timeout",
+                            "diff_summary": f"see pending file at .claude/logs/audits/pending/{h}.json",
+                            "rejection_reasons": [
+                                f"Audit-gate timeout: pending action older than {AUDIT_TIMEOUT_SECONDS}s "
+                                "with no auditor verdict. The auditor subagent failed to write either "
+                                "an APPROVED or REJECTED verdict file. Operator review required to "
+                                "determine root cause and unblock."
+                            ],
+                            "counter_proposal": (
+                                "Operator should: (1) check the pending file for the original action, "
+                                "(2) check whether the auditor subagent spawn produced any tool-use "
+                                "trace in the watchdog session log, (3) manually approve or reject "
+                                "the action, (4) investigate the auditor subagent's failure mode if "
+                                "this becomes a pattern. Also append a postmortem entry to "
+                                ".claude/logs/wedge-postmortems.jsonl per the T68 convention."
+                            ),
+                            "what_would_change_my_mind": (
+                                "auditor subagent successfully writes a verdict file on the next spawn"
+                            ),
+                        }
+                    )
+                )
+                # Append a wedge-postmortem so the lesson is durable.
+                try:
+                    postmortem = log_dir / "wedge-postmortems.jsonl"
+                    postmortem.open("a").write(
+                        json.dumps(
+                            {
+                                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                "hash": h,
+                                "wedge_class": "timeout",
+                                "root_cause": (
+                                    f"audit-gate pending file older than {AUDIT_TIMEOUT_SECONDS}s "
+                                    "without auditor verdict; auto-timeout fired"
+                                ),
+                                "fix_applied": ".claude/hooks/audit-gate.py:AUDIT_TIMEOUT_SECONDS auto-REJECT",
+                                "fix_owner": "auditor",
+                            }
+                        )
+                        + "\n"
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    (log_dir / "audit-gate-errors.jsonl").open("a").write(
+                        json.dumps(
+                            {
+                                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                "hash": h,
+                                "error": str(e),
+                            }
+                        )
+                        + "\n"
+                    )
+                except Exception:
+                    pass
+            # Deny the calling tool with the timeout reason.
+            out = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"AUDIT-GATE TIMEOUT (hash {h}): pending action older than "
+                        f"{AUDIT_TIMEOUT_SECONDS}s. Auto-REJECTED at "
+                        f".claude/logs/audits/rejected/{h}.json. The auditor subagent did not "
+                        "converge. Operator review required to unblock."
+                    ),
+                }
+            }
+            print(json.dumps(out))
+            sys.exit(0)
 
     # Persist pending action so the auditor can pick it up.
     pending = pending_dir / f"{h}.json"

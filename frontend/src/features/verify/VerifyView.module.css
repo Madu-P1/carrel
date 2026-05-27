@@ -74,6 +74,13 @@
   gap: var(--space-3);
 }
 
+.provenanceRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: var(--space-2, 8px);
+}
+
 .summaryRow {
   display: flex;
   flex-wrap: wrap;

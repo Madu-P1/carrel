@@ -279,6 +279,29 @@ class AFMClient:
         supporting = raw.get("supporting_chunks") or []
         unsupported = raw.get("unsupported_claims") or []
 
+        # Hollow-answer guard (T64 Phase 4 policy item 2). Rejects
+        # heading-shaped output before it reaches the user. See
+        # `_answer_looks_substantive` for the contract.
+        if answer and not _answer_looks_substantive(answer):
+            return replace(
+                result,
+                ok=False,
+                error_code="hollow_answer",
+                error_message=(
+                    "The on-device model returned a heading or fragment instead "
+                    "of a full answer. Rephrase the question or switch providers."
+                ),
+                json_payload={
+                    "summary": "",
+                    "claims": [],
+                    "unsupported_spans": [
+                        "The on-device model could not produce a substantive answer.",
+                        *[str(u).strip() for u in unsupported if str(u).strip()],
+                    ],
+                    "ungrounded_draft": answer,
+                },
+            )
+
         # Filter to valid 1-based chunk indices that the prompt actually
         # contained. Models occasionally emit out-of-range indices when
         # the question doesn't match any chunk well.
@@ -671,6 +694,7 @@ class AFMClient:
             service_tier=None,
             stop_reason=data.get("stop_reason"),
             request_id=request_id,
+            provider="afm",
         )
 
 
@@ -687,6 +711,35 @@ class AFMClient:
 # `ai/router.py:parse_or_rescue_json`; AFM aliases the local name to
 # preserve in-module call sites without diverging again.
 _parse_or_rescue = parse_or_rescue_json
+
+
+def _answer_looks_substantive(answer: str) -> bool:
+    """Hollow-answer guard for AFM's request_grounded_answer (T64 Phase 4).
+
+    Returns True when the answer is plausibly a real sentence, False when
+    it looks like a heading or fragment that the model echoed instead of
+    answering. An answer passes if EITHER:
+
+    * It is at least 40 characters long (long enough to clearly not be
+      a heading), OR
+    * It has sentence shape: contains a space (multi-word) AND ends with
+      terminal punctuation (``.``, ``?``, or ``!``).
+
+    The OR is deliberate. A tight one-line answer like
+    ``"Mitochondria produce ATP."`` is 25 characters but is a real
+    sentence, so the sentence-shape branch saves it. Pure heading output
+    like ``"MITOSIS"`` or ``"Chapter 3 Section A"`` fails both branches
+    and is rejected.
+
+    Caller is expected to short-circuit only on non-empty answers; an
+    empty string also returns False but the AFM caller has a separate
+    upstream path for empty output.
+    """
+    if not answer:
+        return False
+    if len(answer) >= 40:
+        return True
+    return " " in answer and answer.rstrip()[-1:] in ".?!"
 
 
 def _bridge_error_result(
@@ -716,6 +769,7 @@ def _bridge_error_result(
         service_tier=None,
         stop_reason=None,
         request_id=request_id,
+        provider="afm",
     )
 
 

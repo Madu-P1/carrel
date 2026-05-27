@@ -51,9 +51,22 @@ export CARREL_AUTONOMOUS=true
 
 PERMISSION_MODE="${CARREL_PERMISSION_MODE:-bypassPermissions}"
 
+# Optional model override. Accepts aliases (sonnet, opus, haiku) or full
+# model IDs (e.g. claude-opus-4-7). Unset = use Claude Code's default
+# model for the user's account.
+MODEL_ARGS=()
+if [ -n "${CARREL_MODEL:-}" ]; then
+  MODEL_ARGS=(--model "$CARREL_MODEL")
+fi
+
 echo "Carrel autonomous routine armed."
 echo "  CARREL_AUTONOMOUS=true"
 echo "  permission-mode: $PERMISSION_MODE"
+if [ -n "${CARREL_MODEL:-}" ]; then
+  echo "  model:           $CARREL_MODEL"
+else
+  echo "  model:           (default)"
+fi
 echo "  cwd: $REPO_ROOT"
 echo "  hooks: $(ls .claude/hooks/*.py 2>/dev/null | wc -l | tr -d ' ') python hooks"
 echo "  agents: $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agent definitions"
@@ -64,4 +77,14 @@ else
 fi
 echo
 
-exec claude --permission-mode "$PERMISSION_MODE" "$@"
+# Dry-run guard: set CARREL_AUTONOMOUS_DRY_RUN=1 to print the would-be
+# claude invocation and exit 0 without actually exec'ing. Used by
+# tests/test_start_autonomous_model.sh to assert MODEL_ARGS expansion
+# under both CARREL_MODEL-set and CARREL_MODEL-unset cases. No effect
+# in production launches (env var unset by default).
+if [ -n "${CARREL_AUTONOMOUS_DRY_RUN:-}" ]; then
+  echo "DRY_RUN: claude --permission-mode $PERMISSION_MODE${MODEL_ARGS[@]:+ ${MODEL_ARGS[*]}}${*:+ $*}"
+  exit 0
+fi
+
+exec claude --permission-mode "$PERMISSION_MODE" "${MODEL_ARGS[@]}" "$@"

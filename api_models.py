@@ -256,6 +256,14 @@ class TutorQueryResponse(BaseModel):
     citation_drop_count: int = 0
     citation_repair_count: int = 0
     momentum: Dict[str, Any] = Field(default_factory=dict)
+    # T64 Phase 2 (answer-quality provenance): which provider produced
+    # this answer. Empty string is the back-compat default for any
+    # builder that hasn't been updated; concrete builders populate
+    # from GroundedAnswer.provider. Free string (not ProviderKind enum)
+    # keeps the frontend permissive across future provider additions
+    # without a schema migration. Frontend Phase 4 reads this to render
+    # a provenance badge or fail-loud banner.
+    provider: str = ""
 
 
 class VerifyRequest(BaseModel):
@@ -304,6 +312,11 @@ class VerifyResponse(BaseModel):
     model: str = ""
     ok: bool = True
     error: Optional[str] = None
+    # T64 Phase 2 (answer-quality provenance): same shape as
+    # TutorQueryResponse.provider. Populated from the upstream
+    # GroundedAnswer.provider so the Verify surface can surface
+    # provider provenance and (Phase 4) gate high-stakes flows.
+    provider: str = ""
 
 
 class NoteUpsertRequest(BaseModel):

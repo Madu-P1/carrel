@@ -3,6 +3,8 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 import main
 from api_models import (
@@ -160,14 +162,37 @@ class LearningOSBackendTests(unittest.TestCase):
         )
         concept_id = self.first_concept_id(doc_id)
 
-        response = tutor_exchange(
-            TutorExchangeCreateRequest(
-                question="Explain osmosis with evidence",
-                source_scope=[doc_id],
-                concept_scope=[concept_id],
-                learner_confidence=41,
+        # T64 Phase 4 (2026-05-27): grounded_tutor_response now fails loud
+        # via `ensure_provider_allowed` when the active provider is not
+        # Claude on `request_kind="tutor.grounded_answer"`. In CI the
+        # default provider resolves to NullProvider (no ANTHROPIC_API_KEY).
+        # Inject a Claude-kind stub so this test exercises the post-
+        # retrieval / no-AI-call branch (the same `_passages_only_fallback`
+        # path the test was written against) instead of short-circuiting
+        # at the gate. The stub satisfies AIProvider Protocol structurally
+        # and returns ai_enabled()=False so the tutor takes the
+        # passages-only path even with kind="claude".
+        class _ClaudePassagesStub:
+            kind = "claude"
+
+            def ai_enabled(self) -> bool:
+                return False
+
+            def supports_grounded_answer(self) -> bool:
+                return False
+
+            def request_tool_call(self, **kwargs: Any) -> object:
+                raise AssertionError("Passages-only fallback must not call the LLM")
+
+        with mock.patch("services.tutor.get_default_provider", return_value=_ClaudePassagesStub()):
+            response = tutor_exchange(
+                TutorExchangeCreateRequest(
+                    question="Explain osmosis with evidence",
+                    source_scope=[doc_id],
+                    concept_scope=[concept_id],
+                    learner_confidence=41,
+                )
             )
-        )
 
         self.assertTrue(response["exchange_id"])
         self.assertTrue(response["evidence"])

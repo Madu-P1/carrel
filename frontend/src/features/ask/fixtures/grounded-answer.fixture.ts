@@ -86,11 +86,37 @@ export const DEMO_ANSWER: GroundedAnswerEnvelope = {
   model: "claude-sonnet-4-6",
   momentum: {},
   output_tokens: 162,
+  provider: "claude",
   scaffold_steps: ["Contrast the checkpoint goals in G1, G2, and M phase."],
   scaffolds: ["Contrast the checkpoint goals in G1, G2, and M phase."],
   selected_concept: "Mitosis",
   source_cards: [],
   unsupported_spans: ["What role do growth factors play in initiating mitosis?"]
+};
+
+export const DEMO_PROVIDER_GATE_REJECTED: GroundedAnswerEnvelope = {
+  actions: [],
+  answer: "",
+  cache_hit: false,
+  citation_attempt_count: 0,
+  citation_drop_count: 0,
+  citation_repair_count: 0,
+  citations: [],
+  claims: [],
+  error: "provider_below_quality_bar",
+  grounded: false,
+  input_tokens: null,
+  latency_ms: 0,
+  misconceptions: [],
+  model: "",
+  momentum: {},
+  output_tokens: null,
+  provider: "afm",
+  scaffold_steps: [],
+  scaffolds: [],
+  selected_concept: null,
+  source_cards: [],
+  unsupported_spans: []
 };
 
 export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
@@ -149,6 +175,7 @@ export const DEMO_FALLBACK: GroundedAnswerEnvelope = {
   model: "",
   momentum: {},
   output_tokens: null,
+  provider: "",
   scaffold_steps: [],
   scaffolds: [],
   selected_concept: null,

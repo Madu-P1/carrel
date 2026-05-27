@@ -50,6 +50,14 @@ class ClaudeCallResult:
     service_tier: str | None
     stop_reason: str | None
     request_id: str | None
+    # T64 Phase 2 (answer-quality provenance): which provider produced
+    # this result. Default "unknown" so existing constructors stay
+    # source-compatible; concrete providers (ClaudeRouter, AFMClient,
+    # OllamaClient, NullProvider) set the real value at every call
+    # site. Read by services.tutor and the eval harness to stratify
+    # answer quality by provider, and (Phase 4) to gate high-stakes
+    # request_kinds when the provider is below the quality bar.
+    provider: str = "unknown"
 
 
 def _extract_text_block(content: Any) -> str:
@@ -296,6 +304,7 @@ class ClaudeRouter:
                 service_tier=None,
                 stop_reason=None,
                 request_id=None,
+                provider="claude",
             )
             self._log_result(result)
             return result
@@ -328,6 +337,7 @@ class ClaudeRouter:
                 service_tier=None,
                 stop_reason=None,
                 request_id=None,
+                provider="claude",
             )
             self._log_result(result)
             return result
@@ -353,6 +363,7 @@ class ClaudeRouter:
             service_tier=str(getattr(usage, "service_tier", "") or "") or None,
             stop_reason=str(getattr(response, "stop_reason", "") or "") or None,
             request_id=str(getattr(response, "id", "") or "") or None,
+            provider="claude",
         )
         self._log_result(result)
         return result
@@ -406,6 +417,7 @@ class ClaudeRouter:
                 service_tier=text_result.service_tier,
                 stop_reason=text_result.stop_reason,
                 request_id=text_result.request_id,
+                provider="claude",
             )
             self._log_result(result)
             return result
@@ -428,6 +440,7 @@ class ClaudeRouter:
             service_tier=text_result.service_tier,
             stop_reason=text_result.stop_reason,
             request_id=text_result.request_id,
+            provider="claude",
         )
         return result
 
@@ -464,6 +477,7 @@ class ClaudeRouter:
                 service_tier=None,
                 stop_reason=None,
                 request_id=None,
+                provider="claude",
             )
             self._log_result(result)
             return result
@@ -498,6 +512,7 @@ class ClaudeRouter:
                 service_tier=None,
                 stop_reason=None,
                 request_id=None,
+                provider="claude",
             )
             self._log_result(result)
             return result
@@ -527,6 +542,7 @@ class ClaudeRouter:
             service_tier=str(getattr(usage, "service_tier", "") or "") or None,
             stop_reason=str(getattr(response, "stop_reason", "") or "") or None,
             request_id=str(getattr(response, "id", "") or "") or None,
+            provider="claude",
         )
         self._log_result(result)
         return result
@@ -568,6 +584,7 @@ class ClaudeRouter:
             service_tier=None,
             stop_reason=None,
             request_id=None,
+            provider="claude",
         )
 
     def _log_result(self, result: ClaudeCallResult) -> None:

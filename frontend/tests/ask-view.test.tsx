@@ -5,7 +5,11 @@ import { App } from "../src/app/App";
 import { appShell } from "../src/app/shell/useAppShell";
 import { AskView } from "../src/features/ask/AskView";
 import { useAskTutor } from "../src/features/ask/hooks/useAskTutor";
-import { DEMO_ANSWER, DEMO_FALLBACK } from "../src/features/ask/fixtures/grounded-answer.fixture";
+import {
+  DEMO_ANSWER,
+  DEMO_FALLBACK,
+  DEMO_PROVIDER_GATE_REJECTED,
+} from "../src/features/ask/fixtures/grounded-answer.fixture";
 import { getFetchCalls, jsonResponse, mockJson, registerFetchHandler } from "./support/mockFetch";
 
 function HookHarness() {
@@ -110,6 +114,28 @@ test("AskView stages grounded answers with escalating reveal delays", async () =
   expect(firstCitation.getAttribute("style")).toContain("animation-delay: 200ms");
   expect(secondCitation.getAttribute("style")).toContain("animation-delay: 260ms");
   expect(unsupported?.getAttribute("style")).toContain("animation-delay: 440ms");
+});
+
+test("AskView renders the provider-quality gate banner when the backend fail-loud gate fires", async () => {
+  mockJson("POST", "/api/tutor/query", DEMO_PROVIDER_GATE_REJECTED);
+
+  render(<AskView />);
+
+  fireEvent.input(screen.getByLabelText(/Question/i), {
+    currentTarget: { value: "What is mitosis?" },
+    target: { value: "What is mitosis?" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Ask$/i }));
+
+  // The banner replaces the answer feed entirely (non-dismissable).
+  expect(
+    await screen.findByRole("heading", { name: /Claude is required for grounded answers/i })
+  ).toBeDefined();
+  expect(screen.getByText("ANTHROPIC_API_KEY")).toBeDefined();
+  expect(screen.getByText(/Apple Intelligence/i)).toBeDefined();
+
+  // The FallbackAnswer surface is suppressed so the user sees the gate, not a degraded answer.
+  expect(screen.queryByText(/Couldn't synthesize an answer/i)).toBeNull();
 });
 
 test("AskView renders the visible fallback state when the tutor response is not grounded", async () => {

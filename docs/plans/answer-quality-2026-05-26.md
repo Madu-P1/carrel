@@ -179,6 +179,59 @@ Decision committed on the same branch as Phase 2 or a new branch, at operator ch
 
 ---
 
+## Policy decision (operator 2026-05-27 00:30 GMT+2)
+
+**Chosen: (a) fail-loud on high-stakes flows + (c) bounded provider-chain improvements.**
+
+### Rationale
+
+V2's wedge is litigation pre-flight (ADR-0008). A hollow grounded-answer demo to a litigator is the worst possible signal — kills the validation test before it starts. The local-first thesis is preserved by limiting fail-loud to the litigator-facing surfaces and keeping graceful degradation everywhere else. Provider-chain improvements are scoped to bounded changes (UI provenance + grounded-answer AFM prompt) — not a full re-training effort.
+
+### High-stakes `request_kind` list (fail-loud applies)
+
+The two surfaces a litigator interacts with directly:
+
+- `tutor_grounded_answer` — the Ask flow (`POST /api/tutor/query`, `POST /api/tutor/query/stream`).
+- `verify_draft` — the Verify flow (`POST /api/verify`).
+
+On these surfaces: if the provider chain falls back to anything other than Claude, **the response must fail loud**. No silent AFM/Ollama/Null payload. The frontend must render a clear error with the remediation path ("Claude API required for this task. Set ANTHROPIC_API_KEY in your environment / settings.").
+
+### Low-stakes `request_kind` list (graceful degradation preserved)
+
+- `flashcard_generation`
+- `dialogue_followup`
+- `note_expansion`
+- `srs_review`
+
+On these surfaces: existing fallback behavior stands. Provider provenance is still surfaced in the UI (visible badge), but degraded providers do not block the response.
+
+### Provider-chain improvements in scope for Phase 4
+
+1. **UI provenance badge.** Every response on a high-stakes surface (Ask, Verify) renders a small badge showing the active provider (`Claude` / `AFM` / `Ollama` / `unavailable`). Uses the `provider` field shipped in Phase 2's instrumentation. Wired in `frontend/src/features/ask/` and `frontend/src/features/verify/`. Low-stakes surfaces show the same badge but it's less prominent.
+2. **AFM grounded-answer system prompt refinement.** Update `ai/afm_client.py`'s grounded-answer system prompt to reduce hollow-output frequency. Specifically: explicit "do not return chunk headings as answers" instruction, plus a minimum-substantive-content guard in the post-parse path. Measured by running the Phase 1 reproduction test (`tests/test_tutor_provider_fallback.py::TutorProviderHollowAnswerTests::test_afm_hollow_pattern_documented`) with `@unittest.expectedFailure` *removed* and confirming the test now passes.
+
+### Provider-chain improvements OUT of scope for Phase 4
+
+- AFM prompt overhaul beyond the grounded-answer task. Re-evaluate after T66 validation test.
+- Full provider re-ranking based on quality signals. Larger project; punt.
+- Switching default provider for any flow. The auto-resolution order in `ai/providers.py` stays as-is; the fail-loud gate is an additive check on top.
+- Forcing Claude API for low-stakes flows. Local-first must work without an API key.
+
+### Acceptance criteria for Phase 4
+
+1. New `ai/providers.py::ensure_provider_allowed(request_kind, provider)` raises `ProviderUnavailableError` when `request_kind` is on the high-stakes list and `provider != "claude"`. Called at every entry point into the high-stakes flows. — **DONE** (commit `abf3c718`).
+2. Frontend renders the error as a non-dismissable banner with the remediation message. Tested via Vitest on `VerifyView` and `AskView`. — **DONE** (this commit set; `frontend/src/features/shared/ProviderQualityGateBanner.tsx`, wired into both views, tests at `frontend/tests/features/provider-quality-gate.test.tsx` + `verify-view.test.tsx`, AskView integration test added to `frontend/tests/ask-view.test.tsx`).
+3. Provenance badge component shipped to the design system (`frontend/src/design-system/primitives/ProvenanceBadge/`) and wired into both high-stakes views. — **DONE** (this commit set; primitive at `frontend/src/design-system/primitives/ProvenanceBadge/`, exported from `frontend/src/design-system/index.ts`, wired into `AnswerSummary` + `VerifyView` header).
+4. AFM grounded-answer system prompt updated; the Phase 1 reproduction test with `@unittest.expectedFailure` removed now passes. — **DONE** (test passed under the backend gate in `abf3c718`; this commit set additionally refines `_AFM_GROUNDED_TUTOR_SYSTEM` in `services/tutor.py` with an explicit "do not echo a chunk heading" instruction and adds a `hollow_answer` post-parse guard in `ai/afm_client.py::request_grounded_answer` for the low-stakes paths AFM still serves).
+5. All existing tests continue to pass. New tests cover both the fail-loud path (per `request_kind`) and the badge surfacing. — **DONE** (Vitest coverage shipped this commit set; canonical verify chain run as part of Phase 6).
+6. ADR appended to `docs/adr/` documenting the policy decision (`ADR-0009-fail-loud-on-high-stakes-flows.md`). — **DONE** (this commit set).
+
+### Branch + PR strategy
+
+T64 Phase 4 ships on the existing `claude/nice-buck-bf3d70` branch (already has Phase 1 + Phase 2 + plan-doc updates). One additional commit set + PR #88 update. After Phase 4 ships, PR #88 is ready-to-merge candidate (still draft per build-only scope; operator marks ready when satisfied).
+
+---
+
 ## Phase 4: Implement chosen policy
 
 Goal: ship the policy decision from Phase 3 with regression tests.

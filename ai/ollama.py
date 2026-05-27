@@ -553,6 +553,7 @@ class OllamaClient:
             service_tier=None,
             stop_reason=stop_reason,
             request_id=request_id,
+            provider="ollama",
         )
         return self._log_and_return(result)
 
@@ -665,6 +666,7 @@ def _error_result(
         service_tier=None,
         stop_reason=None,
         request_id=request_id,
+        provider="ollama",
     )
 
 
