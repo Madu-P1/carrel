@@ -63,7 +63,7 @@ Phase 2 added `provider: str` to `ClaudeCallResult`, `GroundedAnswer`, `VerifyRe
 
 **Risk**
 - A future PR that adds a new high-stakes flow may forget to add its `request_kind` to `HIGH_STAKES_REQUEST_KINDS`. Mitigation: the constant lives in `ai/providers.py` next to `ensure_provider_allowed`; the test `tests/test_tutor_provider_fallback.py::test_phase4_gate_short_circuits_on_high_stakes_with_non_claude_provider` pins the contract for the existing kind, and the routine's auditor verifies new request_kinds against the high-stakes list when reviewing new PRs.
-- The hollow-answer guard threshold (40 chars OR terminal punctuation) is heuristic. A genuinely correct one-line answer like "Mitochondria produce ATP." (24 chars) passes only because of the terminal punctuation check. If the heuristic false-rejects in the wild, T64 Phase 6 verification will surface it; the fix is to tune the threshold, not to remove the guard.
+- The hollow-answer guard threshold (40 chars OR terminal punctuation) is heuristic. A genuinely correct one-line answer like "Mitochondria produce ATP." (25 chars) passes only because of the terminal punctuation check. If the heuristic false-rejects in the wild, T64 Phase 6 verification will surface it; the fix is to tune the threshold, not to remove the guard.
 
 ## Exit conditions
 

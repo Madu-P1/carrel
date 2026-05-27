@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 
 import { appShell, navigateTo } from "@/app/shell/useAppShell";
-import { Badge, Button, Card, Divider, Icon, ProvenanceBadge, Stack, Text } from "@/design-system";
+import { Badge, Button, Card, Divider, Icon, Stack, Text } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   documents as documentsApi,
