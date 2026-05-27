@@ -45,7 +45,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 cd "$REPO_ROOT"
 
 RETRY_SECONDS="${RETRY_SECONDS:-900}"
@@ -69,6 +69,29 @@ GRACEFUL_HALT_FILE="${GRACEFUL_HALT_FILE-$REPO_ROOT/.claude/logs/status.md}"
 
 LOG_DIR="$REPO_ROOT/.claude/logs/watchdog"
 mkdir -p "$LOG_DIR"
+
+# Gate-machinery smoke test (T68 Phase 4). Refuse to launch if the
+# auditor sub-routine can't converge on a synthetic action; the loop
+# would otherwise wedge silently waiting for verdict files that never
+# appear. Override with CARREL_SKIP_SMOKE=1 (use sparingly).
+if [ -z "${CARREL_SKIP_SMOKE:-}" ]; then
+  echo "$(date '+%F %T'): running gate-machinery smoke test..."
+  smoke_python="$REPO_ROOT/.venv/bin/python"
+  [ -x "$smoke_python" ] || smoke_python="$(command -v python3 || command -v python)"
+  if [ -z "$smoke_python" ] || [ ! -x "$smoke_python" ]; then
+    echo "$(date '+%F %T'): no python found for smoke test. Set CARREL_SKIP_SMOKE=1 to bypass."
+    exit 1
+  fi
+  if ! "$smoke_python" -m pytest \
+       "$REPO_ROOT/tests/test_routine_gate_smoke.py" \
+       -x --tb=short --no-header -q; then
+    echo "$(date '+%F %T'): gate-machinery smoke test FAILED. Refusing to launch."
+    echo "  See .claude/logs/audits/pending/smoke-test-synthetic-action.json"
+    echo "  Override with CARREL_SKIP_SMOKE=1 if you know what you're doing."
+    exit 1
+  fi
+  echo "$(date '+%F %T'): gate-machinery smoke test PASSED."
+fi
 
 attempt=0
 while true; do
@@ -130,7 +153,7 @@ while true; do
       if [ -n "$kill_reason" ]; then
         target=$(/usr/sbin/lsof -t "$session_log" 2>/dev/null | head -1)
         echo
-        echo ">>> $(date '+%F %T'): killing session — $kill_reason"
+        echo ">>> $(date '+%F %T'): killing session - $kill_reason"
         if [ -n "$target" ]; then
           pkill -TERM -P "$target" 2>/dev/null || true
           kill  -TERM    "$target" 2>/dev/null || true
@@ -138,6 +161,21 @@ while true; do
           pkill -KILL -P "$target" 2>/dev/null || true
           kill  -KILL    "$target" 2>/dev/null || true
         fi
+
+        # T68 Phase 5: orphan-claude sweep. The script(1) wrapper can lose
+        # parent linkage on its claude child via exec, so the pkill -P above
+        # may leave a claude process running with the same CWD as this
+        # worktree. Sweep it explicitly. The CWD check isolates the kill to
+        # this worktree, so other fleet worktrees are untouched.
+        for orphan_pid in $(pgrep -f "claude.*--permission-mode bypassPermissions" 2>/dev/null); do
+          orphan_cwd=$(/usr/sbin/lsof -p "$orphan_pid" 2>/dev/null | awk '$4 == "cwd" {print $NF}' | head -1)
+          if [ "$orphan_cwd" = "$REPO_ROOT" ]; then
+            echo ">>> $(date '+%F %T'): killing orphaned claude (PID $orphan_pid, cwd=$orphan_cwd)"
+            kill -TERM "$orphan_pid" 2>/dev/null || true
+            sleep 2
+            kill -KILL "$orphan_pid" 2>/dev/null || true
+          fi
+        done
         exit 0
       fi
     done
