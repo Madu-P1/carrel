@@ -68,3 +68,24 @@ describe("verify paper palette meets WCAG AA text contrast", () => {
     }
   });
 });
+
+describe("verify interactive controls restore a visible focus ring", () => {
+  // appearance:none plus the global reset strip the native focus affordance, so
+  // each such control must restore box-shadow: var(--shadow-focus) on
+  // :focus-visible (the tokens.css convention; WCAG 2.4.7 Focus Visible).
+  test("every appearance:none control defines a :focus-visible ring using --shadow-focus", () => {
+    const blocks = [...css.matchAll(/\.([A-Za-z][\w-]*)\s*\{([^}]*)\}/g)];
+    const needsRing = blocks
+      .filter(([, , body]) => /appearance\s*:\s*none/.test(body))
+      .map(([, name]) => name);
+    expect(needsRing.length).toBeGreaterThan(0);
+    for (const name of needsRing) {
+      const focusBlock = css.match(new RegExp(`\\.${name}:focus-visible\\s*\\{([^}]*)\\}`));
+      expect(focusBlock, `.${name} must define a :focus-visible block`).not.toBeNull();
+      expect(
+        focusBlock?.[1] ?? "",
+        `.${name}:focus-visible must restore var(--shadow-focus)`
+      ).toContain("--shadow-focus");
+    }
+  });
+});

@@ -429,6 +429,11 @@
   color: var(--text-primary);
 }
 
+.viewSource:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .inspector {
   position: sticky;
   top: var(--space-4);
@@ -475,6 +480,11 @@
 
 .inspectorClose:hover {
   color: var(--text-primary);
+}
+
+.inspectorClose:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .inspectorClaim {
@@ -586,6 +596,11 @@
   text-decoration: underline;
 }
 
+.sourceOpen:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 /* PR4: certification exhibit. A dated, fingerprinted, court-exhibit-shaped
  * record, exported via the OS print dialog (Save as PDF), zero PDF deps. The
  * exhibit reuses the .verifyScope paper tokens. */
@@ -616,6 +631,11 @@
 
 .exportCert:hover {
   border-color: var(--accent);
+}
+
+.exportCert:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .certOverlay {
