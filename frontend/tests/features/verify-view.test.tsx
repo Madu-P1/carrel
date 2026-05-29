@@ -122,3 +122,67 @@ test("View source opens the side-by-side inspector with the resolved span and sh
   // The verify surface shows no confidence score, even though resolve returns one.
   expect(screen.queryByText(/%/)).toBeNull();
 });
+
+test("renders the disposition taxonomy with flags surfaced and a problem-first summary", async () => {
+  mockJson("POST", "/api/verify", {
+    draft_text: "Two statements.",
+    claim_verdicts: [
+      {
+        claim_index: 0,
+        claim_text: "A grounded statement.",
+        verdict: "verified",
+        citations: [],
+        case_verdicts: [],
+        unsupported_reason: null
+      },
+      {
+        claim_index: 1,
+        claim_text: "Cites a case that does not exist.",
+        verdict: "verified",
+        citations: [],
+        case_verdicts: [
+          {
+            claim_index: 1,
+            ok: true,
+            error_code: null,
+            error_message: null,
+            verdicts: [
+              {
+                citation: "999 U.S. 999",
+                normalized_citation: null,
+                status: 404,
+                exists: false,
+                case_name: null,
+                absolute_url: null,
+                court: null,
+                date_filed: null,
+                error_message: null,
+                holding_match: null,
+                holding_concern: null,
+                holding_excerpt: null,
+                holding_error: null
+              }
+            ]
+          }
+        ],
+        unsupported_reason: null
+      }
+    ],
+    summary: { total: 2, verified: 2, unsupported: 0, unknown: 0 },
+    latency_ms: 10,
+    model: "claude-sonnet-4-6",
+    ok: true,
+    provider: "claude"
+  });
+
+  render(<VerifyView />);
+
+  await submitDraft("two statements");
+
+  // The fabricated citation surfaces as a flag; the grounded statement is the
+  // quiet, unmarked pass; the summary leads with the problem count.
+  expect(await screen.findByText("Citation not found")).toBeDefined();
+  // "Supported" appears both as the claim badge and as a summary stat label.
+  expect(screen.getAllByText("Supported").length).toBeGreaterThan(0);
+  expect(screen.getByText(/1 of 2 statements need your review/i)).toBeDefined();
+});

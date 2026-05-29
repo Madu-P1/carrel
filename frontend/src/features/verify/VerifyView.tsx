@@ -323,7 +323,7 @@ export function VerifyView() {
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
 
   return (
-    <div className={styles.root}>
+    <div className={[styles.root, styles.verifyScope].join(" ")}>
       <header className={styles.header}>
         <h1 className={styles.title}>Verify your draft.</h1>
         <Text className={styles.subtitle}>
