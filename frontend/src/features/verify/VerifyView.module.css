@@ -37,7 +37,8 @@
 
   --text-primary: #1c1814;
   --text-secondary: #4e463c;
-  --text-tertiary: #8b8273;
+  /* AA: clears 4.5:1 on every paper surface at 12px (locked in verifyScope.test.ts). */
+  --text-tertiary: #685f4d;
 
   --hairline: rgb(28 24 20 / 14%);
 

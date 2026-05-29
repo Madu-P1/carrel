@@ -27,6 +27,11 @@ interface CertificationExhibitProps {
 export function CertificationExhibit({ model, onClose }: CertificationExhibitProps) {
   const stamp = formatStamp(model.generatedAtISO);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Keep the effect's deps empty while always invoking the latest onClose, so a
+  // parent re-render while the exhibit is open cannot re-run the effect and
+  // re-steal focus or re-capture the restore target.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Modal keyboard a11y: focus enters the exhibit on open, Tab is trapped
   // while it is open, Escape closes it, and focus returns to the trigger on
@@ -46,7 +51,7 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === "Tab") {
@@ -68,7 +73,7 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div

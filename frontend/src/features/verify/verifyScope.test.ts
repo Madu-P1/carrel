@@ -24,3 +24,47 @@ describe("verify visual mode is scoped and motion-safe", () => {
     expect(css).not.toMatch(/\banimation\s*:/);
   });
 });
+
+function luminance(hex: string): number {
+  const channel = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+function contrast(fg: string, bg: string): number {
+  const a = luminance(fg) + 0.05;
+  const b = luminance(bg) + 0.05;
+  return Math.max(a, b) / Math.min(a, b);
+}
+
+function token(block: string, name: string): string {
+  const match = block.match(new RegExp(`${name}\\s*:\\s*(#[0-9a-fA-F]{6})`));
+  if (!match) throw new Error(`token not found: ${name}`);
+  return match[1];
+}
+
+describe("verify paper palette meets WCAG AA text contrast", () => {
+  // The scoped paper text must stay legible for a skeptical credentialed buyer.
+  // Locks the regression the re-rate caught: 12px tertiary text below 4.5:1.
+  const block = css.match(/\.verifyScope\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  const surfaces: Record<string, string> = {
+    background: token(block, "background"),
+    "--surface-0": token(block, "--surface-0"),
+    "--surface-1": token(block, "--surface-1"),
+    "--surface-2": token(block, "--surface-2")
+  };
+
+  test("paper ink tokens clear 4.5:1 on every paper surface at body size", () => {
+    for (const tokenName of ["--text-tertiary", "--text-secondary", "--text-primary"]) {
+      const ink = token(block, tokenName);
+      for (const [surfaceName, surface] of Object.entries(surfaces)) {
+        expect(
+          contrast(ink, surface),
+          `${tokenName} (${ink}) on ${surfaceName} (${surface})`
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+});
