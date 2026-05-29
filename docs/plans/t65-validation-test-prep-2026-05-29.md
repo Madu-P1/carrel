@@ -39,7 +39,9 @@ This is the ground-truth artifact: because we plant the errors, we can measure (
 - **Exclude** (per the discovery): CISOs / regulatory affairs / hospital clinicians — procurement-gated or Stage-3 product; a 30-day self-serve test mis-measures them.
 - Recruiting is the operator's job. I draft the screening criteria and the session framing; the founder does outreach (no automated outreach under build-only scope).
 
-## Deliverable 3: watch-session protocol [I draft]
+## Deliverable 3: watch-session protocol [DRAFTED 2026-05-29]
+
+**Full operator playbook:** `../validation/30-day-test-2026-05-26/supervised-session-protocol.md` — pre-session checklist (keys + provider-on + rate-limit awareness), neutral framing, the session arc, the five moments to watch (with the refusal as the central "gem" test), non-leading probes, the per-session capture template, and how each session's one-line verdict rolls into the Deliverable 4 rule. Scoped to the **supervised pilot** (litigator uses Carrel on the operator's machine) since standalone distribution is unbuilt. The bullets below are the summary it expands.
 
 - **What they touch:** the verify-as-hero surface (this slice) + the seeded memo, on the founder's machine or a packaged build.
 - **What to observe (capture verbatim):** Does the loud refusal earn trust or read as the tool dodging? Do they act on the flags? Does one-click-to-source land them where they need? Do they reach for the certification export, and would it satisfy a judge's standing order / their carrier? Would they pay, and in what shape? What is their unprompted "the gem" reaction?
