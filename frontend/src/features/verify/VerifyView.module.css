@@ -575,3 +575,217 @@
 .sourceOpen:hover {
   text-decoration: underline;
 }
+
+/* PR4: certification exhibit. A dated, fingerprinted, court-exhibit-shaped
+ * record, exported via the OS print dialog (Save as PDF), zero PDF deps. The
+ * exhibit reuses the .verifyScope paper tokens. */
+.resultActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.exportCert {
+  appearance: none;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.exportCert:hover {
+  border-color: var(--accent);
+}
+
+.certOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  overflow: auto;
+  background: rgb(14 14 16 / 72%);
+}
+
+.certToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 760px;
+  justify-content: flex-end;
+}
+
+.certExhibit {
+  width: 100%;
+  max-width: 760px;
+  padding: var(--space-12) var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.certHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--space-4);
+}
+
+.certTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 32px;
+  color: var(--text-primary);
+}
+
+.certMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+
+.certMeta div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.certMeta dt {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.certMeta dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.certMono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.certSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.certSectionLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.certMuted {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.certList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.certItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.certItemLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.certItemClaim {
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.certItemSources {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.certFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--space-4);
+  font-family: var(--font-serif-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.certFooter p {
+  margin: 0;
+}
+
+.certSign {
+  color: var(--text-primary);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .certExhibit,
+  .certExhibit * {
+    visibility: visible;
+  }
+
+  .certExhibit {
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    margin: 0;
+    padding: var(--space-10);
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .certToolbar {
+    display: none;
+  }
+}

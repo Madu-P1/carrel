@@ -8,6 +8,8 @@ import {
   type VerifyResponse
 } from "@/services/api/endpoints";
 
+import { buildCertification } from "./certification";
+import { CertificationExhibit } from "./CertificationExhibit";
 import {
   DISPOSITION_ORDER,
   dispositionForClaim,
@@ -294,6 +296,9 @@ export function VerifyView() {
   const [error, setError] = useState<string | null>(null);
   // claim_index of the statement whose source panel is open, or null.
   const [selected, setSelected] = useState<number | null>(null);
+  // ISO timestamp captured when the certification exhibit is opened, or null
+  // when closed. Captured once on open so the exhibit timestamp is stable.
+  const [certAt, setCertAt] = useState<string | null>(null);
 
   const submit = async () => {
     const trimmed = draft.trim();
@@ -301,6 +306,7 @@ export function VerifyView() {
     setLoading(true);
     setError(null);
     setSelected(null);
+    setCertAt(null);
     try {
       const result = await verifyApi.draft({ draft: trimmed });
       setResponse(result);
@@ -321,6 +327,7 @@ export function VerifyView() {
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
+  const certModel = certAt && response ? buildCertification(response, certAt) : null;
 
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
@@ -376,6 +383,18 @@ export function VerifyView() {
           ) : null}
 
           {items.length > 0 ? (
+            <div className={styles.resultActions}>
+              <button
+                type="button"
+                className={styles.exportCert}
+                onClick={() => setCertAt(new Date().toISOString())}
+              >
+                Export certification
+              </button>
+            </div>
+          ) : null}
+
+          {items.length > 0 ? (
             <div className={[styles.workspace, selectedItem ? styles.workspaceSplit : ""].join(" ")}>
               <div className={styles.verdictList}>
                 {items.map((it, i) => (
@@ -409,6 +428,10 @@ export function VerifyView() {
           ) : null}
         </>
       )}
+
+      {certModel ? (
+        <CertificationExhibit model={certModel} onClose={() => setCertAt(null)} />
+      ) : null}
     </div>
   );
 }

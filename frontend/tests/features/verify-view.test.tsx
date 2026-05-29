@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { VerifyView } from "../../src/features/verify/VerifyView";
 import type { VerifyResponse } from "../../src/services/api/endpoints";
@@ -185,4 +185,57 @@ test("renders the disposition taxonomy with flags surfaced and a problem-first s
   // "Supported" appears both as the claim badge and as a summary stat label.
   expect(screen.getAllByText("Supported").length).toBeGreaterThan(0);
   expect(screen.getByText(/1 of 2 statements need your review/i)).toBeDefined();
+});
+
+test("Export certification opens the exhibit and Save as PDF triggers print", async () => {
+  mockJson("POST", "/api/verify", {
+    draft_text: "A grounded statement.",
+    claim_verdicts: [
+      {
+        claim_index: 0,
+        claim_text: "A grounded statement.",
+        verdict: "verified",
+        citations: [
+          {
+            node_id: 3,
+            document_id: "d1",
+            document_name: "Brief.pdf",
+            section: null,
+            page_num: 12,
+            snippet: "",
+            content: "",
+            score: 0.5,
+            label: "",
+            node_type: "body"
+          }
+        ],
+        case_verdicts: [],
+        unsupported_reason: null
+      }
+    ],
+    summary: { total: 1, verified: 1, unsupported: 0, unknown: 0 },
+    latency_ms: 10,
+    model: "claude-sonnet-4-6",
+    ok: true,
+    provider: "claude"
+  });
+  const printSpy = vi.fn();
+  vi.stubGlobal("print", printSpy);
+
+  render(<VerifyView />);
+
+  await submitDraft("a grounded statement");
+
+  fireEvent.click(await screen.findByRole("button", { name: /Export certification/i }));
+
+  // The exhibit opens as a labelled dialog, carries the human-certified line,
+  // and shows no confidence score.
+  expect(await screen.findByRole("dialog", { name: /Verification certification/i })).toBeDefined();
+  expect(screen.getByText(/Reviewed by/i)).toBeDefined();
+  expect(screen.queryByText(/%/)).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: /Save as PDF/i }));
+  expect(printSpy).toHaveBeenCalled();
+
+  vi.unstubAllGlobals();
 });
