@@ -24,6 +24,15 @@ T67 Stage 2/3 design conditional on T66 verdict. V2 polish queue
 (T59-T63) is paused, NOT killed. Pre-pivot tutor roadmap (T13-T58
 chunks→nodes migration) is deferred behind the validation outcome.
 
+**Active build (2026-05-29):** a new **Cachet** UI/UX frontend on the
+existing Carrel backend. Start here:
+[`docs/notes/2026-05-29-cachet-ui-build-handoff.md`](docs/notes/2026-05-29-cachet-ui-build-handoff.md)
+— it carries the screen-map-then-atelier plan, the skill pipeline, the
+in-app-key gap the UI must close, and the hard constraint that the GUI
+cannot be opened from a tool (use `bun run dev` + `localhost:5173` per
+Booting Carrel below, not the packaged app). The product/engine is
+**CACHET**; "Carrel" is only the codebase name.
+
 Historical context (pre-pivot work that still informs the codebase):
 this repo previously closed the 8-ship premium-UI roadmap, shipped
 Plan + Coach Phase 1, and renamed the product from Einstein Tutor to
