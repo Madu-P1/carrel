@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "preact/hooks";
+
 import { Button } from "@/design-system";
 
 import type { CertificationModel } from "./certification";
@@ -24,12 +26,58 @@ interface CertificationExhibitProps {
  */
 export function CertificationExhibit({ model, onClose }: CertificationExhibitProps) {
   const stamp = formatStamp(model.generatedAtISO);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Modal keyboard a11y: focus enters the exhibit on open, Tab is trapped
+  // while it is open, Escape closes it, and focus returns to the trigger on
+  // close. A litigator must be able to dismiss their exhibit without a pointer.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const root = dialogRef.current;
+    const focusable = () =>
+      root
+        ? Array.from(
+            root.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )
+          )
+        : [];
+    (focusable()[0] ?? root)?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key === "Tab") {
+        const items = focusable();
+        if (items.length === 0) return;
+        const firstEl = items[0];
+        const lastEl = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === firstEl) {
+          event.preventDefault();
+          lastEl.focus();
+        } else if (!event.shiftKey && document.activeElement === lastEl) {
+          event.preventDefault();
+          firstEl.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div
+      ref={dialogRef}
       className={styles.certOverlay}
       role="dialog"
       aria-modal="true"
       aria-label="Verification certification"
+      tabIndex={-1}
     >
       <div className={styles.certToolbar}>
         <button type="button" className={styles.inspectorClose} onClick={onClose}>

@@ -219,8 +219,11 @@ test("Export certification opens the exhibit and Save as PDF triggers print", as
     ok: true,
     provider: "claude"
   });
+  // Save/restore window.print directly; vi.unstubAllGlobals() would also tear
+  // down the global fetch mock installed in setup.ts and break later tests.
+  const originalPrint = window.print;
   const printSpy = vi.fn();
-  vi.stubGlobal("print", printSpy);
+  window.print = printSpy;
 
   render(<VerifyView />);
 
@@ -237,5 +240,39 @@ test("Export certification opens the exhibit and Save as PDF triggers print", as
   fireEvent.click(screen.getByRole("button", { name: /Save as PDF/i }));
   expect(printSpy).toHaveBeenCalled();
 
-  vi.unstubAllGlobals();
+  window.print = originalPrint;
+});
+
+test("the certification exhibit is keyboard-dismissable with Escape", async () => {
+  mockJson("POST", "/api/verify", {
+    draft_text: "A grounded statement.",
+    claim_verdicts: [
+      {
+        claim_index: 0,
+        claim_text: "A grounded statement.",
+        verdict: "verified",
+        citations: [],
+        case_verdicts: [],
+        unsupported_reason: null
+      }
+    ],
+    summary: { total: 1, verified: 1, unsupported: 0, unknown: 0 },
+    latency_ms: 10,
+    model: "claude-sonnet-4-6",
+    ok: true,
+    provider: "claude"
+  });
+
+  render(<VerifyView />);
+
+  await submitDraft("a grounded statement");
+
+  fireEvent.click(await screen.findByRole("button", { name: /Export certification/i }));
+  expect(await screen.findByRole("dialog", { name: /Verification certification/i })).toBeDefined();
+
+  fireEvent.keyDown(document, { key: "Escape" });
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: /Verification certification/i })).toBeNull();
+  });
 });

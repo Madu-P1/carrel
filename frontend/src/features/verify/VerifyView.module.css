@@ -411,7 +411,10 @@
   appearance: none;
   border: none;
   background: none;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -457,7 +460,10 @@
   appearance: none;
   border: none;
   background: none;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -562,7 +568,10 @@
   appearance: none;
   border: none;
   background: none;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -587,6 +596,9 @@
 .exportCert {
   appearance: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-2);
   border: 1px solid var(--hairline);
