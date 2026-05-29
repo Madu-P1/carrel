@@ -347,3 +347,199 @@
   color: rgb(248 113 113);
   font-size: var(--text-xs);
 }
+
+/* PR2: one-click-to-source. When a statement is selected, the verdict list and
+ * the source inspector sit side by side: claim left, source right, nothing
+ * resembling a score between them. */
+.workspace {
+  display: block;
+}
+
+.workspaceSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .workspaceSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.verdictCardSelected {
+  border-color: var(--accent);
+}
+
+.cardFoot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.viewSource {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.viewSource:hover {
+  color: var(--text-primary);
+}
+
+.inspector {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  max-height: calc(100vh - var(--space-12));
+  overflow: auto;
+}
+
+.inspectorHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inspectorTitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.inspectorClose {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.inspectorClose:hover {
+  color: var(--text-primary);
+}
+
+.inspectorClaim {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.sourceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sourceGroupLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.sourceItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.sourceItemHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sourceDoc {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.sourceLoc {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceQuote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.sourceMuted {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.sourceFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sourceLocKind {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceOpen {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sourceOpen:hover {
+  text-decoration: underline;
+}

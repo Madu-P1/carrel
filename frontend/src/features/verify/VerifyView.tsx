@@ -1,8 +1,6 @@
 import { useState } from "preact/hooks";
 
 import { Button, ProvenanceBadge, Spinner, Stack, Text } from "@/design-system";
-import { CitationChip } from "@/features/ask/components/CitationChip";
-import type { CitationRecord } from "@/features/ask/types";
 import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   verify as verifyApi,
@@ -15,6 +13,7 @@ import {
   dispositionForClaim,
   type ClaimDisposition
 } from "./claimDisposition";
+import { SourceInspector } from "./SourceInspector";
 import styles from "./VerifyView.module.css";
 
 const SAMPLE_DRAFT =
@@ -129,16 +128,6 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
         <span>{verdict.citation}</span>
         <span style={{ opacity: 0.7 }}>· {label}</span>
         {verdict.case_name ? <span>· {verdict.case_name}</span> : null}
-        {verdict.absolute_url ? (
-          <a
-            href={verdict.absolute_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.caseLink}
-          >
-            source
-          </a>
-        ) : null}
       </div>
       {holding ? (
         <div className={[styles.holdingMatchLine, holdingColorClass].join(" ")}>
@@ -160,11 +149,18 @@ interface VerdictCardProps {
   card: VerifyClaimVerdict;
   disposition: ClaimDisposition;
   index: number;
+  isSelected: boolean;
+  onInspect: () => void;
 }
 
-function VerdictCard({ card, disposition, index }: VerdictCardProps) {
-  const citations = (card.citations ?? []) as unknown as CitationRecord[];
+function VerdictCard({ card, disposition, index, isSelected, onInspect }: VerdictCardProps) {
   const caseBatches = card.case_verdicts ?? [];
+  const citationCount = (card.citations ?? []).length;
+  const caseCount = caseBatches.reduce(
+    (n, batch) => n + (batch.ok ? (batch.verdicts ?? []).length : 0),
+    0
+  );
+  const sourceCount = citationCount + caseCount;
   // Flatten case verdicts across all batches attached to this claim;
   // V1 emits at most one batch per claim, but the API leaves it open.
   type CaseLine =
@@ -193,7 +189,10 @@ function VerdictCard({ card, disposition, index }: VerdictCardProps) {
     }));
   });
   return (
-    <article className={styles.verdictCard} data-tier={disposition.tier}>
+    <article
+      className={[styles.verdictCard, isSelected ? styles.verdictCardSelected : ""].join(" ")}
+      data-tier={disposition.tier}
+    >
       <header className={styles.verdictHeader}>
         <span className={styles.verdictIndex}>[{index + 1}]</span>
         <span className={[styles.verdictBadge, tierBadgeClass(disposition.tier)].join(" ")}>
@@ -203,17 +202,6 @@ function VerdictCard({ card, disposition, index }: VerdictCardProps) {
       <p className={styles.claimText}>{card.claim_text}</p>
       {disposition.detail ? (
         <p className={styles.dispositionDetail}>{disposition.detail}</p>
-      ) : null}
-      {citations.length > 0 ? (
-        <div className={styles.chipsRow}>
-          {citations.map((citation, i) => (
-            <CitationChip
-              key={`${citation.document_id}-${String(citation.node_id)}-${i}`}
-              citation={citation}
-              index={i + 1}
-            />
-          ))}
-        </div>
       ) : null}
       {caseLines.length > 0 ? (
         <div className={styles.caseVerdictsRow}>
@@ -230,6 +218,20 @@ function VerdictCard({ card, disposition, index }: VerdictCardProps) {
           )}
         </div>
       ) : null}
+      <div className={styles.cardFoot}>
+        <button
+          type="button"
+          className={styles.viewSource}
+          onClick={onInspect}
+          aria-pressed={isSelected}
+        >
+          {isSelected
+            ? "Hide source"
+            : sourceCount > 0
+              ? `View source (${sourceCount})`
+              : "View source"}
+        </button>
+      </div>
     </article>
   );
 }
@@ -290,12 +292,15 @@ export function VerifyView() {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // claim_index of the statement whose source panel is open, or null.
+  const [selected, setSelected] = useState<number | null>(null);
 
   const submit = async () => {
     const trimmed = draft.trim();
     if (!trimmed || loading) return;
     setLoading(true);
     setError(null);
+    setSelected(null);
     try {
       const result = await verifyApi.draft({ draft: trimmed });
       setResponse(result);
@@ -314,6 +319,8 @@ export function VerifyView() {
   const items = cards
     .map((card) => ({ card, disposition: dispositionForClaim(card) }))
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+  const selectedItem =
+    selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
 
   return (
     <div className={styles.root}>
@@ -369,15 +376,30 @@ export function VerifyView() {
           ) : null}
 
           {items.length > 0 ? (
-            <div className={styles.verdictList}>
-              {items.map((it, i) => (
-                <VerdictCard
-                  key={`${it.card.claim_index}-${i}`}
-                  card={it.card}
-                  disposition={it.disposition}
-                  index={i}
+            <div className={[styles.workspace, selectedItem ? styles.workspaceSplit : ""].join(" ")}>
+              <div className={styles.verdictList}>
+                {items.map((it, i) => (
+                  <VerdictCard
+                    key={`${it.card.claim_index}-${i}`}
+                    card={it.card}
+                    disposition={it.disposition}
+                    index={i}
+                    isSelected={selectedItem?.card.claim_index === it.card.claim_index}
+                    onInspect={() =>
+                      setSelected(
+                        selected === it.card.claim_index ? null : (it.card.claim_index ?? null)
+                      )
+                    }
+                  />
+                ))}
+              </div>
+              {selectedItem ? (
+                <SourceInspector
+                  card={selectedItem.card}
+                  disposition={selectedItem.disposition}
+                  onClose={() => setSelected(null)}
                 />
-              ))}
+              ) : null}
             </div>
           ) : response ? (
             <div className={styles.emptyState}>
