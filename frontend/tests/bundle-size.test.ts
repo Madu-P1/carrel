@@ -115,8 +115,16 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    over additional Notes editor surface area + the
  *                    new ErrorBoundary / LoadingBoundary / Markdown
  *                    primitives + companion-cube updates. Live: ~108
- *                    KB gz. */
-const ENTRY_JS_GZIP_BUDGET = 112 * 1024;
+ *                    KB gz.
+ * 2026-05-29 (budget 112 -> 120 KB): Cachet verify-as-hero slice 1.
+ *                    The verdict-taxonomy disposition logic, the
+ *                    one-click SourceInspector, and the certification
+ *                    model + print exhibit, statically imported via the
+ *                    /verify route. Live: ~114.7 KB gz. Route-splitting
+ *                    /verify via click-time import is the lean-entry
+ *                    option, deferred per the file:// Suspense
+ *                    constraint (see CLAUDE.md). */
+const ENTRY_JS_GZIP_BUDGET = 120 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
@@ -152,8 +160,12 @@ const ENTRY_JS_GZIP_BUDGET = 112 * 1024;
  *                    chrome, sticky topbar, the 720px "sheet" Liquid
  *                    Glass panel, contenteditable body type rules
  *                    (h1/h2/h3/p/ul/ol/blockquote/pre/em/strong), 404
- *                    state. Adds the /notes/:id route. */
-const ENTRY_CSS_GZIP_BUDGET = 40 * 1024;
+ *                    state. Adds the /notes/:id route.
+ *    40 KB → 42 KB: Cachet verify-as-hero slice 1. Scoped .verifyScope
+ *                    paper/ink/oxblood token layer, the side-by-side
+ *                    SourceInspector, and the print-isolated
+ *                    certification exhibit. Live: ~40.5 KB gz. */
+const ENTRY_CSS_GZIP_BUDGET = 42 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);
