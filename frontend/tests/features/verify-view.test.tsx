@@ -31,7 +31,7 @@ async function submitDraft(value: string) {
     currentTarget: { value },
     target: { value },
   });
-  fireEvent.click(screen.getByRole("button", { name: /^Verify$/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Verify the draft/i }));
 }
 
 test("VerifyView renders the ProvenanceBadge on a successful verification", async () => {
@@ -59,6 +59,7 @@ test("VerifyView renders the provider-quality gate banner when the backend fail-
   expect(screen.getByText("ANTHROPIC_API_KEY")).toBeDefined();
   expect(screen.getByText(/Apple Intelligence/i)).toBeDefined();
 
-  // Summary row + claim verdicts should be suppressed so the banner is the only response surface.
-  expect(screen.queryByText(/Total/)).toBeNull();
+  // The verdict summary + claim list should be suppressed so the banner is the only response surface.
+  expect(screen.queryByText(/statements need your review/i)).toBeNull();
+  expect(screen.queryByText(/supported by the sources/i)).toBeNull();
 });
