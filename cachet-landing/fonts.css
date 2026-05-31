@@ -1,0 +1,68 @@
+/* Cachet self-hosted fonts (production). Replaces the Google Fonts <link>.
+   Families and stacks are defined in tokens.css and left unmodified; this file
+   only supplies the @font-face sources so the page makes zero requests to
+   fonts.googleapis.com / fonts.gstatic.com at runtime.
+   Fonts: Newsreader, Inter, IBM Plex Mono (all OFL). Latin subset, static
+   instances. font-display: swap on every face. */
+
+/* Newsreader (display serif): H1, section H2s, pull-quote, CTA H2, wordmark, card H3 */
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/newsreader-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/newsreader-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Newsreader";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/newsreader-400-italic.woff2") format("woff2");
+}
+
+/* Inter (UI + body): lede, paragraphs, buttons, nav, trust H3 */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/inter-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/inter-600.woff2") format("woff2");
+}
+
+/* IBM Plex Mono (record): eyebrows, ledger cells, verdict text, filenames, footer meta */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-500.woff2") format("woff2");
+}

@@ -11,6 +11,10 @@
   [ADR-0006](ADR-0006-typed-node-defaults-on.md) (typed-node defaults
   on, the structural prerequisite for V2 verification),
   PR #82 (V2 Stage 1 backend + UI scaffold, commit `57188d81`).
+- Amended by: [ADR-0010](ADR-0010-build-verify-port-ahead-of-validation.md),
+  2026-05-29. The verify-port build is sequenced ahead of the T66 gate per
+  operator decision; T64, the hard blocker this ADR named, is done (PR #88).
+  ADR-0010 amends sequencing only; this ADR's strategy and decision rule stand.
 
 ## Context
 

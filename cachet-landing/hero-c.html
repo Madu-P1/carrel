@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cachet — Concept C: The Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+/* ---- Concept C: the audit ledger ---- */
+.heroC { position: relative; z-index: 1; }
+.heroC-top {
+  max-width: 720px;
+  padding-block: var(--s-8) var(--s-6);
+}
+.heroC h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-display);
+  letter-spacing: -0.026em;
+}
+.heroC .lede {
+  margin-top: var(--s-5); max-width: 56ch;
+  color: var(--text-secondary); font-size: var(--t-1); line-height: 1.55; letter-spacing: -0.01em;
+}
+.heroC .actions { margin-top: var(--s-6); display: flex; gap: var(--s-4); flex-wrap: wrap; align-items: center; }
+
+/* the ledger */
+.ledger {
+  margin-block: var(--s-7) var(--s-9);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.ledger-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.ledger-head .summary { display: flex; gap: var(--s-5); }
+.ledger-head .summary b { color: var(--verified); font-weight: 500; }
+.ledger-head .summary .warn { color: var(--unverified); }
+
+.row {
+  display: grid;
+  grid-template-columns: 132px 1fr 200px;
+  gap: var(--s-5);
+  align-items: baseline;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  opacity: 0;
+  animation: row-in 0.45s var(--ease-out) forwards;
+}
+.row:last-child { border-bottom: 0; }
+.row:nth-child(1) { animation-delay: 0.15s; }
+.row:nth-child(2) { animation-delay: 0.35s; }
+.row:nth-child(3) { animation-delay: 0.55s; }
+.row:nth-child(4) { animation-delay: 0.95s; } /* the refusal lands last, on its own beat */
+@keyframes row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.row .verdict-cell {
+  font-family: var(--font-mono); font-size: var(--t--1);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  display: flex; align-items: center; gap: var(--s-2);
+}
+.row.ok .verdict-cell { color: var(--verified); }
+.row.bad .verdict-cell { color: var(--refused); }
+.row .cite { font-family: var(--font-mono); font-size: 0.86rem; color: var(--text-primary); }
+.row .note { font-size: var(--t--1); color: var(--text-secondary); }
+.row.bad { background: linear-gradient(90deg, var(--refused-dim) , transparent 60%); }
+.row.bad .cite { color: var(--refused); }
+.tick { width: 14px; height: 14px; display: inline-grid; place-items: center; }
+
+@media (max-width: 820px) {
+  .row { grid-template-columns: 110px 1fr; }
+  .row .note { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="nav">
+    <div class="brand"><span class="brand-mark">C</span> Cachet</div>
+    <div class="nav-links">
+      <a href="#" class="hide-sm">How it works</a>
+      <a href="#" class="hide-sm">For litigators</a>
+      <a href="#" class="btn btn-ghost">Request access</a>
+    </div>
+  </nav>
+
+  <main class="heroC">
+    <div class="heroC-top">
+      <p class="eyebrow">Independent verification layer</p>
+      <h1 style="margin-top: var(--s-4)">Every authority, checked against the record.</h1>
+      <p class="lede">Cachet audits AI-drafted legal work line by line. Each citation, quote, and holding is confirmed against the actual source, or held back with a reason. You see exactly what stands.</p>
+      <div class="actions">
+        <a href="#" class="btn btn-primary">Request access</a>
+        <a href="#" class="btn btn-ghost">See a sample report</a>
+      </div>
+    </div>
+
+    <div class="ledger" role="table" aria-label="Verification ledger">
+      <div class="ledger-head">
+        <span>motion_to_dismiss_draft.docx · 14 authorities</span>
+        <span class="summary"><span><b>13</b> verified</span><span class="warn">1 could not verify</span></span>
+      </div>
+      <div class="row ok">
+        <span class="verdict-cell"><span class="tick">✓</span>Verified</span>
+        <span class="cite">Whitfield v. Cranston, 412 U.S. 88 (1973)</span>
+        <span class="note">Quote matches at p. 94.</span>
+      </div>
+      <div class="row ok">
+        <span class="verdict-cell"><span class="tick">✓</span>Verified</span>
+        <span class="cite">Aldridge v. Penn Mut., 88 F.3d 12 (3d Cir. 1996)</span>
+        <span class="note">Holding supports the cited proposition.</span>
+      </div>
+      <div class="row ok">
+        <span class="verdict-cell"><span class="tick">✓</span>Verified</span>
+        <span class="cite">In re Saxon, 201 B.R. 510 (Bankr. 1996)</span>
+        <span class="note">Pin cite confirmed.</span>
+      </div>
+      <div class="row bad">
+        <span class="verdict-cell"><span class="tick">✕</span>No record</span>
+        <span class="cite">Marlow v. Eastbrook Holdings, 559 F.3d 204 (9th Cir. 2009)</span>
+        <span class="note">No case by this name at this citation. Appears fabricated.</span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

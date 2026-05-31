@@ -1,0 +1,63 @@
+# Forge contract — DOGFOOD run (peripheral Carrel feature, not the verify product)
+project:
+  name: "carrel-dogfood"
+  root: "."                                  # the worktree (cwd); all paths relative to it
+  autonomous_env: "FORGE_AUTONOMOUS"
+
+verify:
+  commands:
+    - name: "query-store-tests"
+      run: "corepack pnpm --dir frontend exec vitest run src/lib/query.test.ts"
+      pass_when: "exit_zero"
+  heavy: []
+
+invariants:
+  machine_checkable:
+    - name: "query.ts-unchanged"
+      run: "git diff --quiet -- frontend/src/lib/query.ts"   # passes only if query.ts is untouched
+  prose:
+    - "Tests assert real behavior and edge cases. No trivial always-true or 'it renders' assertions."
+    - "This task only adds test coverage. Do not modify query.ts."
+
+definition_of_done: >
+  A new frontend/src/lib/query.test.ts covers createQuery: initial state (data undefined,
+  loading false, error null); a subscribed refetch success (loading toggles true then false,
+  data set, error cleared); a subscribed refetch error (error set, loading false, data
+  untouched); the stale-response generation guard (an earlier refetch that resolves after a
+  newer one does not clobber the newer result); reset cancels an in-flight refetch and clears
+  state; and an unsubscribed refetch result is dropped (data stays undefined). The test passes
+  under vitest, and query.ts is byte-unchanged.
+
+signals:
+  evals: []
+  held_out: { path: "" }
+  golden_references: []
+  dev_server: { start: "", url: "" }
+  benchmarks: []
+
+human_gates:
+  craft:    { when_paths: ["**/*.css", "**/features/**/*.tsx"], note: "Visual taste; rubric pass not sufficient." }
+  security: { when_paths: ["**/auth/**", "**/*keychain*", "**/*secret*"], note: "Needs a human read." }
+  followups_log: ".claude/logs/operator-followups.jsonl"
+
+scope:
+  mode: "build-only"
+  drafts_only: true
+  hard_block_extra: []
+  audit_timeout_seconds: 300
+
+rubric: { use_default: true }
+
+queue:
+  source: ".claude/forge.dogfood.tasks.md"
+  pick: "lowest-eligible"
+  active_plan_dir: "docs/plans/"
+
+adversary:
+  cross_model_cmd: "codex"
+  votes: 1
+
+runtime:
+  model: "opus"
+  kill_switch: ".claude/FORGE_HALT"          # NAMESPACED: not .claude/HALT (that is Carrel's)
+  watchdog: false

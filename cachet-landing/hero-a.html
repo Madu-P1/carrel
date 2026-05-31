@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cachet — Concept A: The Refusal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+/* ---- Concept A: the product caught doing its job ---- */
+.heroA { position: relative; z-index: 1; }
+.heroA-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-9);
+  align-items: center;
+  padding-block: var(--s-9) var(--s-10);
+}
+@media (max-width: 940px) {
+  .heroA-grid { grid-template-columns: 1fr; gap: var(--s-8); padding-block: var(--s-7) var(--s-8); }
+}
+
+.heroA h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-display);
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+.heroA h1 em { font-style: italic; color: var(--n-10); }
+.heroA .lede {
+  margin-top: var(--s-5);
+  max-width: 46ch;
+  color: var(--text-secondary);
+  font-size: var(--t-1);
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+}
+.heroA .actions { margin-top: var(--s-7); display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap; }
+.heroA .reassure { margin-top: var(--s-5); color: var(--text-muted); font-size: var(--t--1); }
+
+/* The document being checked */
+.doc {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  padding: var(--s-6);
+  box-shadow: var(--shadow-3);
+  font-size: 0.95rem;
+  line-height: 1.85;
+  color: var(--text-secondary);
+}
+.doc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--s-5); padding-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.doc-head .file { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); }
+.doc-head .status { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); display:flex; align-items:center; gap: var(--s-2); }
+.doc-head .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+
+.doc p { margin-bottom: var(--s-4); }
+.cite { color: var(--text-primary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+
+/* the flagged citation */
+.flag {
+  position: relative;
+  color: var(--unverified);
+  background: var(--unverified-glow);
+  border-radius: 3px;
+  padding: 0 3px;
+  box-shadow: 0 0 0 1px var(--unverified-dim);
+  font-style: normal;
+}
+
+/* scan line that sweeps once */
+.scan {
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--verified), transparent);
+  opacity: 0;
+  animation: sweep 1.4s var(--ease-in-out) 0.5s 1 forwards;
+}
+@keyframes sweep {
+  0% { opacity: 0; transform: translateY(0); }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(360px); }
+}
+
+/* verdict card slides in after the scan */
+.verdict {
+  position: absolute;
+  right: calc(-1 * var(--s-6));
+  bottom: var(--s-7);
+  width: 300px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--unverified-dim);
+  border-left: 3px solid var(--unverified);
+  border-radius: var(--r-2);
+  padding: var(--s-4) var(--s-5);
+  box-shadow: var(--shadow-3);
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  animation: rise 0.6s var(--ease-out) 2.0s 1 forwards;
+}
+@keyframes rise {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.verdict .label {
+  font-family: var(--font-mono);
+  font-size: var(--t--1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--unverified);
+  display: flex; align-items: center; gap: var(--s-2);
+}
+.verdict .headline { margin-top: var(--s-3); color: var(--text-primary); font-weight: 500; line-height: 1.35; }
+.verdict .detail { margin-top: var(--s-2); font-size: var(--t--1); color: var(--text-secondary); line-height: 1.5; }
+.verdict .source { margin-top: var(--s-3); font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+
+@media (max-width: 940px) {
+  .verdict { position: static; width: auto; margin-top: var(--s-5); animation-delay: 1.4s; }
+  .scan { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <nav class="nav">
+    <div class="brand"><span class="brand-mark">C</span> Cachet</div>
+    <div class="nav-links">
+      <a href="#" class="hide-sm">How it works</a>
+      <a href="#" class="hide-sm">For litigators</a>
+      <a href="#" class="btn btn-ghost">Request access</a>
+    </div>
+  </nav>
+
+  <main class="heroA">
+    <div class="heroA-grid">
+      <div>
+        <p class="eyebrow">Independent verification layer</p>
+        <h1 style="margin-top: var(--s-4)">A fabricated citation has ended cases. <em>Cachet finds it first.</em></h1>
+        <p class="lede">Cachet checks every citation, quote, and holding in AI-drafted legal work against the actual record, then tells you, plainly, what it cannot stand behind.</p>
+        <div class="actions">
+          <a href="#" class="btn btn-primary">Run a document through Cachet</a>
+          <a href="#" class="btn btn-ghost">See a sample report</a>
+        </div>
+        <p class="reassure">Runs locally. Your documents never leave your machine.</p>
+      </div>
+
+      <div class="doc">
+        <div class="scan" aria-hidden="true"></div>
+        <div class="doc-head">
+          <span class="file">motion_to_dismiss_draft.docx</span>
+          <span class="status"><span class="dot"></span>Checking 14 authorities</span>
+        </div>
+        <p>Plaintiff's reliance on the discovery rule is misplaced. Courts have consistently held that the limitations period begins at the time of injury, not discovery. See <span class="cite">Whitfield v. Cranston, 412 U.S. 88 (1973)</span>.</p>
+        <p>Even assuming the doctrine applied, equitable tolling is unavailable absent a showing of diligence, as the court reasoned in <span class="flag">Marlow v. Eastbrook Holdings, 559 F.3d 204 (9th Cir. 2009)</span>.</p>
+        <p>The claim is therefore time-barred and should be dismissed with prejudice.</p>
+
+        <aside class="verdict">
+          <div class="label"><span aria-hidden="true">⚠</span> Could not verify</div>
+          <div class="headline">No such case exists in any reporter.</div>
+          <div class="detail">No <span class="mono">559 F.3d 204</span> matches a 9th Circuit decision by this name. The citation appears fabricated.</div>
+          <div class="source mono">checked against · Reporter index, CourtListener</div>
+        </aside>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cachet-proto",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4178", "--directory", "/Users/madu/Desktop/Codex/.claude/worktrees/busy-chaplygin-1e0173/prototypes"],
+      "port": 4178
+    },
+    {
+      "name": "cachet-landing",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4319", "--directory", "/Users/madu/Desktop/Codex/.claude/worktrees/jovial-almeida-fcc09f/cachet-landing"],
+      "port": 4319
+    }
+  ]
+}
