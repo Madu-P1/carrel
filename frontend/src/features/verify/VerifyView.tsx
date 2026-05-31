@@ -22,14 +22,38 @@ const SAMPLE_DRAFT =
   "The Supreme Court held in 576 U.S. 644 that same-sex couples have a fundamental right to marry. " +
   "This ruling extended the equal-protection clause to marriage recognition across all states.";
 
-function tierBadgeClass(tier: ClaimDisposition["tier"]): string {
+export function tierBadgeClass(tier: ClaimDisposition["tier"]): string {
   switch (tier) {
     case "flag":
       return styles.badgeFlag;
+    case "assistive":
+      return styles.badgeAssistive;
     case "refusal":
       return styles.badgeRefusal;
     default:
       return styles.badgePass;
+  }
+}
+
+/** The holding-match sub-line states derived in CaseVerdictLine. */
+export type HoldingKind = "supports" | "ambiguous" | "contradicts" | "unavailable";
+
+// Color class for a holding-match sub-line. A contradiction is an AI judgment,
+// so it wears the assistive register (holdingAssistive), never the oxblood
+// caseMissing a fabricated citation wears. Exported so the holding-to-class
+// seam is unit-locked in dispositionClasses.test.ts, not left to the eye.
+export function holdingClass(kind: HoldingKind | null): string {
+  switch (kind) {
+    case "supports":
+      return styles.caseExists;
+    case "contradicts":
+      return styles.holdingAssistive;
+    case "ambiguous":
+      return styles.caseAmbiguous;
+    case "unavailable":
+      return styles.caseError;
+    default:
+      return "";
   }
 }
 
@@ -75,7 +99,7 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
           : "Verification error";
   // Carrel V2 half-2: derive a holding-match sub-line state.
   type HoldingState = {
-    kind: "supports" | "ambiguous" | "contradicts" | "unavailable";
+    kind: HoldingKind;
     label: string;
     detail?: string;
     excerpt?: string;
@@ -113,16 +137,7 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
       };
     }
   }
-  const holdingColorClass =
-    holding === null
-      ? ""
-      : holding.kind === "supports"
-        ? styles.caseExists
-        : holding.kind === "contradicts"
-          ? styles.caseMissing
-          : holding.kind === "ambiguous"
-            ? styles.caseAmbiguous
-            : styles.caseError;
+  const holdingColorClass = holdingClass(holding ? holding.kind : null);
   return (
     <div className={styles.caseVerdictGroup}>
       <div className={[styles.caseVerdictLine, colorClass].join(" ")}>

@@ -35,7 +35,15 @@ export type DispositionKind =
   | "claim_unsupported"
   | "could_not_check";
 
-export type DispositionTier = "pass" | "flag" | "refusal";
+/**
+ * Rendering register, distinct from the kind. Deterministic facts wear the
+ * loud oxblood "flag": a cited case that does not resolve, a claim with no
+ * support in the loaded sources. An AI judgment about a real source, the
+ * holding / proposition match, wears the quieter "assistive" register instead:
+ * a margin note left for the lawyer's own review, never a confident accusation.
+ * A false-confident holding shown as a hard flag ends careers.
+ */
+export type DispositionTier = "pass" | "flag" | "assistive" | "refusal";
 
 export interface ClaimDisposition {
   kind: DispositionKind;
@@ -46,7 +54,9 @@ export interface ClaimDisposition {
   detail: string;
 }
 
-/** Sort order: flags first (worst first), then the refusal, then passes last. */
+/** Sort order, worst-first by severity and independent of the render register:
+ * the fabricated citation, the wrong-proposition citation, and the ungrounded
+ * claim, then the honest could-not-check, then the unmarked passes last. */
 export const DISPOSITION_ORDER: Record<DispositionKind, number> = {
   citation_not_found: 0,
   proposition_unsupported: 1,
@@ -57,7 +67,10 @@ export const DISPOSITION_ORDER: Record<DispositionKind, number> = {
 
 const TIER: Record<DispositionKind, DispositionTier> = {
   citation_not_found: "flag",
-  proposition_unsupported: "flag",
+  // A real case cited for a proposition it does not support is an AI judgment,
+  // not a deterministic fact, so it renders assistive ("for your review"),
+  // never the oxblood flag that citation_not_found and claim_unsupported wear.
+  proposition_unsupported: "assistive",
   claim_unsupported: "flag",
   could_not_check: "refusal",
   supported: "pass"

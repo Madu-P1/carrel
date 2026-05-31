@@ -204,6 +204,14 @@
   border-left: 2px solid var(--text-tertiary);
 }
 
+/* Assistive: an AI judgment about a real source (a holding / proposition
+ * match), not a deterministic fact. Rendered "in pencil", a quiet dotted ink
+ * edge that reads "for your review", never the confident oxblood of a hard
+ * flag. A false-confident holding shown as a flag ends careers. */
+.verdictCard[data-tier="assistive"] {
+  border-left: 2px dotted var(--text-tertiary);
+}
+
 .verdictHeader {
   display: flex;
   align-items: center;
@@ -236,6 +244,15 @@
   background: color-mix(in srgb, var(--verify-flag) 8%, transparent);
   color: var(--verify-flag);
   border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
+}
+
+/* Assistive badge: a dotted, achromatic "pencil" pill. Distinct from the
+ * oxblood flag (no chromatic accent) and from the refusal (a dotted border,
+ * not solid): a provisional note for the lawyer's review, not a verdict. */
+.badgeAssistive {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px dotted var(--text-tertiary);
 }
 
 .badgeRefusal {
@@ -308,6 +325,12 @@
 .caseError {
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+/* The holding "does not support" sub-line in the assistive register: full ink
+ * so it is read, but achromatic, never the oxblood of a deterministic flag. */
+.holdingAssistive {
+  color: var(--text-primary);
 }
 
 /* Carrel V2 half-2 holding-match sub-line. Rendered indented under
@@ -677,14 +700,6 @@
   padding-bottom: var(--space-4);
 }
 
-.certTitle {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 28px;
-  line-height: 32px;
-  color: var(--text-primary);
-}
-
 .certMeta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -715,6 +730,10 @@
 .certMono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  /* The SHA-256 fingerprint is 64 unbroken hex chars; wrap it inside the meta
+   * grid cell instead of letting it overflow the exhibit (PR2 widened it from
+   * the old 8-char FNV digest). */
+  overflow-wrap: anywhere;
 }
 
 .certSection {
@@ -796,6 +815,200 @@
 
 .certSign {
   color: var(--text-primary);
+}
+
+/* PR2: the warm cover and human seal. Ink on paper, no brass (per the
+ * 2026-05-31 logo palette: ink/paper, oxblood reserved, no gold). All motion
+ * is WAAPI in CertificationExhibit.tsx, so this stylesheet declares no CSS
+ * keyframe rule and no CSS motion shorthand; the verify motion guard holds. */
+.cover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.coverKicker {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.coverTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  max-width: 30ch;
+}
+
+.coverBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.attest {
+  flex: 1 1 320px;
+  margin: 0;
+  max-width: 54ch;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.attest strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sealZone {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 150px;
+}
+
+.btnSeal {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.btnSeal:hover {
+  background: var(--accent-hover);
+}
+
+.btnSeal:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.btnSeal:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.seal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border: 1.5px solid var(--text-primary);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  /* Luster-loss when the seal cracks, via a CSS transition on a clamped duration
+   * token (--dur-slow collapses to 60ms under prefers-reduced-motion), not a
+   * forwards-filling WAAPI filter, so the resting filter is always class-derived
+   * and never stranded dimmed. */
+  transition: filter var(--dur-slow) var(--ease-out);
+}
+
+.seal::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1.5px dashed var(--hairline);
+  border-radius: 50%;
+}
+
+.sealPress {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--text-primary);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sealMark {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-primary);
+  opacity: 0;
+}
+
+.sealSet .sealMark,
+.sealCracked .sealMark {
+  opacity: 1;
+}
+
+.crack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.sealCracked {
+  filter: brightness(0.84) saturate(0.72);
+}
+
+.sealCracked .crack {
+  opacity: 1;
+}
+
+.sealCaption {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A cracked seal is a quiet dimmed nudge to re-verify, never the oxblood of a
+ * verification flag (oxblood stays reserved for flags). */
+.sealCaption.stale {
+  color: var(--text-secondary);
+}
+
+.coverSeam {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.coverSeamLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.coverSeamRule {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
 }
 
 @media print {
