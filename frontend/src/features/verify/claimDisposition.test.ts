@@ -80,7 +80,27 @@ describe("dispositionForClaim", () => {
       card({ case_verdicts: [batch([caseItem({ exists: true, status: 200, holding_match: false })])] })
     );
     expect(d.kind).toBe("proposition_unsupported");
-    expect(d.tier).toBe("flag");
+    expect(d.tier).toBe("assistive");
+  });
+
+  test("a holding mismatch renders the assistive tier, never the oxblood flag", () => {
+    // PR1 safety split: an AI judgment that a real, existing case does not stand
+    // for the claim (holding_match === false) is assistive ("for your review"),
+    // NOT a deterministic flag. This locks the TIER, the value the verify view
+    // switches on to pick a badge / edge treatment; the assistive-vs-oxblood
+    // rendering itself is verified at the craft human gate (no golden reference
+    // yet). The deterministic flags (citation_not_found, claim_unsupported) keep
+    // tier "flag" in their own tests above; together they lock the two registers
+    // apart. A false-confident holding shown as a hard flag ends careers.
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [batch([caseItem({ exists: true, status: 200, holding_match: false })])]
+      })
+    );
+    expect(d.kind).toBe("proposition_unsupported");
+    expect(d.tier).toBe("assistive");
+    expect(d.tier).not.toBe("flag");
   });
 
   test("verdict unsupported is claim_unsupported", () => {
@@ -138,7 +158,7 @@ describe("dispositionForClaim", () => {
     expect(d.kind).toBe("could_not_check");
   });
 
-  test("ordering puts flags first, the refusal next, and supported last", () => {
+  test("ordering is worst-first by severity, the refusal next, and supported last", () => {
     const kinds: DispositionKind[] = [
       "supported",
       "could_not_check",

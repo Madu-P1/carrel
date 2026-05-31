@@ -204,6 +204,14 @@
   border-left: 2px solid var(--text-tertiary);
 }
 
+/* Assistive: an AI judgment about a real source (a holding / proposition
+ * match), not a deterministic fact. Rendered "in pencil", a quiet dotted ink
+ * edge that reads "for your review", never the confident oxblood of a hard
+ * flag. A false-confident holding shown as a flag ends careers. */
+.verdictCard[data-tier="assistive"] {
+  border-left: 2px dotted var(--text-tertiary);
+}
+
 .verdictHeader {
   display: flex;
   align-items: center;
@@ -236,6 +244,15 @@
   background: color-mix(in srgb, var(--verify-flag) 8%, transparent);
   color: var(--verify-flag);
   border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
+}
+
+/* Assistive badge: a dotted, achromatic "pencil" pill. Distinct from the
+ * oxblood flag (no chromatic accent) and from the refusal (a dotted border,
+ * not solid): a provisional note for the lawyer's review, not a verdict. */
+.badgeAssistive {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px dotted var(--text-tertiary);
 }
 
 .badgeRefusal {
@@ -308,6 +325,12 @@
 .caseError {
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+/* The holding "does not support" sub-line in the assistive register: full ink
+ * so it is read, but achromatic, never the oxblood of a deterministic flag. */
+.holdingAssistive {
+  color: var(--text-primary);
 }
 
 /* Carrel V2 half-2 holding-match sub-line. Rendered indented under
