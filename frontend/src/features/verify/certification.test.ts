@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import type { VerifyResponse } from "@/services/api/endpoints";
 
-import { buildCertification, fingerprintDraft } from "./certification";
+import { buildCertification, fingerprintDraft, sealStateFor } from "./certification";
 
 function resp(over: Partial<Record<string, unknown>> = {}): VerifyResponse {
   return {
@@ -81,11 +81,30 @@ describe("fingerprintDraft", () => {
   test("differs for different text", () => {
     expect(fingerprintDraft("a")).not.toBe(fingerprintDraft("b"));
   });
-  test("is an 8-char hex string", () => {
-    expect(fingerprintDraft("anything")).toMatch(/^[0-9a-f]{8}$/);
+  test("is a 64-char hex string", () => {
+    expect(fingerprintDraft("anything")).toMatch(/^[0-9a-f]{64}$/);
   });
-  test("empty text is the FNV offset basis", () => {
-    expect(fingerprintDraft("")).toBe("811c9dc5");
+  test("empty text is the SHA-256 of the empty string", () => {
+    expect(fingerprintDraft("")).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+  });
+  test("matches the known SHA-256 vector for 'abc'", () => {
+    expect(fingerprintDraft("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+  });
+});
+
+describe("sealStateFor", () => {
+  test("no seal set yet is unsealed", () => {
+    expect(sealStateFor(null, "abc")).toBe("unsealed");
+  });
+  test("a seal whose fingerprint still matches the draft is sealed", () => {
+    expect(sealStateFor("abc", "abc")).toBe("sealed");
+  });
+  test("a seal whose draft has since changed is cracked", () => {
+    expect(sealStateFor("abc", "def")).toBe("cracked");
   });
 });
 

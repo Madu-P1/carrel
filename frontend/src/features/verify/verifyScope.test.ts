@@ -23,6 +23,14 @@ describe("verify visual mode is scoped and motion-safe", () => {
     expect(css).not.toMatch(/@keyframes/);
     expect(css).not.toMatch(/\banimation\s*:/);
   });
+
+  test("the cracked seal caption is dimmed ink, never the reserved oxblood flag accent", () => {
+    // PR2: a cracked seal is a quiet re-verify nudge, not a verification flag, so its
+    // caption must use the dimmed ink register and never the --verify-flag oxblood.
+    const stale = css.match(/\.sealCaption\.stale\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(stale).toContain("--text-secondary");
+    expect(stale).not.toContain("--verify-flag");
+  });
 });
 
 function luminance(hex: string): number {
