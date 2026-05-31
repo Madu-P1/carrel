@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Button } from "@/design-system";
 
-import type { CertificationModel } from "./certification";
+import { sealStateFor, type CertificationModel } from "./certification";
 import styles from "./VerifyView.module.css";
 
 function formatStamp(iso: string): string {
@@ -10,6 +10,14 @@ function formatStamp(iso: string): string {
     .replace("T", " ")
     .replace(/\.\d+Z$/, " UTC")
     .replace(/Z$/, " UTC");
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 interface CertificationExhibitProps {
@@ -75,6 +83,68 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
     };
   }, []);
 
+  // The seal: the human attests by clicking, capturing the draft fingerprint at
+  // seal-time. A later draft whose fingerprint no longer matches reads "cracked"
+  // (a quiet dimmed re-verify nudge, never an oxblood flag). Within one open
+  // exhibit the model is fixed, so only unsealed -> sealed happens here; the
+  // cracked state is reached when a persisted seal is reopened against a changed
+  // draft (Shelf persistence, PR6). Pure logic lives in sealStateFor.
+  const [sealedFingerprint, setSealedFingerprint] = useState<string | null>(null);
+  const sealRef = useRef<HTMLDivElement>(null);
+  const pressRef = useRef<HTMLSpanElement>(null);
+  const crackPathRef = useRef<SVGPathElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const sealState = sealStateFor(sealedFingerprint, model.fingerprint);
+  const sealAriaLabel =
+    sealState === "sealed"
+      ? "Certification seal, set"
+      : sealState === "cracked"
+        ? "Certification seal cracked: the draft changed since it was sealed"
+        : "Certification seal, not yet set";
+
+  const handleSetSeal = () => {
+    setSealedFingerprint(model.fingerprint);
+    // The seal button disables once set, so move focus to a stable in-dialog
+    // control; otherwise the browser drops focus to <body>, escaping the trap.
+    closeButtonRef.current?.focus();
+    if (prefersReducedMotion()) return;
+    sealRef.current?.animate(
+      [
+        { transform: "translateY(-6px) scale(1.06)", opacity: 0.6 },
+        { transform: "translateY(0) scale(0.95)", offset: 0.55 },
+        { transform: "translateY(0) scale(1)" }
+      ],
+      { duration: 900, easing: "cubic-bezier(0.34, 0, 0.2, 1)" }
+    );
+    pressRef.current?.animate(
+      [
+        { transform: "scale(0.82)", opacity: 0.55 },
+        { transform: "scale(1.85)", opacity: 0 }
+      ],
+      { duration: 900, delay: 60, easing: "cubic-bezier(0.34, 0, 0.2, 1)" }
+    );
+  };
+
+  // Draw the crack when the seal goes stale. The dimmed "loss of luster" is the
+  // static .sealCracked filter (CSS-transitioned), so the resting state is always
+  // class-derived: reduced motion and any later un-crack settle correctly without
+  // a forwards-filling WAAPI filter that could strand the seal dimmed.
+  useEffect(() => {
+    if (sealState !== "cracked" || prefersReducedMotion()) return;
+    const path = crackPathRef.current;
+    if (!path) return;
+    // The crack glyph is ~110 user units long; a fixed dash over-covers it so
+    // the stroke draws in from hidden. Avoids getTotalLength (unimplemented in
+    // jsdom) so the component test needs no SVG-geometry shim.
+    const crackLength = 130;
+    path.style.strokeDasharray = String(crackLength);
+    path.animate([{ strokeDashoffset: String(crackLength) }, { strokeDashoffset: "0" }], {
+      duration: 600,
+      easing: "cubic-bezier(0.4, 0, 1, 1)",
+      fill: "forwards"
+    });
+  }, [sealState]);
+
   return (
     <div
       ref={dialogRef}
@@ -85,17 +155,99 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
       tabIndex={-1}
     >
       <div className={styles.certToolbar}>
-        <button type="button" className={styles.inspectorClose} onClick={onClose}>
+        <button
+          type="button"
+          ref={closeButtonRef}
+          className={styles.inspectorClose}
+          onClick={onClose}
+        >
           Close
         </button>
-        <Button type="button" onClick={() => window.print()}>
+        <Button type="button" variant="ghost" onClick={() => window.print()}>
           Save as PDF
         </Button>
       </div>
 
       <article className={[styles.verifyScope, styles.certExhibit].join(" ")}>
+        <div className={styles.cover}>
+          <p className={styles.coverKicker}>Certification</p>
+          <h2 className={styles.coverTitle}>The record of what was checked</h2>
+          <div className={styles.coverBody}>
+            <p className={styles.attest}>
+              I have reviewed the items flagged below and certify that I exercised diligence in
+              verifying the citations in this document against the sources loaded into Cachet on the
+              date shown.{" "}
+              <strong>
+                This certificate attests to grounding, not to the truth or legal soundness of any
+                proposition.
+              </strong>
+            </p>
+            <div className={styles.sealZone}>
+              <button
+                type="button"
+                className={styles.btnSeal}
+                onClick={handleSetSeal}
+                disabled={sealState === "sealed"}
+              >
+                {sealState === "sealed" ? "Sealed" : "Set the seal"}
+              </button>
+              <div
+                ref={sealRef}
+                className={[
+                  styles.seal,
+                  sealState === "sealed" ? styles.sealSet : "",
+                  sealState === "cracked" ? styles.sealCracked : ""
+                ].join(" ")}
+                role="img"
+                aria-label={sealAriaLabel}
+              >
+                <span ref={pressRef} className={styles.sealPress} aria-hidden="true" />
+                <span className={styles.sealMark}>
+                  CACHET
+                  <br />
+                  VERIFIED
+                  <br />
+                  RECORD
+                </span>
+                <svg className={styles.crack} viewBox="0 0 104 104" aria-hidden="true">
+                  <path
+                    ref={crackPathRef}
+                    d="M52 4 L46 34 L60 50 L44 66 L56 100"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={3.2}
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              {/* Always-present polite live region: when the human sets or the
+                  seal cracks, the status text is announced to assistive tech
+                  (WCAG 4.1.3), since focus moves to Close and the seal itself is
+                  a non-live role=img. Empty (silent) while unsealed. */}
+              <span
+                className={[
+                  styles.sealCaption,
+                  sealState === "cracked" ? styles.stale : ""
+                ].join(" ")}
+                role="status"
+                aria-live="polite"
+              >
+                {sealState === "sealed"
+                  ? `Sealed ${stamp}`
+                  : sealState === "cracked"
+                    ? "Draft changed since sealing, re-verify"
+                    : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.coverSeam}>
+          <span className={styles.coverSeamLabel}>The record</span>
+          <span className={styles.coverSeamRule} />
+        </div>
+
         <header className={styles.certHead}>
-          <h2 className={styles.certTitle}>Verification certification</h2>
           <dl className={styles.certMeta}>
             <div>
               <dt>Generated</dt>
