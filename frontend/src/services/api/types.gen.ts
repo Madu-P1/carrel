@@ -1052,6 +1052,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/briefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Briefs Endpoint */
+        get: operations["list_briefs_endpoint_api_briefs_get"];
+        put?: never;
+        /** Save Brief Endpoint */
+        post: operations["save_brief_endpoint_api_briefs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/briefs/{brief_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Brief Endpoint */
+        get: operations["get_brief_endpoint_api_briefs__brief_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Brief Endpoint */
+        delete: operations["delete_brief_endpoint_api_briefs__brief_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/anchors": {
         parameters: {
             query?: never;
@@ -2010,6 +2046,104 @@ export interface components {
             color?: string | null;
             /** File */
             file: string;
+        };
+        /** BriefDeleteResponse */
+        BriefDeleteResponse: {
+            /** Deleted */
+            deleted: boolean;
+            /** Brief Id */
+            brief_id: string;
+        };
+        /**
+         * BriefDetail
+         * @description A full brief for re-hydration: the summary fields plus the draft and
+         *     the deserialized response/cert blobs. `cert` is None for a brief saved
+         *     before the human built a certification.
+         */
+        BriefDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Seal State */
+            seal_state: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Draft */
+            draft: string;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            };
+            /** Cert */
+            cert?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** BriefListResponse */
+        BriefListResponse: {
+            /** Briefs */
+            briefs?: components["schemas"]["BriefSummary"][];
+        };
+        /**
+         * BriefSaveRequest
+         * @description POST /api/briefs. The Verify view posts the checked draft plus the
+         *     full response and the client-built certification so the Shelf can list
+         *     and re-hydrate without a re-verify.
+         *
+         *     `draft` mirrors VerifyRequest.draft bounds. `fingerprint` is the
+         *     lowercase-hex SHA-256 of the draft (CertificationModel.fingerprint).
+         *     `title` is optional; the server derives one from the draft's first line
+         *     when omitted.
+         */
+        BriefSaveRequest: {
+            /** Draft */
+            draft: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            };
+            /** Cert */
+            cert?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Seal State
+             * @default unsealed
+             * @enum {string}
+             */
+            seal_state: "unsealed" | "sealed";
+            /** Title */
+            title?: string | null;
+        };
+        /** BriefSaveResponse */
+        BriefSaveResponse: {
+            brief: components["schemas"]["BriefSummary"];
+        };
+        /**
+         * BriefSummary
+         * @description One Shelf card: identity + seal state, no heavy blobs. `title` is
+         *     nullable in storage though the service always sets one.
+         */
+        BriefSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Seal State */
+            seal_state: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * BulkDeleteCardsRequest
@@ -5211,6 +5345,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_briefs_endpoint_api_briefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefListResponse"];
+                };
+            };
+        };
+    };
+    save_brief_endpoint_api_briefs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefSaveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_brief_endpoint_api_briefs__brief_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brief_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_brief_endpoint_api_briefs__brief_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brief_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeleteResponse"];
                 };
             };
             /** @description Validation Error */

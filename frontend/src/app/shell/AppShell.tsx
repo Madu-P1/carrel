@@ -53,7 +53,7 @@ interface ShellFrameProps extends AppShellProps {
   path: string;
 }
 
-const navLinks: SidebarNavItem[] = [
+export const navLinks: SidebarNavItem[] = [
   { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
   { key: "session", label: "Sessions", commandHint: "⌘2", icon: "session", path: "/session" },
   { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
@@ -67,6 +67,11 @@ const navLinks: SidebarNavItem[] = [
   // Carrel V2 Stage 1 — Verify-mode entry. No ⌘ hotkey yet (1-9
   // slots are full); ⌘⇧V is the natural addition in a polish pass.
   { key: "verify", label: "Verify Draft", commandHint: "", icon: "verify", path: "/verify" },
+  // Cachet PR6 — the Shelf: saved briefs. Sits right after Verify (you
+  // verify a draft, then it lands on the Shelf). No ⌘ hotkey yet (1-9 are
+  // full); the `doc` glyph is a mechanical placeholder, a bespoke Shelf mark
+  // is a PR6b craft item.
+  { key: "shelf", label: "Shelf", commandHint: "", icon: "doc", path: "/shelf" },
   { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
@@ -90,6 +95,10 @@ function routeLabel(path: string): string {
 
   if (path.startsWith("/verify")) {
     return "Verify";
+  }
+
+  if (path.startsWith("/shelf")) {
+    return "Shelf";
   }
 
   if (path.startsWith("/study")) {
@@ -133,6 +142,7 @@ function routeMotionIndex(path: string): number {
   if (path.startsWith("/search")) return 7;
   if (path.startsWith("/concepts")) return 8;
   if (path.startsWith("/plan")) return 9;
+  if (path.startsWith("/shelf")) return 11;
   return 10;
 }
 
