@@ -70,7 +70,7 @@ no matter how clean the diff.
 | A1 | Streaming the per-cite "labor" | **Stream from inside the shared engine**, done via an extract-generator refactor | True per-cite progress; the labor must be real, not theater |
 | A2 | Quote-verbatim check | **Verify the verbatim runs between declared edits** (brackets / ellipsis / `[sic]` are the author's edits, not flagged) | Catches material misstatement without crying wolf on proper Bluebook editing |
 | A3 | API key storage | **Web Settings + native bridge to Swift-owned Keychain** | Keeps the designed Settings; signed Swift app is the only thing macOS Keychain trusts without ACL prompts |
-| A4 | Claim → draft span alignment | Model emits a per-claim verbatim **anchor substring**; frontend exact `indexOf` then fuzzy; unplaceable claims fall to an "unplaced" tray | Honest; the model names the sentence, we do not guess |
+| A4 | Claim → draft span alignment | **Server-side deterministic alignment (Python).** `services/legal/align.py` maps each claim to a draft offset by matching its own draft-quote span, else its citation quote, else `claim_text`, exact then fuzzy: reuse the `extract_draft_quotes` draft spans (regex `.start()`/`.end()`) and the `services/retrieval/validators.py` round-trip (`normalize_match_text`, `slice_original_span`, `fuzzy_quote_match`). Unplaceable claims fall to an "unplaced" tray; the frontend only renders the precomputed offsets. | Deterministic, reproducible, and unit-testable in the python battery; mirrors PR4's server-side `quote_check`; placement never mis-pins. Chosen over a model-emitted `anchor` field on `SUBMIT_GROUNDED_ANSWER_TOOL` (the documented alternative), which widens shared-engine blast radius, trips the evals-hold gate, and risks cry-wolf on a weaker signal. |
 | A5 | Shelf persistence | `briefs` table stores `draft + fingerprint + response_json + cert_json + seal_state`; list renders from stored summary; open shows stored verdicts + a re-verify action | Local SQLite, single user, no auth; avoids re-verify just to render the list |
 
 ### A1 — the extract-generator refactor (highest blast radius; do it this exact way)
@@ -113,7 +113,7 @@ hold at baseline. If the evals move, the refactor changed behavior; block and in
 
 ### A2 — quote_check scope limit
 
-`services/verify/quote_check.py` extracts quoted spans from the draft, parses each into
+`services/legal/quote_check.py` extracts quoted spans from the draft, parses each into
 verbatim-runs + declared-edit markers, and requires each verbatim run to match the resolved
 source text exactly (reuse the CourtListener opinion text already fetched for holding-match;
 for loaded docs, the chunk text). New disposition kind `quote_altered` (deterministic flag,
@@ -175,7 +175,7 @@ Shared files: AppShell.tsx (PR5/PR6/PR7), VerifyView.module.css (PR1/PR2) → se
 
 ### PR4 — Draft-quote-verbatim check  [the cry-wolf surface]
 - **Goal:** the new deterministic `quote_altered` capability (A2).
-- **Files:** `services/verify/quote_check.py` (NEW), `claimDisposition.ts` (+ `quote_altered`
+- **Files:** `services/legal/quote_check.py` (NEW), `claimDisposition.ts` (+ `quote_altered`
   kind, tier, order), wire `quote_verdict` into the stream + UI.
 - **Tests:** the edge-case minefield is the point — legit `[t]he` cap → NOT flagged; ellipsis
   omission → NOT flagged; `[sic]` / `[emphasis added]` → NOT flagged; smart quotes / whitespace
@@ -183,13 +183,36 @@ Shared files: AppShell.tsx (PR5/PR6/PR7), VerifyView.module.css (PR1/PR2) → se
 - **DoD:** python battery + the quote_check suite green; scope-limit copy present in the UI.
 
 ### PR5 — Claim-span alignment + Margin / Workspace / Examination
-- **Goal:** the document-with-margin layout (A4).
-- **Files:** verify framing emits per-claim anchor substring; `services/verify/align.py` (NEW,
-  anchor → offset, exact then fuzzy, unplaced tray); new Workspace/Margin + Examination
-  components; `AppShell.tsx` route.
-- **Tests:** `align` unit tests (exact, fuzzy, unplaced); component tests for margin placement +
-  examination drill-in + scroll-to-source.
-- **DoD:** frontend chain green; unplaced claims visibly fall to the tray, never mis-pinned.
+
+Ships in two parts. **PR5a** is the mechanical, server-side alignment (trust-critical, lands
+first). **PR5b** is the Margin / Workspace / Examination visual layout (atelier-built behind an
+operator craft gate, **deferred** until the design pass is scheduled).
+
+**PR5a (deterministic alignment, server-side; ships first).**
+- **Goal:** locate each claim in the draft by deterministic offset (A4), so the margin has real
+  coordinates to pin to. No model or prompt change.
+- **Files:** `services/legal/align.py` (NEW, sibling to `quote_check.py`). Maps each claim to a
+  draft offset by reusing the `extract_draft_quotes` draft spans (regex `.start()`/`.end()`) and
+  the `services/retrieval/validators.py` round-trip (`normalize_match_text`, `slice_original_span`,
+  `fuzzy_quote_match`), exact then fuzzy. Add a `placement` field
+  `{char_start, char_end, placed, method}` to each verify claim verdict and an `unplaced` list to
+  the verify response. The field is `placement`, not `anchor`: `anchor` collides with the
+  flashcard `AnchorRecord` / `source_anchor_id` / `/api/anchors` surface.
+- **Matching order:** each claim is placed by its own verbatim draft-quote span, else its citation
+  quote, else `claim_text`. Ambiguous or no-match claims go to `unplaced`, never mis-pinned.
+- **Tests:** `align` unit tests (exact, fuzzy, ambiguous → unplaced, no-match → unplaced); a test
+  that each `placement` offset slices back to the claim's own text.
+- **DoD:** python battery + frontend typecheck green; no shared-engine tool-schema or prompt
+  change, so no `evals-full` gate fires.
+
+**PR5b (Margin / Workspace / Examination layout; deferred).**
+- **Goal:** the document-with-margin layout that renders the PR5a placements (no frontend
+  alignment; it only paints the precomputed offsets).
+- **Files:** new Workspace / Margin + Examination components, `AppShell.tsx` route.
+- **Build:** atelier-led, with an operator craft gate before merge.
+- **Tests:** component tests for margin placement + examination drill-in + scroll-to-source.
+- **DoD:** frontend chain green; unplaced claims visibly fall to the tray, never mis-pinned;
+  operator craft gate passed.
 
 ### PR6 — Shelf persistence + the Shelf/home
 - **Goal:** the warm home + saved briefs (A5).
