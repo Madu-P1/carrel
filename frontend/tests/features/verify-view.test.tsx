@@ -99,14 +99,18 @@ test("VerifyView renders the provider-quality gate banner when the backend fail-
   expect(screen.queryByText(/supported by the sources/i)).toBeNull();
 });
 
-test("View source opens the side-by-side inspector with the resolved span and shows no score", async () => {
+test("examining a claim opens the drawer with the resolved span and shows no score", async () => {
+  // PR5b: the claim is a flagged statement inline-marked in the document body;
+  // clicking the mark opens the Examination drawer with the cited source. Use
+  // an unsupported claim so it carries a visible flag mark, and place it in the
+  // draft (verbatim) so it pins into the document.
   mockVerifyStream({
     draft_text: "Mitochondria produce ATP.",
     claim_verdicts: [
       {
         claim_index: 0,
         claim_text: "Mitochondria produce ATP.",
-        verdict: "verified",
+        verdict: "unsupported",
         citations: [
           {
             node_id: 7,
@@ -122,10 +126,11 @@ test("View source opens the side-by-side inspector with the resolved span and sh
           }
         ],
         case_verdicts: [],
-        unsupported_reason: null
+        unsupported_reason: null,
+        placement: { placed: true, method: "exact", char_start: 0, char_end: 25 }
       }
     ],
-    summary: { total: 1, verified: 1, unsupported: 0, unknown: 0 },
+    summary: { total: 1, verified: 0, unsupported: 1, unknown: 0 },
     latency_ms: 10,
     model: "claude-sonnet-4-6",
     ok: true,
@@ -149,10 +154,12 @@ test("View source opens the side-by-side inspector with the resolved span and sh
 
   await submitDraft("Mitochondria produce ATP.");
 
-  const viewSource = await screen.findByRole("button", { name: /View source/i });
-  fireEvent.click(viewSource);
+  // The claim is inline-marked; clicking it opens the Examination drawer.
+  const claimMark = await screen.findByRole("button", { name: /Statement flagged/i });
+  fireEvent.click(claimMark);
 
-  // The exact resolved span lands beside the claim.
+  // The drawer is the Examination dialog and shows the resolved span.
+  expect(await screen.findByRole("dialog", { name: /Examination/i })).toBeDefined();
   expect(await screen.findByText(/ATP is produced by the mitochondria/i)).toBeDefined();
   // The verify surface shows no confidence score, even though resolve returns one.
   expect(screen.queryByText(/%/)).toBeNull();

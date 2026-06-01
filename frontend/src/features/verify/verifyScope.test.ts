@@ -96,4 +96,16 @@ describe("verify interactive controls restore a visible focus ring", () => {
       ).toContain("--shadow-focus");
     }
   });
+
+  test("the always-mounted Examination drawer leaves the tab order when closed", () => {
+    // PR5b a11y: the drawer is always mounted so it can slide, so the resting
+    // (closed) .exam rule must set visibility:hidden to remove its focusable
+    // Close button from the tab order (a focusable control inside the
+    // aria-hidden closed drawer would violate WCAG 4.1.2 / 2.4.3). The open
+    // state must restore visibility.
+    const resting = css.match(/\.exam\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(resting, ".exam must hide when closed").toMatch(/visibility:\s*hidden/);
+    const open = css.match(/\.examOpen\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(open, ".examOpen must restore visibility").toMatch(/visibility:\s*visible/);
+  });
 });

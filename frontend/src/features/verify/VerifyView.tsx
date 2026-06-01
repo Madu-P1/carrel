@@ -16,7 +16,7 @@ import {
   dispositionForClaim,
   type ClaimDisposition
 } from "./claimDisposition";
-import { SourceInspector } from "./SourceInspector";
+import { ExaminationDrawer } from "./ExaminationDrawer";
 import {
   checkedProgress,
   initialStreamState,
@@ -24,6 +24,7 @@ import {
   reduceStreamEvent,
   type VerifyStreamState
 } from "./streamProgress";
+import { WorkspaceMargin } from "./WorkspaceMargin";
 import styles from "./VerifyView.module.css";
 
 const SAMPLE_DRAFT =
@@ -587,32 +588,14 @@ export function VerifyView() {
             </div>
           ) : null}
 
-          {items.length > 0 ? (
-            <div className={[styles.workspace, selectedItem ? styles.workspaceSplit : ""].join(" ")}>
-              <div className={styles.verdictList}>
-                {items.map((it, i) => (
-                  <VerdictCard
-                    key={`${it.card.claim_index}-${i}`}
-                    card={it.card}
-                    disposition={it.disposition}
-                    index={i}
-                    isSelected={selectedItem?.card.claim_index === it.card.claim_index}
-                    onInspect={() =>
-                      setSelected(
-                        selected === it.card.claim_index ? null : (it.card.claim_index ?? null)
-                      )
-                    }
-                  />
-                ))}
-              </div>
-              {selectedItem ? (
-                <SourceInspector
-                  card={selectedItem.card}
-                  disposition={selectedItem.disposition}
-                  onClose={() => setSelected(null)}
-                />
-              ) : null}
-            </div>
+          {items.length > 0 && response ? (
+            <WorkspaceMargin
+              draftText={response.draft_text ?? draft}
+              cards={cards}
+              unattributedQuotes={quoteResults.filter((q) => q.status !== "verbatim")}
+              examined={selected}
+              onExamine={(idx) => setSelected(selected === idx ? null : idx)}
+            />
           ) : response ? (
             <div className={styles.emptyState}>
               No statements came back from the engine. Load the sources this draft relies on, then
@@ -621,6 +604,14 @@ export function VerifyView() {
           ) : null}
         </>
       )}
+
+      {response && items.length > 0 ? (
+        <ExaminationDrawer
+          card={selectedItem?.card ?? null}
+          open={selectedItem != null}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
 
       {certModel ? (
         <CertificationExhibit model={certModel} onClose={() => setCertAt(null)} />
