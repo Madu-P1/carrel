@@ -16,6 +16,7 @@
  */
 import type {
   VerifyClaimVerdict,
+  VerifyQuoteResult,
   VerifyResponse,
   VerifyStreamEvent
 } from "@/services/api/endpoints";
@@ -30,12 +31,16 @@ export interface VerifyStreamState {
   checked: Set<number>;
   /** The canonical response, set only on the `result` event. */
   result: VerifyResponse | null;
+  /** Brief-level draft-quote-verbatim results (Cachet PR4). Set on the
+   *  `quote_batch` event (the live reveal) and reconciled from `result`. [] when
+   *  the draft had no quoted spans. Brief-level: not per-claim (PR5 aligns). */
+  quotes: VerifyQuoteResult[];
   /** A surfaced stream error, or null. */
   error: string | null;
 }
 
 export function initialStreamState(): VerifyStreamState {
-  return { phase: "idle", cards: [], checked: new Set(), result: null, error: null };
+  return { phase: "idle", cards: [], checked: new Set(), result: null, quotes: [], error: null };
 }
 
 /**
@@ -73,8 +78,18 @@ export function reduceStreamEvent(
       );
       return { ...state, checked, cards };
     }
+    case "quote_batch":
+      return { ...state, quotes: event.quotes ?? [] };
     case "result":
-      return { ...state, phase: "done", result: event.verify };
+      // Reconcile quotes from the settled payload so a reload / non-stream
+      // caller (no live quote_batch) still shows them; the live quote_batch and
+      // the payload are computed from the same source, so they agree.
+      return {
+        ...state,
+        phase: "done",
+        result: event.verify,
+        quotes: event.verify?.quote_results ?? state.quotes
+      };
     case "error":
       return { ...state, phase: "error", error: event.error };
     default:

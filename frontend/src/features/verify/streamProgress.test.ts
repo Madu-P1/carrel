@@ -144,6 +144,7 @@ describe("isCardChecking — invariant #6 (no card reads as a pass before its ci
       cards: [card(0)],
       checked: new Set<number>(),
       result: null,
+      quotes: [],
       error: null
     };
     expect(isCardChecking(s, card(0))).toBe(false);
@@ -159,5 +160,44 @@ describe("checkedProgress", () => {
       { type: "cite_verdict", claim_index: 2, case_verdict: caseVerdict(2) }
     ]);
     expect(checkedProgress(s)).toEqual({ checked: 2, total: 3 });
+  });
+});
+
+describe("quote_batch + result quote reconciliation (Cachet PR4)", () => {
+  it("quote_batch installs the brief-level quote results", () => {
+    const s = fold([
+      { type: "progress", phase: "extracting" },
+      { type: "claims", claim_verdicts: [card(0)] },
+      {
+        type: "quote_batch",
+        quotes: [
+          { index: 0, quote: "altered run", status: "altered" },
+          { index: 1, quote: "ok run", status: "verbatim" }
+        ]
+      }
+    ]);
+    expect(s.quotes).toHaveLength(2);
+    expect(s.quotes[0].status).toBe("altered");
+  });
+
+  it("result reconciles quotes from the payload when no quote_batch arrived", () => {
+    const verify = {
+      draft_text: "d",
+      claim_verdicts: [],
+      summary: { total: 0, verified: 0, unsupported: 0, unknown: 0 },
+      latency_ms: 1,
+      model: "m",
+      ok: true,
+      error: null,
+      provider: "claude",
+      quote_results: [{ index: 0, quote: "x", status: "could_not_check" }]
+    } as unknown as import("@/services/api/endpoints").VerifyResponse;
+    const s = fold([
+      { type: "progress", phase: "extracting" },
+      { type: "claims", claim_verdicts: [] },
+      { type: "result", verify }
+    ]);
+    expect(s.quotes).toHaveLength(1);
+    expect(s.quotes[0].status).toBe("could_not_check");
   });
 });

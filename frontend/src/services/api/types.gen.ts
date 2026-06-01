@@ -3223,6 +3223,29 @@ export interface components {
             unsupported_reason?: string | null;
         };
         /**
+         * VerifyQuoteResultItem
+         * @description One brief-level draft-quote-verbatim result (Cachet PR4).
+         *
+         *     `status` is the plain-word disposition the UI renders for a quoted span the
+         *     lawyer typed in the draft: "verbatim" (every run of the quote appears in the
+         *     cited source as written), "altered" (a run does not appear in any source: a
+         *     misquotation or fabrication), or "could_not_check" (no source text was
+         *     reachable, or the only source was truncated past the quoted run; never a
+         *     flag). Brief-level: not yet attributed to a specific claim card (per-claim
+         *     placement is deferred to PR5 claim-span alignment). No confidence numbers.
+         */
+        VerifyQuoteResultItem: {
+            /** Index */
+            index: number;
+            /** Quote */
+            quote: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verbatim" | "altered" | "could_not_check";
+        };
+        /**
          * VerifyRequest
          * @description Carrel V2 Stage 1 — Verify-mode request.
          *
@@ -3268,6 +3291,8 @@ export interface components {
              * @default
              */
             provider: string;
+            /** Quote Results */
+            quote_results?: components["schemas"]["VerifyQuoteResultItem"][];
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {
