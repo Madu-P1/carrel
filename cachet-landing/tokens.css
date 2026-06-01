@@ -1,0 +1,95 @@
+/* Cachet — design tokens (dark-first)
+ * One system, three jobs for color: surfaces stay monochrome,
+ * the accent family ONLY ever carries a verdict (verified / unverified / refused).
+ * Color = meaning. Nothing here decorates.
+ */
+
+:root {
+  /* ---- Neutral ramp: warm-tinted, never pure black/white ----
+   * Hue held at ~36 (warm taupe), very low saturation. Reads as
+   * "document under even light", not blue-black instrument panel. */
+  --n-0:  hsl(36 9% 7%);    /* page base            */
+  --n-1:  hsl(36 8% 9%);    /* surface              */
+  --n-2:  hsl(36 7% 11%);   /* surface-raised       */
+  --n-3:  hsl(36 7% 14%);   /* surface-overlay      */
+  --n-4:  hsl(36 6% 19%);   /* hairline border      */
+  --n-5:  hsl(36 6% 26%);   /* strong border        */
+  --n-6:  hsl(36 7% 49%);   /* muted text (AA small) */
+  --n-7:  hsl(38 8% 56%);   /* secondary text       */
+  --n-8:  hsl(40 10% 74%);  /* secondary-strong     */
+  --n-9:  hsl(42 14% 92%);  /* primary text         */
+  --n-10: hsl(44 20% 97%);  /* highest, rare        */
+
+  /* ---- Verdict accent family (the only color allowed to mean something) ---- */
+  --verified:        hsl(152 42% 55%);
+  --verified-dim:    hsl(152 30% 22%);
+  --verified-glow:   hsl(152 50% 55% / 0.16);
+
+  --unverified:      hsl(41 72% 60%);   /* the gem: authoritative caution, not alarm */
+  --unverified-dim:  hsl(41 45% 20%);
+  --unverified-glow: hsl(41 75% 58% / 0.18);
+
+  --refused:         hsl(8 66% 68%);    /* reserved for "fabricated / does not exist" */
+  --refused-dim:     hsl(8 42% 14%);
+
+  /* ---- Semantic roles ---- */
+  --bg:               var(--n-0);
+  --surface:          var(--n-1);
+  --surface-raised:   var(--n-2);
+  --surface-overlay:  var(--n-3);
+  --border:           var(--n-4);
+  --border-strong:    var(--n-5);
+  --text-muted:       var(--n-6);
+  --text-secondary:   var(--n-7);
+  --text-primary:     var(--n-9);
+
+  /* ---- Type ---- */
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Modular scale, 1.25, 16px base */
+  --t--1: 0.8rem;
+  --t-0:  1rem;
+  --t-1:  1.25rem;
+  --t-2:  1.563rem;
+  --t-3:  1.953rem;
+  --t-4:  2.441rem;
+  --t-5:  3.052rem;
+  --t-display: clamp(2.6rem, 1.4rem + 4.6vw, 4.6rem);
+
+  /* ---- Spacing, 8px base ---- */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  --s-9: 6rem;
+  --s-10: 8rem;
+
+  /* ---- Radius ---- */
+  --r-1: 6px;
+  --r-2: 10px;
+  --r-3: 14px;
+  --r-full: 999px;
+
+  /* ---- Elevation: dark mode leans on lighter surfaces + tinted shadow ---- */
+  --shadow-1: 0 1px 2px hsl(36 20% 2% / 0.4);
+  --shadow-2: 0 4px 12px hsl(36 20% 2% / 0.45), 0 1px 2px hsl(36 20% 2% / 0.5);
+  --shadow-3: 0 16px 48px hsl(36 30% 2% / 0.55), 0 4px 12px hsl(36 20% 2% / 0.4);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 560ms;
+
+  /* ---- Layout ---- */
+  --measure: 62ch;
+  --container: 1120px;
+}

@@ -1,4 +1,12 @@
-/* Carrel V2 Stage 1 — Verify-mode view styles. */
+/* Carrel V2 — Verify-mode view styles.
+ *
+ * PR3 introduces a scoped lawyer-grade "verify" visual mode (.verifyScope).
+ * It is a founder-approved deviation from DESIGN.md (recorded in the DESIGN.md
+ * Decisions Log, 2026-05-29): a warm-paper / near-black-ink document surface
+ * with a single proofreader-oxblood accent reserved for flags, scoped to the
+ * verify route only. The global dark study tokens are untouched, so the rest
+ * of the app and the verify chain stay green. Whole-app rebrand is deferred
+ * until after the T66 validation verdict. */
 
 .root {
   display: flex;
@@ -10,6 +18,42 @@
   width: 100%;
 }
 
+/* Scoped token overrides. Applied to the verify root so the whole surface
+ * reads as a single sheet of paper on the dark desk. Chromatic energy is
+ * reserved for --verify-flag; the functional --accent goes quiet ink, and
+ * --text-inverse flips to paper so the ink-filled primary button stays
+ * legible. */
+.verifyScope {
+  background: #f6f2ea;
+  color: var(--text-primary);
+  border-radius: var(--radius-3);
+  box-shadow:
+    0 1px 2px rgb(28 24 20 / 8%),
+    0 10px 30px rgb(28 24 20 / 10%);
+
+  --surface-0: #efe7d9;
+  --surface-1: #f1ebe0;
+  --surface-2: #fcfaf4;
+
+  --text-primary: #1c1814;
+  --text-secondary: #4e463c;
+  /* AA: clears 4.5:1 on every paper surface at 12px (locked in verifyScope.test.ts). */
+  --text-tertiary: #685f4d;
+
+  --hairline: rgb(28 24 20 / 14%);
+
+  --accent: #23201c;
+  --accent-hover: #3a352e;
+  --text-inverse: #f8f5ee;
+
+  /* The single grave accent: a proofreader's oxblood, flags only. */
+  --verify-flag: #7a2230;
+
+  /* A reading serif for document body (Instrument Serif stays display-only,
+   * per DESIGN.md). Charter/Georgia carry legal-document gravity. */
+  --font-serif-body: Charter, "Charter BT", "Iowan Old Style", Georgia, "Times New Roman", serif;
+}
+
 .header {
   display: flex;
   flex-direction: column;
@@ -17,9 +61,9 @@
 }
 
 .title {
-  font-family: var(--font-display);
-  font-size: var(--text-4xl);
-  line-height: 1.1;
+  font-family: var(--font-serif);
+  font-size: 40px;
+  line-height: 44px;
   letter-spacing: -0.01em;
   margin: 0;
   color: var(--text-primary);
@@ -81,15 +125,40 @@
   margin-top: var(--space-2, 8px);
 }
 
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.summaryHeadline {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.summaryHeadlineProblem {
+  color: var(--verify-flag);
+}
+
 .summaryRow {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2);
-  border: 1px solid var(--hairline);
-  background: var(--surface-1);
   align-items: center;
+}
+
+.scopeNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
 }
 
 .summaryStat {
@@ -125,6 +194,24 @@
   gap: var(--space-3);
 }
 
+/* Ordering cue: flags carry an oxblood left edge, the honest refusal a quiet
+ * ink edge, so the not-confirmed set reads first. */
+.verdictCard[data-tier="flag"] {
+  border-left: 2px solid var(--verify-flag);
+}
+
+.verdictCard[data-tier="refusal"] {
+  border-left: 2px solid var(--text-tertiary);
+}
+
+/* Assistive: an AI judgment about a real source (a holding / proposition
+ * match), not a deterministic fact. Rendered "in pencil", a quiet dotted ink
+ * edge that reads "for your review", never the confident oxblood of a hard
+ * flag. A false-confident holding shown as a flag ends careers. */
+.verdictCard[data-tier="assistive"] {
+  border-left: 2px dotted var(--text-tertiary);
+}
+
 .verdictHeader {
   display: flex;
   align-items: center;
@@ -144,22 +231,34 @@
   text-transform: uppercase;
 }
 
-.verdictBadgeVerified {
-  background: rgb(34 197 94 / 12%);
-  color: rgb(74 222 128);
-  border: 1px solid rgb(34 197 94 / 35%);
+/* "supported" is the quiet, unmarked default; the absence of a flag is the
+ * pass. Flags wear the single oxblood accent; the refusal is grave but neutral
+ * ink, never an accusation. No green VERIFIED badge by design. */
+.badgePass {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--hairline);
 }
 
-.verdictBadgeUnsupported {
-  background: rgb(239 68 68 / 12%);
-  color: rgb(248 113 113);
-  border: 1px solid rgb(239 68 68 / 35%);
+.badgeFlag {
+  background: color-mix(in srgb, var(--verify-flag) 8%, transparent);
+  color: var(--verify-flag);
+  border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
 }
 
-.verdictBadgeUnknown {
-  background: rgb(250 204 21 / 12%);
-  color: rgb(250 204 21);
-  border: 1px solid rgb(250 204 21 / 35%);
+/* Assistive badge: a dotted, achromatic "pencil" pill. Distinct from the
+ * oxblood flag (no chromatic accent) and from the refusal (a dotted border,
+ * not solid): a provisional note for the lawyer's review, not a verdict. */
+.badgeAssistive {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px dotted var(--text-tertiary);
+}
+
+.badgeRefusal {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--hairline);
 }
 
 .verdictIndex {
@@ -171,22 +270,18 @@
 
 .claimText {
   color: var(--text-primary);
+  font-family: var(--font-serif-body);
   font-size: var(--text-sm);
-  line-height: 1.55;
+  line-height: 1.6;
   margin: 0;
 }
 
-.unsupportedReason {
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  font-style: italic;
+.dispositionDetail {
+  color: var(--text-secondary);
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
   margin: 0;
-}
-
-.chipsRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 .caseVerdictsRow {
@@ -205,16 +300,18 @@
   font-size: var(--text-xs);
 }
 
+/* Case-found reads neutral ink (not a celebratory green); a missing or
+ * malformed cite is oxblood; ambiguous is muted. */
 .caseExists {
-  color: rgb(74 222 128);
+  color: var(--text-secondary);
 }
 
 .caseMissing {
-  color: rgb(248 113 113);
+  color: var(--verify-flag);
 }
 
 .caseAmbiguous {
-  color: rgb(250 204 21);
+  color: var(--text-tertiary);
 }
 
 .caseDot {
@@ -225,25 +322,20 @@
   display: inline-block;
 }
 
-.caseLink {
-  color: var(--text-secondary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.caseLink:hover {
-  color: var(--text-primary);
-}
-
 .caseError {
   color: var(--text-tertiary);
   font-style: italic;
 }
 
+/* The holding "does not support" sub-line in the assistive register: full ink
+ * so it is read, but achromatic, never the oxblood of a deterministic flag. */
+.holdingAssistive {
+  color: var(--text-primary);
+}
+
 /* Carrel V2 half-2 holding-match sub-line. Rendered indented under
  * each case-verdict line, with a smaller dot and dimmer copy so the
- * primary "case exists" verdict reads first and the holding nuance
- * reads second. */
+ * primary verdict reads first and the holding nuance reads second. */
 .caseVerdictGroup {
   display: flex;
   flex-direction: column;
@@ -288,7 +380,7 @@
   border: 1px solid var(--hairline);
   color: var(--text-secondary);
   font-style: italic;
-  font-family: var(--font-sans);
+  font-family: var(--font-serif-body);
   line-height: 1.4;
 }
 
@@ -304,8 +396,642 @@
 .errorBanner {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-2);
-  border: 1px solid rgb(239 68 68 / 35%);
-  background: rgb(239 68 68 / 8%);
-  color: rgb(248 113 113);
+  border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
+  background: color-mix(in srgb, var(--verify-flag) 8%, transparent);
+  color: var(--verify-flag);
   font-size: var(--text-xs);
+}
+
+/* PR2: one-click-to-source. When a statement is selected, the verdict list and
+ * the source inspector sit side by side: claim left, source right, nothing
+ * resembling a score between them. */
+.workspace {
+  display: block;
+}
+
+.workspaceSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .workspaceSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.verdictCardSelected {
+  border-color: var(--accent);
+}
+
+.cardFoot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.viewSource {
+  appearance: none;
+  border: none;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.viewSource:hover {
+  color: var(--text-primary);
+}
+
+.viewSource:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.inspector {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  max-height: calc(100vh - var(--space-12));
+  overflow: auto;
+}
+
+.inspectorHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inspectorTitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.inspectorClose {
+  appearance: none;
+  border: none;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.inspectorClose:hover {
+  color: var(--text-primary);
+}
+
+.inspectorClose:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.inspectorClaim {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.sourceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sourceGroupLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.sourceItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-1);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.sourceItemHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sourceDoc {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.sourceLoc {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceLoading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceQuote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.sourceMuted {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.sourceFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sourceLocKind {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.sourceOpen {
+  appearance: none;
+  border: none;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sourceOpen:hover {
+  text-decoration: underline;
+}
+
+.sourceOpen:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* PR4: certification exhibit. A dated, fingerprinted, court-exhibit-shaped
+ * record, exported via the OS print dialog (Save as PDF), zero PDF deps. The
+ * exhibit reuses the .verifyScope paper tokens. */
+.resultActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.exportCert {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    background-color var(--dur-micro) var(--ease-out);
+}
+
+.exportCert:hover {
+  border-color: var(--accent);
+}
+
+.exportCert:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.certOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  overflow: auto;
+  background: rgb(14 14 16 / 72%);
+}
+
+.certToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 760px;
+  justify-content: flex-end;
+}
+
+.certExhibit {
+  width: 100%;
+  max-width: 760px;
+  padding: var(--space-12) var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.certHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--space-4);
+}
+
+.certMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+
+.certMeta div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.certMeta dt {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.certMeta dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.certMono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  /* The SHA-256 fingerprint is 64 unbroken hex chars; wrap it inside the meta
+   * grid cell instead of letting it overflow the exhibit (PR2 widened it from
+   * the old 8-char FNV digest). */
+  overflow-wrap: anywhere;
+}
+
+.certSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.certSectionLabel {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.certMuted {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.certList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.certItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.certItemLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.certItemClaim {
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.certItemSources {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.certFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--space-4);
+  font-family: var(--font-serif-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.certFooter p {
+  margin: 0;
+}
+
+.certSign {
+  color: var(--text-primary);
+}
+
+/* PR2: the warm cover and human seal. Ink on paper, no brass (per the
+ * 2026-05-31 logo palette: ink/paper, oxblood reserved, no gold). All motion
+ * is WAAPI in CertificationExhibit.tsx, so this stylesheet declares no CSS
+ * keyframe rule and no CSS motion shorthand; the verify motion guard holds. */
+.cover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.coverKicker {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.coverTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 32px;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  max-width: 30ch;
+}
+
+.coverBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.attest {
+  flex: 1 1 320px;
+  margin: 0;
+  max-width: 54ch;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.attest strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sealZone {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 150px;
+}
+
+.btnSeal {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.btnSeal:hover {
+  background: var(--accent-hover);
+}
+
+.btnSeal:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.btnSeal:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.seal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border: 1.5px solid var(--text-primary);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  /* Luster-loss when the seal cracks, via a CSS transition on a clamped duration
+   * token (--dur-slow collapses to 60ms under prefers-reduced-motion), not a
+   * forwards-filling WAAPI filter, so the resting filter is always class-derived
+   * and never stranded dimmed. */
+  transition: filter var(--dur-slow) var(--ease-out);
+}
+
+.seal::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1.5px dashed var(--hairline);
+  border-radius: 50%;
+}
+
+.sealPress {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--text-primary);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sealMark {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-primary);
+  opacity: 0;
+}
+
+.sealSet .sealMark,
+.sealCracked .sealMark {
+  opacity: 1;
+}
+
+.crack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.sealCracked {
+  filter: brightness(0.84) saturate(0.72);
+}
+
+.sealCracked .crack {
+  opacity: 1;
+}
+
+.sealCaption {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A cracked seal is a quiet dimmed nudge to re-verify, never the oxblood of a
+ * verification flag (oxblood stays reserved for flags). */
+.sealCaption.stale {
+  color: var(--text-secondary);
+}
+
+.coverSeam {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.coverSeamLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.coverSeamRule {
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .certExhibit,
+  .certExhibit * {
+    visibility: visible;
+  }
+
+  .certExhibit {
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    margin: 0;
+    padding: var(--space-10);
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .certToolbar {
+    display: none;
+  }
 }

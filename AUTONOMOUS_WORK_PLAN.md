@@ -10,6 +10,21 @@
 >
 > **Date created:** 2026-05-17. **Last status update:** 2026-05-19.
 
+## Operator decisions — 2026-05-29 (build the verify port; supersedes the 2026-05-27 "halt for T65" state for build work)
+
+Operator decision 2026-05-29, after an interactive design (`/atelier`) + architecture review (`/plan-eng-review`) pass: build the full Cachet verify surface ("warm chambers around a cold record") now, via the autonomous loop, ahead of the T66 validation gate. Recorded in [ADR-0010](docs/adr/ADR-0010-build-verify-port-ahead-of-validation.md); full contract in [`docs/plans/cachet-verify-port-2026-05-29.md`](docs/plans/cachet-verify-port-2026-05-29.md).
+
+Why this is allowed past validation-first (ADR-0008): the hard blocker ADR-0008 named (T64 answer-quality / hollow answers) is **done** (PR #88, ADR-0009 fail-loud gate). The verify port becomes the T66 demo vehicle, so T66 validates the real product. ADR-0008's thesis and three-branch decision rule are unchanged; T65/T66/T67 stay operator-led.
+
+- **Pick order (autonomous): T69 → T75 in dependency order.** T69 first (a live safety bug). T71 (streaming) and T74 (persistence) and T70 (cert) are parallel-able lanes; T72 depends on T71; T73 depends on T71; T75 is independent. Each task's `Deps:` line is authoritative; the lowest-numbered-eligible rule applies within this set.
+- **After T69-T75 are `done` or `blocked`, halt and surface to operator for T65 review.** Do NOT auto-claim T65, T66, T67 (validation is operator-led, per ADR-0008).
+- **Human-review gate on craft + security.** T70 (cert + seal) and T73 (Margin) are taste-dependent; T75 (key + Keychain) is security-sensitive. The code rubric cannot rate craft or prove a key never leaks. For these three: after the rater scores, write a `needs_human_review` entry to `.claude/logs/operator-followups.jsonl` (`kind: craft` or `kind: security`) and leave the PR draft for the operator's visual / security pass. A rater 100 here is necessary, not sufficient.
+- **Two CRITICAL test gates are merge-blockers** (per the plan): the dropped-stream-must-never-read-as-supported case (T71) and the quote-check cry-wolf suite (T72). The audit gate rejects a T71/T72 PR that lacks them.
+- **Build-only scope still enforced.** No outreach, no live CourtListener calls in tests (mocked transport; COURTLISTENER token stays unset on the routine process), drafts only (no `gh pr ready`), no `ALTER TABLE` at startup (T74 ships a migration file).
+- **Model:** `claude-opus-4-7` (via `CARREL_MODEL=opus` to `start-autonomous.sh`).
+
+---
+
 ## Operator decisions — 2026-05-27 (T64 Phase 4 lifted + T68 added, supersedes the 2026-05-26 block below)
 
 Operator decisions at 2026-05-27 01:25 GMT+2 after the T64 Phase 1+2 autonomous run succeeded (PR #88 open) and halted cleanly on Phase 3:
@@ -75,7 +90,7 @@ Operator authorized the routine to run at maximum autonomy within the existing b
 ## How the loop picks tasks
 
 1. Read this file top-to-bottom.
-1a. **Honor the most recent `Operator decisions` override.** Active override as of 2026-05-26: pick from the V2 polish queue (T59 → T63 in order) before any older `pending` task. Only after every V2 polish task is `done` or `blocked` do you fall back to step 3.
+1a. **Honor the most recent `Operator decisions` override.** Active override as of 2026-05-29: build the verify port T69 → T75 in dependency order (see the 2026-05-29 block), then halt and surface for operator-led T65. T65/T66/T67 stay operator-led; T59-T63 remain paused per ADR-0008.
 2. Skip every task with `Status: done` or `Status: blocked`.
 3. Among remaining `pending` tasks, find the lowest-numbered task whose `Dependencies:` line lists only tasks already `done` (or `none`). Step 1a takes precedence when an active override applies.
 4. Mark that task `Status: in_progress` (commit the status flip on the feature branch).
@@ -879,4 +894,76 @@ Then exit cleanly.
 
 ---
 
-*Last updated 2026-05-27. Authored alongside `docs/plans/everything-to-100-2026-05-17.md` and `docs/plans/routine-hardening-2026-05-27.md`. The master plan is the contract; this file is the queue.*
+## T69 — V2 verify port: assistive vs deterministic disposition split (PR1)
+
+**Plan ref:** [`docs/plans/cachet-verify-port-2026-05-29.md`](docs/plans/cachet-verify-port-2026-05-29.md) §PR1; [ADR-0010](docs/adr/ADR-0010-build-verify-port-ahead-of-validation.md).
+**Status:** pending
+**Deps:** none
+**Effort:** ~15-30 min CC. Fixes a live safety bug on main.
+**Acceptance:** `proposition_unsupported` and holding-contradicts render an `assistive` treatment (pencil / "for your review"), visually distinct from the oxblood deterministic flags (`citation_not_found`, `claim_unsupported`). `claimDisposition.test.ts` asserts `proposition_unsupported.tier === "assistive"`; a render test asserts holding `match=false` uses the assistive class, not the oxblood flag class. No percentages introduced.
+**Verify:** frontend typecheck + lint + vitest.
+**Guards:** holding-match must NEVER wear the confident deterministic color (plan §2.5). Supported stays unmarked. No em dashes in copy.
+
+## T70 — V2 verify port: two-register tokens + certification cover/seal + SHA-256 fingerprint (PR2)
+
+**Plan ref:** plan §PR2; ADR-0010.
+**Status:** pending
+**Deps:** none (coordinate on `VerifyView.module.css` with T69)
+**Effort:** ~1-2 sessions CC + operator craft review.
+**Acceptance:** warm-chambers token layer (Fraunces ceremonial voice, brass, chambers surfaces) added scoped to verify; `CertificationExhibit` gets the warm cover (Fraunces + attestation + human seal-set) above the cold register with a scored-fold seam; `fingerprintDraft` upgraded FNV-1a 32-bit → SHA-256; seal-state logic (sealed vs cracked on fingerprint mismatch) with tests; seal-set + crack motion via WAAPI (transform/opacity only, `prefers-reduced-motion` path).
+**Verify:** frontend chain; `certification.ts` tests green after the SHA-256 change (update fixtures).
+**Guards:** warmth (Fraunces / brass) never touches a verdict (plan §2.4); brass is ceremony-only. No new runtime motion library. **needs_human_review kind: craft** — surface for operator visual pass; rater 100 is necessary, not sufficient.
+
+## T71 — V2 verify port: honest streaming verify via extract-generator (PR3)
+
+**Plan ref:** plan §PR3 + §3.A1; ADR-0010.
+**Status:** pending
+**Deps:** none
+**Effort:** ~2 sessions CC. Highest regression risk (touches the shared engine).
+**Acceptance:** extract `_grounded_tutor_steps` sync generator; `grounded_tutor_envelope` becomes a drain-wrapper with an IDENTICAL return value (fixture test asserts byte-identical pre/post on the same inputs); `POST /api/verify/stream` (FastAPI `StreamingResponse`) emits `claims` → `cite_verdict`* → `quote_verdict`* → `done`; `VerifyView` consumes via `streamSse`, the labor inks in per `cite_verdict`. `/api/verify` (single-shot) stays for tests + non-stream callers.
+**Verify:** full python battery + **evals-full** (`groundedness@8 ≥ 0.7`, `quote_validity ≥ 0.95` at baseline) + frontend chain + the identical-output fixture test + the dropped-stream test.
+**Guards:** **CRITICAL merge-blocker:** a dropped or truncated stream leaves remaining cites as `could_not_check`, NEVER `supported` (plan §2.6, §5). Do not skip the evals. Tutor + evals callers must be byte-unaffected by the refactor.
+
+## T72 — V2 verify port: draft-quote-verbatim check (PR4)
+
+**Plan ref:** plan §PR4 + §3.A2; ADR-0010.
+**Status:** pending
+**Deps:** T71
+**Effort:** ~1-2 sessions CC.
+**Acceptance:** `services/verify/quote_check.py` extracts quoted spans from the draft, parses each into verbatim-runs + declared-edit markers, requires each verbatim run to match the resolved source text exactly (reuse the CourtListener opinion text fetched for holding-match; chunk text for loaded docs); new `quote_altered` disposition kind (deterministic flag, oxblood, ordered near `citation_not_found`); wired into the stream + UI with the stated scope-limit copy.
+**Verify:** python battery + the `quote_check` edge-case suite.
+**Guards:** **CRITICAL merge-blocker:** the cry-wolf suite must pass — legit `[t]he` / ellipsis / `[sic]` / `[emphasis added]` / smart-quotes NOT flagged; a real misstatement OUTSIDE the marks flagged (plan §3.A2, §5). Scope-limit copy present (grounding, not truth).
+
+## T73 — V2 verify port: claim-span alignment + Margin / Workspace / Examination (PR5)
+
+**Plan ref:** plan §PR5 + §3.A4; ADR-0010.
+**Status:** pending
+**Deps:** T71
+**Effort:** ~2 sessions CC + operator craft review.
+**Acceptance:** verify framing emits a per-claim verbatim anchor substring; `services/verify/align.py` maps anchor → draft offset (exact `indexOf` then fuzzy); unplaceable claims fall to an "unplaced" tray (never mis-pinned); new Workspace/Margin + Examination components; scroll-to-source.
+**Verify:** `align` unit tests (exact / fuzzy / unplaced) + component tests + frontend chain.
+**Guards:** unplaced claims must visibly fall to the tray, never silently mis-placed. Cold record register only (no warmth on verdicts). **needs_human_review kind: craft.**
+
+## T74 — V2 verify port: briefs persistence + Shelf / home (PR6)
+
+**Plan ref:** plan §PR6 + §3.A5; ADR-0010.
+**Status:** pending
+**Deps:** none (coordinate on `AppShell.tsx` nav with T73/T75)
+**Effort:** ~1-2 sessions CC.
+**Acceptance:** additive `migrations/NNNN_briefs.sql` (`briefs`: id, title, matter, draft, fingerprint, response_json, cert_json, seal_state, created_at, sealed_at); list / get / save / delete endpoints; Shelf component lists from the stored summary, open shows stored verdicts + a re-verify action; app-shell nav.
+**Verify:** `test_db_migrations` + python battery + frontend chain.
+**Guards:** the migration is additive; never `ALTER TABLE` at startup (plan §2.7). Local single-user; no auth.
+
+## T75 — V2 verify port: Settings + native Keychain key entry (PR7)
+
+**Plan ref:** plan §PR7 + §3.A3; ADR-0010.
+**Status:** pending
+**Deps:** none (coordinate on `AppShell.tsx` nav)
+**Effort:** ~2 sessions CC + Swift + operator security review.
+**Acceptance:** web Settings (warm chambers) with a key field; Swift `WKScriptMessageHandler` → Keychain write/read, feeds the key to the backend at spawn; the key is NEVER in `localStorage`, an HTTP body, or a log; a test asserts no `localStorage` write and no log emission of the key.
+**Verify:** `swift test` (`EinsteinDesktopTests`) + web Settings component test + the key-never-leaks test + frontend chain.
+**Guards:** the Anthropic key flows web field → `WKScriptMessageHandler` → Swift → Keychain only (plan §2.8). The unsigned Python backend must NOT touch Keychain directly. **needs_human_review kind: security** — operator security pass required; rater 100 is necessary, not sufficient.
+
+---
+
+*Last updated 2026-05-29. Verify-port queue (T69-T75) added per [ADR-0010](docs/adr/ADR-0010-build-verify-port-ahead-of-validation.md); contract in `docs/plans/cachet-verify-port-2026-05-29.md`. Earlier work authored alongside `docs/plans/everything-to-100-2026-05-17.md` and `docs/plans/routine-hardening-2026-05-27.md`. The plan doc is the contract; this file is the queue.*

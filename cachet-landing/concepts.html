@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cachet — Hero concepts (archive)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+.wrap { padding-block: var(--s-8) var(--s-9); }
+h1 { font-family: var(--font-display); font-size: var(--t-4); margin-bottom: var(--s-3); }
+.sub { color: var(--text-secondary); max-width: 60ch; margin-bottom: var(--s-7); }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-5); }
+@media (max-width: 860px) { .cards { grid-template-columns: 1fr; } }
+.card { display: block; text-decoration: none; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-6); transition: border-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+.card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.card .tag { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+.card h2 { font-family: var(--font-display); font-size: var(--t-2); margin: var(--s-3) 0; }
+.card p { color: var(--text-secondary); font-size: 0.95rem; }
+.note { margin-top: var(--s-7); color: var(--text-muted); font-size: var(--t--1); }
+</style>
+</head>
+<body>
+<div class="container wrap">
+  <h1>Cachet hero concepts</h1>
+  <p class="sub">Archive of the three explored directions. The shipped page uses A (hero) + C (proof). <a href="index.html" style="color:var(--verified)">See the full page</a>.</p>
+  <div class="cards">
+    <a class="card" href="hero-a.html"><span class="tag">Concept A · shipped</span><h2>The Refusal</h2><p>The product caught in the act. A draft is scanned; a fabricated citation lights up; a verdict slides in.</p></a>
+    <a class="card" href="hero-b.html"><span class="tag">Concept B · retired</span><h2>The Stamp</h2><p>The verdict as artifact. A verification seal presses in. Quiet, but reads close to a trust badge.</p></a>
+    <a class="card" href="hero-c.html"><span class="tag">Concept C · shipped</span><h2>The Ledger</h2><p>The audit, line by line. The refusal lands last, on its own beat.</p></a>
+  </div>
+  <p class="note">Kept for reference. Not linked from the live site.</p>
+</div>
+</body>
+</html>

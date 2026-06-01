@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cachet — shell prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   CACHET — design tokens
+   One world, two registers, assigned by trust-zone.
+   COLD record (Exhibit): wherever the tool judges.
+   WARM chambers (Chambers): wherever the human acts and returns.
+   Rule, enforced by token usage: warmth never touches a verdict.
+   ============================================================ */
+:root{
+  /* --- type roles (the family split IS the register split) --- */
+  --voice: "Fraunces", Georgia, "Times New Roman", serif;        /* Cachet speaks: home, certify, seal, export cover */
+  --record: "Source Serif 4", Charter, Georgia, serif;            /* the record: document body, claims, register prose */
+  --cite: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; /* citations, register, labels, numerals */
+
+  /* --- cold record ground + ink --- */
+  --record-paper: #f6f2ea;
+  --record-paper-2: #fcfaf4;
+  --ink:   #1c1814;
+  --ink-2: #4e463c;
+  --ink-3: #635b4d;
+  --rule:  rgba(28,24,20,0.14);
+  --rule-2: rgba(28,24,20,0.08);
+
+  /* --- the single grave accent: proofreader's oxblood, flags + attention only --- */
+  --oxblood: #7a2230;
+  --oxblood-wash: rgba(122,34,48,0.07);
+  --oxblood-line: rgba(122,34,48,0.42);
+
+  /* --- warm chambers ground --- */
+  --chambers-paper: #ece2cf;
+  --chambers-paper-2: #f3ecdd;
+  --chambers-edge: rgba(60,46,28,0.16);
+
+  /* --- the brass note: ceremony only (cert + seal), never a verdict --- */
+  --brass: #9a7a36;
+  --brass-deep: #6f561f;
+  --brass-wash: rgba(154,122,54,0.12);
+
+  /* --- the desk the window rests on --- */
+  --desk: #d9d3c6;
+
+  /* --- spacing, 4px base --- */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px; --s10:40px; --s12:48px; --s16:64px;
+
+  /* --- radius: cold = sharp (a printed page), warm = softened --- */
+  --r-record: 2px;
+  --r-warm: 8px;
+  --r-window: 12px;
+
+  /* --- motion --- */
+  --d-fast: 120ms;
+  --d-base: 200ms;
+  --d-settle: 440ms;
+  --d-ceremony: 900ms;
+  --e-out: cubic-bezier(0.22,1,0.36,1);
+  --e-soft: cubic-bezier(0.65,0,0.35,1);
+  --e-in: cubic-bezier(0.4,0,1,1);
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background:
+    radial-gradient(120% 120% at 50% -10%, #e1dbcf 0%, var(--desk) 60%) fixed;
+  color:var(--ink);
+  font-family:var(--record);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:28px;
+  min-height:100vh;
+}
+
+/* ---------- macOS window chrome ---------- */
+.window{
+  width:min(1180px, 100%);
+  height:min(820px, calc(100vh - 56px));
+  background:var(--chambers-paper-2);
+  border-radius:var(--r-window);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.5) inset,
+    0 2px 6px rgba(40,30,18,0.10),
+    0 24px 60px rgba(40,30,18,0.22);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  border:1px solid rgba(60,46,28,0.10);
+}
+.titlebar{
+  height:38px;
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:var(--s4);
+  padding:0 var(--s4);
+  background:linear-gradient(180deg,#efe7d8,#e8dfcd);
+  border-bottom:1px solid var(--chambers-edge);
+}
+.lights{ display:flex; gap:8px; }
+.lights i{ width:12px; height:12px; border-radius:50%; display:block; }
+.lights i:nth-child(1){ background:#e6685c; }
+.lights i:nth-child(2){ background:#e6b13c; }
+.lights i:nth-child(3){ background:#67b450; }
+.titlebar .context{
+  font-family:var(--cite);
+  font-size:11px;
+  letter-spacing:0.10em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+.shell{ flex:1 1 auto; display:flex; min-height:0; }
+
+/* ---------- sidebar (warm chambers chrome) ---------- */
+.sidebar{
+  flex:0 0 232px;
+  background:var(--chambers-paper);
+  border-right:1px solid var(--chambers-edge);
+  display:flex;
+  flex-direction:column;
+  padding:var(--s6) var(--s4) var(--s4);
+  gap:var(--s8);
+}
+.wordmark{ display:flex; align-items:center; gap:10px; padding-left:var(--s2); }
+.wordmark .seal-glyph{
+  width:26px; height:26px; flex:0 0 auto;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 38% 32%, rgba(255,255,255,0.55) 0%, transparent 34%),
+    radial-gradient(circle at 50% 52%, var(--brass) 0%, var(--brass-deep) 82%);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), inset 0 -2px 3px rgba(0,0,0,0.28);
+  position:relative;
+}
+.wordmark .seal-glyph::after{
+  content:"C";
+  position:absolute; inset:0;
+  display:grid; place-items:center;
+  font-family:var(--voice); font-weight:600; font-size:14px;
+  color:#f3ecdd; text-shadow:0 1px 0 rgba(0,0,0,0.25);
+}
+.wordmark .name{
+  font-family:var(--voice);
+  font-weight:500;
+  font-size:21px;
+  letter-spacing:0.01em;
+  color:var(--ink);
+}
+.nav{ display:flex; flex-direction:column; gap:2px; }
+.nav .group-label{
+  font-family:var(--cite); font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--ink-3); padding:0 var(--s3) var(--s2);
+}
+.nav button{
+  appearance:none; border:none; background:none; text-align:left; cursor:pointer;
+  display:flex; align-items:center; justify-content:space-between; gap:var(--s2);
+  padding:9px var(--s3); border-radius:var(--r-warm);
+  font-family:var(--record); font-size:14px; color:var(--ink-2);
+  transition:background var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out);
+}
+.nav button .count{
+  font-family:var(--cite); font-size:11px; font-variant-numeric:tabular-nums;
+  color:var(--oxblood);
+}
+.nav button:hover{ background:rgba(60,46,28,0.06); color:var(--ink); }
+.nav button[aria-current="true"]{ background:var(--chambers-paper-2); color:var(--ink); box-shadow:inset 0 0 0 1px var(--chambers-edge); }
+.nav button:focus-visible{ outline:none; box-shadow:0 0 0 2px var(--chambers-paper-2), 0 0 0 4px rgba(60,46,28,0.45); }
+.sidebar .spacer{ flex:1 1 auto; }
+.sidebar .footnote{ font-family:var(--cite); font-size:10px; letter-spacing:0.04em; color:var(--ink-3); line-height:1.5; padding:0 var(--s3); }
+
+/* ---------- main ---------- */
+.main{ flex:1 1 auto; min-width:0; position:relative; overflow:hidden; }
+.view{ position:absolute; inset:0; overflow:auto; opacity:0; visibility:hidden; transition:opacity var(--d-base) var(--e-out); }
+.view.is-active{ opacity:1; visibility:visible; }
+
+/* ============================================================
+   SHELF  (warm chambers — the home you return to)
+   ============================================================ */
+#shelf{ background:var(--chambers-paper-2); }
+.shelf-inner{ max-width:760px; margin:0 auto; padding:var(--s12) var(--s10) var(--s10); }
+.shelf-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:var(--s6); margin-bottom:var(--s8); }
+.shelf-head h1{
+  font-family:var(--voice); font-weight:400; font-size:34px; line-height:1.1;
+  letter-spacing:-0.01em; margin:0 0 6px; color:var(--ink);
+}
+.shelf-head p{ margin:0; font-family:var(--record); font-size:14px; color:var(--ink-2); }
+.btn-primary{
+  appearance:none; cursor:pointer; white-space:nowrap;
+  font-family:var(--cite); font-size:11px; letter-spacing:0.10em; text-transform:uppercase;
+  color:#f3ecdd; background:var(--ink); border:1px solid var(--ink);
+  padding:11px var(--s4); border-radius:var(--r-warm);
+  transition:transform var(--d-fast) var(--e-out), background var(--d-fast) var(--e-out);
+}
+.btn-primary:hover{ background:#34302a; }
+.btn-primary:active{ transform:translateY(1px); }
+.btn-primary:focus-visible{ outline:none; box-shadow:0 0 0 2px var(--chambers-paper-2), 0 0 0 4px rgba(60,46,28,0.5); }
+
+.shelf-section-label{
+  font-family:var(--cite); font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--ink-3); margin:0 0 var(--s3); padding-bottom:var(--s2); border-bottom:1px solid var(--rule);
+}
+.brief-list{ list-style:none; margin:0; padding:0; }
+.brief{
+  display:grid; grid-template-columns:1fr auto; gap:var(--s2) var(--s6);
+  align-items:center; padding:var(--s5) var(--s2);
+  border-bottom:1px solid var(--rule); cursor:pointer;
+  transition:background var(--d-fast) var(--e-out);
+}
+.brief:hover{ background:rgba(60,46,28,0.04); }
+.brief .b-title{ font-family:var(--record); font-weight:600; font-size:16px; color:var(--ink); }
+.brief .b-meta{ font-family:var(--cite); font-size:11px; letter-spacing:0.03em; color:var(--ink-3); margin-top:3px; font-variant-numeric:tabular-nums; }
+.brief .b-status{ text-align:right; }
+.b-needs{ font-family:var(--cite); font-size:12px; letter-spacing:0.02em; color:var(--oxblood); font-variant-numeric:tabular-nums; }
+.b-needs.clear{ color:var(--ink-3); }
+.b-seal{ display:inline-flex; align-items:center; gap:6px; margin-top:5px; font-family:var(--cite); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-3); }
+.b-seal .dot{ width:7px; height:7px; border-radius:50%; background:var(--ink-3); }
+.b-seal.sealed .dot{ background:var(--brass); box-shadow:0 0 0 2px var(--brass-wash); }
+.b-seal.cracked{ color:var(--oxblood); }
+.b-seal.cracked .dot{ background:var(--oxblood); }
+
+/* ============================================================
+   WORKSPACE  (cold record — the Margin)
+   ============================================================ */
+#workspace{ background:var(--record-paper); }
+.ws-bar{
+  position:sticky; top:0; z-index:5;
+  display:flex; align-items:center; justify-content:space-between; gap:var(--s4);
+  padding:var(--s4) var(--s8);
+  background:color-mix(in srgb, var(--record-paper) 88%, transparent);
+  backdrop-filter:saturate(1.05) blur(6px);
+  border-bottom:1px solid var(--rule);
+}
+.ws-bar .bL{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ws-doc-title{ font-family:var(--record); font-weight:600; font-size:14px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ws-status{ font-family:var(--cite); font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-2); font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:8px; }
+.ws-status .n{ color:var(--oxblood); }
+.ws-bar .bR{ display:flex; align-items:center; gap:var(--s2); }
+.btn-quiet{
+  appearance:none; cursor:pointer; background:none; border:1px solid var(--rule);
+  font-family:var(--cite); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-2);
+  padding:8px var(--s3); border-radius:var(--r-record);
+  transition:border-color var(--d-fast) var(--e-out), color var(--d-fast) var(--e-out), background var(--d-fast) var(--e-out);
+}
+.btn-quiet:hover{ border-color:var(--ink-3); color:var(--ink); }
+.btn-quiet:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(28,24,20,0.18); }
+.btn-ink{
+  appearance:none; cursor:pointer; background:var(--ink); color:var(--record-paper-2); border:1px solid var(--ink);
+  font-family:var(--cite); font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+  padding:8px var(--s4); border-radius:var(--r-record);
+  transition:background var(--d-fast) var(--e-out), transform var(--d-fast) var(--e-out);
+}
+.btn-ink:hover{ background:#34302a; }
+.btn-ink:active{ transform:translateY(1px); }
+.btn-ink:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(28,24,20,0.28); }
+
+.canvas{ position:relative; max-width:1000px; margin:0 auto; padding:var(--s10) var(--s8) var(--s16); display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:var(--s10); align-items:start; }
+.doc{ max-width:60ch; min-width:0; }
+.doc .matter{ font-family:var(--cite); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 var(--s2); }
+.doc h2{ font-family:var(--record); font-weight:600; font-size:19px; line-height:1.3; color:var(--ink); margin:0 0 var(--s6); }
+.doc p{ font-family:var(--record); font-size:16px; line-height:1.66; color:var(--ink); margin:0 0 var(--s5); }
+.cite{ font-family:var(--cite); font-size:0.86em; color:var(--ink-2); white-space:nowrap; }
+
+/* claims: supported is UNMARKED. flags get marks, never highlights. */
+.claim{ cursor:default; }
+.claim[data-tier]{ cursor:pointer; border-radius:1px; }
+.claim[data-tier]:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(28,24,20,0.16); }
+/* deterministic flag: confident oxblood underline (a struck mark) */
+.claim[data-mark="oxblood"]{ text-decoration:underline; text-decoration-color:var(--oxblood-line); text-decoration-thickness:2px; text-underline-offset:3px; }
+.claim[data-mark="oxblood"] .cite{ color:var(--oxblood); }
+/* assistive query: pencil dotted underline — a margin query, never a verdict color */
+.claim[data-mark="pencil"]{ text-decoration:underline dotted; text-decoration-color:var(--ink-3); text-decoration-thickness:1.5px; text-underline-offset:3px; }
+/* refusal: a quiet ink bracket, composed — not an accusation */
+.claim[data-mark="refusal"]{ box-shadow:-3px 0 0 var(--ink-3); padding-left:8px; margin-left:-11px; }
+
+/* the right margin rail */
+.rail{ position:relative; }
+.note{
+  position:absolute; left:0; right:0;
+  padding-left:var(--s4);
+  border-left:2px solid var(--rule);
+  opacity:1;
+}
+.note[data-tier="flag"]{ border-left-color:var(--oxblood); }
+.note[data-tier="query"]{ border-left-color:var(--ink-3); border-left-style:dotted; border-left-width:2px; }
+.note[data-tier="refusal"]{ border-left-color:var(--ink-2); border-left-width:3px; }
+.note .n-kind{
+  font-family:var(--cite); font-size:10px; letter-spacing:0.10em; text-transform:uppercase;
+  margin:0 0 5px; display:flex; align-items:center; gap:7px;
+}
+.note[data-tier="flag"] .n-kind{ color:var(--oxblood); }
+.note[data-tier="query"] .n-kind{ color:var(--ink-3); }
+.note[data-tier="refusal"] .n-kind{ color:var(--ink); }
+.note .n-kind .tag{ font-size:9px; letter-spacing:0.08em; padding:1px 6px; border-radius:2px; }
+.note[data-tier="query"] .n-kind .tag{ border:1px solid var(--rule); color:var(--ink-3); }
+.note .n-detail{ font-family:var(--record); font-size:13.5px; line-height:1.5; color:var(--ink-2); margin:0; }
+.note .n-trail{ font-family:var(--cite); font-size:10.5px; letter-spacing:0.02em; color:var(--ink-3); margin:7px 0 0; }
+.note .n-act{
+  appearance:none; background:none; border:none; cursor:pointer; padding:7px 0 0;
+  font-family:var(--cite); font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink);
+  text-decoration:underline; text-decoration-color:var(--rule); text-underline-offset:3px;
+}
+.note .n-act:hover{ text-decoration-color:var(--ink-3); }
+.note .n-act:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(28,24,20,0.16); border-radius:2px; }
+
+/* the labor: status line that names the cite being checked */
+.labor{
+  position:sticky; bottom:0; z-index:6;
+  display:none; align-items:center; gap:var(--s3);
+  padding:var(--s3) var(--s8);
+  background:var(--record-paper);
+  border-top:1px solid var(--rule);
+  box-shadow:0 -10px 18px rgba(40,30,18,0.06);
+  font-family:var(--cite); font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-2);
+}
+.labor.is-on{ display:flex; }
+.labor .pulse{ width:7px; height:7px; border-radius:50%; background:var(--ink); animation:laborPulse 1s var(--e-soft) infinite; }
+@keyframes laborPulse{ 0%,100%{ opacity:0.25; } 50%{ opacity:1; } }
+
+/* ---------- Examination (cold — slide-in drawer) ---------- */
+.exam{
+  position:absolute; top:0; right:0; bottom:0; width:min(520px, 64%);
+  background:var(--record-paper-2);
+  border-left:1px solid var(--rule);
+  box-shadow:-18px 0 40px rgba(40,30,18,0.10);
+  transform:translateX(100%);
+  transition:transform var(--d-base) var(--e-out);
+  z-index:8; display:flex; flex-direction:column;
+}
+.exam.is-open{ transform:translateX(0); }
+.exam-head{ display:flex; align-items:center; justify-content:space-between; padding:var(--s5) var(--s6); border-bottom:1px solid var(--rule); }
+.exam-head .lbl{ font-family:var(--cite); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-3); }
+.exam-close{ appearance:none; background:none; border:none; cursor:pointer; font-family:var(--cite); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-2); padding:6px; }
+.exam-close:hover{ color:var(--ink); }
+.exam-close:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(28,24,20,0.18); border-radius:2px; }
+.exam-body{ flex:1 1 auto; overflow:auto; padding:var(--s6); display:flex; flex-direction:column; gap:var(--s6); }
+.exam-claim{ font-family:var(--record); font-size:16px; line-height:1.55; color:var(--ink); margin:0; }
+.exam-claim .cite{ color:var(--ink-2); }
+.checks{ display:flex; flex-direction:column; gap:0; }
+.checks .ck-label{ font-family:var(--cite); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-3); margin:0 0 var(--s2); }
+.ck{ display:grid; grid-template-columns:18px 1fr; gap:var(--s3); padding:var(--s3) 0; border-bottom:1px solid var(--rule-2); }
+.ck .mk{ width:14px; height:14px; margin-top:3px; }
+/* deterministic, found: solid ink tick */
+.ck[data-state="pass"] .mk{ border-radius:2px; box-shadow:inset 0 0 0 1.5px var(--ink-3); position:relative; }
+.ck[data-state="pass"] .mk::after{ content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid var(--ink); border-width:0 1.5px 1.5px 0; transform:rotate(40deg); }
+/* deterministic, failed: solid oxblood */
+.ck[data-state="flag"] .mk{ border-radius:2px; background:var(--oxblood); }
+/* assistive query: hollow pencil ring with a ? */
+.ck[data-state="query"] .mk{ border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--ink-3); position:relative; }
+.ck[data-state="query"] .mk::after{ content:"?"; position:absolute; inset:0; display:grid; place-items:center; font-family:var(--cite); font-size:9px; color:var(--ink-2); }
+/* refusal / unread: an open dash */
+.ck[data-state="unknown"] .mk{ border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--rule); }
+.ck .ck-name{ font-family:var(--record); font-size:14px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.ck .ck-weight{ font-family:var(--cite); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; padding:1px 6px; border-radius:2px; border:1px solid var(--rule); color:var(--ink-3); }
+.ck[data-state="flag"] .ck-name{ color:var(--oxblood); }
+.ck .ck-detail{ font-family:var(--record); font-size:13px; line-height:1.5; color:var(--ink-2); margin:5px 0 0; }
+.source-card{ border:1px solid var(--rule); border-radius:var(--r-record); background:var(--record-paper); padding:var(--s4); }
+.source-card .sc-head{ display:flex; align-items:center; justify-content:space-between; gap:var(--s3); margin-bottom:var(--s3); }
+.source-card .sc-doc{ font-family:var(--record); font-size:13px; color:var(--ink); }
+.source-card .sc-loc{ font-family:var(--cite); font-size:11px; color:var(--ink-3); }
+.source-quote{ font-family:var(--record); font-size:14px; line-height:1.6; color:var(--ink-2); margin:0; padding-left:var(--s3); border-left:2px solid var(--rule); }
+.source-quote mark{ background:none; color:var(--ink); text-decoration:underline; text-decoration-color:var(--oxblood-line); text-decoration-thickness:2px; text-underline-offset:3px; }
+.source-quote mark.sweep{ animation:sweep var(--d-settle) var(--e-out); }
+@keyframes sweep{ from{ text-decoration-color:transparent; } to{ text-decoration-color:var(--oxblood-line); } }
+.sc-open{ appearance:none; background:none; border:none; cursor:pointer; margin-top:var(--s3); padding:0; font-family:var(--cite); font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink); text-decoration:underline; text-decoration-color:var(--rule); text-underline-offset:3px; }
+.sc-open:hover{ text-decoration-color:var(--ink-3); }
+
+/* ============================================================
+   CERTIFICATION  (warm act + cold register — the seam)
+   ============================================================ */
+#cert{ background:var(--chambers-paper); }
+.cert-scroll{ height:100%; overflow:auto; padding:var(--s10) var(--s6) var(--s16); }
+.exhibit{
+  width:100%; max-width:720px; margin:0 auto;
+  background:var(--record-paper-2);
+  border:1px solid var(--chambers-edge);
+  border-radius:var(--r-warm);
+  box-shadow:0 1px 2px rgba(40,30,18,0.08), 0 20px 48px rgba(40,30,18,0.16);
+  overflow:hidden;
+}
+
+/* --- warm cover (Cachet's ceremonial voice) --- */
+.cover{ background:var(--chambers-paper-2); padding:var(--s10) var(--s10) var(--s8); border-bottom:1px solid var(--chambers-edge); position:relative; }
+.cover .kicker{ font-family:var(--cite); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--brass-deep); margin:0 0 var(--s3); }
+.cover h1{ font-family:var(--voice); font-weight:400; font-size:32px; line-height:1.12; letter-spacing:-0.01em; color:var(--ink); margin:0 0 var(--s5); max-width:30ch; }
+.attest{ font-family:var(--record); font-size:15px; line-height:1.6; color:var(--ink-2); margin:0 0 var(--s6); max-width:54ch; }
+.attest strong{ color:var(--ink); font-weight:600; }
+.sign-row{ display:flex; align-items:flex-end; justify-content:space-between; gap:var(--s6); }
+.sign-block{ display:flex; flex-direction:column; gap:4px; }
+.sign-name{ font-family:var(--voice); font-size:20px; color:var(--ink); }
+.sign-meta{ font-family:var(--cite); font-size:11px; letter-spacing:0.04em; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+
+/* the seal */
+.seal-zone{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:var(--s2); min-width:150px; }
+.btn-seal{
+  appearance:none; cursor:pointer;
+  font-family:var(--cite); font-size:11px; letter-spacing:0.10em; text-transform:uppercase;
+  color:#f3ecdd; background:var(--brass-deep); border:1px solid var(--brass-deep);
+  padding:11px var(--s5); border-radius:var(--r-warm);
+  transition:transform var(--d-fast) var(--e-out), background var(--d-fast) var(--e-out);
+}
+.btn-seal:hover{ background:var(--brass); }
+.btn-seal:active{ transform:translateY(1px); }
+.btn-seal:focus-visible{ outline:none; box-shadow:0 0 0 2px var(--chambers-paper-2), 0 0 0 4px var(--brass); }
+.seal{
+  width:104px; height:104px; border-radius:50%; position:relative;
+  display:none; place-items:center;
+  background:radial-gradient(circle at 40% 34%, #c79b4a 0%, var(--brass) 44%, var(--brass-deep) 100%);
+  border:1px solid rgba(40,30,18,0.22);
+  box-shadow: inset 0 2px 3px rgba(255,255,255,0.30), inset 0 -6px 9px rgba(0,0,0,0.34), 0 3px 7px rgba(40,30,18,0.30);
+  transition:filter var(--d-base) var(--e-soft);
+}
+.seal.is-set{ display:grid; }
+.seal.cracked{ filter:brightness(0.9) saturate(0.82); }
+/* the pressure of the stamp spreading into the paper, once */
+.seal-press{ position:absolute; inset:0; border-radius:50%; border:1.5px solid var(--brass); opacity:0; pointer-events:none; }
+.seal.is-set .seal-press{ animation:sealPress 900ms var(--e-soft) 60ms; }
+@keyframes sealPress{ from{ transform:scale(0.82); opacity:0.55; } to{ transform:scale(1.85); opacity:0; } }
+.seal::before{ content:""; position:absolute; inset:9px; border-radius:50%; border:1.5px dashed rgba(255,255,255,0.35); }
+.seal .seal-mark{ font-family:var(--voice); font-weight:600; font-size:13px; letter-spacing:0.12em; color:#f6efe0; text-shadow:0 1px 1px rgba(0,0,0,0.4); text-align:center; line-height:1.15; }
+.seal .crack{ position:absolute; inset:0; pointer-events:none; opacity:0; }
+.seal.cracked .crack{ opacity:1; }
+.seal-caption{ font-family:var(--cite); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-3); font-variant-numeric:tabular-nums; text-align:center; line-height:1.5; }
+.seal-caption.stale{ color:var(--oxblood); }
+
+/* --- cold register (the record beneath) --- */
+.register{ padding:var(--s8) var(--s10) var(--s10); background:var(--record-paper); box-shadow:inset 0 2px 4px rgba(40,30,18,0.06), inset 0 1px 0 rgba(255,255,255,0.55); }
+.reg-seam{ display:flex; align-items:center; gap:var(--s3); margin-bottom:var(--s6); }
+.reg-seam .lbl{ font-family:var(--cite); font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:var(--ink-3); white-space:nowrap; }
+.reg-seam .ln{ flex:1 1 auto; height:1px; background:var(--rule); }
+.reg-meta{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--s4) var(--s6); margin:0 0 var(--s8); }
+.reg-meta div{ display:flex; flex-direction:column; gap:3px; }
+.reg-meta dt{ font-family:var(--cite); font-size:10px; letter-spacing:0.10em; text-transform:uppercase; color:var(--ink-3); }
+.reg-meta dd{ margin:0; font-family:var(--cite); font-size:12.5px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.reg-attention-label{ font-family:var(--cite); font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--oxblood); margin:0 0 var(--s3); padding-bottom:var(--s2); border-bottom:1px solid var(--oxblood-line); }
+.reg-list{ list-style:none; margin:0 0 var(--s8); padding:0; }
+.reg-row{ display:grid; grid-template-columns:26px 1fr; gap:var(--s3); padding:var(--s3) 0; border-bottom:1px solid var(--rule-2); }
+.reg-row .ix{ font-family:var(--cite); font-size:11px; color:var(--ink-3); font-variant-numeric:tabular-nums; padding-top:2px; }
+.reg-row .body .disp{ font-family:var(--cite); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; }
+.reg-row[data-tier="flag"] .disp{ color:var(--oxblood); }
+.reg-row[data-tier="query"] .disp{ color:var(--ink-3); }
+.reg-row[data-tier="refusal"] .disp{ color:var(--ink); }
+.reg-row .body .stmt{ font-family:var(--record); font-size:13.5px; line-height:1.5; color:var(--ink); margin:3px 0 0; }
+.reg-row .body .src{ font-family:var(--cite); font-size:11px; color:var(--ink-3); margin-top:3px; }
+.reg-scope{ font-family:var(--record); font-size:12.5px; line-height:1.6; color:var(--ink-2); margin:0; padding-top:var(--s5); border-top:1px solid var(--rule); }
+.reg-scope b{ color:var(--ink); font-weight:600; }
+.cert-actions{ max-width:720px; margin:var(--s6) auto 0; display:flex; justify-content:flex-end; gap:var(--s2); }
+
+/* ---------- craft: the labor, ink-dry settle, spatial continuity, supported hover ---------- */
+.note{ transition: opacity var(--d-settle) var(--e-soft), transform var(--d-settle) var(--e-soft); }
+.claim[data-mark="oxblood"], .claim[data-mark="pencil"]{ transition: text-decoration-color var(--d-settle) var(--e-soft); }
+.claim[data-mark="refusal"]{ transition: box-shadow var(--d-settle) var(--e-soft); }
+
+/* during a verification run, un-checked verdicts are absent, then settle in like ink as each cite is reached */
+#workspace.verifying .note{ opacity:0; transform:translateY(6px); }
+#workspace.verifying .note.shown{ opacity:1; transform:none; }
+#workspace.verifying .claim[data-mark="oxblood"]{ text-decoration-color:transparent; }
+#workspace.verifying .claim[data-mark="pencil"]{ text-decoration-color:transparent; }
+#workspace.verifying .claim[data-mark="refusal"]{ box-shadow:-3px 0 0 transparent; }
+#workspace.verifying .claim.inked[data-mark="oxblood"]{ text-decoration-color:var(--oxblood-line); }
+#workspace.verifying .claim.inked[data-mark="pencil"]{ text-decoration-color:var(--ink-3); }
+#workspace.verifying .claim.inked[data-mark="refusal"]{ box-shadow:-3px 0 0 var(--ink-3); }
+
+/* examine: the document scrolls to the claim under examination and settles, keeping drawer and record connected */
+@keyframes claimPulse{ from{ background:var(--oxblood-wash); } to{ background:transparent; } }
+.claim.pulse{ animation:claimPulse 900ms var(--e-soft); border-radius:2px; }
+
+/* supported hover: the quiet proof that the unmarked claims were confirmed, not skipped */
+.doc .claim:not([data-tier]){ text-decoration:underline; text-decoration-color:transparent; text-decoration-thickness:1px; text-underline-offset:3px; transition:text-decoration-color var(--d-fast) var(--e-out); }
+.doc .claim[data-src]:hover{ text-decoration-color:var(--rule); }
+.ghost{ position:absolute; left:0; right:0; opacity:0; pointer-events:none; padding-left:var(--s4); border-left:2px solid var(--rule-2); transition:opacity var(--d-fast) var(--e-out); }
+.ghost.on{ opacity:1; }
+.ghost .g-kind{ font-family:var(--cite); font-size:10px; letter-spacing:0.10em; text-transform:uppercase; color:var(--ink-3); margin:0 0 4px; }
+.ghost .g-src{ font-family:var(--record); font-size:13px; line-height:1.4; color:var(--ink-3); margin:0; }
+.btn-primary, .btn-seal{ min-height:44px; }
+.nav button, .btn-ink, .btn-quiet, .viewSource{ min-height:40px; }
+/* the exhibit is laid before you on entry */
+@keyframes exhibitRise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+#cert.is-active .exhibit{ animation:exhibitRise 360ms var(--e-out) both; }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  .labor .pulse{ animation:none; opacity:1; }
+}
+
+/* ---------- narrow ---------- */
+@media (max-width:1080px){
+  .canvas{ grid-template-columns:1fr; }
+  .doc{ max-width:64ch; }
+  .rail{ position:static; }
+  .note{ position:static; margin-bottom:var(--s5); }
+}
+</style>
+</head>
+<body>
+<div class="window" role="application" aria-label="Cachet">
+  <div class="titlebar">
+    <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="context" id="ctx">Workspace</span>
+  </div>
+
+  <div class="shell">
+    <!-- SIDEBAR (warm chrome) -->
+    <aside class="sidebar">
+      <div class="wordmark">
+        <span class="seal-glyph" aria-hidden="true"></span>
+        <span class="name">Cachet</span>
+      </div>
+      <nav class="nav" aria-label="Primary">
+        <span class="group-label">The shelf</span>
+        <button data-view="shelf">Your briefs</button>
+        <span class="group-label" style="margin-top:12px">In review</span>
+        <button data-view="workspace" aria-current="true">Vance v. Meridian <span class="count">4</span></button>
+        <button data-view="cert">Certification</button>
+      </nav>
+      <div class="spacer"></div>
+      <p class="footnote">Local · on this Mac<br/>6 sources loaded</p>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+
+      <!-- ============ SHELF ============ -->
+      <section class="view" id="shelf" aria-label="The shelf">
+        <div class="shelf-inner">
+          <div class="shelf-head">
+            <div>
+              <h1>Your briefs</h1>
+              <p>Drop in a draft and its sources. Cachet checks whether every citation holds. It does not write.</p>
+            </div>
+            <button class="btn-primary">Verify a new brief</button>
+          </div>
+
+          <p class="shelf-section-label">In review</p>
+          <ul class="brief-list">
+            <li class="brief" data-go="workspace">
+              <div>
+                <div class="b-title">Vance v. Meridian Logistics, Inc.</div>
+                <div class="b-meta">N.D. Cal. · Opp. to MSJ · 11 statements · 6 sources</div>
+              </div>
+              <div class="b-status">
+                <div class="b-needs">4 need your eyes</div>
+                <div class="b-seal"><span class="dot"></span> Uncertified</div>
+              </div>
+            </li>
+            <li class="brief">
+              <div>
+                <div class="b-title">In re Calloway Estate</div>
+                <div class="b-meta">Cal. Super. · Trial brief · 23 statements · 9 sources</div>
+              </div>
+              <div class="b-status">
+                <div class="b-needs">1 needs your eyes</div>
+                <div class="b-seal"><span class="dot"></span> Uncertified</div>
+              </div>
+            </li>
+          </ul>
+
+          <p class="shelf-section-label" style="margin-top:40px">Certified</p>
+          <ul class="brief-list">
+            <li class="brief">
+              <div>
+                <div class="b-title">Okafor v. Brightline Health</div>
+                <div class="b-meta">9th Cir. · Reply brief · 31 statements · 14 sources</div>
+              </div>
+              <div class="b-status">
+                <div class="b-needs clear">No open flags</div>
+                <div class="b-seal sealed"><span class="dot"></span> Sealed · May 21</div>
+              </div>
+            </li>
+            <li class="brief">
+              <div>
+                <div class="b-title">Delgado v. Astra Mutual</div>
+                <div class="b-meta">S.D.N.Y. · Motion to dismiss · 18 statements · 7 sources</div>
+              </div>
+              <div class="b-status">
+                <div class="b-needs clear">2 changed since sealing</div>
+                <div class="b-seal cracked"><span class="dot"></span> Seal cracked</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ WORKSPACE (the Margin) ============ -->
+      <section class="view is-active" id="workspace" aria-label="Workspace">
+        <div class="ws-bar">
+          <div class="bL">
+            <div class="ws-doc-title">Vance v. Meridian Logistics — Opposition to Motion for Summary Judgment</div>
+            <div class="ws-status"><span>Verification</span> · <span><span class="n">4</span> of 11 statements need your eyes</span></div>
+          </div>
+          <div class="bR">
+            <button class="btn-quiet" id="rerun">Re-run verification</button>
+            <button class="btn-ink" data-view="cert">Certify…</button>
+          </div>
+        </div>
+
+        <div class="canvas">
+          <div class="doc">
+            <p class="matter">Argument · Part II.B</p>
+            <h2>The record raises genuine disputes of material fact that preclude summary judgment.</h2>
+
+            <p><span class="claim" data-src="Anderson v. Liberty Lobby, 477 U.S. 242, 247">Summary judgment is proper only where the moving party shows that no genuine dispute of material fact remains and that it is entitled to judgment as a matter of law. <span class="cite">Anderson v. Liberty Lobby, 477 U.S. 242, 247 (1986)</span>.</span> <span class="claim" data-src="Celotex Corp. v. Catrett, 477 U.S. 317, 323">The moving party bears the initial burden of identifying the portions of the record it believes demonstrate the absence of a genuine dispute. <span class="cite">Celotex Corp. v. Catrett, 477 U.S. 317, 323 (1986)</span>.</span></p>
+
+            <p><span class="claim" data-tier="flag" data-mark="oxblood" data-claim="c3" tabindex="0" role="button" aria-label="Flagged statement, open examination">The duty of care extends to all consequences that a reasonable operator would foresee, and "the risk reasonably to be perceived defines the duty to be obeyed in every commercial carriage." <span class="cite">Palsgraf v. Long Island R. Co., 248 N.Y. 339, 344 (1928)</span>.</span> Defendant's own dispatch logs place the second vehicle within the foreseeable zone of danger.</p>
+
+            <p><span class="claim" data-tier="query" data-mark="pencil" data-claim="c4" tabindex="0" role="button" aria-label="Statement for your review, open examination">Where an agency interprets the statute it administers, the reviewing court owes that construction no special weight and decides the question of law for itself. <span class="cite">Lochner v. New York, 198 U.S. 45 (1905)</span>.</span> The Secretary's reading therefore controls only to the extent it persuades.</p>
+
+            <p><span class="claim" data-src="Anderson v. Liberty Lobby, 477 U.S. at 252">A nonmovant need not prove its case at this stage; it need only point to evidence on which a reasonable jury could return a verdict in its favor. <span class="cite">Anderson, 477 U.S. at 252</span>.</span> <span class="claim" data-tier="flag" data-mark="oxblood" data-claim="c5" tabindex="0" role="button" aria-label="Flagged statement, open examination">A carrier that assumes control of a hazardous load owes a heightened duty commensurate with the danger. <span class="cite">Hollis v. Garrow, 562 U.S. 401, 410 (2011)</span>.</span></p>
+
+            <p><span class="claim" data-tier="refusal" data-mark="refusal" data-claim="c6" tabindex="0" role="button" aria-label="Could not verify, open examination">Plaintiff's expert concluded that the coupling failed under loads well within its rated capacity, and that the failure was consistent with inadequate inspection. <span class="cite">Reyes Dep. 88:14–89:2</span>.</span> That testimony, standing alone, is enough to send the question to a jury.</p>
+
+            <p><span class="claim" data-src="Anderson v. Liberty Lobby, 477 U.S. at 255">Because the evidence permits more than one reasonable inference, the dispute is for the factfinder and summary judgment must be denied. <span class="cite">Anderson, 477 U.S. at 255</span>.</span></p>
+          </div>
+
+          <!-- the margin rail -->
+          <div class="rail" id="rail">
+            <div class="ghost" id="ghost" aria-hidden="true"><p class="g-kind">Supported</p><p class="g-src"></p></div>
+            <div class="note" data-for="c3" data-tier="flag">
+              <p class="n-kind">Quote not in source</p>
+              <p class="n-detail">The quoted language does not appear in the cited opinion. The opinion's wording differs.</p>
+              <button class="n-act" data-exam="c3">Examine</button>
+            </div>
+            <div class="note" data-for="c4" data-tier="query">
+              <p class="n-kind">For your review <span class="tag">assistive</span></p>
+              <p class="n-detail">The cited holding may not support this proposition. Read the passage and decide.</p>
+              <button class="n-act" data-exam="c4">Examine</button>
+            </div>
+            <div class="note" data-for="c5" data-tier="flag">
+              <p class="n-kind">No matching case</p>
+              <p class="n-detail">No case is reported at this citation. The reporter and page resolve to a different matter.</p>
+              <button class="n-act" data-exam="c5">Examine</button>
+            </div>
+            <div class="note" data-for="c6" data-tier="refusal">
+              <p class="n-kind">Cannot verify</p>
+              <p class="n-detail">The cited source is not in the loaded record.</p>
+              <p class="n-trail">Searched the 6 loaded exhibits. The Reyes deposition is not among them.</p>
+              <button class="n-act" data-load="c6">Load the source</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="labor" id="labor" aria-live="polite">
+          <span class="pulse" aria-hidden="true"></span>
+          <span id="labor-text">Checking citations…</span>
+        </div>
+
+        <!-- Examination drawer -->
+        <div class="exam" id="exam" aria-hidden="true" aria-label="Examination">
+          <div class="exam-head">
+            <span class="lbl">Examination</span>
+            <button class="exam-close" id="exam-close">Close</button>
+          </div>
+          <div class="exam-body" id="exam-body"></div>
+        </div>
+      </section>
+
+      <!-- ============ CERTIFICATION (warm act + cold register) ============ -->
+      <section class="view" id="cert" aria-label="Certification">
+        <div class="cert-scroll">
+          <div class="exhibit">
+            <!-- warm cover -->
+            <div class="cover">
+              <p class="kicker">Cachet · Certificate of citation review</p>
+              <h1>The citations in this filing were checked against the record.</h1>
+              <p class="attest">I have reviewed the items flagged below and certify that I exercised diligence in verifying the citations in this document against the sources loaded into Cachet on the date shown. <strong>This certificate attests to grounding, not to the truth or legal soundness of any proposition.</strong></p>
+              <div class="sign-row">
+                <div class="sign-block">
+                  <span class="sign-name">A. Rourke</span>
+                  <span class="sign-meta">Cal. Bar No. 248110</span>
+                  <span class="sign-meta" id="seal-date-line">Not yet certified</span>
+                </div>
+                <div class="seal-zone">
+                  <button class="btn-seal" id="set-seal">Set the seal</button>
+                  <div class="seal" id="seal" role="img" aria-label="Certification seal">
+                    <span class="seal-press" aria-hidden="true"></span>
+                      <span class="seal-mark">CACHET<br/>VERIFIED<br/>RECORD</span>
+                    <svg class="crack" viewBox="0 0 104 104" aria-hidden="true">
+                      <path id="crackPath" d="M52 4 L46 34 L60 50 L44 66 L56 100" fill="none" stroke="#2b1f14" stroke-width="2.4" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <span class="seal-caption" id="seal-caption" style="display:none"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- cold register -->
+            <div class="register">
+              <div class="reg-seam"><span class="lbl">The record</span><span class="ln"></span></div>
+              <dl class="reg-meta">
+                <div><dt>Document fingerprint</dt><dd>fnv1a · 4b9c0e22</dd></div>
+                <div><dt>Statements checked</dt><dd>11</dd></div>
+                <div><dt>Verifier</dt><dd>local · on-device</dd></div>
+              </dl>
+
+              <p class="reg-attention-label">Items requiring attorney review · 4</p>
+              <ul class="reg-list">
+                <li class="reg-row" data-tier="flag"><span class="ix">03</span><div class="body"><span class="disp">Quote not in source</span><p class="stmt">"the risk reasonably to be perceived defines the duty to be obeyed…"</p><p class="src">Palsgraf v. Long Island R. Co., 248 N.Y. 339</p></div></li>
+                <li class="reg-row" data-tier="query"><span class="ix">04</span><div class="body"><span class="disp">For your review · assistive</span><p class="stmt">Agency interpretation owed no special weight…</p><p class="src">Lochner v. New York, 198 U.S. 45</p></div></li>
+                <li class="reg-row" data-tier="flag"><span class="ix">07</span><div class="body"><span class="disp">No matching case</span><p class="stmt">A carrier assuming control of a hazardous load owes a heightened duty…</p><p class="src">Hollis v. Garrow, 562 U.S. 401</p></div></li>
+                <li class="reg-row" data-tier="refusal"><span class="ix">09</span><div class="body"><span class="disp">Cannot verify · not in record</span><p class="stmt">Plaintiff's expert concluded the coupling failed under rated loads…</p><p class="src">Reyes Dep. 88:14–89:2 · source not loaded</p></div></li>
+              </ul>
+
+              <p class="reg-scope"><b>Scope.</b> The seven remaining statements were checked against the loaded sources and are recorded as supported. Supported means the cited source contains the asserted material; it does not mean the proposition is correct in law. The four items above were not confirmed and require your judgment before this filing is served.</p>
+            </div>
+          </div>
+
+          <div class="cert-actions">
+            <button class="btn-quiet" id="simulate-edit">Simulate: edit the document</button>
+            <button class="btn-ink" id="export-cert">Export exhibit (PDF)</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ctx = document.getElementById("ctx");
+  const ctxName = { shelf:"The shelf", workspace:"Workspace", cert:"Certification" };
+
+  // ---------- view routing ----------
+  function showView(name){
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("is-active", v.id === name));
+    document.querySelectorAll(".nav button[data-view]").forEach(b =>
+      b.setAttribute("aria-current", String(b.dataset.view === name)));
+    if (ctxName[name]) ctx.textContent = ctxName[name];
+    if (name === "workspace") requestAnimationFrame(layoutMargin);
+    try { history.replaceState(null, "", "#" + name); } catch(e){}
+  }
+  document.querySelectorAll("[data-view]").forEach(b =>
+    b.addEventListener("click", () => showView(b.dataset.view)));
+  document.querySelectorAll("[data-go]").forEach(b =>
+    b.addEventListener("click", () => showView(b.dataset.go)));
+
+  // ---------- the margin: position notes against their claims ----------
+  function layoutMargin(){
+    const rail = document.getElementById("rail");
+    if (!rail || getComputedStyle(rail).position === "static") return;
+    const railTop = rail.getBoundingClientRect().top;
+    let prevBottom = -Infinity;
+    rail.querySelectorAll(".note").forEach(note => {
+      const claim = document.querySelector('.claim[data-claim="' + note.dataset.for + '"]');
+      if (!claim) return;
+      let top = claim.getBoundingClientRect().top - railTop;
+      top = Math.max(top, prevBottom + 16, 0);
+      note.style.top = top + "px";
+      prevBottom = top + note.offsetHeight;
+    });
+  }
+  window.addEventListener("resize", layoutMargin);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(layoutMargin);
+  setTimeout(layoutMargin, 400);
+
+  // ---------- the labor ----------
+  const laborBar = document.getElementById("labor");
+  const laborText = document.getElementById("labor-text");
+  // Each step names a cite as it is checked. Supported cites tick past with no mark
+  // (the unmarked pass); a flagged cite inks its verdict into the margin as it resolves.
+  const laborSeq = [
+    { cite: "477 U.S. 242" },
+    { cite: "477 U.S. 317" },
+    { cite: "248 N.Y. 339", claim: "c3" },
+    { cite: "198 U.S. 45", claim: "c4" },
+    { cite: "477 U.S. 252" },
+    { cite: "562 U.S. 401", claim: "c5" },
+    { cite: "Reyes Dep.", claim: "c6" },
+    { cite: "477 U.S. 255" }
+  ];
+  function runLabor(){
+    const ws = document.getElementById("workspace");
+    document.querySelectorAll("#rail .note").forEach(n => n.classList.remove("shown"));
+    document.querySelectorAll(".claim.inked").forEach(c => c.classList.remove("inked"));
+    if (reduce) { ws.classList.remove("verifying"); layoutMargin(); return; }
+    ws.classList.add("verifying");
+    layoutMargin();
+    laborBar.classList.add("is-on");
+    let i = 0;
+    const tick = () => {
+      if (i < laborSeq.length){
+        const step = laborSeq[i];
+        laborText.textContent = "Checking  " + step.cite + "    quote · holding · good law    " + (i + 1) + " / " + laborSeq.length;
+        if (step.claim){
+          const claim = document.querySelector('.claim[data-claim="' + step.claim + '"]');
+          const note = document.querySelector('#rail .note[data-for="' + step.claim + '"]');
+          if (claim) claim.classList.add("inked");
+          if (note) note.classList.add("shown");
+        }
+        i++;
+        setTimeout(tick, 250);
+      } else {
+        laborText.textContent = "4 of 11 statements need your eyes";
+        setTimeout(() => { laborBar.classList.remove("is-on"); ws.classList.remove("verifying"); }, 1500);
+      }
+    };
+    tick();
+  }
+  document.getElementById("rerun").addEventListener("click", runLabor);
+
+  // ---------- examination ----------
+  const examData = {
+    c3: {
+      claim: 'The duty of care extends to all consequences that a reasonable operator would foresee, and "the risk reasonably to be perceived defines the duty to be obeyed in every commercial carriage." <span class="cite">Palsgraf v. Long Island R. Co., 248 N.Y. 339 (1928)</span>.',
+      checks: [
+        { name:"Case exists", weight:"deterministic", state:"pass", detail:"248 N.Y. 339 resolves to Palsgraf v. Long Island R. Co." },
+        { name:"Quote verbatim", weight:"deterministic", state:"flag", detail:"The quoted sentence does not appear in the opinion. The phrase “in every commercial carriage” is not in the text." },
+        { name:"Good law", weight:"assistive · under-claimed", state:"query", detail:"Candidate to KeyCite. Cachet does not run a citator; confirm treatment in Shepard’s or KeyCite." },
+        { name:"Holding match", weight:"assistive", state:"query", detail:"The foreseeability principle is broadly consistent, but the quoted formulation is not the court’s." }
+      ],
+      source: { doc:"Palsgraf v. Long Island R. Co.", loc:"248 N.Y. 339, 344", quote:'The opinion states: "The risk reasonably to be perceived defines the duty to be obeyed." <mark>It does not contain the words "in every commercial carriage."</mark>' }
+    },
+    c4: {
+      claim: 'Where an agency interprets the statute it administers, the reviewing court owes that construction no special weight and decides the question of law for itself. <span class="cite">Lochner v. New York, 198 U.S. 45 (1905)</span>.',
+      checks: [
+        { name:"Case exists", weight:"deterministic", state:"pass", detail:"198 U.S. 45 resolves to Lochner v. New York." },
+        { name:"Quote verbatim", weight:"deterministic", state:"pass", detail:"No direct quotation; nothing to match verbatim." },
+        { name:"Good law", weight:"assistive · under-claimed", state:"query", detail:"Candidate to KeyCite. Lochner-era substantive due process has a long subsequent history; confirm treatment." },
+        { name:"Holding match", weight:"assistive", state:"query", detail:"Lochner concerns substantive due process limits on economic regulation, not the standard of review for agency statutory interpretation. The proposition may rest on the wrong authority. For your review." }
+      ],
+      source: { doc:"Lochner v. New York", loc:"198 U.S. 45, 53", quote:'The opinion addresses the limits of the state’s police power over labor contracts. <mark>It does not set out a standard of deference to agency statutory interpretation.</mark>' }
+    },
+    c5: {
+      claim: 'A carrier that assumes control of a hazardous load owes a heightened duty commensurate with the danger. <span class="cite">Hollis v. Garrow, 562 U.S. 401 (2011)</span>.',
+      checks: [
+        { name:"Case exists", weight:"deterministic", state:"flag", detail:"No case is reported at 562 U.S. 401. The volume and page resolve to an unrelated matter." },
+        { name:"Quote verbatim", weight:"deterministic", state:"unknown", detail:"Not checked. There is no source to check against." },
+        { name:"Good law", weight:"assistive · under-claimed", state:"unknown", detail:"Not checked." },
+        { name:"Holding match", weight:"assistive", state:"unknown", detail:"Not checked." }
+      ],
+      source: { doc:"Citation lookup", loc:"562 U.S. 401", quote:'<mark>No matching case found at this citation.</mark> The proposition may be sound, but the authority cited for it does not exist as written.' }
+    },
+    c6: {
+      claim: "Plaintiff's expert concluded that the coupling failed under loads well within its rated capacity, and that the failure was consistent with inadequate inspection. <span class=\"cite\">Reyes Dep. 88:14–89:2</span>.",
+      checks: [
+        { name:"Source in record", weight:"deterministic", state:"unknown", detail:"The Reyes deposition transcript is not among the 6 sources loaded into this matter." },
+        { name:"Quote verbatim", weight:"deterministic", state:"unknown", detail:"Cannot check. The source is not present." },
+        { name:"Good law", weight:"n/a", state:"unknown", detail:"Not applicable to a record citation." },
+        { name:"Holding match", weight:"n/a", state:"unknown", detail:"Not applicable to a record citation." }
+      ],
+      source: { doc:"Reyes Dep. 88:14–89:2", loc:"not loaded", quote:'<mark>This source is not in the loaded record.</mark> Cachet will not guess at a document it has not been given. Load the transcript and re-run to verify this citation.' }
+    }
+  };
+
+  const exam = document.getElementById("exam");
+  const examBody = document.getElementById("exam-body");
+  function openExam(id){
+    const d = examData[id];
+    if (!d) return;
+    const checks = d.checks.map(c => `
+      <div class="ck" data-state="${c.state}">
+        <span class="mk" aria-hidden="true"></span>
+        <div>
+          <div class="ck-name">${c.name} <span class="ck-weight">${c.weight}</span></div>
+          <p class="ck-detail">${c.detail}</p>
+        </div>
+      </div>`).join("");
+    examBody.innerHTML = `
+      <p class="exam-claim">${d.claim}</p>
+      <div class="checks">
+        <p class="ck-label">Four checks, shown separately</p>
+        ${checks}
+      </div>
+      <div class="source-card">
+        <div class="sc-head"><span class="sc-doc">${d.source.doc}</span><span class="sc-loc">${d.source.loc}</span></div>
+        <p class="source-quote">${d.source.quote}</p>
+        <button class="sc-open">Open source at the cited span</button>
+      </div>`;
+    exam.classList.add("is-open");
+    exam.setAttribute("aria-hidden", "false");
+    // spatial continuity: bring the examined claim to center in the record behind the drawer
+    const claim = document.querySelector('.claim[data-claim="' + id + '"]');
+    if (claim) {
+      claim.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      if (!reduce) { claim.classList.remove("pulse"); void claim.offsetWidth; claim.classList.add("pulse"); }
+    }
+    const sweep = () => { const m = examBody.querySelector(".source-quote mark"); if (m && !reduce) { m.classList.remove("sweep"); void m.offsetWidth; m.classList.add("sweep"); } };
+    sweep();
+    const scOpen = examBody.querySelector(".sc-open");
+    if (scOpen) scOpen.addEventListener("click", () => { sweep(); if (claim && !reduce) { claim.classList.remove("pulse"); void claim.offsetWidth; claim.classList.add("pulse"); } });
+    document.getElementById("exam-close").focus();
+  }
+  function closeExam(){ exam.classList.remove("is-open"); exam.setAttribute("aria-hidden", "true"); }
+  document.getElementById("exam-close").addEventListener("click", closeExam);
+  document.querySelectorAll("[data-exam]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openExam(b.dataset.exam); }));
+  document.querySelectorAll(".claim[data-claim]").forEach(c => {
+    c.addEventListener("click", () => openExam(c.dataset.claim));
+    c.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openExam(c.dataset.claim); } });
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeExam(); });
+
+  // ---------- the seal ----------
+  const seal = document.getElementById("seal");
+  const setSealBtn = document.getElementById("set-seal");
+  const sealCaption = document.getElementById("seal-caption");
+  const sealDateLine = document.getElementById("seal-date-line");
+  let sealed = false;
+
+  function setSeal(){
+    if (sealed) return;
+    sealed = true;
+    setSealBtn.style.display = "none";
+    seal.classList.add("is-set");
+    seal.classList.remove("cracked");
+    sealCaption.classList.remove("stale");
+    sealCaption.style.display = "block";
+    sealCaption.innerHTML = "Sealed 2026-05-29<br/>fnv1a · 4b9c0e22";
+    sealDateLine.textContent = "Certified 2026-05-29";
+    if (!reduce) {
+      // a stamp pressed into paper: drops from above, presses (dim + scale under 1), settles still
+      seal.animate(
+        [{ transform:"translateY(-12px) scale(1.2) rotate(-5deg)", filter:"brightness(1.35)", opacity:0 },
+         { transform:"translateY(0) scale(0.95) rotate(0)", filter:"brightness(0.88)", opacity:1, offset:0.55 },
+         { transform:"translateY(0) scale(1) rotate(0)", filter:"brightness(1)", opacity:1 }],
+        { duration: 900, easing:"cubic-bezier(0.34,0,0.2,1)", fill:"backwards" }
+      );
+    }
+  }
+  function breakSeal(){
+    if (!sealed) { setSeal(); }
+    seal.classList.add("cracked");
+    sealCaption.classList.add("stale");
+    sealCaption.innerHTML = "Seal cracked<br/>document changed · re-verify";
+    sealDateLine.textContent = "Certification stale";
+    const path = document.getElementById("crackPath");
+    if (path && !reduce) {
+      const len = path.getTotalLength();
+      path.style.strokeDasharray = len;
+      path.style.strokeDashoffset = len;
+      path.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }],
+        { duration: 600, easing:"cubic-bezier(0.4,0,1,1)", fill:"forwards" });
+      // the brass loses its luster: an invalidated seal is dimmer, never alarmed
+      seal.animate([{ filter:"brightness(1) saturate(1)" }, { filter:"brightness(0.9) saturate(0.82)" }],
+        { duration: 600, easing:"cubic-bezier(0.65,0,0.35,1)", fill:"forwards" });
+    }
+  }
+  setSealBtn.addEventListener("click", setSeal);
+  document.getElementById("simulate-edit").addEventListener("click", breakSeal);
+  document.getElementById("export-cert").addEventListener("click", () => window.print());
+
+  // ---------- supported hover: confirm the unmarked were checked, not skipped ----------
+  const ghost = document.getElementById("ghost");
+  const railEl = document.getElementById("rail");
+  document.querySelectorAll(".doc .claim[data-src]").forEach(claim => {
+    claim.addEventListener("mouseenter", () => {
+      if (!ghost || getComputedStyle(railEl).position === "static") return;
+      const top = claim.getBoundingClientRect().top - railEl.getBoundingClientRect().top;
+      ghost.style.top = Math.max(0, top) + "px";
+      ghost.querySelector(".g-src").textContent = claim.dataset.src;
+      ghost.classList.add("on");
+    });
+    claim.addEventListener("mouseleave", () => { if (ghost) ghost.classList.remove("on"); });
+  });
+
+  // ---------- boot ----------
+  const hash = (location.hash || "").replace("#", "");
+  if (["shelf","workspace","cert"].includes(hash)) showView(hash);
+  if (hash === "cert-sealed") { showView("cert"); setSeal(); }
+  if (hash === "cert-cracked") { showView("cert"); breakSeal(); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+/* Cachet — full landing page styles.
+ * Section rhythm is deliberately uneven: the page is not a stack of equal bands.
+ * Color only ever carries a verdict. Everything else is neutral.
+ * Motion: transform/opacity only, reveal-on-scroll via [data-reveal] in base.css. */
+
+/* ============ HERO (Concept A) ============ */
+.hero { position: relative; z-index: 1; }
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-9);
+  align-items: center;
+  padding-block: var(--s-9) var(--s-10);
+}
+@media (max-width: 940px) {
+  .hero-grid { grid-template-columns: 1fr; gap: var(--s-7); padding-block: var(--s-7) var(--s-8); }
+}
+.hero h1 {
+  font-family: var(--font-display); font-weight: 400;
+  font-size: var(--t-display); letter-spacing: -0.025em;
+}
+.hero h1 em { font-style: italic; color: var(--n-10); }
+.hero .lede {
+  margin-top: var(--s-5); max-width: 46ch;
+  color: var(--text-secondary); font-size: var(--t-1); line-height: 1.55; letter-spacing: -0.01em;
+}
+.hero .actions { margin-top: var(--s-7); display: flex; gap: var(--s-4); align-items: center; flex-wrap: wrap; }
+.hero .reassure { margin-top: var(--s-5); color: var(--text-muted); font-size: var(--t--1); }
+
+.doc {
+  position: relative; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-3); padding: var(--s-6); box-shadow: var(--shadow-3);
+  font-size: 0.95rem; line-height: 1.85; color: var(--text-secondary);
+}
+.doc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--s-5); padding-bottom: var(--s-4); border-bottom: 1px solid var(--border);
+}
+.doc-head .file { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); }
+.doc-head .status { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); display:flex; align-items:center; gap: var(--s-2); }
+.doc-head .status .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted);
+  animation: dot-resolve 2.8s var(--ease-in-out) 1.4s forwards;
+}
+@keyframes dot-resolve {
+  0%, 8% { background: var(--text-muted); box-shadow: 0 0 0 0 transparent; }
+  8%, 60% { background: var(--unverified); }
+  100% { background: var(--verified); box-shadow: 0 0 0 3px var(--verified-glow); }
+}
+.doc p { margin-bottom: var(--s-4); }
+.doc .cite { color: var(--text-primary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+.flag {
+  position: relative; color: var(--unverified); background: var(--unverified-glow);
+  border-radius: 3px; padding: 0 3px; box-shadow: 0 0 0 1px var(--unverified-dim); font-style: normal;
+}
+.scan {
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--verified), transparent);
+  opacity: 0; animation: sweep 1.8s var(--ease-in-out) 1.4s 1 forwards;
+}
+@keyframes sweep {
+  0% { opacity: 0; transform: translateY(0); } 10% { opacity: 1; }
+  90% { opacity: 1; } 100% { opacity: 0; transform: translateY(360px); }
+}
+.verdict {
+  position: absolute; right: calc(-1 * var(--s-6)); bottom: var(--s-7); width: 300px;
+  background: var(--surface-overlay); border: 1px solid var(--unverified-dim);
+  border-left: 3px solid var(--unverified); border-radius: var(--r-2);
+  padding: var(--s-4) var(--s-5); box-shadow: var(--shadow-3);
+  opacity: 0; transform: translateY(14px) scale(0.97);
+  animation: rise 0.62s var(--ease-out) 3.8s 1 forwards;
+}
+@keyframes rise { to { opacity: 1; transform: translateY(0) scale(1); } }
+.verdict .label { font-family: var(--font-mono); font-size: var(--t--1); letter-spacing: 0.1em; text-transform: uppercase; color: var(--unverified); display: flex; align-items: center; gap: var(--s-2); }
+.verdict .headline { margin-top: var(--s-3); color: var(--text-primary); font-weight: 500; line-height: 1.35; }
+.verdict .detail { margin-top: var(--s-2); font-size: var(--t--1); color: var(--text-secondary); line-height: 1.5; }
+.verdict .source { margin-top: var(--s-3); font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
+@media (max-width: 940px) {
+  .verdict { position: static; width: auto; margin-top: var(--s-5); animation-delay: 3.4s; }
+  .scan { display: none; }
+}
+
+/* ============ Section scaffolding ============ */
+.section { position: relative; z-index: 1; padding-block: var(--s-9); }
+.section-head { max-width: 60ch; }
+.section-head .eyebrow { display: block; margin-bottom: var(--s-4); }
+.section-head h2 {
+  font-family: var(--font-display); font-weight: 400; font-size: var(--t-4);
+  letter-spacing: -0.022em; line-height: 1.08;
+}
+.section-head p { margin-top: var(--s-4); color: var(--text-secondary); font-size: var(--t-1); line-height: 1.55; max-width: 54ch; }
+.rule { border: 0; border-top: 1px solid var(--border); }
+
+/* ============ LEDGER (Concept C) ============ */
+.ledger { margin-top: var(--s-7); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); box-shadow: var(--shadow-2); overflow: hidden; }
+.ledger-head { display: flex; align-items: center; justify-content: space-between; padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); letter-spacing: 0.04em; }
+.ledger-head .summary { display: flex; gap: var(--s-5); }
+.ledger-head .summary b { color: var(--verified); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ledger-head .summary .warn { color: var(--unverified); }
+.row { display: grid; grid-template-columns: 132px 1fr 220px; gap: var(--s-5); align-items: baseline; padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--border); }
+.row:last-child { border-bottom: 0; }
+.row .verdict-cell { font-family: var(--font-mono); font-size: var(--t--1); letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; gap: var(--s-2); }
+.row.ok .verdict-cell { color: var(--verified); }
+.row.bad .verdict-cell { color: var(--refused); }
+.row .cite { font-family: var(--font-mono); font-size: 0.86rem; color: var(--text-primary); }
+.row .note { font-size: var(--t--1); color: var(--text-secondary); }
+.row.bad { background: linear-gradient(90deg, var(--refused-dim), transparent 60%); }
+.row.bad .cite { color: var(--refused); }
+.tick { width: 14px; height: 14px; display: inline-grid; place-items: center; }
+@media (max-width: 820px) {
+  .row { grid-template-columns: 110px 1fr; }
+  .row .note { grid-column: 2; }
+}
+
+/* ============ STAKES (problem framing) ============ */
+.stakes { padding-block: var(--s-10); }
+.stakes .pull {
+  font-family: var(--font-display); font-weight: 400;
+  font-size: clamp(1.9rem, 1.1rem + 3vw, 3.1rem); line-height: 1.18;
+  letter-spacing: -0.02em; max-width: 22ch; color: var(--text-primary);
+  text-wrap: balance;
+}
+.stakes .pull .accent { color: var(--unverified); font-style: italic; }
+.stakes .attribution { margin-top: var(--s-6); display: flex; gap: var(--s-4); align-items: baseline; flex-wrap: wrap; }
+.stakes .attribution .mono { color: var(--text-muted); font-size: var(--t--1); }
+.stakes .attribution .src { color: var(--text-secondary); font-size: var(--t-0); max-width: 48ch; }
+
+/* ============ HOW (what Cachet checks) ============ */
+.checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-5); margin-top: var(--s-7); }
+@media (max-width: 820px) { .checks { grid-template-columns: 1fr; } }
+.check {
+  padding: var(--s-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3);
+  transition: border-color var(--dur-3) var(--ease-out), transform var(--dur-3) var(--ease-out), box-shadow var(--dur-3) var(--ease-out);
+}
+.check:hover { border-color: var(--border-strong); transform: translateY(-3px); box-shadow: var(--shadow-2); }
+.check .num { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); letter-spacing: 0.1em; }
+.check h3 { margin-top: var(--s-4); font-family: var(--font-display); font-weight: 500; font-size: var(--t-2); letter-spacing: -0.015em; }
+.check p { margin-top: var(--s-3); color: var(--text-secondary); font-size: 0.95rem; line-height: 1.55; }
+.refusal-note {
+  margin-top: var(--s-6); padding: var(--s-5) var(--s-6);
+  border-left: 3px solid var(--unverified); background: var(--unverified-glow);
+  border-radius: var(--r-1); max-width: 56ch;
+}
+.refusal-note p { font-family: var(--font-display); font-size: var(--t-2); font-weight: 400; letter-spacing: -0.015em; color: var(--text-primary); line-height: 1.3; }
+
+/* ============ TRUST (objection handling) ============ */
+.trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); margin-top: var(--s-7); }
+@media (max-width: 820px) { .trust { grid-template-columns: 1fr; gap: var(--s-5); } }
+.trust .item { padding: var(--s-5); border-radius: var(--r-2); transition: background var(--dur-3) var(--ease-out); }
+.trust .item:hover { background: var(--surface); }
+.trust .item h3 { font-family: var(--font-sans); font-weight: 600; font-size: var(--t-1); letter-spacing: -0.01em; }
+.trust .item p { margin-top: var(--s-3); color: var(--text-secondary); font-size: 0.95rem; line-height: 1.55; }
+.trust .item .k { font-family: var(--font-mono); font-size: var(--t--1); color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ============ FINAL CTA ============ */
+.cta { text-align: center; padding-block: var(--s-10); }
+.cta h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.2rem, 1.4rem + 3vw, 3.4rem); letter-spacing: -0.025em; }
+.cta p { margin: var(--s-5) auto 0; max-width: 48ch; color: var(--text-secondary); font-size: var(--t-1); }
+.cta .actions { margin-top: var(--s-7); display: flex; gap: var(--s-4); justify-content: center; flex-wrap: wrap; }
+
+/* ============ Reduced-motion: resolve animated-in elements to final state ============ */
+@media (prefers-reduced-motion: reduce) {
+  .verdict, .row { opacity: 1 !important; transform: none !important; }
+  .scan { display: none !important; }
+  .doc-head .status .dot { background: var(--verified) !important; }
+}
+
+/* ============ FOOTER ============ */
+.footer { border-top: 1px solid var(--border); padding-block: var(--s-7); margin-top: var(--s-8); }
+.footer-grid { display: flex; align-items: center; justify-content: space-between; gap: var(--s-5); flex-wrap: wrap; color: var(--text-muted); font-size: var(--t--1); }
+.footer .brand { font-size: var(--t-5); }
+.footer a { color: var(--text-muted); text-decoration: none; transition: color var(--dur-2) var(--ease-out); }
+.footer .links a { display: inline-flex; align-items: center; min-height: 44px; } /* 44px hit area */
+.footer a:hover { color: var(--text-secondary); }
+.footer .links { display: flex; gap: var(--s-5); }
+
+/* ============ Hero verification sequence ============
+   The brief reads as plain text, then Cachet checks it: the scan passes, the
+   verified citation confirms (underline draws in), and the fabricated one is
+   caught (goes amber) last, just before the verdict lands. The base rule is the
+   resolved look, so reduced-motion and no-animation show the final result with
+   no movement. Timed to the scan (sweep: 0.9s delay, 1.5s) and the verdict rise
+   (2.2s). Sub-second paint fades on two inline spans; no layout, composites fine. */
+@keyframes cite-confirm { from { text-decoration-color: transparent; color: var(--text-secondary); } }
+@keyframes flag-catch  {
+  0%  { color: var(--text-secondary); background: transparent; box-shadow: 0 0 0 0 hsl(41 80% 60% / 0); }
+  50% { box-shadow: 0 0 0 5px hsl(41 80% 60% / 0.32); }
+}
+.doc .cite { animation: cite-confirm var(--dur-4) var(--ease-out) 2.1s both; }
+.doc .flag { animation: flag-catch  var(--dur-4) var(--ease-out) 3.0s both; }
+@media (prefers-reduced-motion: reduce) {
+  .doc .cite, .doc .flag { animation: none; }
+}
+
+/* ============ Ambient background: depth + faint drift ============
+   Soft warm light pools drift slowly (the dark reads as a dimly-lit room, not
+   flat black) and faint dust rises. Warm-neutral only, no color (color stays a
+   verdict). Behind everything, pointer-events none, transform/opacity only,
+   reduced-motion off. */
+.bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.bg-fx .glow { position: absolute; width: 72vmax; height: 72vmax; border-radius: 50%; will-change: transform, opacity; }
+.bg-fx .glow-a {
+  left: -12vmax; top: -24vmax;
+  background: radial-gradient(closest-side, hsl(38 12% 15% / 0.55), transparent 70%);
+  animation: glow-a 34s var(--ease-in-out) infinite alternate;
+}
+.bg-fx .glow-b {
+  right: -16vmax; bottom: -22vmax;
+  background: radial-gradient(closest-side, hsl(34 10% 13% / 0.50), transparent 70%);
+  animation: glow-b 46s var(--ease-in-out) infinite alternate;
+}
+@keyframes glow-a {
+  from { transform: translate3d(0,0,0) scale(1);             opacity: 0.42; }
+  to   { transform: translate3d(7vmax,5vmax,0) scale(1.14);  opacity: 0.66; }
+}
+@keyframes glow-b {
+  from { transform: translate3d(0,0,0) scale(1.06);          opacity: 0.32; }
+  to   { transform: translate3d(-6vmax,-7vmax,0) scale(1);   opacity: 0.55; }
+}
+.bg-fx .dust { position: absolute; inset: 0; }
+.bg-fx .dust i {
+  position: absolute; width: 2px; height: 2px; border-radius: 50%;
+  background: hsl(42 14% 82%); opacity: 0;
+  animation: dust-drift linear infinite;
+}
+@keyframes dust-drift {
+  0%   { transform: translateY(10px);  opacity: 0; }
+  18%  { opacity: 0.5; }
+  82%  { opacity: 0.42; }
+  100% { transform: translateY(-48px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bg-fx .glow { animation: none; opacity: 0.5; }
+  .bg-fx .dust { display: none; }
+}
