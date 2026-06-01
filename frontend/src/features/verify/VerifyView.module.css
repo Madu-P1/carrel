@@ -261,6 +261,37 @@
   border: 1px solid var(--hairline);
 }
 
+/* Streaming-only: a claim whose case check is still in flight. Quiet ink, no
+   --verify-flag oxblood: checking is not a finding. It replaces the verdict
+   badge until the cite_verdict lands, so a claim never flashes a pass. */
+.badgeChecking {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--hairline);
+}
+
+.verdictCardChecking {
+  opacity: 0.82;
+}
+
+/* The "watching the labor" indicator. Motion lives only here and on the
+   spinner; the verdict itself sits still like ink (DESIGN.md verify-scope). */
+.workingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.workingLabel {
+  font-variant-numeric: tabular-nums;
+}
+
 .verdictIndex {
   color: var(--text-tertiary);
   font-family: var(--font-mono);

@@ -35,7 +35,7 @@ import logging
 import sqlite3
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence
 
 from app_logging import get_logger, log_event
 from services import tutor as tutor_service
@@ -231,6 +231,38 @@ def verify_draft(
         fetch_recent_events=fetch_recent_events,
     )
 
+    return _verify_result_from_envelope(cleaned, envelope, started)
+
+
+def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
+    """Serialize a VerifyResult into the API response shape."""
+    return {
+        "draft_text": result.draft_text,
+        "claim_verdicts": [_verdict_card_to_dict(v) for v in result.claim_verdicts],
+        "summary": {
+            "total": result.summary.total,
+            "verified": result.summary.verified,
+            "unsupported": result.summary.unsupported,
+            "unknown": result.summary.unknown,
+        },
+        "latency_ms": result.latency_ms,
+        "model": result.model,
+        "ok": result.ok,
+        "error": result.error,
+        "provider": result.provider,
+    }
+
+
+def _verify_result_from_envelope(
+    cleaned: str,
+    envelope: Dict[str, Any],
+    started: float,
+) -> VerifyResult:
+    """Map a grounded-tutor envelope into the per-claim VerifyResult.
+
+    Shared by `verify_draft` (non-stream) and `verify_draft_stream` so both
+    produce an identical result for the same envelope.
+    """
     claims = envelope.get("claims") or []
     unsupported_spans = envelope.get("unsupported_spans") or []
     model_name = str(envelope.get("model") or envelope.get("answer_model") or "")
@@ -288,30 +320,96 @@ def verify_draft(
     )
 
 
-def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
-    """Serialize a VerifyResult into the API response shape."""
+def _verdict_card_to_dict(verdict: VerifyClaimVerdict) -> Dict[str, Any]:
+    """Serialize one VerifyClaimVerdict card to the API / stream shape."""
     return {
-        "draft_text": result.draft_text,
-        "claim_verdicts": [
-            {
-                "claim_index": v.claim_index,
-                "claim_text": v.claim_text,
-                "verdict": v.verdict,
-                "citations": list(v.citations),
-                "case_verdicts": list(v.case_verdicts),
-                "unsupported_reason": v.unsupported_reason,
-            }
-            for v in result.claim_verdicts
-        ],
-        "summary": {
-            "total": result.summary.total,
-            "verified": result.summary.verified,
-            "unsupported": result.summary.unsupported,
-            "unknown": result.summary.unknown,
-        },
-        "latency_ms": result.latency_ms,
-        "model": result.model,
-        "ok": result.ok,
-        "error": result.error,
-        "provider": result.provider,
+        "claim_index": verdict.claim_index,
+        "claim_text": verdict.claim_text,
+        "verdict": verdict.verdict,
+        "citations": list(verdict.citations),
+        "case_verdicts": list(verdict.case_verdicts),
+        "unsupported_reason": verdict.unsupported_reason,
     }
+
+
+def verify_draft_stream(
+    conn: sqlite3.Connection,
+    draft: str,
+    *,
+    doc_ids: Sequence[str] | None = None,
+    subject_name: str | None = None,
+    log_study_event,
+    fetch_recent_events,
+) -> Iterator[Dict[str, Any]]:
+    """Streaming variant of `verify_draft`.
+
+    Yields verifier-shaped events so the UI shows the per-cite labor as it
+    happens, then a final canonical result:
+
+      - ``{"type": "progress", "phase": "extracting"}``
+      - ``{"type": "claims", "claim_verdicts": [...skeleton cards...]}`` once the
+        grounded answer resolves (case verdicts NOT yet attached)
+      - ``{"type": "cite_verdict", "claim_index": i, "case_verdict": {...}}`` per
+        claim as the CourtListener + holding-match labor completes
+      - ``{"type": "result", "verify": {...}}`` identical to POST /api/verify
+
+    Invariant #6 (an unfinished verification must never read as a pass): this
+    generator never pre-emits a resolved case verdict. Skeleton cards carry an
+    empty ``case_verdicts`` list, so the client must default each claim's
+    cite-axis to ``could_not_check`` and resolve it only on an explicit
+    cite_verdict (or the final result). A dropped stream therefore leaves the
+    not-yet-yielded claims as could_not_check, never supported. Exactly one
+    cite_verdict is emitted per claim card (non-legal claims included, as an
+    ok=True empty batch), so the client knows the expected count.
+    """
+    cleaned = (draft or "").strip()
+    started = time.perf_counter()
+    if not cleaned:
+        result = VerifyResult(
+            draft_text="",
+            claim_verdicts=(),
+            summary=VerifySummary(total=0, verified=0, unsupported=0, unknown=0),
+            latency_ms=0.0,
+            model="",
+            ok=False,
+            error="empty_draft",
+            provider="",
+        )
+        yield {"type": "result", "verify": verify_result_to_payload(result)}
+        return
+
+    payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
+    envelope: Dict[str, Any] = {}
+    for event in tutor_service.grounded_tutor_envelope_steps(
+        conn,
+        payload,
+        log_study_event=log_study_event,
+        fetch_recent_events=fetch_recent_events,
+    ):
+        etype = event.get("type")
+        if etype == "progress":
+            yield event
+        elif etype == "claims":
+            engine_claims = event.get("claims") or []
+            spans = event.get("unsupported_spans") or []
+            cards: List[VerifyClaimVerdict] = []
+            for index, claim_dict in enumerate(engine_claims):
+                if not isinstance(claim_dict, dict):
+                    continue
+                cards.append(_claim_dict_to_verdict(claim_dict, index))
+            base_index = len(cards)
+            for offset, span in enumerate(spans):
+                if not span:
+                    continue
+                cards.append(_unsupported_span_to_verdict(str(span), base_index + offset))
+            yield {
+                "type": "claims",
+                "claim_verdicts": [_verdict_card_to_dict(v) for v in cards],
+            }
+        elif etype == "cite_verdict":
+            yield event
+        elif etype == "result":
+            envelope = event["envelope"]
+
+    result = _verify_result_from_envelope(cleaned, envelope, started)
+    yield {"type": "result", "verify": verify_result_to_payload(result)}
