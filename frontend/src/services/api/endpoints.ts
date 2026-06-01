@@ -21,6 +21,8 @@ export type VerifyResponse =
 export type VerifyClaimVerdict = NonNullable<VerifyResponse["claim_verdicts"]>[number];
 /** One serialized case-verdict batch (the element shape of a claim's case_verdicts). */
 export type VerifyCaseVerdictBatch = NonNullable<VerifyClaimVerdict["case_verdicts"]>[number];
+/** One brief-level draft-quote-verbatim result (Cachet PR4). */
+export type VerifyQuoteResult = NonNullable<VerifyResponse["quote_results"]>[number];
 
 /**
  * Events emitted by POST /api/verify/stream (Cachet PR3). This route returns a
@@ -41,6 +43,7 @@ export type VerifyStreamEvent =
   | { type: "progress"; phase: string }
   | { type: "claims"; claim_verdicts: VerifyClaimVerdict[] }
   | { type: "cite_verdict"; claim_index: number; case_verdict: VerifyCaseVerdictBatch }
+  | { type: "quote_batch"; quotes: VerifyQuoteResult[] }
   | { type: "result"; verify: VerifyResponse }
   | { type: "error"; error: string };
 

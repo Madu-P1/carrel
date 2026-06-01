@@ -1066,3 +1066,73 @@
     display: none;
   }
 }
+
+/* Cachet PR4: brief-level draft-quote-verbatim panel. Same cold-record register
+   as the verdict surface: warm paper, oxblood (--verify-flag) reserved for the
+   deterministic "not found verbatim" flag, quiet hairline for could-not-check.
+   No green, no celebration, no confidence numbers. */
+.quotePanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.quotePanelTitle {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.quoteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quoteItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+}
+
+/* Deterministic flag: a quoted run absent from the source. Oxblood, like the
+   other deterministic flags (citation_not_found / claim_unsupported). */
+.quoteAltered {
+  border-left-color: var(--verify-flag);
+}
+
+/* The honest refusal: could not see the source. Quiet ink, never oxblood. */
+.quoteUnplaceable {
+  border-left-color: color-mix(in srgb, var(--text-tertiary) 60%, transparent);
+}
+
+.quoteStatus {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.quoteAltered .quoteStatus {
+  color: var(--verify-flag);
+}
+
+.quoteText {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}

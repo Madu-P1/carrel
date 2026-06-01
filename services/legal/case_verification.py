@@ -58,6 +58,21 @@ LOGGER = get_logger("einstein.legal.case_verification")
 # cite (worse — so we keep the regex broad).
 _CITATION_SHAPE = re.compile(r"\b\d{1,4}\s+[A-Z][A-Za-z\.\s\(\)]{1,40}\s+\d{1,5}\b")
 
+# Cachet PR4: how much opinion text to retain for the draft-quote check. The
+# holding-match default (8000) is tuned for "the holding is near the front";
+# a quoted passage can be anywhere, so we keep more. This is a string search
+# (no token cost). A quote past this cap degrades to could_not_check via the
+# fetch_opinion_text truncation sentinel, never to a false flag.
+_OPINION_QUOTE_CHARS = 50_000
+
+# How much of the opinion the HOLDING-MATCH LLM call reads. The holding is
+# typically in the first several thousand chars, and this text is embedded in
+# the prompt, so it is a real per-call token cost. Kept small and decoupled from
+# the quote-source window (_OPINION_QUOTE_CHARS): raising the quote window to
+# 50k must NOT 6x the holding-match prompt. The quote check reads the full
+# retained text; holding-match reads only this head slice.
+_HOLDING_MATCH_CHARS = 8_000
+
 
 @dataclass(frozen=True)
 class CaseVerdict:
@@ -90,6 +105,15 @@ class CaseVerdict:
     holding_concern: str | None = None
     holding_excerpt: str | None = None
     holding_error: str | None = None
+    # Cachet PR4: the fetched opinion text retained for the draft-quote-verbatim
+    # check (services.legal.quote_check). The holding-match step fetches this
+    # already; we keep it so a lawyer's quoted run can be matched against the
+    # real opinion without a second network call. Carries the truncation
+    # sentinel (" …") when the opinion was longer than the fetch cap, so the
+    # quote check can degrade a not-found run to could_not_check instead of
+    # falsely flagging it. None when no opinion was fetched (cite did not exist,
+    # holding-match disabled, or the fetch failed).
+    opinion_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -369,18 +393,31 @@ def _verdict_from_hit(
         )
 
     opinion_uri = cluster.sub_opinions[0]
-    opinion = fetch_opinion_text(opinion_uri, client=http_client)
+    # Cachet PR4: fetch a generous span so a lawyer's quoted run that lives deep
+    # in a long opinion is still in the retained text. This is a string search
+    # downstream, not an LLM call, so the larger cap costs no tokens; holding-
+    # match still only reads the head. fetch_opinion_text appends a " …"
+    # sentinel when it truncates, which quote_check reads to degrade safely.
+    opinion = fetch_opinion_text(opinion_uri, client=http_client, max_chars=_OPINION_QUOTE_CHARS)
     if not opinion.ok:
         return CaseVerdict(
             **base_kwargs,
             holding_error=opinion.error_code,
         )
 
+    # Retain the opinion text on every verdict where the fetch succeeded, even
+    # if the holding-match verifier later fails: the quote check only needs the
+    # source string, not a holding verdict.
+    base_kwargs["opinion_text"] = opinion.text
+
     verdict = check_holding_match(
         claim_text=claim_text,
         case_name=cluster.case_name or None,
         citation=hit.citation,
-        opinion_text=opinion.text,
+        # Head slice only: the full opinion is retained on base_kwargs for the
+        # quote check, but holding-match reads the head so raising the quote
+        # window does not inflate this LLM call's token cost.
+        opinion_text=opinion.text[:_HOLDING_MATCH_CHARS],
         provider=ai_provider,
     )
     if not verdict.ok:

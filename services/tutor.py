@@ -228,6 +228,16 @@ class HydratedNodeContext:
     # "body" on the legacy chunks path, which has no structure. Used to
     # keep structural nodes (heading/header/footer) out of citations.
     node_type: str = "body"
+    # Cachet PR4 chunk-join: source position, used to merge PROVABLY-ADJACENT
+    # citations of the same document into one contiguous source for the
+    # draft-quote check, so a quote straddling two retrieved pieces is not
+    # false-flagged. Nodes path: char_start/char_end are real character offsets
+    # (nodes.char_start/char_end). Chunks path: char offsets are None and
+    # chunk_index gives ordering + adjacency within (doc_id). Both None on
+    # paths that cannot supply position (join simply does not merge those).
+    char_start: int | None = None
+    char_end: int | None = None
+    chunk_index: int | None = None
 
 
 def fetch_notes(
@@ -573,6 +583,13 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
         # legacy chunks path (no node-level provenance); the
         # originating nodes.node_type on the typed-node path.
         "node_type": context.node_type,
+        # Cachet PR4 chunk-join: source position so the verify layer can merge
+        # provably-adjacent same-document citations into one contiguous source
+        # for the draft-quote check. Server-internal (consumed in services.verify
+        # _loaded_doc_sources); not part of the user-facing citation card.
+        "char_start": context.char_start,
+        "char_end": context.char_end,
+        "chunk_index": context.chunk_index,
     }
 
 
@@ -713,6 +730,8 @@ def _hydrate_from_nodes(
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
                 node_type=hit.node_type,
+                char_start=hit.char_start,
+                char_end=hit.char_end,
             )
         )
     return contexts
@@ -732,7 +751,8 @@ def _hydrate_from_chunks(
     placeholders = ",".join("?" * len(chunk_ids))
     rows = conn.execute(
         f"""
-        SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
+        SELECT c.id, c.doc_id, c.section, c.page_num, c.chunk_index, c.content,
+               d.filename AS document_name
         FROM chunks c
         JOIN documents d ON d.id = c.doc_id
         WHERE c.id IN ({placeholders})
@@ -769,6 +789,9 @@ def _hydrate_from_chunks(
                 # equation skeletons even though `content` is clean.
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
+                chunk_index=int(row["chunk_index"])
+                if row and row["chunk_index"] is not None
+                else None,
             )
         )
     return contexts
@@ -1183,6 +1206,11 @@ def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
                 "holding_concern": case.holding_concern,
                 "holding_excerpt": case.holding_excerpt,
                 "holding_error": case.holding_error,
+                # Cachet PR4: server-internal. The verify layer reads this to
+                # build the draft-quote source pool, then strips it before the
+                # SSE boundary (services.verify._strip_opinion_text) so the wire
+                # stays lean. Ask ignores it. None unless an opinion was fetched.
+                "opinion_text": case.opinion_text,
             }
             for case in verdict.verdicts
         ],

@@ -5,6 +5,7 @@ import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   verify as verifyApi,
   type VerifyClaimVerdict,
+  type VerifyQuoteResult,
   type VerifyResponse
 } from "@/services/api/endpoints";
 
@@ -340,6 +341,57 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
   );
 }
 
+function quoteStatusLabel(status: VerifyQuoteResult["status"]): string {
+  switch (status) {
+    case "altered":
+      return "Not found verbatim";
+    case "could_not_check":
+      return "Could not check";
+    default:
+      return "Verbatim";
+  }
+}
+
+interface QuotePanelProps {
+  quotes: VerifyQuoteResult[];
+}
+
+/**
+ * Cachet PR4: brief-level draft-quote-verbatim panel. Lists the quoted passages
+ * that need attention (altered or could-not-check); a fully-verbatim quote is
+ * the unmarked pass and is not listed. Brief-level: not yet attributed to a
+ * specific claim (PR5 claim-span alignment does that). Deterministic flags wear
+ * the oxblood register via styles.quoteAltered; could-not-check is the quiet
+ * refusal. No confidence numbers, by design.
+ */
+function QuotePanel({ quotes }: QuotePanelProps) {
+  const flagged = quotes.filter((q) => q.status !== "verbatim");
+  if (flagged.length === 0) return null;
+  return (
+    <section className={styles.quotePanel} aria-label="Quotation check">
+      <h2 className={styles.quotePanelTitle}>Quotation check</h2>
+      <ul className={styles.quoteList}>
+        {flagged.map((q) => (
+          <li
+            key={q.index}
+            className={[
+              styles.quoteItem,
+              q.status === "altered" ? styles.quoteAltered : styles.quoteUnplaceable
+            ].join(" ")}
+          >
+            <span className={styles.quoteStatus}>{quoteStatusLabel(q.status)}</span>
+            <blockquote className={styles.quoteText}>“{q.quote}”</blockquote>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.scopeNote}>
+        This checks that the words shown in quotation marks appear in the cited source as written.
+        It does not assess whether an omission changes the meaning.
+      </p>
+    </section>
+  );
+}
+
 export function VerifyView() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
@@ -428,6 +480,11 @@ export function VerifyView() {
           )
       : [];
   const progress = checkedProgress(stream);
+  // Cachet PR4: brief-level draft-quote-verbatim results. Settled view reads the
+  // canonical payload; live view shows the quote_batch the moment it lands. Only
+  // surface quotes that need attention (altered / could-not-check); a fully
+  // verbatim quote needs no callout (absence of a flag is the pass).
+  const quoteResults = response?.quote_results ?? stream.quotes ?? [];
 
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
@@ -515,6 +572,8 @@ export function VerifyView() {
           {items.length > 0 ? (
             <VerifyVerdictSummary dispositions={items.map((it) => it.disposition)} />
           ) : null}
+
+          <QuotePanel quotes={quoteResults} />
 
           {items.length > 0 ? (
             <div className={styles.resultActions}>

@@ -304,6 +304,23 @@ class VerifySummaryItem(BaseModel):
     unknown: int
 
 
+class VerifyQuoteResultItem(BaseModel):
+    """One brief-level draft-quote-verbatim result (Cachet PR4).
+
+    `status` is the plain-word disposition the UI renders for a quoted span the
+    lawyer typed in the draft: "verbatim" (every run of the quote appears in the
+    cited source as written), "altered" (a run does not appear in any source: a
+    misquotation or fabrication), or "could_not_check" (no source text was
+    reachable, or the only source was truncated past the quoted run; never a
+    flag). Brief-level: not yet attributed to a specific claim card (per-claim
+    placement is deferred to PR5 claim-span alignment). No confidence numbers.
+    """
+
+    index: int
+    quote: str
+    status: Literal["verbatim", "altered", "could_not_check"]
+
+
 class VerifyResponse(BaseModel):
     draft_text: str
     claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
@@ -317,6 +334,9 @@ class VerifyResponse(BaseModel):
     # GroundedAnswer.provider so the Verify surface can surface
     # provider provenance and (Phase 4) gate high-stakes flows.
     provider: str = ""
+    # Cachet PR4: brief-level draft-quote-verbatim results, one per quoted span
+    # found in the draft. Empty when the draft has no quoted spans.
+    quote_results: List[VerifyQuoteResultItem] = Field(default_factory=list)
 
 
 class NoteUpsertRequest(BaseModel):
