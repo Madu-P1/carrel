@@ -39,6 +39,7 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence
 
 from app_logging import get_logger, log_event
 from services import tutor as tutor_service
+from services.legal.align import align_claims_to_draft, placement_to_dict
 from services.legal.quote_check import (
     SourceText,
     check_quote_against_sources,
@@ -60,6 +61,11 @@ class VerifyClaimVerdict:
     citations: tuple[Dict[str, Any], ...]
     case_verdicts: tuple[Dict[str, Any], ...]
     unsupported_reason: str | None
+    # Cachet PR5a: where this claim was placed in the draft (char_start/char_end/
+    # placed/method), or None for cards with no draft placement (unsupported-span
+    # cards, the engine-failure card). A placed=False placement means the claim
+    # is in the unplaced tray. Deterministic; never mis-pinned (services.legal.align).
+    placement: Dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,10 @@ class VerifyResult:
     # per-claim placement is PR5's claim-span-alignment job. Empty when the
     # draft contains no quoted spans.
     quote_results: tuple[Dict[str, Any], ...] = ()
+    # Cachet PR5a: claim_index values that could not be placed in the draft
+    # (the unplaced tray). Deterministic; a claim is unplaced rather than
+    # mis-pinned whenever its locator is ambiguous.
+    unplaced: tuple[int, ...] = ()
 
 
 def _verify_framed_question(draft: str) -> str:
@@ -116,6 +126,8 @@ def _verify_framed_question(draft: str) -> str:
 def _claim_dict_to_verdict(
     claim_dict: Dict[str, Any],
     index: int,
+    *,
+    placement: Dict[str, Any] | None = None,
 ) -> VerifyClaimVerdict:
     """Map one engine-returned claim dict to a verifier verdict card.
 
@@ -137,6 +149,7 @@ def _claim_dict_to_verdict(
         citations=citations,
         case_verdicts=case_verdicts,
         unsupported_reason=None,
+        placement=placement,
     )
 
 
@@ -262,6 +275,7 @@ def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
         "error": result.error,
         "provider": result.provider,
         "quote_results": list(result.quote_results),
+        "unplaced": list(result.unplaced),
     }
 
 
@@ -299,11 +313,22 @@ def _verify_result_from_envelope(
             for i, q in enumerate(draft_quotes)
         )
 
+    # Cachet PR5a: deterministically place each claim against the draft so the
+    # UI can pin its disposition next to the originating sentence. Computed here
+    # (same seam as quote_results) so stream and non-stream agree. Pass the
+    # UNFILTERED claims so each placement's claim_index matches the verdict
+    # loop's enumerate(claims) index below. Never mis-pins: an ambiguous claim
+    # lands in the unplaced tray.
+    placements, unplaced_local = align_claims_to_draft(cleaned, claims)
+    placement_by_index = {p.claim_index: placement_to_dict(p) for p in placements}
+
     verdicts: List[VerifyClaimVerdict] = []
     for index, claim_dict in enumerate(claims):
         if not isinstance(claim_dict, dict):
             continue
-        verdicts.append(_claim_dict_to_verdict(claim_dict, index))
+        verdicts.append(
+            _claim_dict_to_verdict(claim_dict, index, placement=placement_by_index.get(index))
+        )
 
     base_index = len(verdicts)
     for offset, span in enumerate(unsupported_spans):
@@ -349,6 +374,7 @@ def _verify_result_from_envelope(
         error=engine_error,
         provider=str(envelope.get("provider") or ""),
         quote_results=quote_results,
+        unplaced=tuple(unplaced_local),
     )
 
 
@@ -367,6 +393,7 @@ def _verdict_card_to_dict(verdict: VerifyClaimVerdict) -> Dict[str, Any]:
         "citations": list(verdict.citations),
         "case_verdicts": [_strip_opinion_text(cv) for cv in verdict.case_verdicts],
         "unsupported_reason": verdict.unsupported_reason,
+        "placement": verdict.placement,
     }
 
 

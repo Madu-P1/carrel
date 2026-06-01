@@ -119,6 +119,28 @@ def extract_draft_quotes(draft: str) -> list[str]:
     return out
 
 
+def extract_draft_quote_spans(draft: str) -> list[tuple[str, int, int]]:
+    """Like `extract_draft_quotes`, but also return each span's draft offsets.
+
+    Returns (inner_text, start, end) where start/end are character offsets of
+    the INNER text (inside the quote marks) in the original `draft`. Used by the
+    PR5 claim-span alignment (services.legal.align) as one deterministic anchor
+    source: a quoted span the lawyer typed is a high-confidence draft locator.
+    Empty/whitespace-only spans are dropped. Offsets are into the raw draft, so
+    the caller can map a placed claim back to the exact draft range.
+    """
+    out: list[tuple[str, int, int]] = []
+    for match in _QUOTED_SPAN.finditer(draft or ""):
+        group_index = 1 if match.group(1) is not None else 2
+        inner = match.group(group_index) or ""
+        if not inner.strip():
+            continue
+        # Offsets of the inner capture group, not the whole match (excludes the
+        # quote marks themselves) so the span maps to the quoted words only.
+        out.append((inner, match.start(group_index), match.end(group_index)))
+    return out
+
+
 def split_runs(quote: str) -> list[str]:
     """Split a quoted span into the verbatim runs BETWEEN the author's edits.
 

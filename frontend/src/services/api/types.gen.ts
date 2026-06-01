@@ -3221,6 +3221,28 @@ export interface components {
             case_verdicts?: components["schemas"]["ClaimCaseVerdictItem"][];
             /** Unsupported Reason */
             unsupported_reason?: string | null;
+            placement?: components["schemas"]["VerifyPlacementItem"] | null;
+        };
+        /**
+         * VerifyPlacementItem
+         * @description Cachet PR5a: where a claim landed in the draft (claim-span alignment).
+         *
+         *     `placed` True means char_start/char_end are a real, unambiguous range in the
+         *     draft. `placed` False means the unplaced tray (offsets None). `method` is
+         *     "exact" | "fuzzy" | "unplaced". Deterministic; never mis-pinned.
+         */
+        VerifyPlacementItem: {
+            /** Placed */
+            placed: boolean;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "exact" | "fuzzy" | "unplaced";
+            /** Char Start */
+            char_start?: number | null;
+            /** Char End */
+            char_end?: number | null;
         };
         /**
          * VerifyQuoteResultItem
@@ -3293,6 +3315,8 @@ export interface components {
             provider: string;
             /** Quote Results */
             quote_results?: components["schemas"]["VerifyQuoteResultItem"][];
+            /** Unplaced */
+            unplaced?: number[];
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {

@@ -280,6 +280,20 @@ class VerifyRequest(BaseModel):
     subject_name: Optional[str] = Field(default=None, max_length=240)
 
 
+class VerifyPlacementItem(BaseModel):
+    """Cachet PR5a: where a claim landed in the draft (claim-span alignment).
+
+    `placed` True means char_start/char_end are a real, unambiguous range in the
+    draft. `placed` False means the unplaced tray (offsets None). `method` is
+    "exact" | "fuzzy" | "unplaced". Deterministic; never mis-pinned.
+    """
+
+    placed: bool
+    method: Literal["exact", "fuzzy", "unplaced"]
+    char_start: Optional[int] = None
+    char_end: Optional[int] = None
+
+
 class VerifyClaimVerdictItem(BaseModel):
     """One per-claim verdict the verifier UX renders.
 
@@ -295,6 +309,11 @@ class VerifyClaimVerdictItem(BaseModel):
     citations: List[TutorCitationItem] = Field(default_factory=list)
     case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
     unsupported_reason: Optional[str] = None
+    # Cachet PR5a: where this claim was placed in the lawyer's draft, for the
+    # Margin layout. None for cards with no draft placement (unsupported-span
+    # cards). A placed=False placement means the claim is in the unplaced tray;
+    # deterministic, never mis-pinned (services.legal.align).
+    placement: Optional["VerifyPlacementItem"] = None
 
 
 class VerifySummaryItem(BaseModel):
@@ -337,6 +356,10 @@ class VerifyResponse(BaseModel):
     # Cachet PR4: brief-level draft-quote-verbatim results, one per quoted span
     # found in the draft. Empty when the draft has no quoted spans.
     quote_results: List[VerifyQuoteResultItem] = Field(default_factory=list)
+    # Cachet PR5a: claim_index values that could not be placed in the draft
+    # (the unplaced tray). A claim is unplaced rather than mis-pinned whenever
+    # its locator is ambiguous.
+    unplaced: List[int] = Field(default_factory=list)
 
 
 class NoteUpsertRequest(BaseModel):
