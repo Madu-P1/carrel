@@ -1,0 +1,75 @@
+/*
+ * Cachet PR6a — Shelf (mechanical). Plain, token-driven layout only.
+ * The warm register, card craft, and ink seal are the operator-gated PR6b
+ * pass; nothing here commits the final look. No green/amber, no oxblood
+ * (oxblood is reserved for verify flags), no confidence chrome.
+ */
+
+.shelf {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: var(--space-8, 2rem) var(--space-6, 1.5rem) var(--space-12, 3rem);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin-bottom: var(--space-6, 1.5rem);
+}
+
+.centered,
+.empty {
+  padding: var(--space-12, 3rem) 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+}
+
+.row {
+  margin: 0;
+}
+
+/* Let the title/meta column shrink so long titles ellipsize instead of
+   shoving the actions off the card. */
+.rowMain {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rowMain > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--text-secondary);
+}
+
+.seal {
+  font-size: var(--text-caption, 0.8125rem);
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.seal[data-state="sealed"] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.fingerprint {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption, 0.8125rem);
+  color: var(--text-tertiary);
+}
+
+.actions {
+  flex-shrink: 0;
+}

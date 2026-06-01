@@ -24,6 +24,11 @@ export type VerifyCaseVerdictBatch = NonNullable<VerifyClaimVerdict["case_verdic
 /** One brief-level draft-quote-verbatim result (Cachet PR4). */
 export type VerifyQuoteResult = NonNullable<VerifyResponse["quote_results"]>[number];
 
+/** Cachet PR6 — Shelf persistence (saved briefs). */
+export type BriefSaveRequest = components["schemas"]["BriefSaveRequest"];
+export type BriefSummary = components["schemas"]["BriefSummary"];
+export type BriefDetail = components["schemas"]["BriefDetail"];
+
 /**
  * Events emitted by POST /api/verify/stream (Cachet PR3). This route returns a
  * StreamingResponse with no response_model, so it is absent from the generated
@@ -938,6 +943,29 @@ export const verify = {
    */
   draftStream: (payload: VerifyRequest, opts?: { signal?: AbortSignal }) =>
     streamSse<VerifyStreamEvent>("/api/verify/stream", payload, opts)
+};
+
+/**
+ * Cachet PR6 — the Shelf. Saved briefs: a checked draft plus its full verify
+ * response and the client-built certification, kept so the lawyer can return
+ * to one and re-hydrate the Verify view without a re-verify.
+ */
+export const briefs = {
+  /** Save a checked draft. Returns the lean summary (no draft/response/cert). */
+  save: (payload: BriefSaveRequest) =>
+    api<{ brief: BriefSummary }>("/api/briefs", {
+      method: "POST",
+      body: payload
+    }),
+  /** All saved briefs, most-recent-first. Summaries only. */
+  list: () => api<{ briefs: BriefSummary[] }>("/api/briefs"),
+  /** Full brief for re-hydration: draft + response + cert. */
+  get: (briefId: string) => api<BriefDetail>(`/api/briefs/${encodeURIComponent(briefId)}`),
+  /** Remove a saved brief the user owns. */
+  remove: (briefId: string) =>
+    api<{ deleted: boolean; brief_id: string }>(`/api/briefs/${encodeURIComponent(briefId)}`, {
+      method: "DELETE"
+    })
 };
 
 /** Backend shape from services/study.py::fetch_due_cards. Hand-typed since
