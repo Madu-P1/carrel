@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 
 import { Button, ProvenanceBadge, Spinner, Stack, Text } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
@@ -16,6 +16,13 @@ import {
   type ClaimDisposition
 } from "./claimDisposition";
 import { SourceInspector } from "./SourceInspector";
+import {
+  checkedProgress,
+  initialStreamState,
+  isCardChecking,
+  reduceStreamEvent,
+  type VerifyStreamState
+} from "./streamProgress";
 import styles from "./VerifyView.module.css";
 
 const SAMPLE_DRAFT =
@@ -168,9 +175,25 @@ interface VerdictCardProps {
   index: number;
   isSelected: boolean;
   onInspect: () => void;
+  /** True while this claim's case check is still in flight (streaming). The
+   *  card shows a quiet "Checking…" register instead of its disposition badge,
+   *  so a not-yet-checked claim never flashes as a pass. */
+  checking?: boolean;
+  /** When false, the card is a read-only preview (the live streaming list):
+   *  no "View source" affordance, since the inspector reads the settled
+   *  citation that only exists once the result lands. Default true. */
+  interactive?: boolean;
 }
 
-function VerdictCard({ card, disposition, index, isSelected, onInspect }: VerdictCardProps) {
+function VerdictCard({
+  card,
+  disposition,
+  index,
+  isSelected,
+  onInspect,
+  checking = false,
+  interactive = true
+}: VerdictCardProps) {
   const caseBatches = card.case_verdicts ?? [];
   const citationCount = (card.citations ?? []).length;
   const caseCount = caseBatches.reduce(
@@ -207,17 +230,28 @@ function VerdictCard({ card, disposition, index, isSelected, onInspect }: Verdic
   });
   return (
     <article
-      className={[styles.verdictCard, isSelected ? styles.verdictCardSelected : ""].join(" ")}
-      data-tier={disposition.tier}
+      className={[
+        styles.verdictCard,
+        isSelected ? styles.verdictCardSelected : "",
+        checking ? styles.verdictCardChecking : ""
+      ].join(" ")}
+      data-tier={checking ? "checking" : disposition.tier}
     >
       <header className={styles.verdictHeader}>
         <span className={styles.verdictIndex}>[{index + 1}]</span>
-        <span className={[styles.verdictBadge, tierBadgeClass(disposition.tier)].join(" ")}>
-          {disposition.label}
-        </span>
+        {checking ? (
+          <span className={[styles.verdictBadge, styles.badgeChecking].join(" ")}>
+            <Spinner size={16} />
+            <span>Checking…</span>
+          </span>
+        ) : (
+          <span className={[styles.verdictBadge, tierBadgeClass(disposition.tier)].join(" ")}>
+            {disposition.label}
+          </span>
+        )}
       </header>
       <p className={styles.claimText}>{card.claim_text}</p>
-      {disposition.detail ? (
+      {!checking && disposition.detail ? (
         <p className={styles.dispositionDetail}>{disposition.detail}</p>
       ) : null}
       {caseLines.length > 0 ? (
@@ -235,20 +269,22 @@ function VerdictCard({ card, disposition, index, isSelected, onInspect }: Verdic
           )}
         </div>
       ) : null}
-      <div className={styles.cardFoot}>
-        <button
-          type="button"
-          className={styles.viewSource}
-          onClick={onInspect}
-          aria-pressed={isSelected}
-        >
-          {isSelected
-            ? "Hide source"
-            : sourceCount > 0
-              ? `View source (${sourceCount})`
-              : "View source"}
-        </button>
-      </div>
+      {interactive ? (
+        <div className={styles.cardFoot}>
+          <button
+            type="button"
+            className={styles.viewSource}
+            onClick={onInspect}
+            aria-pressed={isSelected}
+          >
+            {isSelected
+              ? "Hide source"
+              : sourceCount > 0
+                ? `View source (${sourceCount})`
+                : "View source"}
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -314,21 +350,54 @@ export function VerifyView() {
   // ISO timestamp captured when the certification exhibit is opened, or null
   // when closed. Captured once on open so the exhibit timestamp is stable.
   const [certAt, setCertAt] = useState<string | null>(null);
+  // Live streaming model (PR3): the per-cite labor as it arrives. The settled
+  // verdict render is always driven by `response` (the canonical payload from
+  // the `result` event), identical to the non-stream path; `stream` only powers
+  // the in-flight working indicator and the per-card "Checking…" state.
+  const [stream, setStream] = useState<VerifyStreamState>(initialStreamState);
+  const abortRef = useRef<AbortController | null>(null);
 
   const submit = async () => {
     const trimmed = draft.trim();
     if (!trimmed || loading) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     setSelected(null);
     setCertAt(null);
+    setResponse(null);
+    let live = initialStreamState();
+    setStream(live);
     try {
-      const result = await verifyApi.draft({ draft: trimmed });
-      setResponse(result);
+      for await (const event of verifyApi.draftStream(
+        { draft: trimmed },
+        { signal: controller.signal }
+      )) {
+        live = reduceStreamEvent(live, event);
+        setStream(live);
+        if (event.type === "result") {
+          setResponse(event.verify);
+        } else if (event.type === "error") {
+          // Surfaced engine/transport error: show it, never a partial pass.
+          setError(event.error);
+        }
+      }
+      // Stream ended without a result event (dropped/truncated). The settled
+      // view stays empty rather than reading any un-checked claim as a pass.
+      if (live.phase !== "done" && !controller.signal.aborted && !live.error) {
+        setError(
+          "Verification did not finish. No verdict was produced; nothing was marked supported. Verify the draft again."
+        );
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setResponse(null);
+      if (!controller.signal.aborted) {
+        setError(e instanceof Error ? e.message : String(e));
+        setResponse(null);
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setLoading(false);
     }
   };
@@ -343,6 +412,22 @@ export function VerifyView() {
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
   const certModel = certAt && response ? buildCertification(response, certAt) : null;
+
+  // Live skeleton (PR3): while the stream is in flight and before the canonical
+  // result has settled, render the skeleton cards from the `claims` event with
+  // each not-yet-checked claim in its "Checking…" register. These are computed
+  // through the SAME pure `dispositionForClaim`, but a checking card overrides
+  // the badge so a claim never flashes a pass before its cite check lands.
+  const streaming = loading && !response;
+  const liveItems =
+    streaming && stream.cards.length > 0
+      ? stream.cards
+          .map((card) => ({ card, disposition: dispositionForClaim(card) }))
+          .sort(
+            (a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]
+          )
+      : [];
+  const progress = checkedProgress(stream);
 
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
@@ -382,6 +467,40 @@ export function VerifyView() {
       </div>
 
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
+
+      {streaming ? (
+        // Visual-only progress affordance: no aria-live. A polite live region
+        // here would re-announce on every cite_verdict (the holding-match checks
+        // land seconds apart), spamming a screen reader with "2 of 7", "3 of 7".
+        // The settled verdict summary carries its own role=status announcement.
+        <div className={styles.workingIndicator} aria-hidden="true">
+          <Spinner size={16} />
+          <span className={styles.workingLabel}>
+            {stream.phase === "checking" && progress.total > 0
+              ? `Checking citations · ${progress.checked} of ${progress.total}`
+              : "Reading the draft and extracting claims…"}
+          </span>
+        </div>
+      ) : null}
+
+      {streaming && liveItems.length > 0 ? (
+        <div className={styles.workspace}>
+          <div className={styles.verdictList}>
+            {liveItems.map((it, i) => (
+              <VerdictCard
+                key={`live-${it.card.claim_index}-${i}`}
+                card={it.card}
+                disposition={it.disposition}
+                index={i}
+                isSelected={false}
+                onInspect={() => {}}
+                checking={isCardChecking(stream, it.card)}
+                interactive={false}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {response?.error === "provider_below_quality_bar" ? (
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />

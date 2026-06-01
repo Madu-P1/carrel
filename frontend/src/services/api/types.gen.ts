@@ -1023,6 +1023,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/verify/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Stream Endpoint
+         * @description Stream verification verdicts as Server-Sent Events.
+         *
+         *     Mirrors POST /api/verify but emits the per-cite labor incrementally so
+         *     the UI can show it happening: a ``progress`` event, a ``claims``
+         *     skeleton, one ``cite_verdict`` per claim, then a final ``result``
+         *     carrying the same payload as POST /api/verify. Each event is
+         *     ``data: {json}\n\n``; the stream ends with ``data: [DONE]\n\n``. On
+         *     failure, one ``{"type": "error", "error": "..."}`` event is emitted
+         *     before close (errors surfaced, not swallowed, per "no silent fallbacks").
+         *     The client parses this via ``frontend/src/services/api/streaming.ts``.
+         */
+        post: operations["verify_stream_endpoint_api_verify_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/anchors": {
         parameters: {
             query?: never;
@@ -5100,6 +5129,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_stream_endpoint_api_verify_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
