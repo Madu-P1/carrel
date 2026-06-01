@@ -547,6 +547,102 @@ class ChunkJoinTests(unittest.TestCase):
         self.assertEqual(2, len(srcs))
 
 
+class PlacementWiringTests(unittest.TestCase):
+    """Cachet PR5a: claim->draft placement rides the result payload and is
+    identical stream vs non-stream. The never-mis-pin algorithm itself is gated
+    by tests/test_align.py; this gates the WIRING."""
+
+    DRAFT = "The panel reasoned the statute was unconstitutional as applied to the petitioner."
+
+    def _env(self):
+        return {
+            "answer": "stub",
+            "claims": [
+                {
+                    "text": "the statute was unconstitutional as applied",
+                    "citations": [{"node_id": "c1", "content": "x"}],
+                    "case_verdicts": [],
+                },
+                {
+                    "text": "a paraphrase that appears nowhere in the draft body at all",
+                    "citations": [{"node_id": "c2", "content": "y"}],
+                    "case_verdicts": [],
+                },
+            ],
+            "unsupported_spans": [],
+            "model": "claude-sonnet-4-6",
+            "error": None,
+        }
+
+    def _steps(self, env):
+        def gen():
+            yield {"type": "progress", "phase": "extracting"}
+            yield {"type": "claims", "claims": env["claims"], "unsupported_spans": []}
+            yield {"type": "result", "envelope": env}
+
+        return gen
+
+    def test_placement_on_result_cards_and_unplaced_tray(self) -> None:
+        env = self._env()
+        with mock.patch.object(
+            verify_service.tutor_service,
+            "grounded_tutor_envelope_steps",
+            side_effect=lambda *a, **k: self._steps(env)(),
+        ):
+            events = list(
+                verify_service.verify_draft_stream(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+        verify = next(e for e in events if e["type"] == "result")["verify"]
+        cards = verify["claim_verdicts"]
+        # claim 0 is verbatim in the draft -> placed at a real range.
+        self.assertTrue(cards[0]["placement"]["placed"])
+        self.assertEqual("exact", cards[0]["placement"]["method"])
+        seg = self.DRAFT[cards[0]["placement"]["char_start"] : cards[0]["placement"]["char_end"]]
+        self.assertEqual("the statute was unconstitutional as applied", seg)
+        # claim 1 is a paraphrase absent from the draft -> unplaced tray.
+        self.assertFalse(cards[1]["placement"]["placed"])
+        self.assertIn(1, verify["unplaced"])
+
+    def test_placement_identical_stream_vs_non_stream(self) -> None:
+        env = self._env()
+        with mock.patch.object(
+            verify_service.tutor_service,
+            "grounded_tutor_envelope_steps",
+            side_effect=lambda *a, **k: self._steps(env)(),
+        ):
+            stream = next(
+                e
+                for e in verify_service.verify_draft_stream(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+                if e["type"] == "result"
+            )["verify"]
+        with mock.patch.object(
+            verify_service.tutor_service, "grounded_tutor_envelope", return_value=env
+        ):
+            non_stream = verify_service.verify_result_to_payload(
+                verify_service.verify_draft(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+        self.assertEqual(
+            [c["placement"] for c in stream["claim_verdicts"]],
+            [c["placement"] for c in non_stream["claim_verdicts"]],
+        )
+        self.assertEqual(stream["unplaced"], non_stream["unplaced"])
+
+
 class VerifyStreamRouteTests(unittest.TestCase):
     """The SSE endpoint frames events as ``data: {json}\\n\\n``, ends with
     ``data: [DONE]``, and surfaces errors as an error event (never a pass)."""
