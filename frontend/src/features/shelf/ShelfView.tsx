@@ -1,19 +1,21 @@
 import { useEffect, useState } from "preact/hooks";
 
-import { Button, Card, Spinner, Stack, Text } from "@/design-system";
+import { Button, Icon, Spinner, Stack, Text } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
 import { briefs as briefsApi, type BriefSummary } from "@/services/api/endpoints";
 
 import styles from "./ShelfView.module.css";
 
 /**
- * Cachet PR6a — the Shelf (mechanical half).
+ * Cachet PR6b-craft — the Shelf (warm register, Direction C "The Spine").
  *
- * Lists saved briefs from GET /api/briefs and lets the lawyer delete one of
- * their own. This is the plain, token-styled surface; the warm register, the
- * card craft, the ink seal, and opening a brief to re-hydrate the Verify view
- * are the operator-gated PR6b pass. Deliberately no green/amber and no
- * confidence numbers — the seal label is a quiet word, not a status light.
+ * A bookshelf of saved briefs: grouped by the human's act (Sealed / Unsealed),
+ * each a row with a gutter spine (ink when sealed) and an ink seal disc that
+ * echoes the certification seal. Warm cream ground, a Fraunces ceremonial
+ * title. No oxblood (reserved for verify flags), no green/amber, no verdict
+ * signal — warmth never touches a verdict. The open + delete wiring is PR6b
+ * mechanical; this pass is the craft. Opening a brief re-hydrates the Verify
+ * view from the stored response (no re-verify).
  */
 
 type LoadState =
@@ -34,6 +36,19 @@ function formatSavedAt(iso: string | null | undefined): string {
 
 function shortFingerprint(fingerprint: string): string {
   return fingerprint.length > 12 ? `${fingerprint.slice(0, 12)}…` : fingerprint;
+}
+
+/** The ink seal disc — echoes the cert seal (PR2): an ink ring + engraved
+ *  core. Decorative; the "Sealed" section label carries the meaning. */
+function SealDisc() {
+  return (
+    <span className={styles.seal} aria-hidden="true">
+      <svg viewBox="0 0 18 18">
+        <circle className={styles.sealRing} cx="9" cy="9" r="7" />
+        <circle className={styles.sealCore} cx="9" cy="9" r="3" />
+      </svg>
+    </span>
+  );
 }
 
 export function ShelfView() {
@@ -59,8 +74,7 @@ export function ShelfView() {
   }, []);
 
   function openBrief(id: string) {
-    // Re-hydrate the Verify view from this saved brief (no re-verify). The warm
-    // card styling of this open affordance is the operator-gated PR6b craft pass.
+    // Re-hydrate the Verify view from this saved brief (no re-verify).
     navigateTo(`/verify?brief=${encodeURIComponent(id)}`);
   }
 
@@ -98,7 +112,7 @@ export function ShelfView() {
       <div className={styles.shelf}>
         <ShelfHeader />
         <Stack gap={3} align="start" className={styles.centered}>
-          <Text tone="danger">{state.message}</Text>
+          <Text tone="secondary">{state.message}</Text>
           <Button variant="secondary" onClick={() => void load()}>
             Try again
           </Button>
@@ -111,90 +125,102 @@ export function ShelfView() {
     return (
       <div className={styles.shelf}>
         <ShelfHeader />
-        <Stack gap={2} className={styles.empty}>
-          <Text variant="h3">No saved briefs yet</Text>
-          <Text tone="secondary">
-            Verify a draft, then save it to keep the checked record here.
-          </Text>
-        </Stack>
+        <div className={styles.empty}>
+          <h2 className={styles.emptyTitle}>Nothing on the shelf yet</h2>
+          <p className={styles.emptyBody}>
+            Verify a draft, then seal it to keep the checked record here.
+          </p>
+        </div>
       </div>
     );
   }
 
+  const sealed = state.items.filter((brief) => brief.seal_state === "sealed");
+  const unsealed = state.items.filter((brief) => brief.seal_state !== "sealed");
+
+  const renderRow = (brief: BriefSummary) => {
+    const isSealed = brief.seal_state === "sealed";
+    const date = formatSavedAt(brief.created_at);
+    const title = brief.title || "Untitled brief";
+    return (
+      <li key={brief.id} className={styles.spine} data-sealed={isSealed ? "true" : "false"}>
+        <span className={styles.gutter} aria-hidden="true">
+          <span className={styles.bar} />
+        </span>
+        <div
+          className={styles.rowMain}
+          role="button"
+          tabIndex={0}
+          aria-label={`Open ${title}`}
+          onClick={() => openBrief(brief.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openBrief(brief.id);
+            }
+          }}
+        >
+          <span className={styles.title}>{title}</span>
+          <span className={styles.meta}>
+            {date ? <span>{date}</span> : null}
+            {date ? (
+              <span className={styles.dot} aria-hidden="true">
+                ·
+              </span>
+            ) : null}
+            <code className={styles.fingerprint}>{shortFingerprint(brief.fingerprint)}</code>
+          </span>
+        </div>
+        <div className={styles.right}>
+          {isSealed ? <SealDisc /> : null}
+          {confirmingId === brief.id ? (
+            // Armed: keep the two-step confirm (a hard delete has no undo).
+            <span className={styles.confirm}>
+              <Text variant="caption" tone="secondary">
+                Delete?
+              </Text>
+              <Button
+                variant="secondary"
+                size="sm"
+                isLoading={deletingId === brief.id}
+                onClick={() => void handleDelete(brief.id)}
+              >
+                Confirm
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmingId(null)}>
+                Cancel
+              </Button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={styles.binBtn}
+              aria-label={`Delete ${title}`}
+              onClick={() => setConfirmingId(brief.id)}
+            >
+              <Icon name="trash" />
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  };
+
   return (
     <div className={styles.shelf}>
       <ShelfHeader count={state.items.length} />
-      <ul className={styles.list}>
-        {state.items.map((brief) => (
-          <li key={brief.id} className={styles.row}>
-            <Card padding="md">
-              <Stack direction="horizontal" justify="between" align="start" gap={4}>
-                <Stack
-                  gap={1}
-                  className={styles.rowMain}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open ${brief.title || "Untitled brief"}`}
-                  onClick={() => openBrief(brief.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openBrief(brief.id);
-                    }
-                  }}
-                >
-                  <Text variant="h3" weight="semibold">
-                    {brief.title || "Untitled brief"}
-                  </Text>
-                  <Stack
-                    direction="horizontal"
-                    gap={3}
-                    align="center"
-                    wrap
-                    className={styles.meta}
-                  >
-                    <span className={styles.seal} data-state={brief.seal_state}>
-                      {brief.seal_state === "sealed" ? "Sealed" : "Unsealed"}
-                    </span>
-                    {formatSavedAt(brief.created_at) ? (
-                      <Text variant="caption" tone="tertiary">
-                        {formatSavedAt(brief.created_at)}
-                      </Text>
-                    ) : null}
-                    <code className={styles.fingerprint}>
-                      {shortFingerprint(brief.fingerprint)}
-                    </code>
-                  </Stack>
-                </Stack>
-                <div className={styles.actions}>
-                  {confirmingId === brief.id ? (
-                    <Stack direction="horizontal" gap={2} align="center">
-                      <Text variant="caption" tone="secondary">
-                        Delete?
-                      </Text>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        isLoading={deletingId === brief.id}
-                        onClick={() => void handleDelete(brief.id)}
-                      >
-                        Confirm
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmingId(null)}>
-                        Cancel
-                      </Button>
-                    </Stack>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmingId(brief.id)}>
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </Stack>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      {sealed.length > 0 ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionLabel}>Sealed</h2>
+          <ul className={styles.list}>{sealed.map(renderRow)}</ul>
+        </section>
+      ) : null}
+      {unsealed.length > 0 ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionLabel}>Unsealed</h2>
+          <ul className={styles.list}>{unsealed.map(renderRow)}</ul>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -206,10 +232,8 @@ function ShelfHeader({ count }: { count?: number }) {
       : "Saved briefs";
   return (
     <header className={styles.header}>
-      <Text as="h1" variant="h1">
-        Shelf
-      </Text>
-      <Text tone="secondary">{subtitle}</Text>
+      <h1 className={styles.pageTitle}>Shelf</h1>
+      <p className={styles.subtitle}>{subtitle}</p>
     </header>
   );
 }

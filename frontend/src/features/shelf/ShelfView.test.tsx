@@ -44,7 +44,10 @@ describe("ShelfView", () => {
   it("shows the empty state when no briefs are saved", async () => {
     mockList.mockResolvedValue({ briefs: [] });
     render(<ShelfView />);
-    expect(await screen.findByText("No saved briefs yet")).toBeTruthy();
+    expect(await screen.findByText("Nothing on the shelf yet")).toBeTruthy();
+    expect(
+      screen.getByText("Verify a draft, then seal it to keep the checked record here.")
+    ).toBeTruthy();
   });
 
   it("renders saved briefs with their seal labels and a short fingerprint", async () => {
@@ -63,11 +66,45 @@ describe("ShelfView", () => {
 
     expect(await screen.findByText("Motion to Dismiss")).toBeTruthy();
     expect(screen.getByText("Reply Brief")).toBeTruthy();
-    // Quiet seal words, not status lights — one of each here.
+    // "Sealed" / "Unsealed" are the section headings now (no per-row labels);
+    // the seal state reads from the group + the gutter ink + the disc.
     expect(screen.getByText("Sealed")).toBeTruthy();
     expect(screen.getByText("Unsealed")).toBeTruthy();
     // Fingerprint is truncated for the card (first 12 hex + ellipsis).
     expect(screen.getByText("abcdef012345…")).toBeTruthy();
+  });
+
+  it("groups briefs into Sealed and Unsealed sections by seal state", async () => {
+    mockList.mockResolvedValue({
+      briefs: [
+        summary({ id: "b1", title: "Motion to Dismiss", seal_state: "sealed" }),
+        summary({ id: "b2", title: "Reply Brief", seal_state: "unsealed" })
+      ]
+    });
+    render(<ShelfView />);
+
+    await screen.findByText("Motion to Dismiss");
+    // Each group becomes its own section with an h2 spine label.
+    expect(screen.getByRole("heading", { name: "Sealed" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Unsealed" })).toBeTruthy();
+    // Both briefs land under their respective sections.
+    expect(screen.getByText("Reply Brief")).toBeTruthy();
+  });
+
+  it("marks each spine row with its seal state so the gutter ink and disc can key off it", async () => {
+    mockList.mockResolvedValue({
+      briefs: [
+        summary({ id: "b1", title: "Motion to Dismiss", seal_state: "sealed" }),
+        summary({ id: "b2", title: "Reply Brief", seal_state: "unsealed" })
+      ]
+    });
+    render(<ShelfView />);
+
+    await screen.findByText("Motion to Dismiss");
+    const sealedRow = screen.getByText("Motion to Dismiss").closest("li");
+    const unsealedRow = screen.getByText("Reply Brief").closest("li");
+    expect(sealedRow?.getAttribute("data-sealed")).toBe("true");
+    expect(unsealedRow?.getAttribute("data-sealed")).toBe("false");
   });
 
   it("falls back to 'Untitled brief' when a brief has no title", async () => {
@@ -82,8 +119,9 @@ describe("ShelfView", () => {
     render(<ShelfView />);
 
     await screen.findByText("Motion to Dismiss");
+    // The resting delete trigger is the bin icon button, reached by aria-label.
     // First click only arms the confirm; nothing deleted yet.
-    fireEvent.click(screen.getByText("Delete"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Motion to Dismiss" }));
     expect(screen.getByText("Confirm")).toBeTruthy();
     expect(mockRemove).not.toHaveBeenCalled();
 
@@ -97,7 +135,7 @@ describe("ShelfView", () => {
     render(<ShelfView />);
 
     await screen.findByText("Motion to Dismiss");
-    fireEvent.click(screen.getByText("Delete"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Motion to Dismiss" }));
     fireEvent.click(screen.getByText("Cancel"));
     expect(mockRemove).not.toHaveBeenCalled();
     expect(screen.getByText("Motion to Dismiss")).toBeTruthy();
@@ -129,7 +167,7 @@ describe("ShelfView", () => {
     render(<ShelfView />);
     await screen.findByText("Motion to Dismiss");
 
-    fireEvent.click(screen.getByText("Delete"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Motion to Dismiss" }));
     // Delete arms the confirm; it must never double as navigation.
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(screen.getByText("Confirm")).toBeTruthy();

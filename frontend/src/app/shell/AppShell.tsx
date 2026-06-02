@@ -71,7 +71,7 @@ export const navLinks: SidebarNavItem[] = [
   // verify a draft, then it lands on the Shelf). No ⌘ hotkey yet (1-9 are
   // full); the `doc` glyph is a mechanical placeholder, a bespoke Shelf mark
   // is a PR6b craft item.
-  { key: "shelf", label: "Shelf", commandHint: "", icon: "doc", path: "/shelf" },
+  { key: "shelf", label: "Shelf", commandHint: "", icon: "shelf", path: "/shelf" },
   { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
   { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
   { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
