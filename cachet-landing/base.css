@@ -21,23 +21,9 @@ body {
   min-height: 100vh;
 }
 
-/* Ambient light: a hand-tuned vignette that drifts almost imperceptibly.
- * One effect, reserved for the page base. Composited transform only. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: -5%;
-  z-index: -1;
-  background:
-    radial-gradient(120% 80% at 50% -10%, hsl(41 30% 12% / 0.5), transparent 60%),
-    radial-gradient(100% 60% at 50% 110%, hsl(36 12% 10% / 0.6), transparent 70%);
-  pointer-events: none;
-  animation: drift 24s var(--ease-in-out) infinite alternate;
-}
-@keyframes drift {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(0, -1.6%, 0) scale(1.05); }
-}
+/* Paper needs no ambient layer. The only motion on this page is the hero
+ * verification "labor" beat (the scan passing, the verdict landing): watching
+ * the work is what earns belief. Everything else stays still, like ink. */
 
 h1, h2, h3 { line-height: 1.08; letter-spacing: -0.02em; font-weight: 500; text-wrap: balance; }
 p { text-wrap: pretty; }
@@ -94,14 +80,15 @@ p { text-wrap: pretty; }
 }
 .btn:hover { transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
+/* Primary is ink on paper: the page's one filled element. */
 .btn-primary { background: var(--n-10); color: var(--n-0); }
-.btn-primary:hover { background: var(--n-9); box-shadow: 0 8px 24px hsl(40 20% 60% / 0.12); }
+.btn-primary:hover { background: var(--n-9); box-shadow: 0 6px 20px hsl(30 25% 28% / 0.16); }
 .btn-ghost { color: var(--text-primary); border-color: var(--border-strong); background: transparent; }
 .btn-ghost:hover { border-color: var(--n-6); background: var(--surface-raised); }
 
-/* Real focus ring, never removed */
+/* Real focus ring, never removed. Ink, so oxblood stays reserved for verdicts. */
 a:focus-visible, button:focus-visible, .btn:focus-visible {
-  outline: 2px solid var(--unverified);
+  outline: 2px solid var(--n-9);
   outline-offset: 3px;
   border-radius: var(--r-1);
 }
@@ -116,9 +103,9 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
               border-color var(--dur-3) var(--ease-out);
 }
 .site-header.scrolled {
-  background: hsl(36 9% 7% / 0.72);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  background: hsl(43 40% 94% / 0.82);
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
   border-bottom-color: var(--border);
 }
 .nav {
@@ -150,7 +137,9 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
 .nav-links a:not(.btn):hover::after { right: 0; }
 
 @media (max-width: 720px) {
-  .nav-links .hide-sm { display: none; }
+  /* a.hide-sm matches the specificity of the 44px-hit-area rule above and wins
+   * on source order, so the text links actually collapse on small screens. */
+  .nav-links a.hide-sm { display: none; }
 }
 
 /* ---- Reduced motion: keep feedback, drop movement ---- */
@@ -158,5 +147,4 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition-duration: 1ms !important; }
   .js [data-reveal] { opacity: 1 !important; transform: none !important; }
-  body::before { animation: none !important; }
 }

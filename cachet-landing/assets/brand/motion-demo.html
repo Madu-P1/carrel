@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cachet · open ring, animated</title>
+<style>
+  :root{--desk:#0e0e10;--paper-text:#f8f5ee;--paper:#f6f2ea;--ink:#1c1814;--t1:#f5f5f7;--t2:#b8b8be;--t3:#74747a;--line:rgba(255,255,255,.10);
+    --serif:Charter,"Iowan Old Style",Georgia,"Times New Roman",serif;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    --ease-io:cubic-bezier(.4,0,.2,1);--ease-out:cubic-bezier(.16,1,.3,1);--ease-in:cubic-bezier(.55,.055,.675,.19);}
+  *{box-sizing:border-box}body{margin:0;background:#0a0a0c;color:var(--t2);font-family:var(--sans);padding:52px 24px 110px;line-height:1.5}
+  .wrap{max-width:780px;margin:0 auto}h1{font-family:var(--serif);font-weight:600;color:var(--t1);font-size:32px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{font-size:14px;color:var(--t3);max-width:66ch;margin:0 0 30px}
+  .stageRow{display:flex;gap:24px;flex-wrap:wrap}
+  .panel{flex:1;min-width:300px;border-radius:20px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px}
+  .dark{background:var(--desk);border:1px solid var(--line);color:var(--paper-text)}.light{background:var(--paper);color:var(--ink)}
+  .stage{width:188px;height:188px}svg{width:100%;height:100%;display:block;overflow:visible}
+  .c{fill:none;stroke:currentColor;stroke-width:16;stroke-linecap:butt}
+  .label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3)}.light .label{color:#9a8f78}
+  .cwrap{transform-box:view-box;transform-origin:120px 120px}.mark{transform-box:view-box;transform-origin:120px 120px}
+  [data-anim="idle"] .mark{animation:breath 3600ms var(--ease-io) infinite}
+  [data-anim="wriggle"] .cwrap{animation:wriggle 1700ms var(--ease-io) infinite}
+  [data-anim="reveal"] .c{animation:draw 1100ms var(--ease-in) 1 both;stroke-dasharray:100 100}
+  @keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.015)}}
+  @keyframes wriggle{0%,100%{transform:rotate(0deg)}25%{transform:rotate(7deg)}75%{transform:rotate(-7deg)}}
+  @keyframes draw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+  @media (prefers-reduced-motion:reduce){.mark,.cwrap,.c{animation:none!important;stroke-dashoffset:0!important}}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:28px}
+  button{font-family:var(--sans);font-size:13px;color:var(--t1);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;padding:9px 16px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.09)}button[aria-pressed="true"]{border-color:rgba(248,245,238,.5);background:rgba(255,255,255,.10)}
+</style></head><body><div class="wrap">
+<h1>The open ring, animated</h1>
+<p class="sub">The truncated C is the circle. Idle breathes, wriggle tilts, reveal draws it on. (Blink removed.)</p>
+<div class="stageRow">
+  <div class="panel dark" id="p-dark" data-anim="idle"><div class="stage"><svg viewBox="0 0 240 240" role="img" aria-label="Cachet"><g class="mark"><g class="cwrap"><path class="c" pathLength="100" d="M174.25 86.02 A64 64 0 0 1 80.53 69.56"/><path class="c" pathLength="100" d="M64.53 88.00 A64 64 0 0 0 174.25 153.98"/></g></g></svg></div><span class="label">on the dark desk</span></div>
+  <div class="panel light" id="p-light" data-anim="idle"><div class="stage"><svg viewBox="0 0 240 240" role="img" aria-label="Cachet"><g class="mark"><g class="cwrap"><path class="c" pathLength="100" d="M174.25 86.02 A64 64 0 0 1 80.53 69.56"/><path class="c" pathLength="100" d="M64.53 88.00 A64 64 0 0 0 174.25 153.98"/></g></g></svg></div><span class="label">on paper</span></div>
+</div>
+<div class="controls">
+  <button data-set="idle" aria-pressed="true">Idle</button>
+  <button data-set="wriggle" aria-pressed="false">Wriggle</button>
+  <button data-set="reveal" aria-pressed="false">Reveal</button>
+</div></div>
+<script>
+const panels=[document.getElementById('p-dark'),document.getElementById('p-light')];
+const btns=[...document.querySelectorAll('button[data-set]')];
+function setA(a){btns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.set===a)));
+panels.forEach(p=>{if(a==='reveal'){p.dataset.anim='idle';void p.offsetWidth;p.dataset.anim='reveal';}else p.dataset.anim=a;});}
+btns.forEach(b=>b.addEventListener('click',()=>setA(b.dataset.set)));
+</script></body></html>

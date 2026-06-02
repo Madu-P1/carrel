@@ -1,0 +1,8 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cachet">
+  <title>Cachet</title>
+  <desc>The truncated C as an open ring, severed in the upper-left. The unfinished impression is the refusal. Ink via currentColor.</desc>
+  <g fill="none" stroke="currentColor" stroke-linecap="butt">
+    <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="16"/>
+    <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="16"/>
+  </g>
+</svg>

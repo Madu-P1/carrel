@@ -1,0 +1,12 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cachet">
+  <title>Cachet</title>
+  <style>
+    :root { --bg: #f6f2ea; --ink: #1c1814; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #16161a; --ink: #f8f5ee; } }
+  </style>
+  <rect width="240" height="240" rx="44" fill="var(--bg)"/>
+  <g fill="none" stroke="var(--ink)" stroke-linecap="butt">
+    <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="19"/>
+    <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="19"/>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 560 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cachet">
+  <title>Cachet lockup</title>
+  <desc>Open-ring mark plus the Cachet wordmark in a reading serif. Ink via currentColor.</desc>
+  <g transform="translate(8,24) scale(0.55)" fill="none" stroke="currentColor" stroke-linecap="butt">
+    <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="19"/>
+    <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="19"/>
+  </g>
+  <text x="170" y="119" font-family="Charter, Georgia, 'Times New Roman', serif" font-size="104" font-weight="600" letter-spacing="-1.5" fill="currentColor">Cachet</text>
+</svg>
