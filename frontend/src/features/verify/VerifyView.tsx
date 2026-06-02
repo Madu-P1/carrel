@@ -1,21 +1,23 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
-import { Button, ProvenanceBadge, Spinner, Stack, Text } from "@/design-system";
+import { Button, ProvenanceBadge, Spinner, Stack, Text, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
 import {
+  briefs as briefsApi,
   verify as verifyApi,
   type VerifyClaimVerdict,
+  type VerifyQuoteResult,
   type VerifyResponse
 } from "@/services/api/endpoints";
 
-import { buildCertification } from "./certification";
+import { buildCertification, fingerprintDraft, type CertificationModel } from "./certification";
 import { CertificationExhibit } from "./CertificationExhibit";
 import {
   DISPOSITION_ORDER,
   dispositionForClaim,
   type ClaimDisposition
 } from "./claimDisposition";
-import { SourceInspector } from "./SourceInspector";
+import { ExaminationDrawer } from "./ExaminationDrawer";
 import {
   checkedProgress,
   initialStreamState,
@@ -23,6 +25,7 @@ import {
   reduceStreamEvent,
   type VerifyStreamState
 } from "./streamProgress";
+import { WorkspaceMargin } from "./WorkspaceMargin";
 import styles from "./VerifyView.module.css";
 
 const SAMPLE_DRAFT =
@@ -340,7 +343,58 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
   );
 }
 
-export function VerifyView() {
+function quoteStatusLabel(status: VerifyQuoteResult["status"]): string {
+  switch (status) {
+    case "altered":
+      return "Not found verbatim";
+    case "could_not_check":
+      return "Could not check";
+    default:
+      return "Verbatim";
+  }
+}
+
+interface QuotePanelProps {
+  quotes: VerifyQuoteResult[];
+}
+
+/**
+ * Cachet PR4: brief-level draft-quote-verbatim panel. Lists the quoted passages
+ * that need attention (altered or could-not-check); a fully-verbatim quote is
+ * the unmarked pass and is not listed. Brief-level: not yet attributed to a
+ * specific claim (PR5 claim-span alignment does that). Deterministic flags wear
+ * the oxblood register via styles.quoteAltered; could-not-check is the quiet
+ * refusal. No confidence numbers, by design.
+ */
+function QuotePanel({ quotes }: QuotePanelProps) {
+  const flagged = quotes.filter((q) => q.status !== "verbatim");
+  if (flagged.length === 0) return null;
+  return (
+    <section className={styles.quotePanel} aria-label="Quotation check">
+      <h2 className={styles.quotePanelTitle}>Quotation check</h2>
+      <ul className={styles.quoteList}>
+        {flagged.map((q) => (
+          <li
+            key={q.index}
+            className={[
+              styles.quoteItem,
+              q.status === "altered" ? styles.quoteAltered : styles.quoteUnplaceable
+            ].join(" ")}
+          >
+            <span className={styles.quoteStatus}>{quoteStatusLabel(q.status)}</span>
+            <blockquote className={styles.quoteText}>“{q.quote}”</blockquote>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.scopeNote}>
+        This checks that the words shown in quotation marks appear in the cited source as written.
+        It does not assess whether an omission changes the meaning.
+      </p>
+    </section>
+  );
+}
+
+export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<VerifyResponse | null>(null);
@@ -356,6 +410,63 @@ export function VerifyView() {
   // the in-flight working indicator and the per-card "Checking…" state.
   const [stream, setStream] = useState<VerifyStreamState>(initialStreamState);
   const abortRef = useRef<AbortController | null>(null);
+  // Cachet PR6b re-hydration seeds (set only when a saved brief is reopened):
+  // sealedSeed = the stored seal fingerprint when seal_state === "sealed", so the
+  // certification exhibit shows sealed (or cracked, if the draft later differs)
+  // without a click; certAtSeed = the stored cert timestamp so a re-export keeps
+  // the brief's original date instead of stamping now.
+  const [sealedSeed, setSealedSeed] = useState<string | null>(null);
+  const [certAtSeed, setCertAtSeed] = useState<string | null>(null);
+  // True once this brief is sealed (sealed this session via onSeal, or reopened
+  // already-sealed via sealedSeed). The quiet unsealed "Save to Shelf" is hidden
+  // when sealed, so a same-draft save can never silently downgrade the seal (the
+  // backend upsert is last-write-wins; sealing is the only path to Sealed).
+  const [sessionSealed, setSessionSealed] = useState(false);
+  // Distinct from `loading` (the live-verify flag): opening a saved brief is a
+  // disk fetch, not a verification. Using a separate flag keeps `streaming =
+  // loading && !response` false throughout the reopen, so the verify chrome
+  // ("Verifying…", "extracting claims") never shows on the no-verify open path.
+  const [hydrating, setHydrating] = useState(false);
+
+  // Open a saved brief: re-hydrate the settled view from the STORED response with
+  // NO re-verify. Setting `response` renders the whole PR5b surface. The fetch
+  // uses `hydrating` (not `loading`) so the live-verify chrome stays dormant.
+  // Keyed on briefId; VerifyView is itself keyed on briefId in App.tsx so a
+  // brief switch remounts and the seal seed is re-read.
+  useEffect(() => {
+    if (!briefId) return;
+    let live = true;
+    const ctrl = new AbortController();
+    setHydrating(true);
+    setError(null);
+    briefsApi
+      .get(briefId, { signal: ctrl.signal })
+      .then((detail) => {
+        if (!live) return;
+        // BriefDetail.response/.cert are loose dicts on the wire (the /api/briefs
+        // route stores them verbatim, no response_model tightening). Cast once
+        // here, the single hydration seam; the render subtree sits under the
+        // per-route ErrorBoundary if a stored blob ever drifts from the shape.
+        setResponse(detail.response as unknown as VerifyResponse);
+        setDraft(detail.draft);
+        const storedCert = (detail.cert ?? null) as CertificationModel | null;
+        setCertAtSeed(storedCert?.generatedAtISO ?? null);
+        setSealedSeed(detail.seal_state === "sealed" ? detail.fingerprint : null);
+        // The reopened brief's sealed-ness rides in sealedSeed; clear the
+        // session flag so a freshly-reopened unsealed brief can be saved.
+        setSessionSealed(false);
+      })
+      .catch((e) => {
+        if (live) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (live) setHydrating(false);
+      });
+    return () => {
+      live = false;
+      ctrl.abort();
+    };
+  }, [briefId]);
 
   const submit = async () => {
     const trimmed = draft.trim();
@@ -368,6 +479,12 @@ export function VerifyView() {
     setSelected(null);
     setCertAt(null);
     setResponse(null);
+    // A manual re-verify is a NEW check: drop any reopened brief's stored seal
+    // and date so the fresh result can never export the prior brief's seal or
+    // timestamp (the seeds survive only an untouched re-export of that brief).
+    setSealedSeed(null);
+    setCertAtSeed(null);
+    setSessionSealed(false);
     let live = initialStreamState();
     setStream(live);
     try {
@@ -412,6 +529,30 @@ export function VerifyView() {
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
   const certModel = certAt && response ? buildCertification(response, certAt) : null;
+  // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
+  // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
+  const isSealed = sessionSealed || sealedSeed !== null;
+
+  // Cachet PR6d: persist this checked brief to the Shelf. "sealed" comes from
+  // the human sealing the certification (seal == save); "unsealed" from the
+  // quiet Save-to-Shelf action. The backend upserts by fingerprint, so saving
+  // then sealing the same draft updates one row rather than duplicating it.
+  async function saveToShelf(sealState: "sealed" | "unsealed") {
+    if (!response) return;
+    const draftText = response.draft_text ?? draft;
+    try {
+      await briefsApi.save({
+        draft: draftText,
+        fingerprint: fingerprintDraft(draftText),
+        response: response as unknown as Record<string, unknown>,
+        cert: certModel as unknown as Record<string, unknown> | null,
+        seal_state: sealState
+      });
+      toast.success(sealState === "sealed" ? "Sealed and saved to the Shelf" : "Saved to the Shelf");
+    } catch (e) {
+      toast.error("Could not save to the Shelf", e instanceof Error ? e.message : undefined);
+    }
+  }
 
   // Live skeleton (PR3): while the stream is in flight and before the canonical
   // result has settled, render the skeleton cards from the `claims` event with
@@ -428,6 +569,11 @@ export function VerifyView() {
           )
       : [];
   const progress = checkedProgress(stream);
+  // Cachet PR4: brief-level draft-quote-verbatim results. Settled view reads the
+  // canonical payload; live view shows the quote_batch the moment it lands. Only
+  // surface quotes that need attention (altered / could-not-check); a fully
+  // verbatim quote needs no callout (absence of a flag is the pass).
+  const quoteResults = response?.quote_results ?? stream.quotes ?? [];
 
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
@@ -449,12 +595,12 @@ export function VerifyView() {
           value={draft}
           placeholder={SAMPLE_DRAFT}
           onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
-          disabled={loading}
+          disabled={loading || hydrating}
         />
       </div>
 
       <div className={styles.actionsRow}>
-        <Button onClick={submit} disabled={loading || !draft.trim()} type="button">
+        <Button onClick={submit} disabled={loading || hydrating || !draft.trim()} type="button">
           {loading ? (
             <Stack direction="horizontal" align="center" gap={2}>
               <Spinner size={16} />
@@ -467,6 +613,16 @@ export function VerifyView() {
       </div>
 
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
+
+      {hydrating && !response ? (
+        // Opening a saved brief is a disk fetch, not a verification. Honest
+        // neutral copy so the no-verify promise holds for the whole fetch window
+        // (including a slow or offline backend), never "Verifying…".
+        <div className={styles.workingIndicator} aria-hidden="true">
+          <Spinner size={16} />
+          <span className={styles.workingLabel}>Opening saved brief…</span>
+        </div>
+      ) : null}
 
       {streaming ? (
         // Visual-only progress affordance: no aria-live. A polite live region
@@ -516,44 +672,37 @@ export function VerifyView() {
             <VerifyVerdictSummary dispositions={items.map((it) => it.disposition)} />
           ) : null}
 
+          <QuotePanel quotes={quoteResults} />
+
           {items.length > 0 ? (
             <div className={styles.resultActions}>
+              {!isSealed ? (
+                <button
+                  type="button"
+                  className={styles.saveShelf}
+                  onClick={() => void saveToShelf("unsealed")}
+                >
+                  Save to Shelf
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.exportCert}
-                onClick={() => setCertAt(new Date().toISOString())}
+                onClick={() => setCertAt(certAtSeed ?? new Date().toISOString())}
               >
                 Export certification
               </button>
             </div>
           ) : null}
 
-          {items.length > 0 ? (
-            <div className={[styles.workspace, selectedItem ? styles.workspaceSplit : ""].join(" ")}>
-              <div className={styles.verdictList}>
-                {items.map((it, i) => (
-                  <VerdictCard
-                    key={`${it.card.claim_index}-${i}`}
-                    card={it.card}
-                    disposition={it.disposition}
-                    index={i}
-                    isSelected={selectedItem?.card.claim_index === it.card.claim_index}
-                    onInspect={() =>
-                      setSelected(
-                        selected === it.card.claim_index ? null : (it.card.claim_index ?? null)
-                      )
-                    }
-                  />
-                ))}
-              </div>
-              {selectedItem ? (
-                <SourceInspector
-                  card={selectedItem.card}
-                  disposition={selectedItem.disposition}
-                  onClose={() => setSelected(null)}
-                />
-              ) : null}
-            </div>
+          {items.length > 0 && response ? (
+            <WorkspaceMargin
+              draftText={response.draft_text ?? draft}
+              cards={cards}
+              unattributedQuotes={quoteResults.filter((q) => q.status !== "verbatim")}
+              examined={selected}
+              onExamine={(idx) => setSelected(selected === idx ? null : idx)}
+            />
           ) : response ? (
             <div className={styles.emptyState}>
               No statements came back from the engine. Load the sources this draft relies on, then
@@ -563,8 +712,24 @@ export function VerifyView() {
         </>
       )}
 
+      {response && items.length > 0 ? (
+        <ExaminationDrawer
+          card={selectedItem?.card ?? null}
+          open={selectedItem != null}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
+
       {certModel ? (
-        <CertificationExhibit model={certModel} onClose={() => setCertAt(null)} />
+        <CertificationExhibit
+          model={certModel}
+          sealedFingerprint={sealedSeed}
+          onSeal={() => {
+            setSessionSealed(true);
+            void saveToShelf("sealed");
+          }}
+          onClose={() => setCertAt(null)}
+        />
       ) : null}
     </div>
   );

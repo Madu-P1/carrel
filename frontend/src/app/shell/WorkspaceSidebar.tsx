@@ -3,43 +3,14 @@ import { Icon } from "@/design-system";
 import { SubjectRail } from "@/features/notes/components/SubjectRail";
 
 import { BrandMark } from "./BrandMark";
+import { buildSidebarSections, type SidebarNavItem } from "./sidebarSections";
 import { appShell, toggleLeft, toggleNotesRailMode } from "./useAppShell";
 import { useSidebarSignals } from "./useSidebarSignals";
 import styles from "./WorkspaceSidebar.module.css";
 
-export interface SidebarNavItem {
-  label: string;
-  commandHint: string;
-  icon:
-    | "library"
-    | "doc"
-    | "ask"
-    | "study"
-    | "dashboard"
-    | "sparkle"
-    | "command"
-    | "search"
-    | "graph"
-    | "reader"
-    | "notes"
-    | "flashcards"
-    | "session"
-    | "plan"
-    | "verify";
-  path: string;
-  key:
-    | "dashboard"
-    | "session"
-    | "library"
-    | "reader"
-    | "ask"
-    | "verify"
-    | "study"
-    | "search"
-    | "concepts"
-    | "plan"
-    | "notes";
-}
+// Re-exported so existing importers (AppShell) keep importing the type from
+// here; the definition now lives in the pure ./sidebarSections module.
+export type { SidebarNavItem } from "./sidebarSections";
 
 interface WorkspaceSidebarProps {
   /** Pathname to compute the active item against. */
@@ -88,22 +59,7 @@ export function WorkspaceSidebar({
   const isNotesRailActive =
     pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
 
-  const sections = [
-    {
-      label: "Overview",
-      items: items.filter((item) => item.key === "dashboard")
-    },
-    {
-      label: "Study",
-      items: items.filter((item) =>
-        ["session", "study", "library", "reader", "ask", "notes"].includes(item.key)
-      )
-    },
-    {
-      label: "Tools",
-      items: items.filter((item) => ["search", "concepts", "plan"].includes(item.key))
-    }
-  ].filter((section) => section.items.length > 0);
+  const sections = buildSidebarSections(items);
 
   const isItemActive = (item: SidebarNavItem) => {
     // "/" only matches the Dashboard exactly — otherwise Library would

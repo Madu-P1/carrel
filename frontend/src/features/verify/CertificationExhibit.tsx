@@ -23,6 +23,21 @@ function prefersReducedMotion(): boolean {
 interface CertificationExhibitProps {
   model: CertificationModel;
   onClose: () => void;
+  /**
+   * Cachet PR6d: called when the human SEALS (clicks Set the seal). The Verify
+   * view uses this to persist the brief to the Shelf as Sealed (seal == save).
+   * Optional, so a standalone/preview render works without it.
+   */
+  onSeal?: () => void;
+  /**
+   * Cachet PR6b: a STORED seal fingerprint to initialize from when a saved
+   * brief is reopened. When it equals model.fingerprint the seal shows "sealed";
+   * when it differs (the draft changed since sealing) it shows "cracked". Omit
+   * for the live verify flow (the seal starts unsealed, set by a click). Only
+   * "unsealed"/"sealed" are ever persisted, so this is a bare fingerprint string,
+   * not a SealState; cracked is always derived here, never stored.
+   */
+  sealedFingerprint?: string | null;
 }
 
 /**
@@ -32,7 +47,12 @@ interface CertificationExhibitProps {
  * kept in the chair (the tool checks, the attorney certifies). No confidence
  * numbers, by design.
  */
-export function CertificationExhibit({ model, onClose }: CertificationExhibitProps) {
+export function CertificationExhibit({
+  model,
+  onClose,
+  onSeal,
+  sealedFingerprint: persistedSealedFingerprint
+}: CertificationExhibitProps) {
   const stamp = formatStamp(model.generatedAtISO);
   const dialogRef = useRef<HTMLDivElement>(null);
   // Keep the effect's deps empty while always invoking the latest onClose, so a
@@ -89,7 +109,15 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
   // exhibit the model is fixed, so only unsealed -> sealed happens here; the
   // cracked state is reached when a persisted seal is reopened against a changed
   // draft (Shelf persistence, PR6). Pure logic lives in sealStateFor.
-  const [sealedFingerprint, setSealedFingerprint] = useState<string | null>(null);
+  // Seed once from a persisted seal (a reopened saved brief); null for the live
+  // verify flow. Seed-once is safe because the exhibit mounts fresh on each cert
+  // open (certModel toggles null between opens) AND VerifyView is keyed on briefId
+  // in App.tsx, so switching briefs remounts the whole subtree and re-reads this
+  // seed. Do NOT reseed on prop change, which would clobber a live unsealed ->
+  // sealed click within one open exhibit.
+  const [sealedFingerprint, setSealedFingerprint] = useState<string | null>(
+    () => persistedSealedFingerprint ?? null
+  );
   const sealRef = useRef<HTMLDivElement>(null);
   const pressRef = useRef<HTMLSpanElement>(null);
   const crackPathRef = useRef<SVGPathElement>(null);
@@ -104,6 +132,9 @@ export function CertificationExhibit({ model, onClose }: CertificationExhibitPro
 
   const handleSetSeal = () => {
     setSealedFingerprint(model.fingerprint);
+    // seal == save: persist this brief to the Shelf as Sealed (PR6d). The Verify
+    // view's onSeal handler does the save; safe to call with the local seal set.
+    onSeal?.();
     // The seal button disables once set, so move focus to a stable in-dialog
     // control; otherwise the browser drops focus to <body>, escaping the trap.
     closeButtonRef.current?.focus();

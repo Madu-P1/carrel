@@ -82,6 +82,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 notes_columns = {
                     row["name"] for row in conn.execute("PRAGMA table_info(notes)").fetchall()
                 }
+                briefs_columns = {
+                    row["name"] for row in conn.execute("PRAGMA table_info(briefs)").fetchall()
+                }
 
         # Vector migration (0007) is conditionally applied based on
         # whether sqlite-vec is available at runtime; the rest are
@@ -110,6 +113,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (18, "0018_srs_cards_kind_drop_check_and_card_pairs.sql"),
                 (22, "0022_srs_cards_doc_id.sql"),
                 (23, "0023_note_folders.sql"),
+                (24, "0024_briefs.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -118,6 +122,11 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertIn("doc_id", edge_columns)
         self.assertIn("artifacts", tables)
         self.assertIn("mastery_states", tables)
+        # PR6: the briefs table (Shelf persistence) exists with its core columns.
+        self.assertIn("briefs", tables)
+        self.assertTrue(
+            {"draft", "fingerprint", "response_json", "cert_json", "seal_state"} <= briefs_columns
+        )
         self.assertIn("chunks_fts", tables)
         self.assertIn("usage_events", tables)
         self.assertIn("keychain_ref", calendar_feed_columns)
@@ -148,14 +157,14 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "total"
                 ]
 
-        # +11 for 0008_anchors, 0009_calendar_and_planning,
+        # +12 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
         # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
         # 0016_nodes_typed, 0017_srs_cards_kind,
         # 0018_srs_cards_kind_drop_check_and_card_pairs,
-        # 0022_srs_cards_doc_id, and 0023_note_folders. All unconditional,
-        # no runtime gate like sqlite-vec.
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 11
+        # 0022_srs_cards_doc_id, 0023_note_folders, and 0024_briefs. All
+        # unconditional, no runtime gate like sqlite-vec.
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 12
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -195,6 +204,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0018_srs_cards_kind_drop_check_and_card_pairs.sql",
                 "0022_srs_cards_doc_id.sql",
                 "0023_note_folders.sql",
+                "0024_briefs.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

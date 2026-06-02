@@ -258,6 +258,391 @@ class VerifyDraftStreamTests(unittest.TestCase):
         self.assertEqual([], claims_event["claim_verdicts"][1]["case_verdicts"])
 
 
+class QuoteWiringTests(unittest.TestCase):
+    """Cachet PR4: the quote-check wiring in verify_draft_stream + the
+    result payload. The cry-wolf PARSER is gated by tests/test_quote_check.py;
+    these tests gate the STREAM/SERIALIZATION seam: quote_batch emission, the
+    opinion_text strip at the SSE boundary, and identical quote_results on the
+    settled payload. The draft here carries a real quoted span so the check fires."""
+
+    QUOTED_DRAFT = 'The court held the statute was "unconstitutional as applied" to the petitioner.'
+
+    def _envelope(self, *, content=None, opinion_text=None):
+        # One claim whose citation carries loaded-doc `content`, and a
+        # case_verdict optionally carrying retained `opinion_text`.
+        case_verdicts = []
+        if opinion_text is not None:
+            case_verdicts = [
+                {
+                    "claim_index": 0,
+                    "ok": True,
+                    "error_code": None,
+                    "error_message": None,
+                    "verdicts": [
+                        {
+                            "citation": "576 U.S. 644",
+                            "status": 200,
+                            "exists": True,
+                            "case_name": "Obergefell v. Hodges",
+                            "opinion_text": opinion_text,
+                        }
+                    ],
+                }
+            ]
+        # The loaded-doc citation carries node char offsets so the verify layer
+        # treats it as a complete, contiguous source (PR4 chunk-join). Without
+        # position info a lone citation is complete=False and a miss only
+        # degrades to could_not_check; the altered-flag tests need a complete
+        # source, which a real single-node citation (char_start/char_end) is.
+        citation = {"node_id": "c1", "content": content or ""}
+        if content:
+            citation["char_start"] = 0
+            citation["char_end"] = len(content)
+        return {
+            "answer": "stub",
+            "claims": [
+                {
+                    "text": "The statute was unconstitutional as applied.",
+                    "citations": [citation],
+                    "case_verdicts": case_verdicts,
+                }
+            ],
+            "unsupported_spans": [],
+            "model": "claude-sonnet-4-6",
+            "error": None,
+        }
+
+    def _steps(self, envelope):
+        def gen():
+            yield {"type": "progress", "phase": "extracting"}
+            yield {
+                "type": "claims",
+                "claims": envelope["claims"],
+                "unsupported_spans": envelope["unsupported_spans"],
+            }
+            for claim in envelope["claims"]:
+                for cv in claim["case_verdicts"]:
+                    yield {
+                        "type": "cite_verdict",
+                        "claim_index": cv["claim_index"],
+                        "case_verdict": cv,
+                    }
+            yield {"type": "result", "envelope": envelope}
+
+        return gen
+
+    def _run(self, envelope, draft=QUOTED_DRAFT):
+        with mock.patch.object(
+            verify_service.tutor_service,
+            "grounded_tutor_envelope_steps",
+            side_effect=lambda *a, **k: self._steps(envelope)(),
+        ):
+            return list(
+                verify_service.verify_draft_stream(
+                    conn=None,
+                    draft=draft,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+
+    def test_verbatim_quote_against_loaded_doc_is_clean(self) -> None:
+        env = self._envelope(
+            content="The court held the statute was unconstitutional as applied to the petitioner."
+        )
+        events = self._run(env)
+        batch = next((e for e in events if e["type"] == "quote_batch"), None)
+        self.assertIsNotNone(batch, "a quoted draft must emit a quote_batch")
+        self.assertEqual(1, len(batch["quotes"]))
+        self.assertEqual("verbatim", batch["quotes"][0]["status"])
+
+    def test_altered_quote_against_loaded_doc_is_flagged(self) -> None:
+        # Source says "unconstitutional"; the draft quote says it verbatim, so
+        # to force an alteration the source must DIFFER. Use a source missing
+        # the quoted run entirely.
+        env = self._envelope(content="The court upheld the statute as a valid exercise of power.")
+        events = self._run(env)
+        batch = next(e for e in events if e["type"] == "quote_batch")
+        self.assertEqual("altered", batch["quotes"][0]["status"])
+
+    def test_verbatim_quote_against_cited_case_opinion(self) -> None:
+        # No loaded-doc content; the source is the retained opinion text.
+        env = self._envelope(
+            content="",
+            opinion_text="We hold the statute was unconstitutional as applied to the petitioner.",
+        )
+        events = self._run(env)
+        batch = next(e for e in events if e["type"] == "quote_batch")
+        self.assertEqual("verbatim", batch["quotes"][0]["status"])
+
+    def test_no_source_degrades_to_could_not_check(self) -> None:
+        env = self._envelope(content="", opinion_text=None)
+        events = self._run(env)
+        batch = next(e for e in events if e["type"] == "quote_batch")
+        self.assertEqual("could_not_check", batch["quotes"][0]["status"])
+
+    def test_opinion_text_is_stripped_from_cite_verdict_on_the_wire(self) -> None:
+        # invariant: the bulky server-internal opinion_text must never cross the
+        # SSE boundary on a cite_verdict event.
+        env = self._envelope(
+            content="", opinion_text="A long opinion body the wire must not carry."
+        )
+        events = self._run(env)
+        cite_events = [e for e in events if e["type"] == "cite_verdict"]
+        self.assertTrue(cite_events)
+        for e in cite_events:
+            for case in e["case_verdict"]["verdicts"]:
+                self.assertNotIn("opinion_text", case)
+
+    def test_quote_results_on_result_payload_match_the_batch(self) -> None:
+        env = self._envelope(
+            content="The court held the statute was unconstitutional as applied to the petitioner."
+        )
+        events = self._run(env)
+        batch = next(e for e in events if e["type"] == "quote_batch")
+        result = events[-1]
+        self.assertEqual("result", result["type"])
+        self.assertEqual(batch["quotes"], result["verify"]["quote_results"])
+
+    def test_no_quotes_emits_no_quote_batch(self) -> None:
+        # A draft with no quotation marks must not emit a quote_batch at all.
+        env = self._envelope(content="anything")
+        events = self._run(env, draft="The statute was unconstitutional, no quotes here.")
+        self.assertIsNone(next((e for e in events if e["type"] == "quote_batch"), None))
+
+    def test_quote_batch_precedes_result(self) -> None:
+        env = self._envelope(
+            content="The court held the statute was unconstitutional as applied to the petitioner."
+        )
+        types = [e["type"] for e in self._run(env)]
+        self.assertLess(types.index("quote_batch"), types.index("result"))
+
+
+class ChunkJoinTests(unittest.TestCase):
+    """Cachet PR4 finding [3]: a quote straddling two retrieved pieces must be
+    found verbatim (join provably-adjacent pieces), and the join must NEVER
+    fabricate adjacency (that would be a new cry-wolf bug). Tests _loaded_doc_
+    sources / _join_adjacent directly."""
+
+    def _cards(self, citations):
+        return [{"citations": citations}]
+
+    def test_adjacent_chunks_join_into_one_complete_source(self) -> None:
+        srcs = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {
+                        "document_id": "d1",
+                        "content": "the court held the statute",
+                        "chunk_index": 4,
+                    },
+                    {"document_id": "d1", "content": "was unconstitutional", "chunk_index": 5},
+                ]
+            )
+        )
+        self.assertEqual(1, len(srcs))
+        self.assertTrue(srcs[0].complete)
+        self.assertIn("the court held the statute", srcs[0].text)
+        self.assertIn("was unconstitutional", srcs[0].text)
+
+    def test_non_adjacent_chunks_stay_separate_and_incomplete(self) -> None:
+        srcs = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {"document_id": "d1", "content": "alpha beta", "chunk_index": 4},
+                    {"document_id": "d1", "content": "gamma delta", "chunk_index": 9},
+                ]
+            )
+        )
+        self.assertEqual(2, len(srcs))
+        self.assertTrue(all(not s.complete for s in srcs))
+
+    def test_contiguous_nodes_join_complete(self) -> None:
+        srcs = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {
+                        "document_id": "d2",
+                        "content": "due process requires",
+                        "char_start": 100,
+                        "char_end": 120,
+                    },
+                    {
+                        "document_id": "d2",
+                        "content": "notice and a hearing",
+                        "char_start": 120,
+                        "char_end": 140,
+                    },
+                ]
+            )
+        )
+        self.assertEqual(1, len(srcs))
+        self.assertTrue(srcs[0].complete)
+
+    def test_gapped_nodes_do_not_join(self) -> None:
+        # A large char gap means an omission between the nodes: do NOT merge
+        # (merging would fabricate adjacency and could hide an alteration).
+        srcs = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {
+                        "document_id": "d2",
+                        "content": "due process requires",
+                        "char_start": 100,
+                        "char_end": 120,
+                    },
+                    {
+                        "document_id": "d2",
+                        "content": "a separate clause",
+                        "char_start": 900,
+                        "char_end": 920,
+                    },
+                ]
+            )
+        )
+        self.assertEqual(2, len(srcs))
+
+    def test_lone_node_is_complete_but_lone_chunk_is_not(self) -> None:
+        node_src = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {
+                        "document_id": "d3",
+                        "content": "a whole paragraph node",
+                        "char_start": 0,
+                        "char_end": 22,
+                    }
+                ]
+            )
+        )
+        self.assertEqual(1, len(node_src))
+        self.assertTrue(node_src[0].complete, "a lone node is a whole structural unit")
+        chunk_src = verify_service._loaded_doc_sources(
+            self._cards(
+                [{"document_id": "d3", "content": "an arbitrary chunk split", "chunk_index": 7}]
+            )
+        )
+        self.assertEqual(1, len(chunk_src))
+        self.assertFalse(chunk_src[0].complete, "a lone chunk may straddle into an unseen neighbor")
+
+    def test_different_documents_never_join(self) -> None:
+        srcs = verify_service._loaded_doc_sources(
+            self._cards(
+                [
+                    {
+                        "document_id": "d1",
+                        "content": "doc one tail",
+                        "char_start": 100,
+                        "char_end": 112,
+                    },
+                    {
+                        "document_id": "d2",
+                        "content": "doc two head",
+                        "char_start": 112,
+                        "char_end": 124,
+                    },
+                ]
+            )
+        )
+        self.assertEqual(2, len(srcs))
+
+
+class PlacementWiringTests(unittest.TestCase):
+    """Cachet PR5a: claim->draft placement rides the result payload and is
+    identical stream vs non-stream. The never-mis-pin algorithm itself is gated
+    by tests/test_align.py; this gates the WIRING."""
+
+    DRAFT = "The panel reasoned the statute was unconstitutional as applied to the petitioner."
+
+    def _env(self):
+        return {
+            "answer": "stub",
+            "claims": [
+                {
+                    "text": "the statute was unconstitutional as applied",
+                    "citations": [{"node_id": "c1", "content": "x"}],
+                    "case_verdicts": [],
+                },
+                {
+                    "text": "a paraphrase that appears nowhere in the draft body at all",
+                    "citations": [{"node_id": "c2", "content": "y"}],
+                    "case_verdicts": [],
+                },
+            ],
+            "unsupported_spans": [],
+            "model": "claude-sonnet-4-6",
+            "error": None,
+        }
+
+    def _steps(self, env):
+        def gen():
+            yield {"type": "progress", "phase": "extracting"}
+            yield {"type": "claims", "claims": env["claims"], "unsupported_spans": []}
+            yield {"type": "result", "envelope": env}
+
+        return gen
+
+    def test_placement_on_result_cards_and_unplaced_tray(self) -> None:
+        env = self._env()
+        with mock.patch.object(
+            verify_service.tutor_service,
+            "grounded_tutor_envelope_steps",
+            side_effect=lambda *a, **k: self._steps(env)(),
+        ):
+            events = list(
+                verify_service.verify_draft_stream(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+        verify = next(e for e in events if e["type"] == "result")["verify"]
+        cards = verify["claim_verdicts"]
+        # claim 0 is verbatim in the draft -> placed at a real range.
+        self.assertTrue(cards[0]["placement"]["placed"])
+        self.assertEqual("exact", cards[0]["placement"]["method"])
+        seg = self.DRAFT[cards[0]["placement"]["char_start"] : cards[0]["placement"]["char_end"]]
+        self.assertEqual("the statute was unconstitutional as applied", seg)
+        # claim 1 is a paraphrase absent from the draft -> unplaced tray.
+        self.assertFalse(cards[1]["placement"]["placed"])
+        self.assertIn(1, verify["unplaced"])
+
+    def test_placement_identical_stream_vs_non_stream(self) -> None:
+        env = self._env()
+        with mock.patch.object(
+            verify_service.tutor_service,
+            "grounded_tutor_envelope_steps",
+            side_effect=lambda *a, **k: self._steps(env)(),
+        ):
+            stream = next(
+                e
+                for e in verify_service.verify_draft_stream(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+                if e["type"] == "result"
+            )["verify"]
+        with mock.patch.object(
+            verify_service.tutor_service, "grounded_tutor_envelope", return_value=env
+        ):
+            non_stream = verify_service.verify_result_to_payload(
+                verify_service.verify_draft(
+                    conn=None,
+                    draft=self.DRAFT,
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+        self.assertEqual(
+            [c["placement"] for c in stream["claim_verdicts"]],
+            [c["placement"] for c in non_stream["claim_verdicts"]],
+        )
+        self.assertEqual(stream["unplaced"], non_stream["unplaced"])
+
+
 class VerifyStreamRouteTests(unittest.TestCase):
     """The SSE endpoint frames events as ``data: {json}\\n\\n``, ends with
     ``data: [DONE]``, and surfaces errors as an error event (never a pass)."""
