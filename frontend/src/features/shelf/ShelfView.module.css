@@ -1,84 +1,252 @@
 /*
- * Cachet PR6a — Shelf (mechanical). Plain, token-driven layout only.
- * The warm register, card craft, and ink seal are the operator-gated PR6b
- * pass; nothing here commits the final look. No green/amber, no oxblood
- * (oxblood is reserved for verify flags), no confidence chrome.
+ * Cachet PR6b-craft — the Shelf, Direction C "The Spine".
+ *
+ * The warm register: "the act of returning." A bookshelf of saved briefs,
+ * grouped by the human's act (Sealed / Unsealed), each a row with a gutter
+ * spine (ink when sealed) and an ink seal disc echoing the cert seal. Warm
+ * cream ground distinct from the cold verify paper; a Fraunces ceremonial
+ * title. No oxblood (reserved for verify flags), no green/amber, no verdict
+ * signal — warmth never touches a verdict.
+ *
+ * The warm palette is scoped to .shelf as local custom properties, including
+ * overrides of the global text tokens so the design-system primitives (Text,
+ * Button, Spinner) render ink-on-cream here instead of the global dark theme.
+ * Same scoping trick the verify surface uses with .verifyScope; the global
+ * theme is untouched.
  */
 
 .shelf {
-  max-width: 56rem;
+  /* warm chambers palette (the prototype-locked warm register) */
+  --paper: #ece2cf;
+  --paper-2: #f3ecdd;
+  --edge: rgba(60, 46, 28, 0.16);
+  --rule: rgba(28, 24, 20, 0.14);
+  --ink: #1c1814;
+  --ink-2: #4e463c;
+  --ink-3: #635b4d;
+
+  /* override the global (dark-theme) text tokens so primitives read on cream */
+  --text-primary: #1c1814;
+  --text-secondary: #4e463c;
+  --text-tertiary: #635b4d;
+  --accent: #4e463c;
+
+  /* The dark-theme glass chrome (secondary/ghost Button variants pull these)
+     would render as cold frosted-dark chips with near-invisible borders on
+     cream. Override to warm ink equivalents so Confirm / Cancel / Try again read
+     correctly on the warm surface; their text already inks via the --text and
+     --accent overrides above. */
+  --glass-bg: rgba(60, 46, 28, 0.06);
+  --glass-bg-strong: rgba(60, 46, 28, 0.12);
+  --glass-bg-soft: rgba(60, 46, 28, 0.04);
+  --glass-border: var(--rule);
+  --glass-border-strong: rgba(28, 24, 20, 0.28);
+  --glass-highlight: transparent;
+  --glass-highlight-strong: transparent;
+
+  max-width: 50rem;
   margin: 0 auto;
   padding: var(--space-8, 2rem) var(--space-6, 1.5rem) var(--space-12, 3rem);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100%;
 }
 
 .header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1, 0.25rem);
   margin-bottom: var(--space-6, 1.5rem);
 }
 
-.centered,
-.empty {
-  padding: var(--space-12, 3rem) 0;
+.pageTitle {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-size: 2rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.25rem;
+  color: var(--ink);
+}
+
+.subtitle {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.section {
+  margin-top: var(--space-6, 1.5rem);
+}
+.section:first-of-type {
+  margin-top: 0;
+}
+
+.sectionLabel {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+/* the spine row: gutter | main | right */
+.spine {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: var(--space-4, 1rem);
+  align-items: center;
+  padding: 0.9rem 0.25rem;
+  border-bottom: 1px solid var(--rule);
+  transition: background var(--dur-micro, 120ms) var(--ease-out, ease);
+}
+.spine:hover {
+  background: rgba(60, 46, 28, 0.045);
+}
+
+.gutter {
+  display: flex;
+  justify-content: center;
+  align-self: stretch;
+}
+.bar {
+  width: 3px;
+  align-self: stretch;
+  min-height: 1.9rem;
+  border-radius: 2px;
+  background: var(--rule);
+}
+.spine[data-sealed="true"] .bar {
+  background: var(--ink-2);
+}
+
+.rowMain {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3, 0.75rem);
-}
-
-.row {
-  margin: 0;
-}
-
-/* Let the title/meta column shrink so long titles ellipsize instead of
-   shoving the actions off the card. */
-.rowMain {
+  gap: 0.2rem;
   min-width: 0;
-  flex: 1 1 auto;
   cursor: pointer;
 }
-
-/* Keyboard focus ring for the clickable open target (functional a11y; the warm
-   card treatment of this affordance is the operator-gated PR6b craft pass). */
 .rowMain:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink-2);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
-.rowMain > :first-child {
+.title {
+  /* Explicit Charter reading-serif stack: the global --font-serif token resolves
+     Instrument Serif FIRST, which is display-only (DESIGN.md). Brief row titles
+     are body text, so name the reading serif directly. */
+  font-family: "Charter", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .meta {
-  color: var(--text-secondary);
-}
-
-.seal {
-  font-size: var(--text-caption, 0.8125rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.6875rem;
   letter-spacing: 0.02em;
-  color: var(--text-secondary);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
-
-.seal[data-state="sealed"] {
-  color: var(--text-primary);
-  font-weight: 600;
+.dot {
+  color: var(--ink-3);
 }
-
 .fingerprint {
-  font-family: var(--font-mono);
-  font-size: var(--text-caption, 0.8125rem);
-  color: var(--text-tertiary);
+  font-family: inherit;
+  color: var(--ink-3);
 }
 
-.actions {
-  flex-shrink: 0;
+.right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: none;
+  align-self: start; /* the bin sits at the top-right of the row */
+}
+
+/* delete: a quiet bin icon, top-right; ink, not red (no verdict color on the
+   warm surface). Clicking it arms the two-step confirm. */
+.binBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 4px;
+  transition:
+    color var(--dur-micro, 120ms) var(--ease-out, ease),
+    background var(--dur-micro, 120ms) var(--ease-out, ease);
+}
+.binBtn:hover {
+  color: var(--ink);
+  background: rgba(60, 46, 28, 0.06);
+}
+.binBtn:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+
+/* ink seal disc — echoes the cert seal (PR2): ink ring + engraved core.
+   Not brass (the palette admits no gold), not oxblood (reserved for flags). */
+.seal {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+.seal svg {
+  width: 100%;
+  height: 100%;
+}
+.sealRing {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.4;
+}
+.sealCore {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.2;
+}
+
+.confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* loading / error / empty — all in the warm register */
+.centered,
+.empty {
+  padding: var(--space-12, 3rem) 0;
+}
+.emptyTitle {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-size: 1.4rem;
+  color: var(--ink);
+  margin: 0 0 0.4rem;
+}
+.emptyBody {
+  color: var(--ink-2);
+  margin: 0;
 }

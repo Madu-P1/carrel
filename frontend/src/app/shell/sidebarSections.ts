@@ -28,7 +28,8 @@ export interface SidebarNavItem {
     | "flashcards"
     | "session"
     | "plan"
-    | "verify";
+    | "verify"
+    | "shelf";
   path: string;
   key:
     | "dashboard"
