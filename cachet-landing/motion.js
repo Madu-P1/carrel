@@ -3,6 +3,25 @@
  * Everything degrades: no JS = all content visible; reduced-motion = no movement. */
 (function () {
   "use strict";
+
+  /* Reloads land at the hero, never at a restored position or a stale #anchor. */
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  (function () {
+    var reloaded =
+      (performance.navigation && performance.navigation.type === 1) ||
+      (performance.getEntriesByType &&
+        (performance.getEntriesByType("navigation")[0] || {}).type === "reload");
+    if (reloaded || !location.hash) {
+      var toTop = function () {
+        var de = document.documentElement, prev = de.style.scrollBehavior;
+        de.style.scrollBehavior = "auto";
+        window.scrollTo(0, 0);
+        de.style.scrollBehavior = prev;
+      };
+      toTop();
+      window.addEventListener("load", toTop);
+    }
+  })();
   var reduce = window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var hasIO = "IntersectionObserver" in window;
@@ -27,7 +46,7 @@
   function countUp(el) {
     var target = parseInt(el.getAttribute("data-countup"), 10) || 0;
     if (reduce) { el.textContent = String(target); return; }
-    var dur = 950, start = null;
+    var dur = 1300, start = null;
     var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
     function tick(now) {
       if (start === null) start = now;

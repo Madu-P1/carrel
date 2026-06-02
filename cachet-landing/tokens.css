@@ -5,32 +5,31 @@
  */
 
 :root {
-  /* ---- Neutral ramp: warm-tinted, never pure black/white ----
-   * Hue held at ~36 (warm taupe), very low saturation. Reads as
-   * "document under even light", not blue-black instrument panel. */
-  --n-0:  hsl(36 9% 7%);    /* page base            */
-  --n-1:  hsl(36 8% 9%);    /* surface              */
-  --n-2:  hsl(36 7% 11%);   /* surface-raised       */
-  --n-3:  hsl(36 7% 14%);   /* surface-overlay      */
-  --n-4:  hsl(36 6% 19%);   /* hairline border      */
-  --n-5:  hsl(36 6% 26%);   /* strong border        */
-  --n-6:  hsl(36 7% 49%);   /* muted text (AA small) */
-  --n-7:  hsl(38 8% 56%);   /* secondary text       */
-  --n-8:  hsl(40 10% 74%);  /* secondary-strong     */
-  --n-9:  hsl(42 14% 92%);  /* primary text         */
-  --n-10: hsl(44 20% 97%);  /* highest, rare        */
+  /* ---- Neutral ramp: warm paper to near-black ink ----
+   * The verify surface is a court exhibit: a warm sheet under even light, not
+   * an instrument panel. Index rises from paper (the page base) to ink (text).
+   * Hue held warm (~28-45), low saturation. Never pure white or pure black. */
+  --n-0:  hsl(43 40% 94%);  /* paper, page base (#f6f2ea) */
+  --n-1:  hsl(44 50% 97%);  /* surface, a sheet raised off the desk */
+  --n-2:  hsl(45 56% 98%);  /* surface-raised */
+  --n-3:  hsl(45 60% 99%);  /* surface-overlay, near white */
+  --n-4:  hsl(38 22% 80%);  /* hairline border */
+  --n-5:  hsl(35 16% 66%);  /* strong border */
+  --n-6:  hsl(33 13% 42%);  /* muted text (AA on paper) */
+  --n-7:  hsl(30 16% 32%);  /* secondary text */
+  --n-8:  hsl(28 19% 24%);  /* secondary-strong */
+  --n-9:  hsl(28 22% 16%);  /* primary text, ink */
+  --n-10: hsl(30 24% 9%);   /* darkest ink (#1c1814), rare */
 
-  /* ---- Verdict accent family (the only color allowed to mean something) ---- */
-  --verified:        hsl(152 42% 55%);
-  --verified-dim:    hsl(152 30% 22%);
-  --verified-glow:   hsl(152 50% 55% / 0.16);
-
-  --unverified:      hsl(41 72% 60%);   /* the gem: authoritative caution, not alarm */
-  --unverified-dim:  hsl(41 45% 20%);
-  --unverified-glow: hsl(41 75% 58% / 0.18);
-
-  --refused:         hsl(8 66% 68%);    /* reserved for "fabricated / does not exist" */
-  --refused-dim:     hsl(8 42% 14%);
+  /* ---- The one reserved accent: proofreader oxblood ----
+   * Oxblood is the only saturated color on the page, and it only ever marks
+   * what needs a human's eyes: a flag, a correction, a no-record. Never
+   * celebration. There is deliberately no "verified" color: a confirmed line is
+   * unmarked. The absence of oxblood is the pass. A green badge here would be
+   * the single most dangerous signal, so there is none. */
+  --flag:      hsl(351 56% 31%);          /* #7a2230 */
+  --flag-edge: hsl(351 40% 42% / 0.45);   /* oxblood hairline */
+  --flag-wash: hsl(351 50% 40% / 0.07);   /* faint oxblood tint behind a flagged line */
 
   /* ---- Semantic roles ---- */
   --bg:               var(--n-0);
@@ -76,10 +75,10 @@
   --r-3: 14px;
   --r-full: 999px;
 
-  /* ---- Elevation: dark mode leans on lighter surfaces + tinted shadow ---- */
-  --shadow-1: 0 1px 2px hsl(36 20% 2% / 0.4);
-  --shadow-2: 0 4px 12px hsl(36 20% 2% / 0.45), 0 1px 2px hsl(36 20% 2% / 0.5);
-  --shadow-3: 0 16px 48px hsl(36 30% 2% / 0.55), 0 4px 12px hsl(36 20% 2% / 0.4);
+  /* ---- Elevation: soft, warm, low. A sheet barely lifting off the desk. ---- */
+  --shadow-1: 0 1px 2px hsl(30 25% 25% / 0.06);
+  --shadow-2: 0 2px 10px hsl(30 22% 22% / 0.07), 0 1px 2px hsl(30 22% 22% / 0.06);
+  --shadow-3: 0 14px 36px hsl(30 22% 20% / 0.10), 0 3px 10px hsl(30 20% 20% / 0.07);
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
