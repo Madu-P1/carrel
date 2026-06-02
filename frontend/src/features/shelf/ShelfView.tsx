@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { Button, Card, Spinner, Stack, Text } from "@/design-system";
+import { navigateTo } from "@/app/shell/useAppShell";
 import { briefs as briefsApi, type BriefSummary } from "@/services/api/endpoints";
 
 import styles from "./ShelfView.module.css";
@@ -56,6 +57,12 @@ export function ShelfView() {
   useEffect(() => {
     void load();
   }, []);
+
+  function openBrief(id: string) {
+    // Re-hydrate the Verify view from this saved brief (no re-verify). The warm
+    // card styling of this open affordance is the operator-gated PR6b craft pass.
+    navigateTo(`/verify?brief=${encodeURIComponent(id)}`);
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -122,7 +129,20 @@ export function ShelfView() {
           <li key={brief.id} className={styles.row}>
             <Card padding="md">
               <Stack direction="horizontal" justify="between" align="start" gap={4}>
-                <Stack gap={1} className={styles.rowMain}>
+                <Stack
+                  gap={1}
+                  className={styles.rowMain}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${brief.title || "Untitled brief"}`}
+                  onClick={() => openBrief(brief.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openBrief(brief.id);
+                    }
+                  }}
+                >
                   <Text variant="h3" weight="semibold">
                     {brief.title || "Untitled brief"}
                   </Text>

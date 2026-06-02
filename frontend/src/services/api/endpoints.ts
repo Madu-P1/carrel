@@ -960,7 +960,8 @@ export const briefs = {
   /** All saved briefs, most-recent-first. Summaries only. */
   list: () => api<{ briefs: BriefSummary[] }>("/api/briefs"),
   /** Full brief for re-hydration: draft + response + cert. */
-  get: (briefId: string) => api<BriefDetail>(`/api/briefs/${encodeURIComponent(briefId)}`),
+  get: (briefId: string, opts?: { signal?: AbortSignal }) =>
+    api<BriefDetail>(`/api/briefs/${encodeURIComponent(briefId)}`, { signal: opts?.signal }),
   /** Remove a saved brief the user owns. */
   remove: (briefId: string) =>
     api<{ deleted: boolean; brief_id: string }>(`/api/briefs/${encodeURIComponent(briefId)}`, {
