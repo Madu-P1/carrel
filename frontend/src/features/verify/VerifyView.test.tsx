@@ -15,6 +15,7 @@ vi.mock("@/services/api/endpoints", () => ({
 
 const mockGet = vi.mocked(briefsApi.get);
 const mockDraftStream = vi.mocked(verifyApi.draftStream);
+const mockSave = vi.mocked(briefsApi.save);
 
 const STORED_DRAFT = "The statute applies to this matter under controlling precedent.";
 
@@ -140,5 +141,54 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     // seal. (Before the seed-clear fix this exported a false cracked seal.)
     expect(screen.getByRole("button", { name: "Set the seal" })).toBeTruthy();
     expect(screen.queryByRole("img", { name: /cracked/i })).toBeNull();
+  });
+
+  it("saves the brief unsealed when Save to Shelf is clicked", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGet.mockResolvedValue(briefDetail({ seal_state: "unsealed", cert: null }) as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockSave.mockResolvedValue({ brief: { id: "b1" } } as any);
+    render(<VerifyView briefId="b1" />);
+    // resultActions render once the settled view has claim cards.
+    await screen.findByText("Save to Shelf");
+
+    fireEvent.click(screen.getByText("Save to Shelf"));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    const payload = mockSave.mock.calls[0][0];
+    expect(payload.seal_state).toBe("unsealed");
+    expect(payload.draft).toBe(STORED_DRAFT);
+    expect(payload.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(payload.response).toBeTruthy();
+  });
+
+  it("saves the brief sealed when the human seals the certification (seal == save)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGet.mockResolvedValue(briefDetail({ seal_state: "unsealed", cert: null }) as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockSave.mockResolvedValue({ brief: { id: "b1" } } as any);
+    render(<VerifyView briefId="b1" />);
+    await screen.findByText("Export certification");
+
+    // Open the certification, then seal it — sealing must persist as Sealed.
+    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(screen.getByRole("button", { name: "Set the seal" }));
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    const sealedCall = mockSave.mock.calls.find((c) => c[0].seal_state === "sealed");
+    expect(sealedCall).toBeTruthy();
+    expect(sealedCall![0].draft).toBe(STORED_DRAFT);
+    expect(sealedCall![0].cert).toBeTruthy();
+    // Once sealed this session, the quiet unsealed Save is hidden (no downgrade).
+    expect(screen.queryByText("Save to Shelf")).toBeNull();
+  });
+
+  it("hides the unsealed Save on a reopened sealed brief (no silent downgrade)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGet.mockResolvedValue(briefDetail({ seal_state: "sealed" }) as any);
+    render(<VerifyView briefId="b1" />);
+    await screen.findByText("Export certification");
+    // Already sealed + saved: a stray "Save to Shelf" click would upsert it back
+    // to unsealed, so the button must not be offered.
+    expect(screen.queryByText("Save to Shelf")).toBeNull();
   });
 });

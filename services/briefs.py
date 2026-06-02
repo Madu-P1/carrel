@@ -159,29 +159,55 @@ def save_brief(
 
     clean_title = (title or "").strip() or _derive_title(clean_draft)
     state = _coerce_seal_state(seal_state)
+    response_blob = json.dumps(response)
+    cert_blob = json.dumps(cert) if cert is not None else None
 
-    brief_id = str(uuid.uuid4())
+    # Fingerprint upsert: a brief is one row per draft fingerprint, and its
+    # seal_state evolves in place (saved unsealed, then re-saved sealed once
+    # the human seals it). Saving the same draft again must update that one
+    # row, not litter the Shelf with duplicate cards. There is no UNIQUE
+    # constraint on fingerprint, so we look up the most-recent matching row
+    # and branch: UPDATE it (last write wins, id + created_at preserved) when
+    # found, INSERT a fresh row otherwise. Different fingerprint => new row.
+    existing = conn.execute(
+        "SELECT id FROM briefs WHERE fingerprint = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (fingerprint,),
+    ).fetchone()
+
     now = _now_iso()
-    conn.execute(
-        """
-        INSERT INTO briefs (
-            id, title, draft, fingerprint, response_json, cert_json,
-            seal_state, created_at, updated_at
+    if existing is not None:
+        brief_id = existing["id"]
+        conn.execute(
+            """
+            UPDATE briefs
+            SET title = ?, draft = ?, response_json = ?, cert_json = ?,
+                seal_state = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (clean_title, clean_draft, response_blob, cert_blob, state, now, brief_id),
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            brief_id,
-            clean_title,
-            clean_draft,
-            fingerprint,
-            json.dumps(response),
-            json.dumps(cert) if cert is not None else None,
-            state,
-            now,
-            now,
-        ),
-    )
+    else:
+        brief_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO briefs (
+                id, title, draft, fingerprint, response_json, cert_json,
+                seal_state, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                brief_id,
+                clean_title,
+                clean_draft,
+                fingerprint,
+                response_blob,
+                cert_blob,
+                state,
+                now,
+                now,
+            ),
+        )
     conn.commit()
 
     row = conn.execute(

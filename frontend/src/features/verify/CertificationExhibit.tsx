@@ -24,6 +24,12 @@ interface CertificationExhibitProps {
   model: CertificationModel;
   onClose: () => void;
   /**
+   * Cachet PR6d: called when the human SEALS (clicks Set the seal). The Verify
+   * view uses this to persist the brief to the Shelf as Sealed (seal == save).
+   * Optional, so a standalone/preview render works without it.
+   */
+  onSeal?: () => void;
+  /**
    * Cachet PR6b: a STORED seal fingerprint to initialize from when a saved
    * brief is reopened. When it equals model.fingerprint the seal shows "sealed";
    * when it differs (the draft changed since sealing) it shows "cracked". Omit
@@ -44,6 +50,7 @@ interface CertificationExhibitProps {
 export function CertificationExhibit({
   model,
   onClose,
+  onSeal,
   sealedFingerprint: persistedSealedFingerprint
 }: CertificationExhibitProps) {
   const stamp = formatStamp(model.generatedAtISO);
@@ -125,6 +132,9 @@ export function CertificationExhibit({
 
   const handleSetSeal = () => {
     setSealedFingerprint(model.fingerprint);
+    // seal == save: persist this brief to the Shelf as Sealed (PR6d). The Verify
+    // view's onSeal handler does the save; safe to call with the local seal set.
+    onSeal?.();
     // The seal button disables once set, so move focus to a stable in-dialog
     // control; otherwise the browser drops focus to <body>, escaping the trap.
     closeButtonRef.current?.focus();

@@ -34,6 +34,12 @@ SAMPLE_RESPONSE = {
 }
 SAMPLE_CERT = {"fingerprint": "a" * 64, "sealed_count": 1, "flagged": ["claim 2"]}
 HEX64 = "a" * 64
+# Distinct valid 64-char lowercase-hex fingerprints. save_brief upserts on
+# fingerprint, so any test that needs N distinct rows must use N distinct
+# fingerprints; reusing one would collapse the rows to a single upserted row.
+HEX64_A = "a" * 64
+HEX64_B = "b" * 64
+HEX64_C = "c" * 64
 
 
 class BriefsServiceTests(unittest.TestCase):
@@ -98,8 +104,8 @@ class BriefsServiceTests(unittest.TestCase):
 
     def test_list_returns_summaries_without_blobs(self) -> None:
         with db.get_db() as conn:
-            briefs.save_brief(conn, draft="A", fingerprint=HEX64, response=SAMPLE_RESPONSE)
-            briefs.save_brief(conn, draft="B", fingerprint=HEX64, response=SAMPLE_RESPONSE)
+            briefs.save_brief(conn, draft="A", fingerprint=HEX64_A, response=SAMPLE_RESPONSE)
+            briefs.save_brief(conn, draft="B", fingerprint=HEX64_B, response=SAMPLE_RESPONSE)
             listed = briefs.list_briefs(conn)
 
         self.assertEqual(len(listed), 2)
@@ -115,9 +121,9 @@ class BriefsServiceTests(unittest.TestCase):
 
     def test_list_orders_most_recent_first(self) -> None:
         with db.get_db() as conn:
-            a = briefs.save_brief(conn, draft="A", fingerprint=HEX64, response={})
-            b = briefs.save_brief(conn, draft="B", fingerprint=HEX64, response={})
-            c = briefs.save_brief(conn, draft="C", fingerprint=HEX64, response={})
+            a = briefs.save_brief(conn, draft="A", fingerprint=HEX64_A, response={})
+            b = briefs.save_brief(conn, draft="B", fingerprint=HEX64_B, response={})
+            c = briefs.save_brief(conn, draft="C", fingerprint=HEX64_C, response={})
             # Pin created_at to known, distinct values so the ORDER BY is
             # tested deterministically instead of depending on wall-clock
             # microsecond resolution between sub-millisecond saves.
@@ -144,9 +150,9 @@ class BriefsServiceTests(unittest.TestCase):
         # (insertion order), not the random uuid id, so the later-saved brief
         # always sorts first.
         with db.get_db() as conn:
-            a = briefs.save_brief(conn, draft="A", fingerprint=HEX64, response={})
-            b = briefs.save_brief(conn, draft="B", fingerprint=HEX64, response={})
-            c = briefs.save_brief(conn, draft="C", fingerprint=HEX64, response={})
+            a = briefs.save_brief(conn, draft="A", fingerprint=HEX64_A, response={})
+            b = briefs.save_brief(conn, draft="B", fingerprint=HEX64_B, response={})
+            c = briefs.save_brief(conn, draft="C", fingerprint=HEX64_C, response={})
             conn.execute("UPDATE briefs SET created_at = ?", ("2026-01-01T00:00:00+00:00",))
             conn.commit()
             listed = briefs.list_briefs(conn)
@@ -204,21 +210,21 @@ class BriefsServiceTests(unittest.TestCase):
             cracked = briefs.save_brief(
                 conn,
                 draft="A",
-                fingerprint=HEX64,
+                fingerprint=HEX64_A,
                 response=SAMPLE_RESPONSE,
                 seal_state="cracked",
             )
             garbage = briefs.save_brief(
                 conn,
                 draft="B",
-                fingerprint=HEX64,
+                fingerprint=HEX64_B,
                 response=SAMPLE_RESPONSE,
                 seal_state="banana",
             )
             sealed = briefs.save_brief(
                 conn,
                 draft="C",
-                fingerprint=HEX64,
+                fingerprint=HEX64_C,
                 response=SAMPLE_RESPONSE,
                 seal_state="sealed",
             )
@@ -235,6 +241,87 @@ class BriefsServiceTests(unittest.TestCase):
             detail = briefs.get_brief(conn, summary["id"])
         assert detail is not None
         self.assertIsNone(detail["cert"])
+
+    def test_saving_same_fingerprint_twice_upserts_one_row_last_write_wins(self) -> None:
+        # Saving the same draft fingerprint again updates the existing row
+        # rather than adding a card. The second save's seal_state + response
+        # win (last write wins), and the Shelf still shows exactly one brief.
+        first_response = {"draft_text": "first", "claims": []}
+        second_response = {"draft_text": "second", "claims": [{"id": 9}]}
+        with db.get_db() as conn:
+            briefs.save_brief(
+                conn,
+                draft="Same draft",
+                fingerprint=HEX64_A,
+                response=first_response,
+                seal_state="unsealed",
+            )
+            second = briefs.save_brief(
+                conn,
+                draft="Same draft",
+                fingerprint=HEX64_A,
+                response=second_response,
+                seal_state="sealed",
+            )
+            listed = briefs.list_briefs(conn)
+            detail = briefs.get_brief(conn, second["id"])
+
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["seal_state"], "sealed")
+        assert detail is not None
+        self.assertEqual(detail["response"], second_response)
+
+    def test_save_then_seal_keeps_id_and_created_at_bumps_updated_at(self) -> None:
+        # The save-then-seal path the UI uses: save unsealed, then re-save the
+        # same fingerprint sealed. One row, seal_state flips to "sealed", id and
+        # created_at are preserved from the first save, updated_at advances.
+        with db.get_db() as conn:
+            first = briefs.save_brief(
+                conn,
+                draft="Brief to be sealed",
+                fingerprint=HEX64_A,
+                response=SAMPLE_RESPONSE,
+                seal_state="unsealed",
+            )
+            # Pin created_at + updated_at to a known past instant so the bump is
+            # observable without depending on sub-millisecond wall-clock deltas.
+            past = "2026-01-01T00:00:00+00:00"
+            conn.execute(
+                "UPDATE briefs SET created_at = ?, updated_at = ? WHERE id = ?",
+                (past, past, first["id"]),
+            )
+            conn.commit()
+
+            second = briefs.save_brief(
+                conn,
+                draft="Brief to be sealed",
+                fingerprint=HEX64_A,
+                response=SAMPLE_RESPONSE,
+                seal_state="sealed",
+            )
+            listed = briefs.list_briefs(conn)
+
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(second["id"], first["id"])
+        self.assertEqual(second["seal_state"], "sealed")
+        # created_at preserved from the first save, updated_at bumped past it.
+        self.assertEqual(second["created_at"], past)
+        self.assertNotEqual(second["updated_at"], past)
+
+    def test_different_fingerprints_stay_two_rows(self) -> None:
+        # The no-collapse guard: distinct fingerprints are distinct briefs even
+        # when every other field matches.
+        with db.get_db() as conn:
+            briefs.save_brief(
+                conn, draft="Same text", fingerprint=HEX64_A, response=SAMPLE_RESPONSE
+            )
+            briefs.save_brief(
+                conn, draft="Same text", fingerprint=HEX64_B, response=SAMPLE_RESPONSE
+            )
+            listed = briefs.list_briefs(conn)
+
+        self.assertEqual(len(listed), 2)
+        self.assertEqual({row["fingerprint"] for row in listed}, {HEX64_A, HEX64_B})
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import { Button, ProvenanceBadge, Spinner, Stack, Text } from "@/design-system";
+import { Button, ProvenanceBadge, Spinner, Stack, Text, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   briefs as briefsApi,
@@ -10,7 +10,7 @@ import {
   type VerifyResponse
 } from "@/services/api/endpoints";
 
-import { buildCertification, type CertificationModel } from "./certification";
+import { buildCertification, fingerprintDraft, type CertificationModel } from "./certification";
 import { CertificationExhibit } from "./CertificationExhibit";
 import {
   DISPOSITION_ORDER,
@@ -417,6 +417,11 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
   // the brief's original date instead of stamping now.
   const [sealedSeed, setSealedSeed] = useState<string | null>(null);
   const [certAtSeed, setCertAtSeed] = useState<string | null>(null);
+  // True once this brief is sealed (sealed this session via onSeal, or reopened
+  // already-sealed via sealedSeed). The quiet unsealed "Save to Shelf" is hidden
+  // when sealed, so a same-draft save can never silently downgrade the seal (the
+  // backend upsert is last-write-wins; sealing is the only path to Sealed).
+  const [sessionSealed, setSessionSealed] = useState(false);
   // Distinct from `loading` (the live-verify flag): opening a saved brief is a
   // disk fetch, not a verification. Using a separate flag keeps `streaming =
   // loading && !response` false throughout the reopen, so the verify chrome
@@ -447,6 +452,9 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
         const storedCert = (detail.cert ?? null) as CertificationModel | null;
         setCertAtSeed(storedCert?.generatedAtISO ?? null);
         setSealedSeed(detail.seal_state === "sealed" ? detail.fingerprint : null);
+        // The reopened brief's sealed-ness rides in sealedSeed; clear the
+        // session flag so a freshly-reopened unsealed brief can be saved.
+        setSessionSealed(false);
       })
       .catch((e) => {
         if (live) setError(e instanceof Error ? e.message : String(e));
@@ -476,6 +484,7 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
     // timestamp (the seeds survive only an untouched re-export of that brief).
     setSealedSeed(null);
     setCertAtSeed(null);
+    setSessionSealed(false);
     let live = initialStreamState();
     setStream(live);
     try {
@@ -520,6 +529,30 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
   const certModel = certAt && response ? buildCertification(response, certAt) : null;
+  // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
+  // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
+  const isSealed = sessionSealed || sealedSeed !== null;
+
+  // Cachet PR6d: persist this checked brief to the Shelf. "sealed" comes from
+  // the human sealing the certification (seal == save); "unsealed" from the
+  // quiet Save-to-Shelf action. The backend upserts by fingerprint, so saving
+  // then sealing the same draft updates one row rather than duplicating it.
+  async function saveToShelf(sealState: "sealed" | "unsealed") {
+    if (!response) return;
+    const draftText = response.draft_text ?? draft;
+    try {
+      await briefsApi.save({
+        draft: draftText,
+        fingerprint: fingerprintDraft(draftText),
+        response: response as unknown as Record<string, unknown>,
+        cert: certModel as unknown as Record<string, unknown> | null,
+        seal_state: sealState
+      });
+      toast.success(sealState === "sealed" ? "Sealed and saved to the Shelf" : "Saved to the Shelf");
+    } catch (e) {
+      toast.error("Could not save to the Shelf", e instanceof Error ? e.message : undefined);
+    }
+  }
 
   // Live skeleton (PR3): while the stream is in flight and before the canonical
   // result has settled, render the skeleton cards from the `claims` event with
@@ -643,6 +676,15 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
 
           {items.length > 0 ? (
             <div className={styles.resultActions}>
+              {!isSealed ? (
+                <button
+                  type="button"
+                  className={styles.saveShelf}
+                  onClick={() => void saveToShelf("unsealed")}
+                >
+                  Save to Shelf
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.exportCert}
@@ -682,6 +724,10 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
         <CertificationExhibit
           model={certModel}
           sealedFingerprint={sealedSeed}
+          onSeal={() => {
+            setSessionSealed(true);
+            void saveToShelf("sealed");
+          }}
           onClose={() => setCertAt(null)}
         />
       ) : null}
