@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence
 
 import httpx
 
@@ -409,6 +409,57 @@ def _failure_verdict(
     )
 
 
+def verify_claims_for_cases_steps(
+    claim_texts: Sequence[str],
+    *,
+    client: httpx.Client | None = None,
+    ai_provider: AIProvider | None = None,
+    enable_holding_match: bool = True,
+) -> Iterator[ClaimCaseVerdict]:
+    """Streaming variant of `verify_claims_for_cases`.
+
+    Yields each per-claim `ClaimCaseVerdict` the moment its CourtListener
+    lookup (and, when enabled, the per-cite holding-match follow-up)
+    completes. This is the genuinely slow, sequential work the Verify
+    surface streams so the operator watches the labor happen rather than
+    staring at a spinner. `verify_claims_for_cases` drains this into the
+    eager list it has always returned, so non-streaming callers are
+    byte-for-byte unaffected.
+    """
+    for index, raw_text in enumerate(claim_texts):
+        text = (raw_text or "").strip()
+        if not _looks_like_legal_text(text):
+            yield ClaimCaseVerdict(
+                claim_index=index,
+                ok=True,
+                verdicts=(),
+                error_code=None,
+                error_message=None,
+            )
+            continue
+        lookup = lookup_citations_in_text(text, client=client)
+        if not lookup.ok:
+            yield _failure_verdict(index, lookup)
+            continue
+        verdicts = tuple(
+            _verdict_from_hit(
+                hit,
+                claim_text=text,
+                http_client=client,
+                ai_provider=ai_provider,
+                enable_holding_match=enable_holding_match,
+            )
+            for hit in lookup.hits
+        )
+        yield ClaimCaseVerdict(
+            claim_index=index,
+            ok=True,
+            verdicts=verdicts,
+            error_code=None,
+            error_message=None,
+        )
+
+
 def verify_claims_for_cases(
     claim_texts: Sequence[str],
     *,
@@ -437,41 +488,11 @@ def verify_claims_for_cases(
     AND the per-cite opinion fetches. `ai_provider` defaults to
     `get_default_provider()` lazily inside the holding-match step.
     """
-    results: list[ClaimCaseVerdict] = []
-    for index, raw_text in enumerate(claim_texts):
-        text = (raw_text or "").strip()
-        if not _looks_like_legal_text(text):
-            results.append(
-                ClaimCaseVerdict(
-                    claim_index=index,
-                    ok=True,
-                    verdicts=(),
-                    error_code=None,
-                    error_message=None,
-                )
-            )
-            continue
-        lookup = lookup_citations_in_text(text, client=client)
-        if not lookup.ok:
-            results.append(_failure_verdict(index, lookup))
-            continue
-        verdicts = tuple(
-            _verdict_from_hit(
-                hit,
-                claim_text=text,
-                http_client=client,
-                ai_provider=ai_provider,
-                enable_holding_match=enable_holding_match,
-            )
-            for hit in lookup.hits
+    return list(
+        verify_claims_for_cases_steps(
+            claim_texts,
+            client=client,
+            ai_provider=ai_provider,
+            enable_holding_match=enable_holding_match,
         )
-        results.append(
-            ClaimCaseVerdict(
-                claim_index=index,
-                ok=True,
-                verdicts=verdicts,
-                error_code=None,
-                error_message=None,
-            )
-        )
-    return results
+    )

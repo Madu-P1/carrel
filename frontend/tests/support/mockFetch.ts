@@ -202,3 +202,82 @@ export function mockJson(
 export function getFetchCalls() {
   return [...calls];
 }
+
+/**
+ * Build an SSE-framed Response from a list of event objects. Each becomes a
+ * `data: {json}\n\n` frame, terminated by `data: [DONE]\n\n`, the exact wire
+ * shape `services/api/streaming.ts::streamSse` parses. The body is a real
+ * stream, so the consumer's `response.body.getReader()` path is exercised.
+ */
+export function sseResponse(events: unknown[]): Response {
+  const body =
+    events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n";
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" }
+  });
+}
+
+/**
+ * Register a handler that answers a POST to `path` with an SSE stream of
+ * `events`. Mirrors `mockJson` but for the streaming endpoints (PR3
+ * `/api/verify/stream`). `events` may be a function for per-call control.
+ */
+export function mockSse(
+  path: string,
+  events:
+    | unknown[]
+    | ((url: URL, init: RequestInit & { method: string }) => unknown[] | Promise<unknown[]>)
+) {
+  return registerFetchHandler(async (url, init) => {
+    if (url.pathname !== path || init.method.toUpperCase() !== "POST") {
+      return undefined;
+    }
+    const evs = typeof events === "function" ? await events(url, init) : events;
+    return sseResponse(evs);
+  });
+}
+
+/**
+ * Like `mockSse`, but emits each event frame across a SEPARATE microtask tick
+ * via a ReadableStream, with `pauseAfter` frames held back until `release()` is
+ * called. This lets a test observe the OPEN-STREAM frame (the live "Checking…"
+ * skeleton) before the terminal `result` arrives, which the atomic `sseResponse`
+ * cannot, since it drains in one flush. Returns { unregister, release }.
+ */
+export function mockSseGapped(
+  path: string,
+  events: unknown[],
+  pauseAfter: number
+): { unregister: () => void; release: () => void } {
+  let releaseGate: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  const unregister = registerFetchHandler(async (url, init) => {
+    if (url.pathname !== path || init.method.toUpperCase() !== "POST") {
+      return undefined;
+    }
+    const encoder = new TextEncoder();
+    const frames = events.map((e) => `data: ${JSON.stringify(e)}\n\n`);
+    frames.push("data: [DONE]\n\n");
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for (let i = 0; i < frames.length; i += 1) {
+          if (i === pauseAfter) {
+            await gate; // hold the remaining frames until the test releases
+          }
+          controller.enqueue(encoder.encode(frames[i]));
+          // yield a microtask so the consumer renders this frame before the next
+          await Promise.resolve();
+        }
+        controller.close();
+      }
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" }
+    });
+  });
+  return { unregister, release: () => releaseGate() };
+}
