@@ -259,7 +259,9 @@
    the genuine open-ring C. The shape is never altered and never takes color;
    currentColor keeps it the same ink as the wordmark. Reduced-motion holds the
    finished mark with no draw. Footer brand is untouched (scoped to header). */
-.site-header .brand { gap: 0; --cachet-dur-reveal: 1700ms; --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19); }
+/* Header logo at 2x presence (footer brand stays at --t-5). The brand-mark is
+ * sized in em, so the scrolled open-ring mark scales with the wordmark. */
+.site-header .brand { gap: 0; font-size: calc(var(--t-5) * 2); --cachet-dur-reveal: 1700ms; --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19); }
 .site-header .brand-word {
   display: inline-block; white-space: nowrap; overflow: hidden;
   max-width: 8em; opacity: 1;
