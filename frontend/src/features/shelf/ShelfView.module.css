@@ -41,6 +41,15 @@
 .rowMain {
   min-width: 0;
   flex: 1 1 auto;
+  cursor: pointer;
+}
+
+/* Keyboard focus ring for the clickable open target (functional a11y; the warm
+   card treatment of this affordance is the operator-gated PR6b craft pass). */
+.rowMain:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .rowMain > :first-child {

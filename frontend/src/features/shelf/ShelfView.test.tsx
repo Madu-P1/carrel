@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { briefs as briefsApi, type BriefSummary } from "@/services/api/endpoints";
+import { navigateTo } from "@/app/shell/useAppShell";
 
 import { ShelfView } from "./ShelfView";
 
@@ -15,8 +16,11 @@ vi.mock("@/services/api/endpoints", () => ({
   }
 }));
 
+vi.mock("@/app/shell/useAppShell", () => ({ navigateTo: vi.fn() }));
+
 const mockList = vi.mocked(briefsApi.list);
 const mockRemove = vi.mocked(briefsApi.remove);
+const mockNavigate = vi.mocked(navigateTo);
 
 const FP = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
@@ -109,5 +113,25 @@ describe("ShelfView", () => {
     mockList.mockResolvedValue({ briefs: [summary()] });
     fireEvent.click(screen.getByText("Try again"));
     expect(await screen.findByText("Motion to Dismiss")).toBeTruthy();
+  });
+
+  it("opens a brief by navigating to /verify?brief=<id> on the row's open target", async () => {
+    mockList.mockResolvedValue({ briefs: [summary()] });
+    render(<ShelfView />);
+    await screen.findByText("Motion to Dismiss");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Motion to Dismiss" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/verify?brief=b1");
+  });
+
+  it("does not navigate when the destructive Delete control is clicked", async () => {
+    mockList.mockResolvedValue({ briefs: [summary()] });
+    render(<ShelfView />);
+    await screen.findByText("Motion to Dismiss");
+
+    fireEvent.click(screen.getByText("Delete"));
+    // Delete arms the confirm; it must never double as navigation.
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText("Confirm")).toBeTruthy();
   });
 });

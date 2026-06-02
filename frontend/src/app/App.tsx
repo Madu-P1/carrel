@@ -61,6 +61,10 @@ function bundledReaderChunkId(path: string): string | null {
   return parseBundledRoute(path).searchParams.get("chunk");
 }
 
+function bundledBriefId(path: string): string | null {
+  return parseBundledRoute(path).searchParams.get("brief");
+}
+
 function bundledReaderNodeId(path: string): number | null {
   const raw = parseBundledRoute(path).searchParams.get("node");
   if (raw === null || raw === "") return null;
@@ -86,6 +90,18 @@ function BrowserReaderRoute({ id }: { id?: string }) {
   );
 }
 
+function BrowserVerifyRoute() {
+  const { query } = useLocation();
+  // `?brief=ID` re-hydrates the Verify view from a saved brief (Shelf -> open).
+  // Nullish-coalesce so an absent param is null (not undefined), matching the
+  // effect's `if (!briefId) return` guard. preact-iso re-renders this wrapper in
+  // place on a query-only change, so KEY VerifyView on the brief id: a
+  // brief -> brief (or brief -> live) switch remounts it and re-reads the cert
+  // seal seed instead of holding the prior brief's stale one.
+  const brief = query.brief ?? null;
+  return <VerifyView key={brief ?? "live"} briefId={brief} />;
+}
+
 function BrowserNoteEditorRoute({ id }: { id?: string }) {
   if (!id) return <NotesPage />;
   return <NoteEditor id={id} />;
@@ -109,7 +125,10 @@ function renderBundledRoute(rawPath: string) {
   }
 
   if (path.startsWith("/verify")) {
-    return <VerifyView />;
+    // Key on the brief id so switching briefs (or brief -> live) remounts the
+    // verify subtree, re-reading the cert seal seed instead of keeping a stale one.
+    const brief = bundledBriefId(rawPath);
+    return <VerifyView key={brief ?? "live"} briefId={brief} />;
   }
 
   if (path.startsWith("/shelf")) {
@@ -181,7 +200,7 @@ function BoundedRoutes() {
         <Route component={LibraryView} path="/library" />
         <Route component={BrowserReaderRoute} path="/reader/:id?" />
         <Route component={AskView} path="/ask" />
-            <Route component={VerifyView} path="/verify" />
+        <Route component={BrowserVerifyRoute} path="/verify" />
         <Route component={ShelfView} path="/shelf" />
         <Route component={StudyView} path="/study" />
         <Route component={SearchView} path="/search" />
