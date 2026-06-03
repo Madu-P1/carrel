@@ -143,6 +143,10 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 }
 .card h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--t-2); letter-spacing: -0.02em; line-height: 1.12; }
 .card > p { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; }
+/* The briefs read like typeset legal documents: EB Garamond, sized up. The mono
+   record bits (kicker, ledger, citations, check list) stay mono on purpose. */
+.doc-card h3 { font-family: var(--font-doc); font-weight: 600; font-size: clamp(1.85rem, 1.5rem + 1vw, 2.15rem); letter-spacing: 0; line-height: 1.14; }
+.doc-card > p { font-family: var(--font-doc); font-size: 1.2rem; line-height: 1.5; color: var(--text-secondary); }
 .card-chip { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t--1); color: var(--flag); background: var(--flag-wash); border: 1px solid var(--flag-edge); border-radius: var(--r-full); padding: 0.35em 0.8em; }
 .mini-ledger { margin-top: var(--s-4); border-top: 1px solid var(--border); }
 .ml-row { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
