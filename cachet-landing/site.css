@@ -9,10 +9,26 @@
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* ============ Header brand ============ */
-.site-header .brand { display: flex; align-items: center; gap: var(--s-3); text-decoration: none; color: var(--text-primary); font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; letter-spacing: -0.03em; }
-.site-header .brand-mark { width: 1.5em; height: 1.5em; color: var(--flag); flex: none; }
-.site-header .brand-word { line-height: 1; }
+/* ============ Truncated corners (like the logo's severed edge) ============
+   corner-shape: bevel turns the existing border-radius into a 45-degree cut,
+   keeping borders + shadows. Unsupported browsers (older Safari) fall back to
+   the rounded radius. Pills stay rounded on purpose; a bevel on a pill points. */
+.doc, .verdict, .band-inner, .card, .chip-verdict, .cta-panel, .flow-node,
+.section-cut { corner-shape: bevel; }
+
+/* ============ Header brand ============
+   At the top the full wordmark shows. On first scroll the word collapses and the
+   real open-ring mark draws itself in (a one-shot path-draw on the genuine
+   severed-C). The signature from the original landing, restored. */
+.site-header .brand { display: flex; align-items: center; gap: 0; text-decoration: none; color: var(--text-primary); font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; letter-spacing: -0.03em; --cachet-dur-reveal: 1700ms; --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19); }
+.site-header .brand-word { display: inline-block; white-space: nowrap; overflow: hidden; max-width: 8em; opacity: 1; line-height: 1; transition: max-width var(--dur-4) var(--ease-out), opacity var(--dur-3) var(--ease-out); }
+.site-header .brand-mark { display: block; flex: none; width: 0; height: 0.95em; opacity: 0; color: var(--flag); transform: scale(1.1); transform-origin: left center; transition: width var(--dur-4) var(--ease-out), opacity var(--dur-4) var(--ease-out), transform var(--dur-4) var(--ease-out); }
+.site-header .brand-mark path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.site-header.scrolled .brand-word { max-width: 0; opacity: 0; }
+.site-header.scrolled .brand-mark { width: 0.95em; opacity: 1; transform: scale(1.3); }
+.site-header.scrolled .brand-mark path { animation: cachet-reveal var(--cachet-dur-reveal) var(--cachet-ease-in) forwards; }
+@keyframes cachet-reveal { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .site-header .brand-mark path { stroke-dashoffset: 0; } }
 .nav-links { display: flex; gap: var(--s-6); align-items: center; }
 .btn-sm { padding: 0.6em 1.05em; min-height: 38px; font-size: var(--t--1); }
 
@@ -129,12 +145,23 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 .flow { margin-top: var(--s-8); display: flex; flex-direction: column; align-items: center; gap: 0; }
 .flow-node { font-family: var(--font-mono); font-size: var(--t--1); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2); padding: 0.7em 1.2em; box-shadow: var(--shadow-1); text-align: center; }
 .flow-line { width: 1px; height: var(--s-5); background: var(--border-strong); }
-.flow-fan { display: flex; gap: var(--s-5); flex-wrap: wrap; justify-content: center; position: relative; }
-.flow-fan::before { content: ""; position: absolute; top: calc(-1 * var(--s-5)); left: 12%; right: 12%; height: 1px; background: var(--border-strong); }
-.flow-verdicts { display: flex; gap: var(--s-5); flex-wrap: wrap; justify-content: center; }
+/* Fan of three sources: a horizontal bus across the three node centers, with a
+   short stub dropping from the bus into each node. */
+.flow-fan { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-5); width: 100%; max-width: 760px; position: relative; padding-top: var(--s-5); }
+.flow-fan > .flow-node { justify-self: center; position: relative; }
+.flow-fan::before { content: ""; position: absolute; top: 0; left: 16.667%; right: 16.667%; height: 1px; background: var(--border-strong); }
+.flow-fan > .flow-node::before { content: ""; position: absolute; top: calc(-1 * var(--s-5)); left: 50%; width: 1px; height: var(--s-5); background: var(--border-strong); }
+/* Two verdict terminals, same bus + stub pattern. */
+.flow-verdicts { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-5); width: 100%; max-width: 540px; position: relative; padding-top: var(--s-5); }
+.flow-verdicts > .flow-node { justify-self: center; position: relative; }
+.flow-verdicts::before { content: ""; position: absolute; top: 0; left: 25%; right: 25%; height: 1px; background: var(--border-strong); }
+.flow-verdicts > .flow-node::before { content: ""; position: absolute; top: calc(-1 * var(--s-5)); left: 50%; width: 1px; height: var(--s-5); background: var(--border-strong); }
 .node-ok { color: hsl(150 22% 28%); background: hsl(145 25% 90%); border-color: hsl(145 22% 78%); }
 .node-bad { color: var(--accent-on-oxblood); background: var(--flag); border-color: var(--flag); }
-@media (max-width: 560px) { .flow-fan { flex-direction: column; align-items: center; } .flow-fan::before { display: none; } }
+@media (max-width: 560px) {
+  .flow-fan, .flow-verdicts { grid-template-columns: 1fr; max-width: 320px; gap: var(--s-3); padding-top: var(--s-3); }
+  .flow-fan::before, .flow-verdicts::before, .flow-fan > .flow-node::before, .flow-verdicts > .flow-node::before { display: none; }
+}
 
 /* ============ WHY INDEPENDENT: editorial columns ============ */
 .columns { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-7); margin-top: var(--s-8); }

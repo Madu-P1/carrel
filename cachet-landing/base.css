@@ -69,6 +69,7 @@ p { text-wrap: pretty; }
   gap: var(--s-2);
   padding: 0.85em 1.45em;
   border-radius: var(--r-2);
+  corner-shape: bevel; /* truncated corners, echoing the logo's severed edge (rounded fallback) */
   border: 1px solid transparent;
   min-height: 44px; /* guaranteed touch target */
   cursor: pointer;
@@ -124,7 +125,9 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
   gap: var(--s-3);
 }
 .nav-links { display: flex; gap: var(--s-6); align-items: center; }
-.nav-links a { color: var(--text-secondary); text-decoration: none; font-size: var(--t-0); position: relative; transition: color var(--dur-2) var(--ease-out); }
+/* Only the plain text links take the muted color; buttons keep their own (this
+ * selector must exclude .btn, or it overrides the oxblood button's light text). */
+.nav-links a:not(.btn) { color: var(--text-secondary); text-decoration: none; font-size: var(--t-0); position: relative; transition: color var(--dur-2) var(--ease-out); }
 /* text links get a >=44px hit area without changing the nav's height
  * (the 44px button already sets the row height) */
 .nav-links a:not(.btn) { display: inline-flex; align-items: center; min-height: 44px; }
