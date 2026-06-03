@@ -1,6 +1,7 @@
 import type { components, paths } from "./types.gen";
 
 import { API_BASE, api } from "./client";
+import { streamSse } from "./streaming";
 
 export type DocumentRow =
   paths["/api/documents"]["get"]["responses"][200]["content"]["application/json"][number];
@@ -18,6 +19,38 @@ export type VerifyRequest = components["schemas"]["VerifyRequest"];
 export type VerifyResponse =
   paths["/api/verify"]["post"]["responses"][200]["content"]["application/json"];
 export type VerifyClaimVerdict = NonNullable<VerifyResponse["claim_verdicts"]>[number];
+/** One serialized case-verdict batch (the element shape of a claim's case_verdicts). */
+export type VerifyCaseVerdictBatch = NonNullable<VerifyClaimVerdict["case_verdicts"]>[number];
+/** One brief-level draft-quote-verbatim result (Cachet PR4). */
+export type VerifyQuoteResult = NonNullable<VerifyResponse["quote_results"]>[number];
+
+/** Cachet PR6 — Shelf persistence (saved briefs). */
+export type BriefSaveRequest = components["schemas"]["BriefSaveRequest"];
+export type BriefSummary = components["schemas"]["BriefSummary"];
+export type BriefDetail = components["schemas"]["BriefDetail"];
+
+/**
+ * Events emitted by POST /api/verify/stream (Cachet PR3). This route returns a
+ * StreamingResponse with no response_model, so it is absent from the generated
+ * types.gen.ts; the event shape is hand-typed here (the documented pattern for
+ * response_model-less routes). The backend
+ * (`services.verify.verify_draft_stream`) streams the per-cite labor so the UI
+ * shows it happening instead of waiting on a spinner:
+ *   - `progress` once before the (atomic) extraction + LLM call
+ *   - `claims` the skeleton cards (NO case verdicts yet, never a provisional pass)
+ *   - `cite_verdict` per claim as its CourtListener + holding-match check lands
+ *   - `result` the canonical payload, identical to POST /api/verify
+ *   - `error` a surfaced failure (never swallowed); no `result` follows it
+ * Safety invariant #6: a claim with no `cite_verdict` and no `result` must read
+ * as could_not_check, never supported. The consumer enforces that.
+ */
+export type VerifyStreamEvent =
+  | { type: "progress"; phase: string }
+  | { type: "claims"; claim_verdicts: VerifyClaimVerdict[] }
+  | { type: "cite_verdict"; claim_index: number; case_verdict: VerifyCaseVerdictBatch }
+  | { type: "quote_batch"; quotes: VerifyQuoteResult[] }
+  | { type: "result"; verify: VerifyResponse }
+  | { type: "error"; error: string };
 
 export const documents = {
   list: () => api<DocumentRow[]>("/api/documents"),
@@ -901,6 +934,38 @@ export const verify = {
       method: "POST",
       body: payload,
       timeoutMs: 180_000
+    }),
+  /**
+   * Stream verification verdicts (Cachet PR3). Yields each VerifyStreamEvent as
+   * it arrives so the caller can ink in the per-cite labor. The final `result`
+   * event carries the same payload as `verify.draft`. Pass an AbortSignal to
+   * cancel an in-flight verification.
+   */
+  draftStream: (payload: VerifyRequest, opts?: { signal?: AbortSignal }) =>
+    streamSse<VerifyStreamEvent>("/api/verify/stream", payload, opts)
+};
+
+/**
+ * Cachet PR6 — the Shelf. Saved briefs: a checked draft plus its full verify
+ * response and the client-built certification, kept so the lawyer can return
+ * to one and re-hydrate the Verify view without a re-verify.
+ */
+export const briefs = {
+  /** Save a checked draft. Returns the lean summary (no draft/response/cert). */
+  save: (payload: BriefSaveRequest) =>
+    api<{ brief: BriefSummary }>("/api/briefs", {
+      method: "POST",
+      body: payload
+    }),
+  /** All saved briefs, most-recent-first. Summaries only. */
+  list: () => api<{ briefs: BriefSummary[] }>("/api/briefs"),
+  /** Full brief for re-hydration: draft + response + cert. */
+  get: (briefId: string, opts?: { signal?: AbortSignal }) =>
+    api<BriefDetail>(`/api/briefs/${encodeURIComponent(briefId)}`, { signal: opts?.signal }),
+  /** Remove a saved brief the user owns. */
+  remove: (briefId: string) =>
+    api<{ deleted: boolean; brief_id: string }>(`/api/briefs/${encodeURIComponent(briefId)}`, {
+      method: "DELETE"
     })
 };
 

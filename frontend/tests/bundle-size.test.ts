@@ -124,7 +124,10 @@ const indexCssPath = resolve(distDir, "index.css");
  *                    /verify via click-time import is the lean-entry
  *                    option, deferred per the file:// Suspense
  *                    constraint (see CLAUDE.md). */
-const ENTRY_JS_GZIP_BUDGET = 120 * 1024;
+// Bumped 120 -> 124 KB for Cachet PR5b: the Workspace/Margin layout adds three
+// components (WorkspaceMargin, ExaminationDrawer, the segmentation + rail-layout
+// helpers) on the verify surface.
+const ENTRY_JS_GZIP_BUDGET = 124 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
@@ -165,7 +168,9 @@ const ENTRY_JS_GZIP_BUDGET = 120 * 1024;
  *                    paper/ink/oxblood token layer, the side-by-side
  *                    SourceInspector, and the print-isolated
  *                    certification exhibit. Live: ~40.5 KB gz. */
-const ENTRY_CSS_GZIP_BUDGET = 42 * 1024;
+// Bumped 42 -> 44 KB for Cachet PR5b: the Workspace/Margin/Examination styles
+// (document body, margin rail + notes, unplaced tray, slide-in drawer).
+const ENTRY_CSS_GZIP_BUDGET = 44 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

@@ -9,7 +9,7 @@
    * The verify surface is a court exhibit: a warm sheet under even light, not
    * an instrument panel. Index rises from paper (the page base) to ink (text).
    * Hue held warm (~28-45), low saturation. Never pure white or pure black. */
-  --n-0:  hsl(43 40% 94%);  /* paper, page base (#f6f2ea) */
+  --n-0:  hsl(40 36% 92%);  /* paper, page base (#f2ede3) */
   --n-1:  hsl(44 50% 97%);  /* surface, a sheet raised off the desk */
   --n-2:  hsl(45 56% 98%);  /* surface-raised */
   --n-3:  hsl(45 60% 99%);  /* surface-overlay, near white */
@@ -27,9 +27,20 @@
    * celebration. There is deliberately no "verified" color: a confirmed line is
    * unmarked. The absence of oxblood is the pass. A green badge here would be
    * the single most dangerous signal, so there is none. */
-  --flag:      hsl(351 56% 31%);          /* #7a2230 */
-  --flag-edge: hsl(351 40% 42% / 0.45);   /* oxblood hairline */
-  --flag-wash: hsl(351 50% 40% / 0.07);   /* faint oxblood tint behind a flagged line */
+  --flag:      hsl(350 62% 27%);          /* #6e1a28 oxblood */
+  --flag-edge: hsl(350 45% 40% / 0.45);   /* oxblood hairline */
+  --flag-wash: hsl(350 55% 38% / 0.08);   /* faint oxblood tint behind a flagged line */
+
+  /* ---- Dark band ("Built to be doubted") + oxblood CTA panel ----
+   * The new design breaks the all-paper restraint with one inverted band and one
+   * oxblood band. On dark, oxblood is lightened to a dusty rose so it stays legible
+   * and never vibrates. These two are the only non-paper surfaces on the page. */
+  --ink-panel: hsl(28 19% 9%);            /* #1c140f warm near-black panel */
+  --on-dark:   hsl(40 30% 90%);           /* paper-tone text on the dark panel */
+  --on-dark-muted: hsl(38 14% 64%);       /* secondary text on dark */
+  --rose:      hsl(354 44% 65%);          /* #cc8a90 accent + stat numbers on dark */
+  --rose-line: hsl(352 36% 55%);          /* #b5616b sunburst rays */
+  --accent-on-oxblood: hsl(40 36% 95%);   /* near-white text on the oxblood CTA */
 
   /* ---- Semantic roles ---- */
   --bg:               var(--n-0);
@@ -43,8 +54,9 @@
   --text-primary:     var(--n-9);
 
   /* ---- Type ---- */
-  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Hanken Grotesk", system-ui, sans-serif;
+  --font-sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-doc: "EB Garamond", Georgia, "Times New Roman", serif; /* the brief-card serif */
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Modular scale, 1.25, 16px base */
@@ -69,16 +81,20 @@
   --s-9: 6rem;
   --s-10: 8rem;
 
-  /* ---- Radius ---- */
-  --r-1: 6px;
-  --r-2: 10px;
-  --r-3: 14px;
+  /* ---- Radius ----
+   * The 2026 design rounds generously: soft cards, full-pill chips, big panels.
+   * Warm and confident, not boxy-sharp. */
+  --r-1: 8px;     /* chips, small controls */
+  --r-2: 14px;    /* buttons, inputs, ledger frame */
+  --r-3: 24px;    /* cards, the doc mock */
+  --r-section: 36px; /* the dark band + the oxblood CTA panel */
   --r-full: 999px;
 
-  /* ---- Elevation: soft, warm, low. A sheet barely lifting off the desk. ---- */
-  --shadow-1: 0 1px 2px hsl(30 25% 25% / 0.06);
-  --shadow-2: 0 2px 10px hsl(30 22% 22% / 0.07), 0 1px 2px hsl(30 22% 22% / 0.06);
-  --shadow-3: 0 14px 36px hsl(30 22% 20% / 0.10), 0 3px 10px hsl(30 20% 20% / 0.07);
+  /* ---- Elevation: soft, warm, low. Cards lift gently off the paper; the doc
+   * mock and the two big panels float a little more. ---- */
+  --shadow-1: 0 1px 2px hsl(30 25% 25% / 0.05);
+  --shadow-2: 0 2px 8px hsl(30 22% 22% / 0.06), 0 1px 2px hsl(30 22% 22% / 0.05);
+  --shadow-3: 0 18px 48px hsl(28 30% 16% / 0.12), 0 3px 10px hsl(28 24% 18% / 0.07);
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

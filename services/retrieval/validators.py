@@ -29,6 +29,7 @@ Carrel's "every cited quote is verbatim" promise.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -45,7 +46,10 @@ QUOTE_SIMILARITY_FLOOR = 0.95
 QUOTE_MIN_MATCH_LENGTH = 40
 
 # Smart-quote, whitespace, and dash translation. Mirrors
-# services.tutor._SMART_QUOTES (lines 190-208) verbatim.
+# services.tutor._SMART_QUOTES (lines 190-208), plus dash folding: the dash
+# class (U+2010..U+2015, U+2212) folds to one ASCII hyphen so a typist's "-"
+# matches an opinion's en/em dash. Without this a verbatim quote that swaps a
+# dash variant would false-positive as altered (the cry-wolf risk PR4 guards).
 _SMART_QUOTES = str.maketrans(
     {
         "“": '"',  # left double quote
@@ -56,6 +60,13 @@ _SMART_QUOTES = str.maketrans(
         "‘": "'",  # left single quote
         "‚": "'",  # single low-9 quote
         "‛": "'",  # single high-reversed-9 quote
+        "‐": "-",  # U+2010 hyphen
+        "‑": "-",  # U+2011 non-breaking hyphen
+        "‒": "-",  # U+2012 figure dash
+        "–": "-",  # U+2013 en dash
+        "—": "-",  # U+2014 em dash
+        "―": "-",  # U+2015 horizontal bar
+        "−": "-",  # U+2212 minus sign
         " ": " ",  # non-breaking space
         " ": " ",  # thin space
         " ": " ",  # narrow non-breaking space
@@ -251,16 +262,70 @@ def validated_citation_quote(raw_quote: str, content: str) -> QuoteMatch | None:
     return fuzzy_quote_match(quote, content, normalized_quote, normalized_content)
 
 
-def _normalize_for_verbatim(value: str) -> str:
-    """NFKC + smart-quote + whitespace collapse, case preserved.
+def normalize_for_verbatim(value: str) -> str:
+    """NFKC + smart-quote + dash-fold + whitespace collapse, case preserved.
 
     Strictly stricter than `normalize_match_text`: no lowercase. Used by
     `enforce_verbatim_substring` (Invariant 2) where case mismatch is a
-    drop signal, not a normalize signal.
+    drop signal, not a normalize signal, and by the PR4 draft-quote check
+    (`verbatim_run_present`) so the draft-quote check and the engine's own
+    quote validation share one source of normalization truth.
     """
     raw = unicodedata.normalize("NFKC", str(value or ""))
     translated = raw.translate(_SMART_QUOTES)
     return " ".join(translated.split())
+
+
+# Back-compat private alias: pre-PR4 call sites import the underscored name.
+_normalize_for_verbatim = normalize_for_verbatim
+
+
+# A footnote call number in plain-text opinion extraction: a 1-3 digit run
+# glued to sentence-terminal punctuation that itself follows a letter, e.g.
+# "applied.5 It" or "statute;2 the". Legal quoters routinely drop these, so a
+# correct verbatim quote omits the digit; stripping it from the SOURCE before
+# matching prevents a cry-wolf flag.
+#
+# DELIBERATELY narrow: it requires the punctuation between the word and the
+# digits. A bare letter-then-digit token (WD40, COVID19, Chapter7, iPhone12) is
+# NOT a footnote call and must survive, or a verbatim quote of that token would
+# false-flag as altered. We also never strip a digit run with a space before it
+# ("Title 18", "26 U.S.C."). The captured punctuation is kept; only the digits
+# (and an optional trailing letter like a footnote "5a") are removed.
+_FOOTNOTE_CALL = re.compile(r"(?<=[A-Za-z])([.,;:])\d{1,3}[a-z]?(?=\s|$)")
+
+
+def strip_footnote_calls(value: str) -> str:
+    """Remove footnote-call digit markers from opinion/source text.
+
+    Keeps the sentence-terminal punctuation the digit was glued to (so
+    "applied.5 It" becomes "applied. It", not "applied It"). Applied to the
+    SOURCE side only; the draft quote is never mutated. Does NOT touch digits
+    welded directly to a word (WD40, COVID19): those are part of the token, not
+    footnote calls, and stripping them would false-flag a verbatim quote.
+    """
+    return _FOOTNOTE_CALL.sub(r"\1", str(value or ""))
+
+
+def verbatim_run_present(run: str, source: str) -> bool:
+    """True if `run` appears as an exact (normalized) substring of `source`.
+
+    The deterministic core of the PR4 draft-quote check. Both sides pass
+    through `normalize_for_verbatim` (NFKC + smart-quote + dash-fold +
+    whitespace collapse, case PRESERVED) and the source additionally through
+    `strip_footnote_calls`. No fuzzy fallback by design: this detects
+    alterations, so a near-miss must NOT be accepted (the fuzzy path in
+    `validated_citation_quote` can accept a <5% alteration, which is a
+    false negative for an alteration detector). An empty run is vacuously
+    present (callers filter empties before calling).
+    """
+    norm_run = normalize_for_verbatim(run)
+    if not norm_run:
+        return True
+    norm_source = normalize_for_verbatim(strip_footnote_calls(source))
+    if not norm_source:
+        return False
+    return norm_run in norm_source
 
 
 def enforce_citation_in_retrieved_set(

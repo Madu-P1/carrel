@@ -63,6 +63,13 @@ jobs:
             tests.test_upload_dedupe \
             tests.test_upload_security \
             tests.test_usage_events \
+            tests.test_db_migrations \
+            tests.test_verify \
+            tests.test_verify_stream \
+            tests.test_quote_check \
+            tests.test_align \
+            tests.test_briefs \
+            tests.test_briefs_routes \
             -v
 
   frontend-build:

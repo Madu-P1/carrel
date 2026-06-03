@@ -136,4 +136,35 @@ describe("CertificationExhibit cover + seal", () => {
     // The fabricated claim appears in both the flagged and all-statements sections.
     expect(screen.getAllByText("Cites a fake case.").length).toBeGreaterThan(0);
   });
+
+  // Cachet PR6b: reopening a saved brief seeds the seal from a STORED fingerprint
+  // (no click). A matching fingerprint shows sealed; a differing one (the draft
+  // changed since sealing) shows cracked. Locks the persisted-seal prop seam.
+  test("a persisted sealedFingerprint that matches shows the sealed register with no click", () => {
+    render(
+      <CertificationExhibit model={model("aaaa")} sealedFingerprint="aaaa" onClose={noop} />
+    );
+    expect(screen.getByRole("img", { name: "Certification seal, set" }).className).toContain(
+      styles.sealSet
+    );
+    // Nothing to click: the seal arrives already set from the stored value.
+    expect(screen.queryByRole("button", { name: "Set the seal" })).toBeNull();
+  });
+
+  test("a persisted sealedFingerprint that differs shows cracked with the quiet stale caption", () => {
+    render(
+      <CertificationExhibit model={model("bbbb")} sealedFingerprint="aaaa" onClose={noop} />
+    );
+    const seal = screen.getByRole("img", { name: /cracked/i });
+    expect(seal.className).toContain(styles.sealCracked);
+    const caption = screen.getByText(/re-verify/i);
+    expect(caption.className).toContain(styles.stale);
+  });
+
+  test("omitting sealedFingerprint keeps the live unsealed-then-click behavior", () => {
+    render(<CertificationExhibit model={model("aaaa")} onClose={noop} />);
+    // Regression guard: the additive prop must not change the live verify flow.
+    expect(screen.getByRole("button", { name: "Set the seal" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Certification seal, not yet set" })).toBeTruthy();
+  });
 });
