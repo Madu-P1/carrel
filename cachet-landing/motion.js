@@ -81,50 +81,83 @@
     window.addEventListener("scroll", onScroll, { passive: true });
   }
 
-  /* ---- Sunburst: a fan of fine oxblood rays from a focal point at the base of
-   * the dark band. Built procedurally so it stays crisp and weighs nothing. The
-   * rays fade in (staggered) when the band scrolls into view; CSS shows them
-   * immediately under reduced-motion. ---- */
-  var svg = document.querySelector(".sunburst");
-  if (svg) {
-    var NS = "http://www.w3.org/2000/svg";
-    var cx = 450, cy = 320, N = 82, i, a, prox, len, x2, y2, line, dot;
-    var center = 1.5 * Math.PI; // straight up
-    for (i = 0; i < N; i++) {
-      a = Math.PI + (Math.PI * (i + 0.5)) / N;          // PI..2PI = upper hemisphere
-      prox = 1 - Math.min(1, Math.abs(a - center) / (Math.PI / 2)); // 1 center, 0 edges
-      len = 64 + prox * 232 + (Math.random() * 36 - 18);
-      x2 = cx + Math.cos(a) * len;
-      y2 = cy + Math.sin(a) * len;
-      line = document.createElementNS(NS, "line");
-      line.setAttribute("x1", cx); line.setAttribute("y1", cy);
-      line.setAttribute("x2", x2.toFixed(1)); line.setAttribute("y2", y2.toFixed(1));
-      line.setAttribute("stroke", "#b5616b");
-      line.setAttribute("stroke-width", (0.55 + prox * 0.5).toFixed(2));
-      line.setAttribute("stroke-linecap", "round");
-      line.style.transitionDelay = (0.18 + (i / N) * 0.5).toFixed(2) + "s";
-      svg.appendChild(line);
-      dot = document.createElementNS(NS, "circle");
-      dot.setAttribute("cx", x2.toFixed(1)); dot.setAttribute("cy", y2.toFixed(1));
-      dot.setAttribute("r", (1.1 + prox * 1.5 + Math.random() * 0.5).toFixed(2));
-      dot.setAttribute("fill", "#cc8a90");
-      dot.style.transitionDelay = (0.32 + (i / N) * 0.5).toFixed(2) + "s";
-      svg.appendChild(dot);
+  /* ---- Scroll-driven moments: the dark band grows to full width, and the
+   * "what you get" briefs flip through a 3D spotlight deck. Both run off one
+   * rAF-throttled scroll loop. Reduced-motion and narrow screens opt out and
+   * keep the static, readable layout. ---- */
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  var bandInner = document.querySelector(".band-inner");
+
+  var docs = document.querySelector("[data-docs]");
+  var deck = docs && docs.querySelector(".docs-deck");
+  var cards = deck ? Array.prototype.slice.call(deck.querySelectorAll(".doc-card")) : [];
+  var wideMQ = window.matchMedia("(min-width: 900px)");
+  var use3d = !reduce && cards.length > 0 && wideMQ.matches;
+  if (use3d) docs.classList.add("is-3d");
+
+  function updateBand() {
+    if (!bandInner || reduce) return;
+    var r = bandInner.getBoundingClientRect();
+    var vh = window.innerHeight;
+    // 0 while the band sits at the bottom of the viewport, 1 once it has risen in
+    var p = clamp((vh - r.top) / (vh * 0.7), 0, 1);
+    bandInner.style.setProperty("--grow", p.toFixed(3));
+  }
+
+  function updateDocs() {
+    if (!use3d) return;
+    var rect = docs.getBoundingClientRect();
+    var total = docs.offsetHeight - window.innerHeight;
+    var scrolled = clamp(-rect.top, 0, total);
+    var g = total > 0 ? scrolled / total : 0;
+    var N = cards.length;
+    var t = g * (N - 1); // floating active index
+    for (var i = 0; i < N; i++) {
+      var local = t - i, x, ry, z, sc, op, br, zi, p, q;
+      if (local >= 0) {
+        // active (0) -> passed: peels right and turns to face the new doc
+        p = Math.min(local, 1.5);
+        x = p * 380; ry = -p * 50; z = -p * 170; sc = 1 - p * 0.07;
+        op = p <= 1 ? 1 : clamp(1 - (p - 1) / 0.5, 0, 1);
+        br = 1 - Math.min(p, 1) * 0.42;
+        zi = 200 - Math.round(p * 12);
+      } else {
+        // upcoming: queued behind, receding back and dimming
+        q = Math.min(-local, 4);
+        x = -q * 46; ry = q * 9; z = -q * 165; sc = 1 - q * 0.05;
+        op = clamp(1 - q * 0.32, 0, 1);
+        br = 1 - Math.min(q, 2) * 0.22;
+        zi = 200 - Math.round(q * 12);
+      }
+      var c = cards[i];
+      c.style.transform = "translate3d(" + x.toFixed(1) + "px, -50%, " + z.toFixed(1) + "px) rotateY(" + ry.toFixed(1) + "deg) scale(" + sc.toFixed(3) + ")";
+      c.style.opacity = op.toFixed(3);
+      c.style.filter = "brightness(" + br.toFixed(3) + ")";
+      c.style.zIndex = String(zi);
     }
   }
 
-  /* ---- Dark band reveal: toggles the sunburst draw-in ---- */
-  var band = document.querySelector(".band");
-  if (band) {
-    if (reduce || !hasIO) {
-      band.classList.add("is-visible");
-    } else {
-      var bandIO = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) { e.target.classList.add("is-visible"); bandIO.unobserve(e.target); }
-        });
-      }, { threshold: 0.25 });
-      bandIO.observe(band);
-    }
+  function clearDocs() {
+    cards.forEach(function (c) {
+      c.style.transform = ""; c.style.opacity = ""; c.style.filter = ""; c.style.zIndex = "";
+    });
   }
+
+  var ticking = false;
+  function onScrollFx() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { updateBand(); updateDocs(); ticking = false; });
+  }
+
+  updateBand();
+  updateDocs();
+  window.addEventListener("scroll", onScrollFx, { passive: true });
+  window.addEventListener("resize", function () {
+    var should = !reduce && cards.length > 0 && wideMQ.matches;
+    if (should && !use3d) { use3d = true; docs.classList.add("is-3d"); }
+    else if (!should && use3d) { use3d = false; docs.classList.remove("is-3d"); clearDocs(); }
+    onScrollFx();
+  }, { passive: true });
 })();

@@ -88,7 +88,6 @@
     <div class="band-inner">
       <h2 id="band-h" data-reveal>Built to be <span class="accent">doubted.</span></h2>
       <p class="band-lede" data-reveal style="--reveal-i:1">Every verdict points back to the record, so you never have to take Cachet's word for it.</p>
-      <svg class="sunburst" viewBox="0 0 900 320" preserveAspectRatio="xMidYMax meet" aria-hidden="true"></svg>
       <dl class="stats" data-reveal style="--reveal-i:2">
         <div class="stat">
           <dt class="num">3</dt>
@@ -116,46 +115,59 @@
       <h2 data-reveal style="--reveal-i:1">One layer between the model <span class="accent">and the court.</span></h2>
     </div>
 
-    <div class="card-grid">
-      <article class="card card-wide" data-reveal>
-        <h3>Every citation, checked line by line</h3>
-        <p>Cachet audits the document and shows its work, verdict by verdict.</p>
-        <div class="mini-ledger mono" role="presentation">
-          <div class="ml-row"><span class="ml-cite">Whitfield v. Cranston</span><span class="ml-ok">&#10003; verified</span></div>
-          <div class="ml-row"><span class="ml-cite">Aldridge v. Penn Mut.</span><span class="ml-ok">&#10003; verified</span></div>
-          <div class="ml-row ml-bad"><span class="ml-cite">Marlow v. Eastbrook</span><span class="ml-no">&#10005; no record</span></div>
+    <!-- The five "documents" the reader flips through. With JS + a wide viewport
+         this becomes a scroll-pinned 3D deck (one brief in the spotlight at a
+         time); without JS / reduced-motion / narrow it falls back to a grid. -->
+    <div class="docs" data-docs style="--docs-n: 5">
+      <div class="docs-stage">
+        <div class="docs-spot" aria-hidden="true"></div>
+        <div class="docs-deck">
+          <article class="card doc-card" data-reveal>
+            <span class="doc-kicker mono">01 / 05</span>
+            <h3>Every citation, checked line by line</h3>
+            <p>Cachet audits the document and shows its work, verdict by verdict.</p>
+            <div class="mini-ledger mono" role="presentation">
+              <div class="ml-row"><span class="ml-cite">Whitfield v. Cranston</span><span class="ml-ok">&#10003; verified</span></div>
+              <div class="ml-row"><span class="ml-cite">Aldridge v. Penn Mut.</span><span class="ml-ok">&#10003; verified</span></div>
+              <div class="ml-row ml-bad"><span class="ml-cite">Marlow v. Eastbrook</span><span class="ml-no">&#10005; no record</span></div>
+            </div>
+          </article>
+
+          <article class="card doc-card" data-reveal style="--reveal-i:1">
+            <span class="doc-kicker mono">02 / 05</span>
+            <h3>The refusal is the feature</h3>
+            <p>When it cannot confirm something, it says so, plainly, rather than guess.</p>
+            <div class="chip-verdict">
+              <div class="cv-label mono">&#9888; Could not verify</div>
+              <div class="cv-head">No such case exists in any reporter.</div>
+              <div class="cv-detail">The citation appears fabricated.</div>
+            </div>
+          </article>
+
+          <article class="card doc-card" data-reveal>
+            <span class="doc-kicker mono">03 / 05</span>
+            <h3>Your document stays put</h3>
+            <p>The file never leaves your machine. Only the text being checked is sent to the model you choose.</p>
+            <div class="card-chip mono"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> on your Mac</div>
+          </article>
+
+          <article class="card doc-card" data-reveal style="--reveal-i:1">
+            <span class="doc-kicker mono">04 / 05</span>
+            <h3>Three checks, every time</h3>
+            <ol class="check-q mono">
+              <li><span class="qn">01</span> Does the case exist?</li>
+              <li><span class="qn">02</span> Is the quote verbatim?</li>
+              <li><span class="qn">03</span> Does the holding match?</li>
+            </ol>
+          </article>
+
+          <article class="card doc-card" data-reveal style="--reveal-i:2">
+            <span class="doc-kicker mono">05 / 05</span>
+            <h3>It never wrote your brief</h3>
+            <p>A separate layer with one job: confirm, or refuse. It has no draft to defend.</p>
+          </article>
         </div>
-      </article>
-
-      <article class="card card-wide" data-reveal style="--reveal-i:1">
-        <h3>The refusal is the feature</h3>
-        <p>When it cannot confirm something, it says so, plainly, rather than guess.</p>
-        <div class="chip-verdict">
-          <div class="cv-label mono">&#9888; Could not verify</div>
-          <div class="cv-head">No such case exists in any reporter.</div>
-          <div class="cv-detail">The citation appears fabricated.</div>
-        </div>
-      </article>
-
-      <article class="card" data-reveal>
-        <h3>Your document stays put</h3>
-        <p>The file never leaves your machine. Only the text being checked is sent to the model you choose.</p>
-        <div class="card-chip mono"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> on your Mac</div>
-      </article>
-
-      <article class="card" data-reveal style="--reveal-i:1">
-        <h3>Three checks, every time</h3>
-        <ol class="check-q mono">
-          <li><span class="qn">01</span> Does the case exist?</li>
-          <li><span class="qn">02</span> Is the quote verbatim?</li>
-          <li><span class="qn">03</span> Does the holding match?</li>
-        </ol>
-      </article>
-
-      <article class="card" data-reveal style="--reveal-i:2">
-        <h3>It never wrote your brief</h3>
-        <p>A separate layer with one job: confirm, or refuse. It has no draft to defend.</p>
-      </article>
+      </div>
     </div>
   </section>
 
@@ -281,7 +293,7 @@
     </div>
   </footer>
 
-  <script src="motion.js?v=3" defer></script>
+  <script src="motion.js?v=4" defer></script>
   <!-- Vercel Web Analytics (cookieless). Activates on Vercel; 404s harmlessly elsewhere. -->
   <script defer src="/_vercel/insights/script.js"></script>
 </body>

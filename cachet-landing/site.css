@@ -87,19 +87,23 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 @media (max-width: 940px) { .verdict { position: static; width: auto; margin-top: var(--s-5); animation-delay: 4.6s; } .scan { display: none; } }
 
 /* ============ DARK BAND: Built to be doubted ============ */
-.band { margin-block: var(--s-9); }
+.band { margin-block: var(--s-9); width: 100vw; margin-inline: calc(50% - 50vw); }
+/* The panel grows from the container width out to the full page width as it
+   scrolls in (JS drives --grow 0 -> 1); the height never changes. No-JS and
+   reduced-motion settle at full width. */
 .band-inner {
+  --grow: 1;
+  width: min(100vw, calc(var(--container) + (100vw - var(--container)) * var(--grow)));
+  margin-inline: auto;
   background: var(--ink-panel); border-radius: var(--r-section);
   padding: clamp(3rem, 1.5rem + 6vw, 6rem) var(--s-7) clamp(3rem, 1.5rem + 5vw, 5rem);
   text-align: center; overflow: hidden; position: relative;
 }
+@media (prefers-reduced-motion: reduce) { .band-inner { --grow: 1; } }
 .band h2 { color: var(--on-dark); font-size: clamp(2.4rem, 1.4rem + 3.6vw, 4rem); }
 .band h2 .accent { color: var(--rose); }
 .band-lede { margin: var(--s-5) auto 0; max-width: 34ch; color: var(--on-dark-muted); font-size: var(--t-1); line-height: 1.5; }
-.sunburst { display: block; width: min(760px, 92%); height: auto; margin: var(--s-7) auto var(--s-6); }
-.sunburst line, .sunburst circle { opacity: 0; transition: opacity var(--dur-4) var(--ease-out); }
-.band.is-visible .sunburst line, .band.is-visible .sunburst circle { opacity: 1; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); max-width: 720px; margin: var(--s-6) auto 0; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); max-width: 720px; margin: var(--s-7) auto 0; }
 .stat { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .stat .num { font-family: var(--font-display); font-weight: 700; font-size: clamp(3rem, 2rem + 3vw, 4.5rem); line-height: 1; color: var(--rose); }
 .stat dd { color: var(--on-dark-muted); font-size: var(--t--1); max-width: 22ch; line-height: 1.4; }
@@ -113,10 +117,25 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 .section-head h2 { font-size: clamp(2.1rem, 1.4rem + 2.6vw, 3.4rem); }
 .section-head p { margin-top: var(--s-4); color: var(--text-secondary); font-size: var(--t-1); line-height: 1.5; max-width: 46ch; }
 
-/* ============ WHAT YOU GET: card grid ============ */
-.card-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--s-5); margin-top: var(--s-7); }
-.card { grid-column: span 2; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-6); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: var(--s-3); }
-.card-wide { grid-column: span 3; }
+/* ============ WHAT YOU GET: the document deck ============ */
+.docs { margin-top: var(--s-7); }
+.doc-kicker { display: block; font-family: var(--font-mono); font-size: var(--t--1); letter-spacing: 0.16em; color: var(--text-muted); margin-bottom: var(--s-2); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-6); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: var(--s-3); }
+/* Fallback (no JS / reduced-motion / narrow): a readable grid of sheets. */
+.docs-deck { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: var(--s-5); }
+.docs-spot { display: none; }
+/* Scroll-pinned 3D deck: one brief in the spotlight, the rest receding behind it;
+   the active one peels to the right and turns to face the next as you scroll. */
+.docs.is-3d { height: calc(100vh + (var(--docs-n) - 1) * 74vh); }
+.docs.is-3d .docs-stage { position: sticky; top: 0; height: 100vh; width: 100vw; margin-inline: calc(50% - 50vw); display: grid; place-items: center; perspective: 1700px; perspective-origin: 50% 44%; overflow: hidden; }
+.docs.is-3d .docs-spot { display: block; position: absolute; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(56% 52% at 50% 46%, hsl(42 44% 90% / 0.95), hsl(40 36% 92% / 0) 70%); }
+.docs.is-3d .docs-deck { display: block; position: relative; width: min(440px, 84vw); height: 0; transform-style: preserve-3d; z-index: 1; }
+.docs.is-3d .doc-card {
+  position: absolute; left: 50%; top: 0; width: min(440px, 84vw); min-height: 460px;
+  margin-left: calc(min(440px, 84vw) / -2); transform: translateY(-50%);
+  transform-origin: 50% 88%; backface-visibility: hidden; transition: none;
+  box-shadow: var(--shadow-3); will-change: transform, opacity, filter;
+}
 .card h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--t-2); letter-spacing: -0.02em; line-height: 1.12; }
 .card > p { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; }
 .card-chip { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t--1); color: var(--flag); background: var(--flag-wash); border: 1px solid var(--flag-edge); border-radius: var(--r-full); padding: 0.35em 0.8em; }
@@ -135,11 +154,7 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 .check-q li { display: flex; gap: var(--s-3); align-items: baseline; padding: var(--s-3) 0; border-bottom: 1px solid var(--border); font-size: 0.92rem; color: var(--text-primary); }
 .check-q li:last-child { border-bottom: 0; }
 .check-q .qn { color: var(--flag); }
-@media (max-width: 900px) {
-  .card-grid { grid-template-columns: repeat(2, 1fr); }
-  .card, .card-wide { grid-column: span 1; }
-}
-@media (max-width: 560px) { .card-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .docs-deck { grid-template-columns: 1fr; } }
 
 /* ============ HOW VERIFICATION WORKS: pipeline ============ */
 .flow { margin-top: var(--s-8); display: flex; flex-direction: column; align-items: center; gap: 0; }
@@ -221,5 +236,4 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
   .verdict, .row, [data-reveal] { opacity: 1 !important; transform: none !important; }
   .scan { display: none !important; }
   .doc-head .status .dot { background: var(--flag) !important; }
-  .sunburst line, .sunburst circle { opacity: 1 !important; transition: none !important; }
 }
