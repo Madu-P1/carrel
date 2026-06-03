@@ -93,7 +93,8 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
    reduced-motion settle at full width. */
 .band-inner {
   --grow: 1;
-  width: min(100vw, calc(var(--container) + (100vw - var(--container)) * var(--grow)));
+  --band-w0: min(880px, 72vw); /* the narrow start; sweeps out to the full page width */
+  width: min(100vw, calc(var(--band-w0) + (100vw - var(--band-w0)) * var(--grow)));
   margin-inline: auto;
   background: var(--ink-panel); border-radius: var(--r-section);
   padding: clamp(3rem, 1.5rem + 6vw, 6rem) var(--s-7) clamp(3rem, 1.5rem + 5vw, 5rem);
@@ -123,17 +124,21 @@ h1, .section-head h2, .band h2, .cta-panel h2 {
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-3); padding: var(--s-6); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: var(--s-3); }
 /* Fallback (no JS / reduced-motion / narrow): a readable grid of sheets. */
 .docs-deck { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: var(--s-5); }
-.docs-spot { display: none; }
-/* Scroll-pinned 3D deck: one brief in the spotlight, the rest receding behind it;
-   the active one peels to the right and turns to face the next as you scroll. */
+.docs-spot, .docs-floor { display: none; }
+/* Scroll-pinned 3D deck: one standing brief in the spotlight, the rest receding
+   into shadow; the active one peels to the right and turns to face the next. */
 .docs.is-3d { height: calc(100vh + (var(--docs-n) - 1) * 74vh); }
-.docs.is-3d .docs-stage { position: sticky; top: 0; height: 100vh; width: 100vw; margin-inline: calc(50% - 50vw); display: grid; place-items: center; perspective: 1700px; perspective-origin: 50% 44%; overflow: hidden; }
-.docs.is-3d .docs-spot { display: block; position: absolute; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(56% 52% at 50% 46%, hsl(42 44% 90% / 0.95), hsl(40 36% 92% / 0) 70%); }
-.docs.is-3d .docs-deck { display: block; position: relative; width: min(440px, 84vw); height: 0; transform-style: preserve-3d; z-index: 1; }
+.docs.is-3d .docs-stage { position: sticky; top: 0; height: 100vh; width: 100vw; margin-inline: calc(50% - 50vw); display: grid; place-items: center; perspective: 1700px; perspective-origin: 50% 42%; overflow: hidden; }
+/* Spotlight: a bright pool at center plus a soft dark vignette so the receded
+   briefs sink away from the lit one. */
+.docs.is-3d .docs-spot { display: block; position: absolute; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(46% 46% at 50% 42%, hsl(44 48% 93% / 1), hsl(40 36% 92% / 0) 60%), radial-gradient(125% 100% at 50% 48%, transparent 52%, hsl(28 30% 14% / 0.12) 100%); }
+/* Floor shadow under the standing brief at center. */
+.docs.is-3d .docs-floor { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, calc(-50% + 252px)); width: min(300px, 60vw); height: 36px; border-radius: 50%; background: radial-gradient(ellipse at center, hsl(28 30% 14% / 0.3), transparent 70%); filter: blur(8px); z-index: 0; pointer-events: none; }
+.docs.is-3d .docs-deck { display: block; position: relative; width: min(384px, 80vw); height: 0; transform-style: preserve-3d; z-index: 1; }
 .docs.is-3d .doc-card {
-  position: absolute; left: 50%; top: 0; width: min(440px, 84vw); min-height: 460px;
-  margin-left: calc(min(440px, 84vw) / -2); transform: translateY(-50%);
-  transform-origin: 50% 88%; backface-visibility: hidden; transition: none;
+  position: absolute; left: 50%; top: 0; width: min(384px, 80vw); min-height: 520px;
+  margin-left: calc(min(384px, 80vw) / -2); transform: translateY(-50%);
+  transform-origin: 50% 92%; backface-visibility: hidden; transition: none;
   box-shadow: var(--shadow-3); will-change: transform, opacity, filter;
 }
 .card h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--t-2); letter-spacing: -0.02em; line-height: 1.12; }

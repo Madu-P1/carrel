@@ -86,6 +86,8 @@
    * rAF-throttled scroll loop. Reduced-motion and narrow screens opt out and
    * keep the static, readable layout. ---- */
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
   var bandInner = document.querySelector(".band-inner");
 
@@ -102,7 +104,7 @@
     var vh = window.innerHeight;
     // 0 while the band sits at the bottom of the viewport, 1 once it has risen in
     var p = clamp((vh - r.top) / (vh * 0.7), 0, 1);
-    bandInner.style.setProperty("--grow", p.toFixed(3));
+    bandInner.style.setProperty("--grow", easeOutCubic(p).toFixed(3));
   }
 
   function updateDocs() {
@@ -112,22 +114,25 @@
     var scrolled = clamp(-rect.top, 0, total);
     var g = total > 0 ? scrolled / total : 0;
     var N = cards.length;
-    var t = g * (N - 1); // floating active index
+    // Ease the fractional index so each brief dwells in the spotlight, then turns.
+    var raw = g * (N - 1);
+    var base = Math.floor(raw);
+    var t = base + easeInOutCubic(clamp(raw - base, 0, 1));
     for (var i = 0; i < N; i++) {
       var local = t - i, x, ry, z, sc, op, br, zi, p, q;
       if (local >= 0) {
         // active (0) -> passed: peels right and turns to face the new doc
         p = Math.min(local, 1.5);
-        x = p * 380; ry = -p * 50; z = -p * 170; sc = 1 - p * 0.07;
+        x = p * 400; ry = -p * 54; z = -p * 210; sc = 1 - p * 0.08;
         op = p <= 1 ? 1 : clamp(1 - (p - 1) / 0.5, 0, 1);
-        br = 1 - Math.min(p, 1) * 0.42;
+        br = 1 - Math.min(p, 1) * 0.5;
         zi = 200 - Math.round(p * 12);
       } else {
-        // upcoming: queued behind, receding back and dimming
+        // upcoming: queued behind, receding harder and dimming into shadow
         q = Math.min(-local, 4);
-        x = -q * 46; ry = q * 9; z = -q * 165; sc = 1 - q * 0.05;
-        op = clamp(1 - q * 0.32, 0, 1);
-        br = 1 - Math.min(q, 2) * 0.22;
+        x = -q * 40; ry = q * 8; z = -q * 200; sc = 1 - q * 0.06;
+        op = clamp(1 - q * 0.36, 0, 1);
+        br = 1 - Math.min(q, 2) * 0.3;
         zi = 200 - Math.round(q * 12);
       }
       var c = cards[i];
