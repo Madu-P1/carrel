@@ -107,6 +107,28 @@ describe("ShelfView", () => {
     expect(unsealedRow?.getAttribute("data-sealed")).toBe("false");
   });
 
+  it("surfaces a cracked seal in the Sealed section with a plain caption (SM-V8)", async () => {
+    mockList.mockResolvedValue({
+      briefs: [
+        summary({ id: "b1", title: "Motion to Dismiss", seal_state: "sealed" }),
+        summary({ id: "b2", title: "Drifted Brief", seal_state: "cracked" })
+      ]
+    });
+    render(<ShelfView />);
+
+    await screen.findByText("Drifted Brief");
+    // A cracked record was sealed, so it stays in the Sealed section ...
+    const crackedRow = screen.getByText("Drifted Brief").closest("li");
+    expect(crackedRow?.getAttribute("data-sealed")).toBe("true");
+    // ... and surfaces the plain integrity caption (no oxblood, no verdict word).
+    expect(
+      screen.getByText("Seal cracked. The draft no longer matches what was sealed.")
+    ).toBeTruthy();
+    // A clean sealed record carries no such caption.
+    const sealedRow = screen.getByText("Motion to Dismiss").closest("li");
+    expect(sealedRow?.textContent).not.toMatch(/Seal cracked/);
+  });
+
   it("falls back to 'Untitled brief' when a brief has no title", async () => {
     mockList.mockResolvedValue({ briefs: [summary({ title: null })] });
     render(<ShelfView />);

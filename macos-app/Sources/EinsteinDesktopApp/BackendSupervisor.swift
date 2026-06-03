@@ -179,6 +179,14 @@ final class BackendSupervisor {
         if let localApiToken {
             environment["CARREL_LOCAL_API_TOKEN"] = localApiToken
         }
+        // Cachet build: the same shell + supervisor, but the backend serves only
+        // the Cachet routes. The app is launched with CACHET_BUNDLE (which also
+        // selects the cachet.new.html frontend in WebAppView.loadBundledApp);
+        // propagate it as CACHET_ONLY so the spawned backend (main.py) registers
+        // the Cachet route set, not Carrel's.
+        if environment["CACHET_BUNDLE"] != nil {
+            environment["CACHET_ONLY"] = "1"
+        }
         // Tell Python where to find the bundled Swift sidecar binaries
         // (EinsteinIngestionBridge for Vision OCR, EinsteinAFMBridge
         // for Apple Foundation Models). ai/native_bridge_paths.py

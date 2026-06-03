@@ -96,9 +96,11 @@
   border: 1px solid var(--hairline);
   background: var(--surface-2);
   color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  line-height: 1.55;
+  /* SM-V1 The Paste: the draft sets in the reading serif on the fresh sheet, so
+     a pasted draft reads as a document on paper, not text in a sans input. */
+  font-family: var(--font-serif-body);
+  font-size: var(--text-base);
+  line-height: 1.6;
   resize: vertical;
   transition:
     border-color var(--dur-micro) var(--ease-out),
@@ -192,6 +194,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  /* SM-V2 The Read: a card settles into its disposition (a Tier-1 transition,
+     not a keyframe, so the verifyScope guard holds) when its check lands and the
+     checking class is removed. */
+  transition:
+    opacity var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
 }
 
 /* Ordering cue: flags carry an oxblood left edge, the honest refusal a quiet
@@ -275,6 +283,7 @@
 
 .verdictCardChecking {
   opacity: 0.82;
+  transform: translateY(3px);
 }
 
 /* The "watching the labor" indicator. Motion lives only here and on the
@@ -1230,12 +1239,19 @@
 .claimMark[data-tier="pass"]:hover {
   text-decoration-color: var(--hairline);
 }
-/* deterministic flag: the confident oxblood underline (a struck mark). */
+/* deterministic flag: the confident oxblood strike. The underline is a
+   background gradient (not text-decoration) with box-decoration-break: clone so
+   it follows every wrapped line. Resting state is the full-width rule; SM-V3
+   draws it left to right once via WAAPI (animating background-size, no CSS
+   keyframe, so the verifyScope motion guard holds). */
 .markFlag {
-  text-decoration: underline;
-  text-decoration-color: var(--oxblood-line);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
+  background-image: linear-gradient(var(--verify-flag), var(--verify-flag));
+  background-repeat: no-repeat;
+  background-position: left 100%;
+  background-size: 100% 2px;
+  padding-bottom: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 /* assistive: a dotted pencil query, achromatic, never oxblood. */
 .markAssistive {
@@ -1318,6 +1334,18 @@
   font-size: 10.5px;
   letter-spacing: 0.02em;
   color: var(--text-tertiary);
+}
+/* SM-V5: the refusal's calibrating "do this". Set off from the explanation by a
+   hairline and carried in primary ink so the precise next step reads as the
+   resolution, not more uncertainty. */
+.noteAction {
+  margin: 9px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
 }
 .noteAct {
   appearance: none;

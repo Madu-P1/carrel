@@ -115,6 +115,22 @@ describe("dispositionForClaim", () => {
     expect(d.tier).toBe("refusal");
   });
 
+  test("the refusal carries a precise next action (SM-V5), other dispositions do not", () => {
+    // The calibrating "do this" turns abstention into a step the user can take.
+    const refusal = dispositionForClaim(card({ verdict: "unknown" }));
+    expect(refusal.nextAction).toBeTruthy();
+    expect(refusal.nextAction).toMatch(/verify again/i);
+    // It is not more uncertainty: the action is distinct from the explanation.
+    expect(refusal.nextAction).not.toBe(refusal.detail);
+
+    const supported = dispositionForClaim(card({ verdict: "verified" }));
+    expect(supported.nextAction).toBeUndefined();
+    const flag = dispositionForClaim(
+      card({ case_verdicts: [batch([caseItem({ status: 404, exists: false })])] })
+    );
+    expect(flag.nextAction).toBeUndefined();
+  });
+
   test("verified prose with no citations is supported and unmarked", () => {
     const d = dispositionForClaim(card({ verdict: "verified" }));
     expect(d.kind).toBe("supported");

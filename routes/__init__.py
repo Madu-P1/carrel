@@ -1,3 +1,5 @@
+import db
+
 from routes.anchors import register_anchor_routes
 from routes.ask_cards import register_ask_cards_routes
 from routes.briefs import register_briefs_routes
@@ -52,3 +54,31 @@ def register_routes(app) -> None:
     # Calendar-driven study planning (Phase 1: feed sync + stub coach).
     register_calendar_routes(app)
     register_plan_routes(app)
+
+
+def register_cachet_routes(app) -> None:
+    """Standalone-Cachet route set: only the verification product surfaces over
+    the shared engine. No Carrel features (study, plan, calendar, notes,
+    concepts, dashboard, ask, anchors, studio, synthesis, events, evidence,
+    onboarding, workspace, reader). Used when CACHET_ONLY is set so the Cachet
+    backend exposes nothing but Verify, the Shelf, Sources, and health. The
+    shared services / db / migrations are unchanged; this only gates what the
+    app serves, so the two products stay one codebase over one engine."""
+    register_system_routes(app)  # health + provider status
+    register_document_routes(app)  # Sources: ingest the record to verify against
+    register_job_routes(app)  # ingestion job status for Sources
+    register_search_routes(app)  # hybrid retrieval over the loaded sources
+    register_verify_routes(app)  # the product
+    register_briefs_routes(app)  # the Shelf
+
+    # /api/health lives in workspace.py alongside Carrel's workspace/srs routes,
+    # which Cachet does not serve. Register the liveness probe directly so the
+    # backend supervisor and the frontend's offline check work without pulling in
+    # Carrel surface. Cheap and DB-free, matching the workspace health contract.
+    @app.get("/api/health")
+    def _cachet_health() -> dict:
+        return {
+            "status": "ok",
+            "mode": "local",
+            "paths": {"base_dir": str(db.BASE_DIR), "db_path": str(db.DB_PATH)},
+        }

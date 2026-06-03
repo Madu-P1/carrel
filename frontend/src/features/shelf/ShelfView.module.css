@@ -228,6 +228,27 @@
   stroke-width: 1.2;
 }
 
+/* SM-V8: a cracked seal. A spent seal reads quieter, fractured by a line in the
+   ground colour so the disc looks split. Ink only, no oxblood. */
+.sealBroken .sealRing,
+.sealBroken .sealCore {
+  stroke: var(--ink-3);
+}
+.sealCrackLine {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.crackedNote {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-serif-body, Charter, Georgia, serif);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
 .confirm {
   display: inline-flex;
   align-items: center;

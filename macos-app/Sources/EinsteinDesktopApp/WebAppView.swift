@@ -127,8 +127,16 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler,
     func loadBundledApp(into webView: WKWebView) {
         onLoadPhaseChange(.loading)
         didLogInteractive = false
-        guard let htmlURL = Bundle.main.url(forResource: "app.new", withExtension: "html") else {
-            logger.error("Missing bundled HTML resource app.new.html")
+        // Cachet runs this same shell over the same backend; only the bundled
+        // frontend differs. CACHET_BUNDLE selects Cachet's bundle (cachet.new.html)
+        // over Carrel's (app.new.html). Opt-in, so Carrel's launch (which never
+        // sets it) is unaffected even when both bundles sit in Resources during
+        // development.
+        let bundleName = ProcessInfo.processInfo.environment["CACHET_BUNDLE"] != nil
+            ? "cachet.new"
+            : "app.new"
+        guard let htmlURL = Bundle.main.url(forResource: bundleName, withExtension: "html") else {
+            logger.error("Missing bundled HTML resource \(bundleName).html")
             onLoadPhaseChange(.failed("The bundled frontend resource was not found inside the app."))
             webView.loadHTMLString(
                 """
