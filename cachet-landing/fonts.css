@@ -5,6 +5,25 @@
    Fonts: Newsreader, Inter, IBM Plex Mono (all OFL). Latin subset, static
    instances. font-display: swap on every face. */
 
+/* Bricolage Grotesque (display, variable 400-800): wordmark, H1, every section H2,
+   the stat numbers, the dark + oxblood section headlines. The heavy grotesque voice. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("fonts/bricolage-var.woff2") format("woff2");
+}
+
+/* Hanken Grotesk (body + UI, variable 400-700): lede, paragraphs, buttons, nav, card text */
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/hanken-var.woff2") format("woff2");
+}
+
 /* Newsreader (display serif): H1, section H2s, pull-quote, CTA H2, wordmark, card H3 */
 @font-face {
   font-family: "Newsreader";

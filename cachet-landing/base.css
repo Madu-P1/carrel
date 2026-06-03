@@ -67,8 +67,8 @@ p { text-wrap: pretty; }
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  padding: 0.8em 1.3em;
-  border-radius: var(--r-1);
+  padding: 0.85em 1.45em;
+  border-radius: var(--r-2);
   border: 1px solid transparent;
   min-height: 44px; /* guaranteed touch target */
   cursor: pointer;
@@ -80,11 +80,11 @@ p { text-wrap: pretty; }
 }
 .btn:hover { transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
-/* Primary is ink on paper: the page's one filled element. */
-.btn-primary { background: var(--n-10); color: var(--n-0); }
-.btn-primary:hover { background: var(--n-9); box-shadow: 0 6px 20px hsl(30 25% 28% / 0.16); }
-.btn-ghost { color: var(--text-primary); border-color: var(--border-strong); background: transparent; }
-.btn-ghost:hover { border-color: var(--n-6); background: var(--surface-raised); }
+/* Primary is oxblood: the call to act, the seal color. */
+.btn-primary { background: var(--flag); color: var(--accent-on-oxblood); border-color: var(--flag); }
+.btn-primary:hover { background: hsl(350 64% 23%); box-shadow: 0 8px 24px hsl(350 50% 25% / 0.28); }
+.btn-ghost { color: var(--text-primary); border-color: var(--border); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--border-strong); background: var(--surface-raised); }
 
 /* Real focus ring, never removed. Ink, so oxblood stays reserved for verdicts. */
 a:focus-visible, button:focus-visible, .btn:focus-visible {
@@ -103,7 +103,7 @@ a:focus-visible, button:focus-visible, .btn:focus-visible {
               border-color var(--dur-3) var(--ease-out);
 }
 .site-header.scrolled {
-  background: hsl(43 40% 94% / 0.82);
+  background: hsl(40 36% 92% / 0.82);
   backdrop-filter: blur(14px) saturate(115%);
   -webkit-backdrop-filter: blur(14px) saturate(115%);
   border-bottom-color: var(--border);
