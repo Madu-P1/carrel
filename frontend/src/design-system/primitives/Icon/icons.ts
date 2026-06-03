@@ -62,6 +62,11 @@ export const icons = {
   // lines. Fold is drawn as its own subpath so the corner reads as a
   // real crease rather than a missing triangle.
   doc: "M4 2 h5 l4 4 v8 a0.5 0.5 0 0 1 -0.5 0.5 H4 a0.5 0.5 0 0 1 -0.5 -0.5 V2.5 a0.5 0.5 0 0 1 0.5 -0.5 z M9 2 v4 h4 M6 9 h4 M6 11.5 h4 M6 6.5 h1.5",
+  // shelf (Cachet PR6b): a dog-eared page stamped with a seal — the Shelf is
+  // where verified, sealable briefs live. Same page shape as `doc`, its content
+  // lines replaced by a seal ring at center. Retires the `doc` placeholder on
+  // the Shelf nav entry.
+  shelf: "M4 2 h5 l4 4 v8 a0.5 0.5 0 0 1 -0.5 0.5 H4 a0.5 0.5 0 0 1 -0.5 -0.5 V2.5 a0.5 0.5 0 0 1 0.5 -0.5 z M9 2 v4 h4 M6 9.8 a2 2 0 1 1 4 0 a2 2 0 1 1 -4 0 z",
 
   // ask: chat bubble with a question mark. Tail on the lower-left so it
   // reads as a speech balloon, not a generic circle. Question mark is

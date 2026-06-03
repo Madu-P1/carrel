@@ -26,3 +26,12 @@
     transform: rotate(360deg);
   }
 }
+
+/* Under reduced motion, --dur-slow clamps to 60ms, which would spin the ring
+   ~16x/sec (more distracting than a normal spin). Stop rotation entirely,
+   matching Skeleton's treatment. The element stays visible as a static ring. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

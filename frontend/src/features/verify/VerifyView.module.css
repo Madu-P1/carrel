@@ -261,6 +261,37 @@
   border: 1px solid var(--hairline);
 }
 
+/* Streaming-only: a claim whose case check is still in flight. Quiet ink, no
+   --verify-flag oxblood: checking is not a finding. It replaces the verdict
+   badge until the cite_verdict lands, so a claim never flashes a pass. */
+.badgeChecking {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--hairline);
+}
+
+.verdictCardChecking {
+  opacity: 0.82;
+}
+
+/* The "watching the labor" indicator. Motion lives only here and on the
+   spinner; the verdict itself sits still like ink (DESIGN.md verify-scope). */
+.workingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.workingLabel {
+  font-variant-numeric: tabular-nums;
+}
+
 .verdictIndex {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -630,6 +661,38 @@
 .resultActions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Save to Shelf: a quiet sibling of the certification action (ghost vs the
+   filled Export chip), so saving an un-sealed draft reads as the lighter act.
+   Sealing inside the certification exhibit is the other, ceremonial save. */
+.saveShelf {
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+.saveShelf:hover {
+  color: var(--text-primary);
+  border-color: var(--hairline);
+}
+.saveShelf:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .exportCert {
@@ -1033,5 +1096,532 @@
 
   .certToolbar {
     display: none;
+  }
+}
+
+/* Cachet PR4: brief-level draft-quote-verbatim panel. Same cold-record register
+   as the verdict surface: warm paper, oxblood (--verify-flag) reserved for the
+   deterministic "not found verbatim" flag, quiet hairline for could-not-check.
+   No green, no celebration, no confidence numbers. */
+.quotePanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.quotePanelTitle {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.quoteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quoteItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+}
+
+/* Deterministic flag: a quoted run absent from the source. Oxblood, like the
+   other deterministic flags (citation_not_found / claim_unsupported). */
+.quoteAltered {
+  border-left-color: var(--verify-flag);
+}
+
+/* The honest refusal: could not see the source. Quiet ink, never oxblood. */
+.quoteUnplaceable {
+  border-left-color: color-mix(in srgb, var(--text-tertiary) 60%, transparent);
+}
+
+.quoteStatus {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.quoteAltered .quoteStatus {
+  color: var(--verify-flag);
+}
+
+.quoteText {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Cachet PR5b (Direction A): Workspace / Margin / Examination
+   The cold record: document body + pinned margin rail + unplaced
+   tray + the slide-in Examination drawer. Warm paper, ink, the
+   single oxblood accent on flags only. No green, no numbers.
+   ============================================================ */
+
+/* The oxblood mark line, derived from the flag accent (no new primitive). */
+.canvas {
+  --oxblood-line: color-mix(in srgb, var(--verify-flag) 55%, transparent);
+  position: relative;
+  display: grid;
+  /* The document column hugs its reading measure (not 1fr) so the rail sits
+     right beside the text; justify-content centers the document+rail unit so
+     there is no dead band in the middle. */
+  grid-template-columns: minmax(0, 34rem) 300px;
+  justify-content: center;
+  gap: var(--space-10, 40px);
+  align-items: start;
+}
+
+.documentBody {
+  /* The grid column defines the measure now; fill it so justified prose runs
+     edge to edge like a printed filing. */
+  max-width: none;
+  min-width: 0;
+}
+
+.docParagraph {
+  margin: 0 0 var(--space-5);
+  font-family: var(--font-serif-body);
+  font-size: 16px;
+  line-height: 1.66;
+  color: var(--text-primary);
+  /* A printed-brief register: justified with hyphenation to avoid rivers. */
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* A claim span. Supported (pass) carries NO mark and no resting weight; the
+   tier marks below add the only ink. */
+.claimMark {
+  border-radius: 1px;
+}
+.claimMark[role="button"] {
+  cursor: pointer;
+}
+.claimMark[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+/* supported: a checked-but-unmarked claim. Prove it was checked only on hover. */
+.claimMark[data-tier="pass"] {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-micro) var(--ease-out);
+}
+.claimMark[data-tier="pass"]:hover {
+  text-decoration-color: var(--hairline);
+}
+/* deterministic flag: the confident oxblood underline (a struck mark). */
+.markFlag {
+  text-decoration: underline;
+  text-decoration-color: var(--oxblood-line);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+/* assistive: a dotted pencil query, achromatic, never oxblood. */
+.markAssistive {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-tertiary);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+/* refusal: a composed ink bracket, not an accusation. */
+.markRefusal {
+  box-shadow: -3px 0 0 var(--text-tertiary);
+  padding-left: 8px;
+  margin-left: -11px;
+}
+/* fuzzy (approximate) placement: a wavy underline says "near-identical span",
+   so the loud mark never implies the tool found the verbatim bytes. */
+.markFuzzy {
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+}
+.claimMarkExamined {
+  background: color-mix(in srgb, var(--verify-flag) 7%, transparent);
+}
+
+/* the right margin rail */
+.rail {
+  position: relative;
+}
+
+.marginNote {
+  left: 0;
+  right: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--hairline);
+  margin-bottom: var(--space-5);
+}
+.marginNote[data-tier="flag"] {
+  border-left-color: var(--verify-flag);
+}
+.marginNote[data-tier="query"] {
+  border-left-color: var(--text-tertiary);
+  border-left-style: dotted;
+}
+.marginNote[data-tier="refusal"] {
+  border-left-color: var(--text-secondary);
+  border-left-width: 3px;
+}
+.noteKind {
+  margin: 0 0 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.marginNote[data-tier="flag"] .noteKind {
+  color: var(--verify-flag);
+}
+.noteTag {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+.noteDetail {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.noteTrail {
+  margin: 7px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+.noteAct {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 7px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
+}
+.noteAct:hover {
+  text-decoration-color: var(--text-tertiary);
+}
+.noteAct:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 2px;
+}
+
+/* the unplaced tray: first-class, spans both columns */
+.tray {
+  grid-column: 1 / -1;
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--hairline);
+}
+.trayLabel {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.trayNote {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.trayQuotes {
+  margin-bottom: var(--space-4);
+}
+.trayQuotesLabel {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.trayQuoteItem {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+}
+.trayQuoteAltered {
+  border-left-color: var(--verify-flag);
+}
+.trayQuoteUnplaceable {
+  border-left-color: color-mix(in srgb, var(--text-tertiary) 60%, transparent);
+}
+.trayQuoteStatus {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.trayQuoteAltered .trayQuoteStatus {
+  color: var(--verify-flag);
+}
+.trayQuoteText {
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.trayList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.trayRow {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.trayRow:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 2px;
+}
+.trayIndex {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.trayBody {
+  min-width: 0;
+}
+.trayDisp {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.trayRow[data-tier="flag"] .trayDisp {
+  color: var(--verify-flag);
+}
+.trayClaim {
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* ---- Examination drawer (the one prototype-sanctioned slide) ---- */
+.exam {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(520px, 64%);
+  background: var(--surface-2);
+  border-left: 1px solid var(--hairline);
+  box-shadow: -18px 0 40px rgb(40 30 18 / 10%);
+  transform: translateX(100%);
+  /* visibility:hidden when closed removes the offscreen drawer (and its Close
+     button) from the tab order, resolving the focusable-inside-aria-hidden
+     conflict on the always-mounted drawer. The visibility transition is delayed
+     by the slide duration so the drawer stays visible while it slides OUT, then
+     hides. (PR5b a11y fix.) */
+  visibility: hidden;
+  transition:
+    transform var(--dur-medium, 200ms) var(--ease-out),
+    visibility 0s linear var(--dur-medium, 200ms);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+}
+.examOpen {
+  transform: translateX(0);
+  visibility: visible;
+  /* When opening, become visible immediately (no delay) so the slide-in shows. */
+  transition:
+    transform var(--dur-medium, 200ms) var(--ease-out),
+    visibility 0s;
+}
+.examHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--hairline);
+}
+.examLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.examClose {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 6px;
+}
+.examClose:hover {
+  color: var(--text-primary);
+}
+.examClose:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: 2px;
+}
+.examBody {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.examClaim {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.checks {
+  display: flex;
+  flex-direction: column;
+}
+.checksLabel {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.check {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.checkMark {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1.5px var(--text-tertiary);
+}
+.check[data-state="flag"] .checkMark {
+  background: var(--verify-flag);
+  box-shadow: none;
+}
+.check[data-state="query"] .checkMark {
+  border-radius: 50%;
+}
+.check[data-state="unknown"] .checkMark {
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--hairline);
+}
+.checkName {
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.check[data-state="flag"] .checkName {
+  color: var(--verify-flag);
+}
+.checkWeight {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+.checkDetail {
+  margin: 5px 0 0;
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Narrow: collapse the rail under the document, drawer full-width. */
+@media (max-width: 1080px) {
+  .canvas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rail {
+    position: static;
+  }
+  .marginNote {
+    position: static !important;
+    top: auto !important;
+  }
+  .exam {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exam {
+    transition: none;
   }
 }

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html import escape
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from fastapi import HTTPException
 
@@ -26,7 +26,10 @@ from app_logging import get_logger, log_event
 from services.documents import clean_concept_label
 from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
-from services.legal.case_verification import ClaimCaseVerdict, verify_claims_for_cases
+from services.legal.case_verification import (
+    ClaimCaseVerdict,
+    verify_claims_for_cases_steps,
+)
 from services.retrieval import ScoredHit, search_hybrid
 from services.retrieval.node_type_router import NON_CITABLE_NODE_TYPES
 from services.retrieval.quote_heuristics import chunks_heuristic_enabled, is_structural_quote
@@ -225,6 +228,16 @@ class HydratedNodeContext:
     # "body" on the legacy chunks path, which has no structure. Used to
     # keep structural nodes (heading/header/footer) out of citations.
     node_type: str = "body"
+    # Cachet PR4 chunk-join: source position, used to merge PROVABLY-ADJACENT
+    # citations of the same document into one contiguous source for the
+    # draft-quote check, so a quote straddling two retrieved pieces is not
+    # false-flagged. Nodes path: char_start/char_end are real character offsets
+    # (nodes.char_start/char_end). Chunks path: char offsets are None and
+    # chunk_index gives ordering + adjacency within (doc_id). Both None on
+    # paths that cannot supply position (join simply does not merge those).
+    char_start: int | None = None
+    char_end: int | None = None
+    chunk_index: int | None = None
 
 
 def fetch_notes(
@@ -570,6 +583,13 @@ def _citation_payload(context: HydratedNodeContext, *, quote: str | None = None)
         # legacy chunks path (no node-level provenance); the
         # originating nodes.node_type on the typed-node path.
         "node_type": context.node_type,
+        # Cachet PR4 chunk-join: source position so the verify layer can merge
+        # provably-adjacent same-document citations into one contiguous source
+        # for the draft-quote check. Server-internal (consumed in services.verify
+        # _loaded_doc_sources); not part of the user-facing citation card.
+        "char_start": context.char_start,
+        "char_end": context.char_end,
+        "chunk_index": context.chunk_index,
     }
 
 
@@ -710,6 +730,8 @@ def _hydrate_from_nodes(
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
                 node_type=hit.node_type,
+                char_start=hit.char_start,
+                char_end=hit.char_end,
             )
         )
     return contexts
@@ -729,7 +751,8 @@ def _hydrate_from_chunks(
     placeholders = ",".join("?" * len(chunk_ids))
     rows = conn.execute(
         f"""
-        SELECT c.id, c.doc_id, c.section, c.page_num, c.content, d.filename AS document_name
+        SELECT c.id, c.doc_id, c.section, c.page_num, c.chunk_index, c.content,
+               d.filename AS document_name
         FROM chunks c
         JOIN documents d ON d.id = c.doc_id
         WHERE c.id IN ({placeholders})
@@ -766,6 +789,9 @@ def _hydrate_from_chunks(
                 # equation skeletons even though `content` is clean.
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
+                chunk_index=int(row["chunk_index"])
+                if row and row["chunk_index"] is not None
+                else None,
             )
         )
     return contexts
@@ -1180,6 +1206,11 @@ def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
                 "holding_concern": case.holding_concern,
                 "holding_excerpt": case.holding_excerpt,
                 "holding_error": case.holding_error,
+                # Cachet PR4: server-internal. The verify layer reads this to
+                # build the draft-quote source pool, then strips it before the
+                # SSE boundary (services.verify._strip_opinion_text) so the wire
+                # stays lean. Ask ignores it. None unless an opinion was fetched.
+                "opinion_text": case.opinion_text,
             }
             for case in verdict.verdicts
         ],
@@ -1398,6 +1429,61 @@ def _resolve_grounded_answer(
     )
 
 
+def _attach_case_verdicts_steps(answer: GroundedAnswer) -> Iterator[tuple[str, Any]]:
+    """Streaming variant of `_attach_case_verdicts`.
+
+    Yields ``("cite_verdict", ClaimCaseVerdict)`` for each claim as its
+    CourtListener case-existence + holding-match verification completes,
+    then a single ``("result", GroundedAnswer)`` carrying the rebuilt
+    answer with verdicts attached. `_attach_case_verdicts` drains this;
+    the Verify stream re-emits each cite_verdict so the UI inks per-claim
+    labor as it happens.
+
+    Identity-preserving: when the answer has no claims it yields the
+    original object unchanged (callers rely on `is` identity).
+    """
+    if not answer.claims:
+        yield ("result", answer)
+        return
+    claim_texts = [claim.text for claim in answer.claims]
+    verdicts_per_claim: list[ClaimCaseVerdict] = []
+    for verdict in verify_claims_for_cases_steps(claim_texts):
+        verdicts_per_claim.append(verdict)
+        yield ("cite_verdict", verdict)
+    rebuilt = tuple(
+        Claim(
+            text=claim.text,
+            citations=claim.citations,
+            case_verdicts=(verdicts_per_claim[index],) if index < len(verdicts_per_claim) else (),
+        )
+        for index, claim in enumerate(answer.claims)
+    )
+    yield (
+        "result",
+        GroundedAnswer(
+            summary=answer.summary,
+            claims=rebuilt,
+            unsupported_spans=answer.unsupported_spans,
+            misconceptions=answer.misconceptions,
+            next_steps=answer.next_steps,
+            model=answer.model,
+            latency_ms=answer.latency_ms,
+            ok=answer.ok,
+            error=answer.error,
+            cache_hit=answer.cache_hit,
+            input_tokens=answer.input_tokens,
+            output_tokens=answer.output_tokens,
+            scope_fallback_used=answer.scope_fallback_used,
+            citation_attempt_count=answer.citation_attempt_count,
+            citation_drop_count=answer.citation_drop_count,
+            citation_repair_count=answer.citation_repair_count,
+            citation_structural_drop_count=answer.citation_structural_drop_count,
+            citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
+            provider=answer.provider,
+        ),
+    )
+
+
 def _attach_case_verdicts(answer: GroundedAnswer) -> GroundedAnswer:
     """Carrel V2: run CourtListener case-existence verification on each
     claim's text and attach per-claim verdicts.
@@ -1407,45 +1493,18 @@ def _attach_case_verdicts(answer: GroundedAnswer) -> GroundedAnswer:
     (the dominant case for non-legal corpora). When CourtListener is
     unconfigured (no token) or unreachable, the per-claim verdict
     carries an explicit `ok=False` + error_code instead of degrading
-    to "case verified" — surfaces the state honestly to the operator
+    to "case verified". Surfaces the state honestly to the operator
     per CLAUDE.md "no silent AI fallbacks".
 
     Returns a rebuilt `GroundedAnswer` with claims carrying their
-    verdicts; if the answer has no claims, returns it unchanged.
+    verdicts; if the answer has no claims, returns it unchanged. Drains
+    `_attach_case_verdicts_steps`, which holds the per-claim loop.
     """
-    if not answer.claims:
-        return answer
-    claim_texts = [claim.text for claim in answer.claims]
-    verdicts_per_claim = verify_claims_for_cases(claim_texts)
-    rebuilt = tuple(
-        Claim(
-            text=claim.text,
-            citations=claim.citations,
-            case_verdicts=(verdicts_per_claim[index],) if index < len(verdicts_per_claim) else (),
-        )
-        for index, claim in enumerate(answer.claims)
-    )
-    return GroundedAnswer(
-        summary=answer.summary,
-        claims=rebuilt,
-        unsupported_spans=answer.unsupported_spans,
-        misconceptions=answer.misconceptions,
-        next_steps=answer.next_steps,
-        model=answer.model,
-        latency_ms=answer.latency_ms,
-        ok=answer.ok,
-        error=answer.error,
-        cache_hit=answer.cache_hit,
-        input_tokens=answer.input_tokens,
-        output_tokens=answer.output_tokens,
-        scope_fallback_used=answer.scope_fallback_used,
-        citation_attempt_count=answer.citation_attempt_count,
-        citation_drop_count=answer.citation_drop_count,
-        citation_repair_count=answer.citation_repair_count,
-        citation_structural_drop_count=answer.citation_structural_drop_count,
-        citation_non_prose_drop_count=answer.citation_non_prose_drop_count,
-        provider=answer.provider,
-    )
+    result = answer
+    for kind, value in _attach_case_verdicts_steps(answer):
+        if kind == "result":
+            result = value
+    return result
 
 
 def _log_grounded_answer(
@@ -1774,19 +1833,61 @@ def grounded_tutor_response(
         learner_confidence=learner_confidence,
         scope_fallback_used=scope_fallback_used,
     )
-    answer = _attach_case_verdicts(answer)
+    # Case-verdict attachment moved to the envelope (grounded_tutor_envelope
+    # and grounded_tutor_envelope_steps) so the Verify stream can drive it
+    # incrementally. Direct callers that do not use legal case verdicts
+    # (evals) are unaffected; Ask and Verify both flow through the envelope.
     _log_grounded_answer(answer, top_k=resolved_top_k, hit_count=len(contexts))
     return answer
 
 
-def grounded_tutor_envelope(
+def _unique_cited_ids(claims: Sequence["Claim"]) -> list[Any]:
+    """Unique citation node-ids across all claims, in first-seen order.
+
+    Under T01's dual-path contract these are either chunks.id TEXT UUIDs
+    (RETRIEVAL_USE_NODES=false, the default) or nodes.id integers
+    (RETRIEVAL_USE_NODES=true); `_hydrate_cited_contexts` dispatches on
+    the literal id type to read FROM the matching table.
+    """
+    cited_ids: list[Any] = []
+    seen_node_ids: set[str | int] = set()
+    for claim in claims:
+        for citation in claim.citations:
+            if citation.node_id in seen_node_ids:
+                continue
+            seen_node_ids.add(citation.node_id)
+            cited_ids.append(citation.node_id)
+    return cited_ids
+
+
+def grounded_tutor_envelope_steps(
     conn: sqlite3.Connection,
     payload: Any,
     *,
     log_study_event,
     fetch_recent_events,
     router: ClaudeRouter | None = None,
-) -> Dict[str, Any]:
+) -> Iterator[Dict[str, Any]]:
+    """Streaming variant of `grounded_tutor_envelope`.
+
+    Yields, in order:
+      - ``{"type": "progress", "phase": "extracting"}`` before retrieval and
+        the (atomic) LLM call;
+      - ``{"type": "claims", ...}`` once the grounded answer resolves, carrying
+        the claim skeleton (no case verdicts yet) so the UI renders cards
+        immediately, before the slow per-cite work;
+      - ``{"type": "cite_verdict", "claim_index", "case_verdict"}`` per claim as
+        the sequential CourtListener + holding-match labor completes;
+      - ``{"type": "result", "envelope": <dict>}`` the canonical envelope,
+        byte-identical to what `grounded_tutor_envelope` returns.
+
+    `grounded_tutor_envelope` drains this to the final dict; the Verify stream
+    (`services.verify.verify_draft_stream`) re-shapes each event for its UI.
+    Invariant: exactly one cite_verdict is yielded per claim (even non-legal
+    claims yield an ok=True empty batch), so a dropped stream leaves only the
+    not-yet-yielded claims unresolved; the client defaults those to
+    could_not_check, never to a pass.
+    """
     from services.workspace import build_momentum_engine
 
     concept_id = _payload_concept_id(payload)
@@ -1799,6 +1900,8 @@ def grounded_tutor_envelope(
     if confidence is None:
         confidence = getattr(payload, "learner_confidence", None)
 
+    yield {"type": "progress", "phase": "extracting"}
+
     grounded = grounded_tutor_response(
         conn,
         str(payload.question),
@@ -1810,21 +1913,28 @@ def grounded_tutor_envelope(
         router=router,
     )
 
-    # Collect the unique citation ids the LLM emitted. Under T01's
-    # dual-path contract these are either chunks.id TEXT UUIDs
-    # (RETRIEVAL_USE_NODES=false, the default) or nodes.id integers
-    # (RETRIEVAL_USE_NODES=true). The post-grounded lookup below
-    # dispatches on the same flag to read FROM the matching table.
-    cited_ids: list[Any] = []
-    seen_node_ids: set[str | int] = set()
-    for claim in grounded.claims:
-        for citation in claim.citations:
-            if citation.node_id in seen_node_ids:
-                continue
-            seen_node_ids.add(citation.node_id)
-            cited_ids.append(citation.node_id)
+    # Hydrate cited contexts once. Citations do not change when case verdicts
+    # attach (only `claim.case_verdicts` does), so the same `flat_contexts`
+    # serves both the claim skeleton below and the final envelope.
+    flat_contexts = _hydrate_cited_contexts(conn, _unique_cited_ids(grounded.claims))
 
-    flat_contexts = _hydrate_cited_contexts(conn, cited_ids)
+    yield {
+        "type": "claims",
+        "claims": _serialize_claims(grounded.claims, flat_contexts),
+        "unsupported_spans": list(grounded.unsupported_spans),
+    }
+
+    # Stream the per-claim case verdicts; keep the fully-attached answer for
+    # the canonical envelope below.
+    for kind, value in _attach_case_verdicts_steps(grounded):
+        if kind == "cite_verdict":
+            yield {
+                "type": "cite_verdict",
+                "claim_index": value.claim_index,
+                "case_verdict": _serialize_case_verdict(value),
+            }
+        elif kind == "result":
+            grounded = value
 
     citations = _flatten_claim_citations(grounded.claims, flat_contexts)
     claims = _serialize_claims(grounded.claims, flat_contexts)
@@ -1851,30 +1961,58 @@ def grounded_tutor_envelope(
         },
     )
 
-    return {
-        "answer": grounded.summary if grounded.ok else "",
-        "citations": citations,
-        "source_cards": citations,
-        "claims": claims,
-        "unsupported_spans": list(grounded.unsupported_spans),
-        "misconceptions": list(grounded.misconceptions),
-        "scaffolds": list(grounded.next_steps),
-        "scaffold_steps": list(grounded.next_steps),
-        "actions": actions,
-        "selected_concept": concept_name,
-        "grounded": grounded.ok,
-        "model": grounded.model,
-        "latency_ms": grounded.latency_ms,
-        "cache_hit": grounded.cache_hit,
-        "input_tokens": grounded.input_tokens,
-        "output_tokens": grounded.output_tokens,
-        "error": grounded.error,
-        "citation_attempt_count": grounded.citation_attempt_count,
-        "citation_drop_count": grounded.citation_drop_count,
-        "citation_repair_count": grounded.citation_repair_count,
-        "provider": grounded.provider,
-        "momentum": build_momentum_engine(conn, fetch_recent_events=fetch_recent_events),
+    yield {
+        "type": "result",
+        "envelope": {
+            "answer": grounded.summary if grounded.ok else "",
+            "citations": citations,
+            "source_cards": citations,
+            "claims": claims,
+            "unsupported_spans": list(grounded.unsupported_spans),
+            "misconceptions": list(grounded.misconceptions),
+            "scaffolds": list(grounded.next_steps),
+            "scaffold_steps": list(grounded.next_steps),
+            "actions": actions,
+            "selected_concept": concept_name,
+            "grounded": grounded.ok,
+            "model": grounded.model,
+            "latency_ms": grounded.latency_ms,
+            "cache_hit": grounded.cache_hit,
+            "input_tokens": grounded.input_tokens,
+            "output_tokens": grounded.output_tokens,
+            "error": grounded.error,
+            "citation_attempt_count": grounded.citation_attempt_count,
+            "citation_drop_count": grounded.citation_drop_count,
+            "citation_repair_count": grounded.citation_repair_count,
+            "provider": grounded.provider,
+            "momentum": build_momentum_engine(conn, fetch_recent_events=fetch_recent_events),
+        },
     }
+
+
+def grounded_tutor_envelope(
+    conn: sqlite3.Connection,
+    payload: Any,
+    *,
+    log_study_event,
+    fetch_recent_events,
+    router: ClaudeRouter | None = None,
+) -> Dict[str, Any]:
+    """Non-streaming envelope: drains `grounded_tutor_envelope_steps` to the
+    final dict. Shared by the Ask path (`routes/tutor.py::tutor_query`) and the
+    non-stream Verify path; output is byte-identical to the pre-PR3 shape.
+    """
+    envelope: Dict[str, Any] = {}
+    for event in grounded_tutor_envelope_steps(
+        conn,
+        payload,
+        log_study_event=log_study_event,
+        fetch_recent_events=fetch_recent_events,
+        router=router,
+    ):
+        if event.get("type") == "result":
+            envelope = event["envelope"]
+    return envelope
 
 
 def compare_concepts_record(

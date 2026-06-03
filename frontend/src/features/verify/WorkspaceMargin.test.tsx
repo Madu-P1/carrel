@@ -1,0 +1,124 @@
+import { render } from "@testing-library/preact";
+import { describe, expect, it } from "vitest";
+
+import type { VerifyClaimVerdict } from "@/services/api/endpoints";
+
+import { WorkspaceMargin } from "./WorkspaceMargin";
+
+const DRAFT =
+  "The statute was unconstitutional as applied. The fee was upheld as lawful. A paraphrased point sits here.";
+
+function card(
+  claim_index: number,
+  opts: {
+    text: string;
+    verdict?: "verified" | "unsupported" | "unknown";
+    placed?: boolean;
+    start?: number;
+    end?: number;
+    method?: "exact" | "fuzzy" | "unplaced";
+    case_verdicts?: unknown[];
+  }
+): VerifyClaimVerdict {
+  return {
+    claim_index,
+    claim_text: opts.text,
+    verdict: opts.verdict ?? "unsupported",
+    citations: [],
+    case_verdicts: (opts.case_verdicts ?? []) as VerifyClaimVerdict["case_verdicts"],
+    unsupported_reason: null,
+    placement:
+      opts.placed === false
+        ? { placed: false, method: "unplaced", char_start: null, char_end: null }
+        : {
+            placed: true,
+            method: opts.method ?? "exact",
+            char_start: opts.start ?? 0,
+            char_end: opts.end ?? 0
+          }
+  } as VerifyClaimVerdict;
+}
+
+function renderMargin(cards: VerifyClaimVerdict[], unattributedQuotes = []) {
+  return render(
+    <WorkspaceMargin
+      draftText={DRAFT}
+      cards={cards}
+      unattributedQuotes={unattributedQuotes}
+      examined={null}
+      onExamine={() => {}}
+    />
+  );
+}
+
+describe("WorkspaceMargin — honesty guards (headless)", () => {
+  it("renders the draft text verbatim in the document body", () => {
+    const { container } = renderMargin([card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unsupported" })]);
+    expect(container.textContent).toContain("The statute was unconstitutional as applied.");
+    expect(container.textContent).toContain("A paraphrased point sits here.");
+  });
+
+  it("a flagged (unsupported) claim is an inline button with a flag aria-label", () => {
+    const { getByRole } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unsupported" })
+    ]);
+    const mark = getByRole("button", { name: /Statement flagged/i });
+    expect(mark).toBeDefined();
+    expect(mark.getAttribute("data-tier")).toBe("flag");
+  });
+
+  it("a supported claim is unmarked (data-tier pass) and announces supported", () => {
+    const { getByRole } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "verified" })
+    ]);
+    const mark = getByRole("button", { name: /checked and supported/i });
+    expect(mark.getAttribute("data-tier")).toBe("pass");
+  });
+
+  it("never renders a confidence percentage", () => {
+    const { container } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unsupported" })
+    ]);
+    expect(container.textContent).not.toMatch(/\d+\s*%/);
+  });
+
+  it("never renders the word VERIFIED as a badge nor any green token class", () => {
+    const { container } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "verified" })
+    ]);
+    // No 'verified' badge text; the pass is unmarked.
+    expect(container.textContent).not.toMatch(/\bVERIFIED\b/);
+    // No success/green class leaked from the global study tokens.
+    expect(container.querySelector('[class*="success"]')).toBeNull();
+    expect(container.querySelector('[class*="green"]')).toBeNull();
+  });
+
+  it("an unplaced claim goes to the tray, not the document or rail", () => {
+    const { container, getByText } = renderMargin([
+      card(0, { text: "A claim with no draft span", placed: false, verdict: "unsupported" })
+    ]);
+    // tray section present with its honesty copy
+    expect(getByText(/Statements not located in the draft text/i)).toBeDefined();
+    // no inline claim mark in the document (it has no span)
+    expect(container.querySelector('[data-claim-index="0"]')).toBeNull();
+  });
+
+  it("a fuzzy placement carries the fuzzy mark modifier; exact does not", () => {
+    const { container } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, method: "fuzzy", verdict: "unsupported" })
+    ]);
+    const mark = container.querySelector('[data-claim-index="0"]') as HTMLElement;
+    // the fuzzy modifier class is present (CSS-module hashed, so match by substring)
+    expect(mark.className).toMatch(/markFuzzy/i);
+  });
+
+  it("renders a margin note only for non-supported placed claims", () => {
+    const { container } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unsupported" }),
+      card(1, { text: "The fee was upheld as lawful.", start: 45, end: 74, verdict: "verified" })
+    ]);
+    const notes = container.querySelectorAll("[data-note-key]");
+    expect(notes.length).toBe(1);
+    expect(notes[0].getAttribute("data-note-key")).toBe("0");
+  });
+});

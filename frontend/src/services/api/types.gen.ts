@@ -1023,6 +1023,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/verify/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Stream Endpoint
+         * @description Stream verification verdicts as Server-Sent Events.
+         *
+         *     Mirrors POST /api/verify but emits the per-cite labor incrementally so
+         *     the UI can show it happening: a ``progress`` event, a ``claims``
+         *     skeleton, one ``cite_verdict`` per claim, then a final ``result``
+         *     carrying the same payload as POST /api/verify. Each event is
+         *     ``data: {json}\n\n``; the stream ends with ``data: [DONE]\n\n``. On
+         *     failure, one ``{"type": "error", "error": "..."}`` event is emitted
+         *     before close (errors surfaced, not swallowed, per "no silent fallbacks").
+         *     The client parses this via ``frontend/src/services/api/streaming.ts``.
+         */
+        post: operations["verify_stream_endpoint_api_verify_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/briefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Briefs Endpoint */
+        get: operations["list_briefs_endpoint_api_briefs_get"];
+        put?: never;
+        /** Save Brief Endpoint */
+        post: operations["save_brief_endpoint_api_briefs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/briefs/{brief_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Brief Endpoint */
+        get: operations["get_brief_endpoint_api_briefs__brief_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Brief Endpoint */
+        delete: operations["delete_brief_endpoint_api_briefs__brief_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/anchors": {
         parameters: {
             query?: never;
@@ -1981,6 +2046,104 @@ export interface components {
             color?: string | null;
             /** File */
             file: string;
+        };
+        /** BriefDeleteResponse */
+        BriefDeleteResponse: {
+            /** Deleted */
+            deleted: boolean;
+            /** Brief Id */
+            brief_id: string;
+        };
+        /**
+         * BriefDetail
+         * @description A full brief for re-hydration: the summary fields plus the draft and
+         *     the deserialized response/cert blobs. `cert` is None for a brief saved
+         *     before the human built a certification.
+         */
+        BriefDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Seal State */
+            seal_state: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Draft */
+            draft: string;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            };
+            /** Cert */
+            cert?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** BriefListResponse */
+        BriefListResponse: {
+            /** Briefs */
+            briefs?: components["schemas"]["BriefSummary"][];
+        };
+        /**
+         * BriefSaveRequest
+         * @description POST /api/briefs. The Verify view posts the checked draft plus the
+         *     full response and the client-built certification so the Shelf can list
+         *     and re-hydrate without a re-verify.
+         *
+         *     `draft` mirrors VerifyRequest.draft bounds. `fingerprint` is the
+         *     lowercase-hex SHA-256 of the draft (CertificationModel.fingerprint).
+         *     `title` is optional; the server derives one from the draft's first line
+         *     when omitted.
+         */
+        BriefSaveRequest: {
+            /** Draft */
+            draft: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            };
+            /** Cert */
+            cert?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Seal State
+             * @default unsealed
+             * @enum {string}
+             */
+            seal_state: "unsealed" | "sealed";
+            /** Title */
+            title?: string | null;
+        };
+        /** BriefSaveResponse */
+        BriefSaveResponse: {
+            brief: components["schemas"]["BriefSummary"];
+        };
+        /**
+         * BriefSummary
+         * @description One Shelf card: identity + seal state, no heavy blobs. `title` is
+         *     nullable in storage though the service always sets one.
+         */
+        BriefSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Seal State */
+            seal_state: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * BulkDeleteCardsRequest
@@ -3192,6 +3355,51 @@ export interface components {
             case_verdicts?: components["schemas"]["ClaimCaseVerdictItem"][];
             /** Unsupported Reason */
             unsupported_reason?: string | null;
+            placement?: components["schemas"]["VerifyPlacementItem"] | null;
+        };
+        /**
+         * VerifyPlacementItem
+         * @description Cachet PR5a: where a claim landed in the draft (claim-span alignment).
+         *
+         *     `placed` True means char_start/char_end are a real, unambiguous range in the
+         *     draft. `placed` False means the unplaced tray (offsets None). `method` is
+         *     "exact" | "fuzzy" | "unplaced". Deterministic; never mis-pinned.
+         */
+        VerifyPlacementItem: {
+            /** Placed */
+            placed: boolean;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "exact" | "fuzzy" | "unplaced";
+            /** Char Start */
+            char_start?: number | null;
+            /** Char End */
+            char_end?: number | null;
+        };
+        /**
+         * VerifyQuoteResultItem
+         * @description One brief-level draft-quote-verbatim result (Cachet PR4).
+         *
+         *     `status` is the plain-word disposition the UI renders for a quoted span the
+         *     lawyer typed in the draft: "verbatim" (every run of the quote appears in the
+         *     cited source as written), "altered" (a run does not appear in any source: a
+         *     misquotation or fabrication), or "could_not_check" (no source text was
+         *     reachable, or the only source was truncated past the quoted run; never a
+         *     flag). Brief-level: not yet attributed to a specific claim card (per-claim
+         *     placement is deferred to PR5 claim-span alignment). No confidence numbers.
+         */
+        VerifyQuoteResultItem: {
+            /** Index */
+            index: number;
+            /** Quote */
+            quote: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verbatim" | "altered" | "could_not_check";
         };
         /**
          * VerifyRequest
@@ -3239,6 +3447,10 @@ export interface components {
              * @default
              */
             provider: string;
+            /** Quote Results */
+            quote_results?: components["schemas"]["VerifyQuoteResultItem"][];
+            /** Unplaced */
+            unplaced?: number[];
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {
@@ -5100,6 +5312,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_stream_endpoint_api_verify_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_briefs_endpoint_api_briefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefListResponse"];
+                };
+            };
+        };
+    };
+    save_brief_endpoint_api_briefs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefSaveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_brief_endpoint_api_briefs__brief_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brief_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_brief_endpoint_api_briefs__brief_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                brief_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeleteResponse"];
                 };
             };
             /** @description Validation Error */

@@ -129,31 +129,24 @@ interface SourceInspectorProps {
 }
 
 /**
- * The right-hand source panel: the cited source beside the claim. Land on the
- * exact span, not a top-of-document guess. The make-or-break interaction for a
- * litigator, who lives or dies on getting to the page.
+ * The cited sources for a claim, without any chrome. Shared by the legacy
+ * split-pane `SourceInspector` and the PR5b Examination drawer so both render
+ * the same source content (the resolve/fetch path lives in `CitationSource`).
  */
-export function SourceInspector({ card, disposition, onClose }: SourceInspectorProps) {
+export function SourceInspectorBody({
+  card,
+  disposition
+}: {
+  card: VerifyClaimVerdict;
+  disposition: ClaimDisposition;
+}) {
   const citations = (card.citations ?? []) as Citation[];
   const cases: CaseVerdict[] = (card.case_verdicts ?? []).flatMap((b) =>
     b?.ok ? ((b.verdicts ?? []) as CaseVerdict[]) : []
   );
   const hasSources = citations.length > 0 || cases.length > 0;
-
   return (
-    <aside className={styles.inspector} aria-label="Source for the selected statement">
-      <header className={styles.inspectorHead}>
-        <span className={styles.inspectorTitle}>Source</span>
-        <button
-          type="button"
-          className={styles.inspectorClose}
-          onClick={onClose}
-          aria-label="Close source panel"
-        >
-          Close
-        </button>
-      </header>
-      <p className={styles.inspectorClaim}>{card.claim_text}</p>
+    <>
       {citations.length > 0 ? (
         <section className={styles.sourceGroup}>
           <h3 className={styles.sourceGroupLabel}>From your sources</h3>
@@ -177,6 +170,31 @@ export function SourceInspector({ card, disposition, onClose }: SourceInspectorP
             : "No source is attached to this statement."}
         </p>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * The right-hand source panel: the cited source beside the claim. Land on the
+ * exact span, not a top-of-document guess. The make-or-break interaction for a
+ * litigator, who lives or dies on getting to the page.
+ */
+export function SourceInspector({ card, disposition, onClose }: SourceInspectorProps) {
+  return (
+    <aside className={styles.inspector} aria-label="Source for the selected statement">
+      <header className={styles.inspectorHead}>
+        <span className={styles.inspectorTitle}>Source</span>
+        <button
+          type="button"
+          className={styles.inspectorClose}
+          onClick={onClose}
+          aria-label="Close source panel"
+        >
+          Close
+        </button>
+      </header>
+      <p className={styles.inspectorClaim}>{card.claim_text}</p>
+      <SourceInspectorBody card={card} disposition={disposition} />
     </aside>
   );
 }

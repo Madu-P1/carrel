@@ -280,6 +280,20 @@ class VerifyRequest(BaseModel):
     subject_name: Optional[str] = Field(default=None, max_length=240)
 
 
+class VerifyPlacementItem(BaseModel):
+    """Cachet PR5a: where a claim landed in the draft (claim-span alignment).
+
+    `placed` True means char_start/char_end are a real, unambiguous range in the
+    draft. `placed` False means the unplaced tray (offsets None). `method` is
+    "exact" | "fuzzy" | "unplaced". Deterministic; never mis-pinned.
+    """
+
+    placed: bool
+    method: Literal["exact", "fuzzy", "unplaced"]
+    char_start: Optional[int] = None
+    char_end: Optional[int] = None
+
+
 class VerifyClaimVerdictItem(BaseModel):
     """One per-claim verdict the verifier UX renders.
 
@@ -295,6 +309,11 @@ class VerifyClaimVerdictItem(BaseModel):
     citations: List[TutorCitationItem] = Field(default_factory=list)
     case_verdicts: List[ClaimCaseVerdictItem] = Field(default_factory=list)
     unsupported_reason: Optional[str] = None
+    # Cachet PR5a: where this claim was placed in the lawyer's draft, for the
+    # Margin layout. None for cards with no draft placement (unsupported-span
+    # cards). A placed=False placement means the claim is in the unplaced tray;
+    # deterministic, never mis-pinned (services.legal.align).
+    placement: Optional["VerifyPlacementItem"] = None
 
 
 class VerifySummaryItem(BaseModel):
@@ -302,6 +321,23 @@ class VerifySummaryItem(BaseModel):
     verified: int
     unsupported: int
     unknown: int
+
+
+class VerifyQuoteResultItem(BaseModel):
+    """One brief-level draft-quote-verbatim result (Cachet PR4).
+
+    `status` is the plain-word disposition the UI renders for a quoted span the
+    lawyer typed in the draft: "verbatim" (every run of the quote appears in the
+    cited source as written), "altered" (a run does not appear in any source: a
+    misquotation or fabrication), or "could_not_check" (no source text was
+    reachable, or the only source was truncated past the quoted run; never a
+    flag). Brief-level: not yet attributed to a specific claim card (per-claim
+    placement is deferred to PR5 claim-span alignment). No confidence numbers.
+    """
+
+    index: int
+    quote: str
+    status: Literal["verbatim", "altered", "could_not_check"]
 
 
 class VerifyResponse(BaseModel):
@@ -317,6 +353,13 @@ class VerifyResponse(BaseModel):
     # GroundedAnswer.provider so the Verify surface can surface
     # provider provenance and (Phase 4) gate high-stakes flows.
     provider: str = ""
+    # Cachet PR4: brief-level draft-quote-verbatim results, one per quoted span
+    # found in the draft. Empty when the draft has no quoted spans.
+    quote_results: List[VerifyQuoteResultItem] = Field(default_factory=list)
+    # Cachet PR5a: claim_index values that could not be placed in the draft
+    # (the unplaced tray). A claim is unplaced rather than mis-pinned whenever
+    # its locator is ambiguous.
+    unplaced: List[int] = Field(default_factory=list)
 
 
 class NoteUpsertRequest(BaseModel):
@@ -775,3 +818,74 @@ class DemoLibrarySeedResponse(BaseModel):
     seeded: bool
     documents: List[DocumentUploadResponse] = Field(default_factory=list)
     skipped_reason: Optional[str] = None
+
+
+# --- Cachet PR6: Shelf persistence (saved briefs) ---------------------------
+#
+# A brief is one checked draft the lawyer kept. `response` and `cert` are
+# stored verbatim as free dicts (the full VerifyResponse payload + the
+# client-built CertificationModel); the brief store does not re-validate the
+# verify schema, so the wire stays forward-compatible as that schema grows.
+# `seal_state` is Literal["unsealed", "sealed"] at the wire — "cracked" is
+# render-derived (stored fingerprint vs live draft) and is never sent or
+# stored; services.briefs is the persistence backstop that also coerces it.
+
+
+class BriefSaveRequest(BaseModel):
+    """POST /api/briefs. The Verify view posts the checked draft plus the
+    full response and the client-built certification so the Shelf can list
+    and re-hydrate without a re-verify.
+
+    `draft` mirrors VerifyRequest.draft bounds. `fingerprint` is the
+    lowercase-hex SHA-256 of the draft (CertificationModel.fingerprint).
+    `title` is optional; the server derives one from the draft's first line
+    when omitted.
+    """
+
+    draft: str = Field(..., min_length=1, max_length=200_000)
+    fingerprint: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+    response: Dict[str, Any] = Field(default_factory=dict)
+    cert: Optional[Dict[str, Any]] = None
+    seal_state: Literal["unsealed", "sealed"] = "unsealed"
+    title: Optional[str] = Field(default=None, max_length=120)
+
+
+class BriefSummary(BaseModel):
+    """One Shelf card: identity + seal state, no heavy blobs. `title` is
+    nullable in storage though the service always sets one."""
+
+    id: str
+    title: Optional[str] = None
+    fingerprint: str
+    seal_state: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class BriefDetail(BaseModel):
+    """A full brief for re-hydration: the summary fields plus the draft and
+    the deserialized response/cert blobs. `cert` is None for a brief saved
+    before the human built a certification."""
+
+    id: str
+    title: Optional[str] = None
+    fingerprint: str
+    seal_state: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    draft: str
+    response: Dict[str, Any] = Field(default_factory=dict)
+    cert: Optional[Dict[str, Any]] = None
+
+
+class BriefListResponse(BaseModel):
+    briefs: List[BriefSummary] = Field(default_factory=list)
+
+
+class BriefSaveResponse(BaseModel):
+    brief: BriefSummary
+
+
+class BriefDeleteResponse(BaseModel):
+    deleted: bool
+    brief_id: str
