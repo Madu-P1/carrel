@@ -30,6 +30,7 @@ id so the route can map a clean 404.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import uuid
@@ -66,6 +67,20 @@ def _derive_title(draft: str) -> str:
 
 def _coerce_seal_state(seal_state: Optional[str]) -> str:
     return seal_state if seal_state in _PERSISTED_SEAL_STATES else "unsealed"
+
+
+def _integrity_seal_state(seal_state: str, draft: str, fingerprint: str) -> str:
+    """SM-V8: re-verify a sealed brief at read time. Recompute the draft's
+    SHA-256 (the same content fingerprint the client sealed under) and compare
+    to the stored fingerprint. A mismatch means the stored draft no longer
+    matches what was sealed (tampering, corruption, migration drift), so the
+    seal is surfaced as 'cracked'. The Shelf is then a live ledger of what still
+    holds, not a museum of a stored flag. Only a sealed brief can crack; the
+    state is derived per read and never persisted."""
+    if seal_state != "sealed":
+        return seal_state
+    actual = hashlib.sha256((draft or "").encode("utf-8")).hexdigest()
+    return "sealed" if actual == fingerprint else "cracked"
 
 
 def _row_to_summary(row: sqlite3.Row) -> Dict[str, Any]:
@@ -105,19 +120,29 @@ def _row_to_detail(row: sqlite3.Row) -> Dict[str, Any]:
 def list_briefs(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     """Every saved brief as a summary, most-recent-first.
 
-    Selects summary columns only — the `idx_briefs_created` index serves
-    the ordering and no JSON blob is read, so the Shelf list stays light
-    no matter how large individual responses are.
+    Reads the summary columns plus the (bounded) draft text so each sealed
+    brief's integrity can be re-verified per read (SM-V8): a sealed brief whose
+    stored draft no longer hashes to its sealed fingerprint is surfaced as
+    'cracked'. The heavy JSON blobs (response, cert) are still never read, so
+    the list stays light no matter how large individual responses are, and the
+    returned summary still carries no blobs (draft included).
     """
 
     rows = conn.execute(
         """
-        SELECT id, title, fingerprint, seal_state, created_at, updated_at
+        SELECT id, title, draft, fingerprint, seal_state, created_at, updated_at
         FROM briefs
         ORDER BY created_at DESC, rowid DESC
         """
     ).fetchall()
-    return [_row_to_summary(row) for row in rows]
+    summaries: List[Dict[str, Any]] = []
+    for row in rows:
+        summary = _row_to_summary(row)
+        summary["seal_state"] = _integrity_seal_state(
+            row["seal_state"], row["draft"], row["fingerprint"]
+        )
+        summaries.append(summary)
+    return summaries
 
 
 def get_brief(conn: sqlite3.Connection, brief_id: str) -> Optional[Dict[str, Any]]:

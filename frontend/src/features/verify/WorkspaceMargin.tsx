@@ -20,7 +20,7 @@
  * Motion (ink-in choreography, claim pulse) is deferred to the operator visual
  * gate; this slice ships structure + functional transitions only.
  */
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { VerifyClaimVerdict, VerifyQuoteResult } from "@/services/api/endpoints";
 
@@ -45,6 +45,15 @@ function markClass(tier: ClaimDisposition["tier"]): string {
     default:
       return ""; // pass: unmarked
   }
+}
+
+/** SM-V7 keyboard path: the index to focus next when cycling findings with
+ *  j/k. `current` is -1 when nothing in the set is focused yet (j -> first,
+ *  k -> last); otherwise it wraps. Pure so it can be tested without the DOM. */
+export function nextFocusIndex(count: number, current: number, dir: 1 | -1): number {
+  if (count <= 0) return -1;
+  if (current < 0) return dir === 1 ? 0 : count - 1;
+  return (current + dir + count) % count;
 }
 
 /** The rail-note tier attribute (flag/query/refusal) for the left border. */
@@ -134,6 +143,39 @@ export function WorkspaceMargin({
     // Re-run when the set of rail claims, the draft, or the open drawer changes.
   }, [draftText, railKey, examined]);
 
+  // SM-V7 keyboard path: j/k move focus between the flagged findings (the
+  // non-pass marks) so a reviewer can walk the document hands-on, a clerk down
+  // the page. Each mark is already a button, so Enter or ⌥↵ drills it open via
+  // its own handler. Guarded so j/k still type normally in any text field
+  // (the draft, the command palette). Reads the DOM fresh, so it stays correct
+  // as findings stream in and re-sort; bound once.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "j" && event.key !== "k") return;
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
+      const body = bodyRef.current;
+      if (!body) return;
+      const marks = Array.from(
+        body.querySelectorAll<HTMLElement>("[data-claim-index]")
+      ).filter((el) => el.dataset.tier && el.dataset.tier !== "pass");
+      if (marks.length === 0) return;
+      event.preventDefault();
+      const current = active ? marks.indexOf(active) : -1;
+      const next = nextFocusIndex(marks.length, current, event.key === "j" ? 1 : -1);
+      marks[next]?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const topFor = (idx: number): number | undefined =>
     placements.find((p) => p.key === idx)?.top;
 
@@ -206,12 +248,47 @@ function ClaimMark({
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
+
+  // SM-V3 The Catch: the one motion worth breaking the near-zero-motion rule for
+  // (operator-approved 2026-06-03 as the 2nd exception after the seal). On a
+  // deterministic flag, the oxblood underline draws across the dead claim left
+  // to right, like a proofreader's pen: Cachet strikes what it cannot stand
+  // behind. The rule is a background gradient (box-decoration-break: clone, so
+  // it follows every wrapped line) and we draw it by animating background-size
+  // via WAAPI, not a CSS keyframe, so the verifyScope motion guard holds. The
+  // resting CSS is the full-width rule, so reduced-motion and re-renders simply
+  // show the struck mark.
+  const markRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (tier !== "flag") return;
+    const el = markRef.current;
+    if (!el || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    // No fill: the CSS resting state is the full-width rule, so once this ends
+    // the element rests on the visible strike. During [0,360ms] it draws 0->100%.
+    const anim = el.animate(
+      [{ backgroundSize: "0% 2px" }, { backgroundSize: "100% 2px" }],
+      { duration: 360, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+    );
+    // Safety net: a fabricated-cite strike must never be left invisible if the
+    // animation clock stalls (backgrounded/throttled tab). finish() jumps to the
+    // end; with no fill the element then rests on the CSS full-width rule.
+    const t = window.setTimeout(() => {
+      try {
+        anim.finish();
+      } catch {
+        /* already finished or cancelled */
+      }
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [tier]);
   const aria =
     tier === "pass"
       ? `Statement, checked and supported: ${segment.text}`
       : `Statement flagged ${label}${fuzzy ? ", placement approximate" : ""}: ${segment.text}`;
   return (
     <span
+      ref={markRef}
       className={[
         styles.claimMark,
         markClass(tier),
@@ -272,6 +349,12 @@ function MarginNote({
       </p>
       {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
       {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
+      {disposition.nextAction ? (
+        // SM-V5: the calibrating "do this". A refusal that hands responsibility
+        // back with a precise next step, never a shrug. Rendered as a directive
+        // line, not a dead button, since source ingest is not wired yet.
+        <p className={styles.noteAction}>{disposition.nextAction}</p>
+      ) : null}
       <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
         Examine
       </button>

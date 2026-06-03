@@ -1,0 +1,460 @@
+/*
+ * Cachet shell — "The Instrument". A quiet legal frame: a thin left rail and a
+ * canvas that carries the document and its verdict. Paper, always; near-zero
+ * motion; one grave oxblood reserved for flags (it appears only inside the
+ * verify surface, never in this chrome).
+ *
+ * The cold display face (Libre Caslon Display) is rebound here on the shell root
+ * via --font-serif, so it cascades into the shared verify/shelf components when
+ * they render inside Cachet, while Carrel keeps Instrument Serif. Operator
+ * decision 2026-06-02; see docs/notes/cachet-display-font and tokens.css.
+ */
+
+:global(html),
+:global(body) {
+  background: #f6f2ea;
+}
+
+.app {
+  /* Paper/ink register, matched to the scoped verify palette (research §1). */
+  --paper: #f6f2ea;
+  --paper-2: #efe9dd;
+  --sheet: #fbf8f1;
+  --ink-1: #1c1814;
+  --ink-2: #4e463c;
+  --ink-3: #635b4d;
+  --flag: #7a2230;
+  --hair: rgba(28, 24, 20, 0.14);
+  --hair-soft: rgba(28, 24, 20, 0.08);
+
+  /* Rebind the design-system accent to ink. The reused primitives (Button,
+   * links) default to Carrel's teal accent, which is a brand violation here:
+   * Cachet has no green. The only chromatic accent allowed is the oxblood
+   * --verify-flag, and that is reserved for flags inside the verify surface. */
+  --color-accent: var(--ink-1);
+  --color-accent-hover: #322d27;
+  --accent: var(--ink-1);
+  --accent-pressed: #0f0c0a;
+
+  /* Cold display override (cascades into verify/shelf within Cachet). */
+  --font-serif: "Libre Caslon Display", "Charter", Georgia, "Times New Roman", serif;
+  /* Body reading serif, matched to the verify/shelf body stack. */
+  --font-serif-body: Charter, "Charter BT", "Iowan Old Style", Georgia,
+    "Times New Roman", serif;
+
+  display: flex;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--font-serif-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- thin left rail ---------- */
+.rail {
+  width: 64px;
+  flex: 0 0 64px;
+  background: var(--paper-2);
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 0;
+  gap: 2px;
+}
+
+.railMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.railGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.railFoot {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.glyph {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.glyph svg {
+  width: 22px;
+  height: 22px;
+}
+
+.glyph:hover {
+  color: var(--ink-2);
+}
+
+.glyphActive {
+  color: var(--ink-1);
+}
+
+.glyphActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: var(--ink-1);
+}
+
+.railMark:focus-visible,
+.glyph:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: -3px;
+  border-radius: 3px;
+}
+
+/* ---------- canvas ---------- */
+.canvas {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+/* ---------- lectern (the landing title page) ---------- */
+.lectern {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 7vh 24px;
+}
+
+.lecternMark {
+  color: var(--ink-1);
+  margin-bottom: 28px;
+}
+
+.wordmark {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: var(--ink-1);
+  margin: 0;
+}
+
+.tagline {
+  font-family: var(--font-serif-body);
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  max-width: 53ch;
+  margin: 20px auto 0;
+}
+
+/* the well, as a sheet you write on: lighter fresh-sheet tone, one soft lift,
+   the action sitting on a hairline foot-rule inside the sheet */
+.sheet {
+  width: min(616px, 86vw);
+  margin: 44px auto 0;
+  text-align: left;
+  background: var(--sheet);
+  border: 1px solid var(--hair-soft);
+  border-radius: 3px;
+  box-shadow: 0 12px 32px -20px rgba(28, 24, 20, 0.32);
+  padding: 26px 30px 0;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.sheet:focus-within {
+  border-color: var(--hair);
+  box-shadow: 0 14px 36px -20px rgba(28, 24, 20, 0.4);
+}
+
+.sheetArea {
+  display: block;
+  width: 100%;
+  min-height: 168px;
+  border: 0;
+  background: transparent;
+  resize: vertical;
+  font-family: var(--font-serif-body);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  outline: none;
+}
+
+.sheetArea::placeholder {
+  color: var(--ink-3);
+}
+
+.sheetFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--hair-soft);
+  padding: 14px 0;
+  margin-top: 14px;
+}
+
+.sheetHint {
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  letter-spacing: 0.01em;
+}
+
+.sheetGo {
+  flex: 0 0 auto;
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  color: var(--ink-1);
+  border: 1px solid var(--ink-1);
+  border-radius: 2px;
+  padding: 7px 20px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+
+.sheetGo:hover:not(:disabled) {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+
+.sheetGo:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.sheetGo:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+
+.lecternMeta {
+  margin-top: 30px;
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ---------- plain views (Sources / Settings scaffolds) ---------- */
+.plainView {
+  width: 100%;
+  max-width: 64ch;
+  margin: 0 auto;
+  padding: 72px 40px 96px;
+}
+
+.plainHead {
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 22px;
+  margin-bottom: 28px;
+}
+
+.plainTitle {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.1;
+  color: var(--ink-1);
+  margin: 0;
+}
+
+.plainLede {
+  font-family: var(--font-serif-body);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 14px 0 0;
+  max-width: 56ch;
+}
+
+.plainNote {
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.settingsList {
+  margin: 0;
+}
+
+.settingsRow {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--hair-soft);
+}
+
+.settingsKey {
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.settingsVal {
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+/* ---------- command spine (⌘K palette) ---------- */
+@keyframes cachetPaletteIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.paletteScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 13vh 24px 24px;
+  background: rgba(28, 24, 20, 0.26);
+  animation: cachetPaletteIn 120ms ease-out;
+}
+
+.palettePanel {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sheet);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  box-shadow: 0 24px 60px -28px rgba(28, 24, 20, 0.5);
+  overflow: hidden;
+}
+
+.paletteInput {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--hair-soft);
+  background: transparent;
+  padding: 16px 18px;
+  font-family: var(--font-serif-body);
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--ink-1);
+  outline: none;
+}
+
+.paletteInput::placeholder {
+  color: var(--ink-3);
+}
+
+.paletteList {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.paletteOption {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.paletteOptionActive {
+  background: rgba(28, 24, 20, 0.05);
+  color: var(--ink-1);
+}
+
+.paletteOptionActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--ink-1);
+}
+
+.paletteOptionTitle {
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+}
+
+.paletteHint {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.paletteEmpty {
+  margin: 0;
+  padding: 16px 12px;
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyph,
+  .sheet,
+  .sheetGo {
+    transition: none;
+  }
+  .paletteScrim {
+    animation: none;
+  }
+}

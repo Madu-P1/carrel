@@ -1,0 +1,75 @@
+/**
+ * SM-V7 The Command Spine: the verb set behind ⌘K.
+ *
+ * Navigation verbs run directly (they only need the shell's navigateTo). The
+ * verify verbs (Verify / Seal / Export) are decoupled by a CustomEvent the
+ * verify surface listens for, so the palette never reaches into VerifyView's
+ * internals and Carrel is unaffected (it never dispatches the event).
+ */
+import { navigateTo } from "@/app/shell/useAppShell";
+
+export interface Command {
+  id: string;
+  title: string;
+  /** Right-aligned quiet hint: a keyboard shortcut or a one-word context. */
+  hint?: string;
+  /** Extra search terms beyond the title. */
+  keywords?: string;
+  run: () => void;
+}
+
+/** The id carried on a `cachet:command` event when a verify verb is chosen. */
+export type VerifyCommandId = "verify-draft" | "seal" | "export";
+
+export function emitVerifyCommand(id: VerifyCommandId): void {
+  window.dispatchEvent(new CustomEvent("cachet:command", { detail: { id } }));
+}
+
+/**
+ * Build the command list for the current route. `close` is called after a verb
+ * runs so the palette dismisses itself.
+ */
+export function buildCommands(path: string, close: () => void): Command[] {
+  const go = (to: string) => () => {
+    navigateTo(to);
+    close();
+  };
+
+  const commands: Command[] = [];
+
+  // Verify verbs first, but only where they can act (a draft under examination).
+  if (path === "/" || path.startsWith("/verify")) {
+    const verb = (id: VerifyCommandId) => () => {
+      emitVerifyCommand(id);
+      close();
+    };
+    commands.push(
+      { id: "verify-draft", title: "Verify the draft", hint: "⌘↵", keywords: "check run", run: verb("verify-draft") },
+      { id: "seal", title: "Seal and save", hint: "⌘S", keywords: "record certify shelf", run: verb("seal") },
+      { id: "export", title: "Export certification", keywords: "exhibit pdf", run: verb("export") }
+    );
+  }
+
+  commands.push(
+    { id: "new", title: "New verification", hint: "Lectern", keywords: "paste draft start home", run: go("/") },
+    { id: "go-verify", title: "Go to Verify", keywords: "draft examine", run: go("/verify") },
+    { id: "go-shelf", title: "Open the Shelf", hint: "Sealed briefs", keywords: "saved record history", run: go("/shelf") },
+    { id: "go-sources", title: "Open Sources", keywords: "record material opinions", run: go("/sources") },
+    { id: "go-settings", title: "Open Settings", keywords: "key preferences", run: go("/settings") }
+  );
+
+  return commands;
+}
+
+/**
+ * Case-insensitive token filter: every whitespace-separated query token must
+ * appear somewhere in the command's title or keywords. Empty query matches all.
+ */
+export function filterCommands(commands: Command[], query: string): Command[] {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return commands;
+  return commands.filter((c) => {
+    const hay = `${c.title} ${c.keywords ?? ""}`.toLowerCase();
+    return tokens.every((t) => hay.includes(t));
+  });
+}

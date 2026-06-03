@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 import sqlite3
 
 from fastapi import FastAPI, Request
@@ -10,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 import db as db_module
 from app_logging import configure_backend_logging, get_logger, log_event
 from app_runtime import resolve_runtime_paths
-from routes import register_routes
+from routes import register_cachet_routes, register_routes
 from services.local_api_security import (
     has_valid_local_api_token,
     requires_local_api_token,
@@ -121,7 +122,12 @@ def _resume_ingestion_jobs() -> None:
         )
 
 
-app = FastAPI(title="Carrel", lifespan=lifespan)
+# Standalone-Cachet mode (CACHET_ONLY) serves only the verification product
+# routes over the shared engine; the default mode serves the full Carrel app.
+# One codebase, one engine, two products gated here.
+_CACHET_ONLY = os.getenv("CACHET_ONLY", "").lower() in {"1", "true", "yes"}
+
+app = FastAPI(title="Cachet" if _CACHET_ONLY else "Carrel", lifespan=lifespan)
 
 # WKWebView loads via `loadFileURL`, which presents the page to fetch() as
 # `null` origin. Every API call therefore triggers a CORS preflight; without
@@ -156,4 +162,7 @@ async def require_local_api_token(request: Request, call_next):
     return await call_next(request)
 
 
-register_routes(app)
+if _CACHET_ONLY:
+    register_cachet_routes(app)
+else:
+    register_routes(app)

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
-import { WorkspaceMargin } from "./WorkspaceMargin";
+import { WorkspaceMargin, nextFocusIndex } from "./WorkspaceMargin";
 
 const DRAFT =
   "The statute was unconstitutional as applied. The fee was upheld as lawful. A paraphrased point sits here.";
@@ -120,5 +120,82 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     const notes = container.querySelectorAll("[data-note-key]");
     expect(notes.length).toBe(1);
     expect(notes[0].getAttribute("data-note-key")).toBe("0");
+  });
+
+  it("j and k move focus between the flagged findings (SM-V7 keyboard path)", () => {
+    const { container } = renderMargin([
+      card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "unsupported"
+      }),
+      card(1, {
+        text: "The fee was upheld as lawful.",
+        start: 45,
+        end: 74,
+        verdict: "unsupported"
+      })
+    ]);
+    const marks = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-claim-index][data-tier="flag"]')
+    );
+    expect(marks.length).toBe(2);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
+    expect(document.activeElement).toBe(marks[0]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
+    expect(document.activeElement).toBe(marks[1]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
+    expect(document.activeElement).toBe(marks[0]);
+  });
+
+  it("j/k never steal focus while typing in a text field", () => {
+    renderMargin([
+      card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "unsupported"
+      })
+    ]);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" }));
+    // Focus stays in the field; j types normally instead of navigating.
+    expect(document.activeElement).toBe(input);
+    input.remove();
+  });
+
+  it("a refusal note renders the precise next action (SM-V5)", () => {
+    const { container } = renderMargin([
+      card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "unknown"
+      })
+    ]);
+    const note = container.querySelector('[data-note-key="0"]');
+    expect(note?.getAttribute("data-tier")).toBe("refusal");
+    // The calibrating "do this" is present, distinct from the explanation.
+    expect(note?.textContent).toMatch(/verify again/i);
+  });
+});
+
+describe("nextFocusIndex (SM-V7 j/k cycle)", () => {
+  it("j from nothing focuses the first, k from nothing focuses the last", () => {
+    expect(nextFocusIndex(3, -1, 1)).toBe(0);
+    expect(nextFocusIndex(3, -1, -1)).toBe(2);
+  });
+
+  it("wraps forward off the end and backward off the start", () => {
+    expect(nextFocusIndex(3, 2, 1)).toBe(0);
+    expect(nextFocusIndex(3, 0, -1)).toBe(2);
+  });
+
+  it("returns -1 for an empty set", () => {
+    expect(nextFocusIndex(0, -1, 1)).toBe(-1);
   });
 });

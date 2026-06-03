@@ -52,6 +52,13 @@ export interface ClaimDisposition {
   label: string;
   /** One-line plain-language reason. Empty for the unmarked pass. */
   detail: string;
+  /**
+   * The precise next step, set only on the refusal (could_not_check). Carries
+   * the calibrating "do this" that turns an honest abstention into an action
+   * the user can take, instead of dumping uncertainty (SM-V5). Absent on every
+   * other disposition.
+   */
+  nextAction?: string;
 }
 
 /** Sort order, worst-first by severity and independent of the render register:
@@ -109,8 +116,13 @@ function reasonText(card: VerifyClaimVerdict): string | null {
   return typeof r === "string" && r.trim() ? r.trim() : null;
 }
 
-function mk(kind: DispositionKind, label: string, detail: string): ClaimDisposition {
-  return { kind, tier: TIER[kind], label, detail };
+function mk(
+  kind: DispositionKind,
+  label: string,
+  detail: string,
+  nextAction?: string
+): ClaimDisposition {
+  return { kind, tier: TIER[kind], label, detail, nextAction };
 }
 
 /**
@@ -171,7 +183,8 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       "could_not_check",
       "Could not verify",
       reasonText(card) ??
-        "Verification could not run. Load the sources this draft relies on, then verify again."
+        "Verification could not run, so nothing here is confirmed against a source.",
+      "Add the sources this draft relies on, then verify again."
     );
   }
 
@@ -181,21 +194,24 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
     return mk(
       "could_not_check",
       "Could not verify",
-      "Grounded in your sources, but the citation matches more than one case. Confirm which one you mean."
+      "Grounded in your sources, but this citation matches more than one case, so the authority is unconfirmed.",
+      "Confirm which case you mean, then verify again."
     );
   }
   if (caseLookupError) {
     return mk(
       "could_not_check",
       "Could not verify",
-      "Grounded in your sources, but the citation could not be checked. Try again, or open the source to confirm."
+      "Grounded in your sources, but the citation could not be checked, so its authority is unconfirmed.",
+      "Open the source to confirm, or verify again."
     );
   }
   if (holdingUncheckable) {
     return mk(
       "could_not_check",
       "Could not verify",
-      "Grounded in your sources, but the cited opinion could not be read to confirm it supports the claim."
+      "Grounded in your sources, but the cited opinion could not be read, so it is unconfirmed that it supports this.",
+      "Add the opinion text, then verify again."
     );
   }
   return mk("supported", "Supported", "");
