@@ -20,7 +20,7 @@
    At the top the full wordmark shows. On first scroll the word collapses and the
    real open-ring mark draws itself in (a one-shot path-draw on the genuine
    severed-C). The signature from the original landing, restored. */
-.site-header .brand { display: flex; align-items: center; gap: 0; text-decoration: none; color: var(--text-primary); font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; letter-spacing: -0.03em; --cachet-dur-reveal: 1700ms; --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19); }
+.site-header .brand { display: flex; align-items: center; gap: 0; text-decoration: none; color: var(--text-primary); font-family: var(--font-display); font-weight: 700; font-size: 3.4rem; letter-spacing: -0.03em; --cachet-dur-reveal: 1700ms; --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19); }
 .site-header .brand-word { display: inline-block; white-space: nowrap; overflow: hidden; max-width: 8em; opacity: 1; line-height: 1; transition: max-width var(--dur-4) var(--ease-out), opacity var(--dur-3) var(--ease-out); }
 .site-header .brand-mark { display: block; flex: none; width: 0; height: 0.95em; opacity: 0; color: var(--flag); transform: scale(1.1); transform-origin: left center; transition: width var(--dur-4) var(--ease-out), opacity var(--dur-4) var(--ease-out), transform var(--dur-4) var(--ease-out); }
 .site-header .brand-mark path { stroke-dasharray: 1; stroke-dashoffset: 1; }
