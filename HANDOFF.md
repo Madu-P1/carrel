@@ -610,3 +610,76 @@ If a thing is genuinely new and there's no existing analog,
 write `docs/notes/YYYY-MM-DD-<topic>.md` capturing the design
 decision before you write the code. Future readers (including
 future-you) will need it.
+
+---
+
+## Archived from CLAUDE.md (relocated 20260605-003738 to keep CLAUDE.md lean)
+
+> These sections were moved out of CLAUDE.md (injected every session) because they are
+> historical/operational narrative, not behavior-steering rules. Content is verbatim.
+
+## Running the autonomous routine
+
+Two scripts at `script/` arm and supervise unattended `/carrel-build`
+sessions:
+
+```bash
+./script/start-autonomous.sh /carrel-build          # one armed session
+./script/autonomous-watchdog.sh                     # relaunch loop
+nohup ./script/autonomous-watchdog.sh > /tmp/carrel-watchdog.log 2>&1 &
+```
+
+`start-autonomous.sh` exports `CARREL_AUTONOMOUS=true` so the four
+hooks at `.claude/hooks/` (`route-task`, `audit-gate`, `debate-trigger`,
+`score-loop`) actually fire, and passes `--permission-mode bypassPermissions`
+so claude doesn't deadlock on its own UI prompts. The `audit-gate.py`
+hook is the actual safety net. Without `CARREL_AUTONOMOUS=true` the
+hooks exit silently so ad-hoc edits don't trigger the auditor + rater.
+
+`autonomous-watchdog.sh` relaunches after rate-limit freezes using
+idleness-primary detection (log growth < 512 B in 10 min ⇒ kill) with
+a tight `LIMIT_PATTERN` regex fast-path gated on idleness ≥ 60s so
+prose mentioning "rate limit" cannot false-positive. Each relaunch is
+safe because `/carrel-build` reads `TODOS.md` + the active plan at the
+top of every iteration; state lives in the filesystem, not the session.
+
+Halt the routine with:
+
+```bash
+touch .claude/HALT       # graceful: finishes current cycle and exits
+```
+
+The HALT file is checked at the top of every watchdog iteration, inside
+the poller, and during the retry sleep, so a graceful stop registers
+within seconds. Verify the kill path with `bash tests/test_watchdog_kill.sh`.
+
+At launch the watchdog runs a pre-flight gate-machinery smoke test
+(`tests/test_routine_gate_smoke.py`) that spawns the auditor on a
+synthetic pending action and asserts a verdict file appears within 60s.
+On failure the watchdog refuses to launch so the loop cannot wedge
+silently waiting for verdict files. Override with `CARREL_SKIP_SMOKE=1`
+when you genuinely need to bypass (e.g., no claude CLI on PATH in a
+diagnostic shell). The poller's kill block also sweeps any orphaned
+claude process whose CWD matches the worktree, closing the
+`script(1) -> exec claude` parent-linkage class observed 2026-05-26.
+
+
+## Current phase state (2026-04-29)
+
+- Phase 0 + 1: complete.
+- Phase 2 (frontend): functionally complete. The premium UI roadmap (8 ships) finished in this cycle. See `docs/roadmap/premium-ui-pass.md` for the spec and `docs/notes/2026-04-29-session-handoff.md` for the closeout notes. Motion system with 5 signature moments live. Cold launch p50 299 ms / p95 481 ms, well under 800 ms budget.
+- Phase 3 (retrieval + grounded answers + evals): ~60% through. Hybrid retrieval + quote validation + eval harness landed. Reranker + job queue deferred.
+- **Flashcards focus campaign — COMPLETE 2026-05-13.** Plan in `docs/plans/flashcards-focus-2026-05-09.md`. PRs 1–3 + 7 shipped earlier; PR 4 (citation reveal on the back face) shipped 2026-05-12; PR 5.1 (cloze, ADR 0002) and PR 5.2 (reverse-pair, ADR 0003) shipped 2026-05-13; PR 6 (session pacing) fully shipped: item 1 ETA (87f7e867), item 2 per-card timing (2f9e248d, 2026-05-10), item 3 defer-this-card (b3f7deda+e08d302f+66da9d7d), item 4 streak (5993a248).
+- **Phase coach (Phase 1 + Phase 2 complete):** calendar feed sync + WeekTimeGrid + stub coach landed in `169b84f`. Reads iCal feeds (Google / Apple / Outlook / Blackboard), renders the user's week, proposes study blocks where there's free time AND overdue SRS cards. All four rules ship: `free_block_overdue_srs` (v1, Phase 1), `deadline_imminent` (Phase 2, commit `940966bf`, study_block before exam/midterm/final/quiz deadlines), `low_recent_review` (Phase 2, commit `b12359d2`, review_block when >=5 SRS cards last touched 7+ days ago and not overdue), and `gap_between_classes` (Phase 2, this commit, catchup micro-session when two adjacent calendar events at the same location are 30-120 min apart). `refresh_active_suggestions` dedupes on `(kind, start_at, reason_code)` so different rules' same-`kind` candidates keep their distinct signals visible across refreshes. Tables via `migrations/0009_calendar_and_planning.sql`.
+- Phase 4 (signing / notarization / Sparkle / telemetry / monetization): not started. Requires Apple Developer credentials and monetization/telemetry platform decisions.
+- Phase 5 (sync / verticals / iOS companion / public API): not started.
+
+## Open debts tracked
+
+- Swift-side menu dispatch test coverage was informal. XCTest scaffold added 2026-05-16 (`macos-app/Tests/EinsteinDesktopTests/`, 75/75 green) now covers `UploadMimeTypes.swift`, `LocalApiToken.swift`, `LaunchTelemetry` end to end (`format(milliseconds:)`, `markLaunch()`, `markInteractive(route:performanceNowMilliseconds:)` via a `dup2`-based `StderrCapture` harness), and `MainMenuBuilder.swift` end to end (every submenu's structure + key equivalents + command-bus wiring; `WebViewBridgeDispatcher.escapeForJSStringLiteral`; `WebViewRegistry` register/unregister/current). The `MainMenuBuilder` coverage surfaced and fixed a latent bug in `install()` where `NSApp.windowsMenu`/`helpMenu` were never wiring because `mainMenu.item(withTitle:)?.submenu` returned nil (outer `NSMenuItem` titles were empty). Item closed.
+- Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
+- FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
+- ~~Toast primitive doesn't accept action buttons.~~ **Resolved.** The `ToastInput.action` field (label + onClick) shipped in `frontend/src/design-system/primitives/Toast/Toast.tsx`; the suggestion-dismiss flow in `frontend/src/features/plan/PlanView.tsx::handleDismissSuggestion` wires the Undo action to `restoreSuggestion(id)` and toasts success/error. Vitest coverage at `Toast.test.tsx::"Clicking a toast action runs the callback and dismisses the toast"`.
+- **Calendar feed URLs stored plaintext-at-rest.** Bounded threat model: URLs are revocable secrets, redacted at every emission point via `services/calendar/validators.py::mask_url`. macOS Keychain is v2 work, planned alongside Gmail OAuth tokens (which are NOT trivially revocable).
+- **`preact/compat lazy() + Suspense` is fragile under file://.** Verified failure mode: chunk loads, Suspense never re-renders the tree. Don't use render-time Suspense for code-splitting the bundled WKWebView app. Trigger code splits via user-click `await import(...)` instead. See `docs/notes/2026-04-29-session-handoff.md` § preact/compat.
+
