@@ -84,9 +84,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
+          name: "Cachet ${{ github.ref_name }} (pre-release)"
+          # Pre-release: the binaries build in CI but are not yet runtime-verified
+          # on a clean Windows install and are unsigned. Promote to a full release
+          # after a smoke test on real hardware.
+          prerelease: true
           body: |
-            Bundled Cachet desktop builds (Windows + macOS).
+            Bundled Cachet desktop builds (Windows + macOS). Early pre-release.
 
-            UNSIGNED: on first launch, Windows shows "Windows protected your PC"
-            (click More info -> Run anyway) and macOS shows an unidentified-developer
-            warning (right-click -> Open). Code signing is a later step.
+            ## Run it
+            - **Windows:** download `Cachet.exe`, double-click. "Windows protected
+              your PC" -> **More info** -> **Run anyway** (unsigned). Cachet opens
+              in your browser.
+            - **macOS:** download `Cachet`, then right-click -> **Open** -> **Open**
+              (unidentified developer).
+
+            ## Scope
+            Deterministic verification only: load a DOCX or digital PDF as the
+            record, paste an AI's claims, and Cachet flags any quote that is not
+            verbatim and any citation it cannot resolve. Scanned-PDF OCR and
+            model-graded grounding are not in this build.
+
+            UNSIGNED + early: expect a first-launch security prompt. Code signing
+            and a clean-machine smoke test come before this is promoted to stable.
