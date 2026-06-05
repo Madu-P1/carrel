@@ -80,6 +80,11 @@ def main() -> int:
     os.environ.setdefault("EINSTEIN_BASE_DIR", str(resources))  # bundled migrations/schema
     os.environ.setdefault("EINSTEIN_DATA_DIR", str(data_dir))  # writable DB/uploads/logs
     os.environ.setdefault("CACHET_WEB_DIST", str(resources / "dist-cachet"))
+    # Fast ingest: the deterministic quote/cite catch reads full document text, not
+    # vectors, so skip per-chunk embedding on upload. Cuts a huge contract from
+    # minutes to seconds (measured 520s -> 2.2s on a 2000-section doc). Vectors are
+    # marked backfill-pending and can be added later if semantic grounding is wired.
+    os.environ.setdefault("EMBED_ON_INGEST", "false")
     # Never disable the token gate; the served HTML carries the per-run token.
     os.environ.pop("CARREL_API_OPEN_MODE", None)
 

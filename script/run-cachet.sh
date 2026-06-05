@@ -41,6 +41,11 @@ fi
 export CARREL_LOCAL_API_TOKEN
 CARREL_LOCAL_API_TOKEN="$(cat "$TOKEN_PATH")"
 export CACHET_ONLY=1
+# Fast ingest: the deterministic catch reads full document text, not vectors, so
+# skip per-chunk embedding on upload (huge contracts ingest in seconds, not
+# minutes; measured 520s -> 2.2s on a 2000-section doc). Vectors are
+# backfill-pending and can be added later if semantic grounding is wired in.
+export EMBED_ON_INGEST="${EMBED_ON_INGEST:-false}"
 
 # Resolve a Python that actually has the repo's deps. Prefer CACHET_PYTHON, then
 # this checkout's .venv. A git worktree has no .venv of its own, so fall back to

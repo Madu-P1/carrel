@@ -67,6 +67,7 @@ echo "Starting Cachet backend (CACHET_ONLY) on 127.0.0.1:$PORT ..."
 # ingest drops to a few seconds. Re-enable post-demo for the nodes retrieval work.
 CACHET_ONLY=1 CARREL_AI_PROVIDER="${CARREL_AI_PROVIDER:-ollama}" \
   INGEST_USE_DOCLING="${INGEST_USE_DOCLING:-false}" RETRIEVAL_USE_NODES="${RETRIEVAL_USE_NODES:-false}" \
+  EMBED_ON_INGEST="${EMBED_ON_INGEST:-false}" \
   CARREL_LOCAL_API_TOKEN="$(cat "$TOKEN_PATH")" \
   "$PY" -m uvicorn main:app --host 127.0.0.1 --port "$PORT" --app-dir "$ROOT_DIR" \
   >"$DIST_DIR/cachet-backend.log" 2>&1 &
@@ -126,7 +127,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key><string>com.madu.Cachet</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>LSEnvironment</key><dict><key>CACHET_BUNDLE</key><string>1</string><key>CACHET_BACKEND_PYTHON</key><string>$PY</string><key>INGEST_USE_DOCLING</key><string>false</string><key>RETRIEVAL_USE_NODES</key><string>false</string></dict>
+  <key>LSEnvironment</key><dict><key>CACHET_BUNDLE</key><string>1</string><key>CACHET_BACKEND_PYTHON</key><string>$PY</string><key>INGEST_USE_DOCLING</key><string>false</string><key>RETRIEVAL_USE_NODES</key><string>false</string><key>EMBED_ON_INGEST</key><string>false</string></dict>
   <key>NSAppTransportSecurity</key><dict>
     <key>NSAllowsArbitraryLoadsInWebContent</key><true/>
     <key>NSAllowsLocalNetworking</key><true/>

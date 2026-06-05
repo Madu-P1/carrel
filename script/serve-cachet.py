@@ -89,6 +89,10 @@ def main() -> int:
 
     port = find_free_port(int(os.getenv("CACHET_PORT", "8000")))
     env = {**os.environ, "CACHET_ONLY": "1"}
+    # Fast ingest: the deterministic catch reads full document text, not vectors,
+    # so skip per-chunk embedding on upload (huge contracts ingest in seconds, not
+    # minutes). Vectors are backfill-pending; semantic grounding can add them later.
+    env.setdefault("EMBED_ON_INGEST", "false")
     # Do NOT set CARREL_API_OPEN_MODE: the token gate stays on. The backend
     # generates its own token and injects it into the served HTML.
     proc = subprocess.Popen(
