@@ -127,7 +127,10 @@ const indexCssPath = resolve(distDir, "index.css");
 // Bumped 120 -> 124 KB for Cachet PR5b: the Workspace/Margin layout adds three
 // components (WorkspaceMargin, ExaminationDrawer, the segmentation + rail-layout
 // helpers) on the verify surface.
-const ENTRY_JS_GZIP_BUDGET = 124 * 1024;
+// Bumped 124 -> 128 KB for the Cachet V2 verify/shelf delivery: the SM signature
+// moments, Shelf re-hydration/save, claim alignment, and the loopback same-origin
+// API-base read landed on the shared entry (measured 128562 B gz in CI).
+const ENTRY_JS_GZIP_BUDGET = 128 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
