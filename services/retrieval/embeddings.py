@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Protocol, Sequence
 
 
@@ -18,7 +19,10 @@ class FastembedEmbedder:
     def __init__(self) -> None:
         from fastembed import TextEmbedding
 
-        self._model = TextEmbedding(model_name=self._MODEL)
+        # Pin the weights cache so they can be pre-cached at build time and
+        # served offline (airplane-mode demo). Unset -> fastembed default.
+        cache_dir = os.getenv("CARREL_FASTEMBED_CACHE_DIR") or None
+        self._model = TextEmbedding(model_name=self._MODEL, cache_dir=cache_dir)
 
     def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
         return [list(map(float, vector)) for vector in self._model.embed(list(texts))]

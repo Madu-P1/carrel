@@ -32,6 +32,7 @@ V2 follow-ups (out of scope):
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -123,6 +124,48 @@ def _verify_framed_question(draft: str) -> str:
     )
 
 
+def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
+    """Litigator: derive the top-line verdict from case-existence results."""
+    any_missing = any_failed = any_exists = False
+    for cv in case_verdicts:
+        if not cv.get("ok", True):
+            any_failed = True
+        for case in cv.get("verdicts") or []:
+            if case.get("exists"):
+                any_exists = True
+            else:
+                any_missing = True
+    if any_missing:
+        return "unsupported"  # a cited case does not exist -- the catch
+    if any_failed:
+        return "unknown"  # verification could not run
+    if any_exists:
+        return "verified"
+    return "unsupported"
+
+
+def _verdict_from_contract(contract_verdict: Dict[str, Any]) -> VerifyVerdict:
+    """Contract: present -> verified, contradiction -> unsupported, else unknown."""
+    disposition = contract_verdict.get("disposition")
+    if disposition == "present":
+        return "verified"
+    if disposition == "parametric_contradiction":
+        return "unsupported"
+    return "unknown"  # not_found
+
+
+def _deterministic_reason(
+    case_verdicts: tuple, contract_verdict: Dict[str, Any] | None
+) -> str | None:
+    if contract_verdict:
+        return str(contract_verdict.get("detail") or "") or None
+    for cv in case_verdicts:
+        for case in cv.get("verdicts") or []:
+            if not case.get("exists"):
+                return f"Cited case not found: {case.get('citation')}"
+    return None
+
+
 def _claim_dict_to_verdict(
     claim_dict: Dict[str, Any],
     index: int,
@@ -131,24 +174,35 @@ def _claim_dict_to_verdict(
 ) -> VerifyClaimVerdict:
     """Map one engine-returned claim dict to a verifier verdict card.
 
-    The engine's serialized claim shape (see
-    `services.tutor._serialize_claims`) carries `text`, `citations`,
-    and `case_verdicts`. A claim with at least one citation is
-    VERIFIED; otherwise UNSUPPORTED (the engine moves orphaned
-    claims to unsupported_spans, but if a claim somehow reaches us
-    with empty citations it is still unsupported).
+    The LLM engine's claim carries in-corpus `citations` (>=1 -> verified). The
+    deterministic engine instead carries `case_verdicts` (litigator
+    case-existence) or a `contract_verdict` (contract claim); when there are no
+    in-corpus citations the top-line verdict is derived from those, so a real
+    cite reads verified and a fabricated one reads unsupported rather than every
+    deterministic claim defaulting to unsupported.
     """
     text = str(claim_dict.get("text") or "").strip()
     citations = tuple(claim_dict.get("citations") or [])
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
-    verdict: VerifyVerdict = "verified" if citations else "unsupported"
+    contract_verdict = claim_dict.get("contract_verdict")
+    if citations:
+        verdict: VerifyVerdict = "verified"
+    elif contract_verdict:
+        verdict = _verdict_from_contract(contract_verdict)
+    elif case_verdicts:
+        verdict = _verdict_from_case_verdicts(case_verdicts)
+    else:
+        verdict = "unsupported"
+    reason = (
+        None if verdict == "verified" else _deterministic_reason(case_verdicts, contract_verdict)
+    )
     return VerifyClaimVerdict(
         claim_index=index,
         claim_text=text,
         verdict=verdict,
         citations=citations,
         case_verdicts=case_verdicts,
-        unsupported_reason=None,
+        unsupported_reason=reason,
         placement=placement,
     )
 
@@ -247,13 +301,22 @@ def verify_draft(
             provider="",
         )
 
-    payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
-    envelope = tutor_service.grounded_tutor_envelope(
-        conn,
-        payload,
-        log_study_event=log_study_event,
-        fetch_recent_events=fetch_recent_events,
-    )
+    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+        # No-LLM litigator path (Cachet). Anchor-driven unit selection +
+        # offline case-existence; holding-match stays off. Imported lazily so
+        # the default (flag-off) path keeps its original import contract and
+        # never loads the eyecite chain.
+        from services.legal.deterministic_envelope import build_deterministic_envelope
+
+        envelope = build_deterministic_envelope(cleaned, conn=conn, doc_ids=doc_ids)
+    else:
+        payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
+        envelope = tutor_service.grounded_tutor_envelope(
+            conn,
+            payload,
+            log_study_event=log_study_event,
+            fetch_recent_events=fetch_recent_events,
+        )
 
     return _verify_result_from_envelope(cleaned, envelope, started)
 

@@ -189,3 +189,59 @@ describe("dispositionForClaim", () => {
     }
   });
 });
+
+// Phase 7: the deterministic engine derives the top-line verdict from
+// case-existence / contract results (services.verify._claim_dict_to_verdict).
+// These lock how those cards render through the existing disposition logic.
+describe("deterministic engine cards", () => {
+  test("a fabricated cite is citation_not_found (the catch), whatever the verdict", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [batch([caseItem({ status: 404, exists: false })])]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+    expect(d.tier).toBe("flag");
+  });
+
+  test("a real cite with holding off is could_not_check (exists, support not verified)", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [batch([caseItem({ status: 200, exists: true, holding_match: null })])]
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("a contract parametric contradiction is claim_unsupported with its detail", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [],
+        unsupported_reason: "the claim's money value contradicts the clause"
+      })
+    );
+    expect(d.kind).toBe("claim_unsupported");
+    expect(d.detail).toContain("contradict");
+  });
+
+  test("a contract not_found is could_not_check, not an accusatory flag", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [],
+        unsupported_reason: "the claim's language does not appear in the clause"
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("a contract present is supported", () => {
+    const d = dispositionForClaim(card({ verdict: "verified", case_verdicts: [] }));
+    expect(d.kind).toBe("supported");
+  });
+});
