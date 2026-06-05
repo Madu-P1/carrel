@@ -140,7 +140,9 @@ class ContractPathIntegrationTests(unittest.TestCase):
         result = verify_service._verify_result_from_envelope(draft, env, 0.0)
         card = result.claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
-        self.assertIn("contradict", (card.unsupported_reason or "").lower())
+        # The reason is filing-grade: it quotes both values.
+        self.assertIn("$1,000,000", card.unsupported_reason or "")
+        self.assertIn("$500,000", card.unsupported_reason or "")
 
     def test_anchor_free_claim_is_could_not_check(self) -> None:
         env = build_deterministic_envelope(

@@ -56,9 +56,11 @@ _MONEY = re.compile(
     re.IGNORECASE,
 )
 
-# Matches "5 years", "five (5) years", "30 calendar days". The digit may be
-# bare or in the legal "word (digit)" convention.
+# Matches "5 years", "five (5) years", "30 calendar days". The digit may be bare
+# or in the legal "word (digit)" convention; an optional spelled-out number word
+# is captured for display (restricted to number words so it cannot grab "of").
 _DURATION = re.compile(
+    r"(?:(?P<word>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+)?"
     r"(?:\((?P<paren>\d+)\)|\b(?P<num>\d+))\s+(?:calendar\s+)?(?P<unit>year|month|week|day)s?\b",
     re.IGNORECASE,
 )

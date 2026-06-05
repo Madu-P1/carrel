@@ -52,53 +52,59 @@ def _values_match(anchor_type: str, claim_values: list, clause_values: list) -> 
 
 
 def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
-    """Decide whether ``claim`` is supported, contradicted, or unfound vs ``clause``."""
+    """Decide whether ``claim`` is supported, contradicted, or unfound vs ``clause``.
+
+    The detail is filing-grade: it names the contract section and quotes the
+    actual values ("The summary states $1,000,000; Section 8 states $500,000"),
+    so the certification record stands on its own.
+    """
     claim_anchors = extract_anchors(claim)
     clause_anchors = extract_anchors(clause)
+    section = next((a.text for a in clause_anchors if a.type == "section"), None)
+    where = section or "the contract"
 
     for anchor_type in _PARAMETRIC_TYPES:
-        claim_values = [
-            a.canonical_value
-            for a in claim_anchors
-            if a.type == anchor_type and a.canonical_value is not None
+        claim_hits = [
+            a for a in claim_anchors if a.type == anchor_type and a.canonical_value is not None
         ]
-        if not claim_values:
+        if not claim_hits:
             continue
-        clause_values = [
-            a.canonical_value
-            for a in clause_anchors
-            if a.type == anchor_type and a.canonical_value is not None
+        clause_hits = [
+            a for a in clause_anchors if a.type == anchor_type and a.canonical_value is not None
         ]
-        if not clause_values:
+        claim_values = tuple(a.canonical_value for a in claim_hits)
+        clause_values = tuple(a.canonical_value for a in clause_hits)
+        if not clause_hits:
             return ClauseVerdict(
                 "not_found",
-                f"the claim states a {anchor_type} value the clause does not contain",
+                f"The summary states {claim_hits[0].text}, which does not appear in the contract.",
                 anchor_type,
-                tuple(claim_values),
+                claim_values,
                 (),
             )
-        if _values_match(anchor_type, claim_values, clause_values):
+        if _values_match(anchor_type, list(claim_values), list(clause_values)):
             return ClauseVerdict(
                 "present",
-                f"the {anchor_type} value appears in the clause; review the full clause for context",
+                f"{claim_hits[0].text} appears in {where}; review the full clause for context.",
                 anchor_type,
-                tuple(claim_values),
-                tuple(clause_values),
+                claim_values,
+                clause_values,
             )
         return ClauseVerdict(
             "parametric_contradiction",
-            f"the claim's {anchor_type} value contradicts the clause",
+            f"The summary states {claim_hits[0].text}; {where} states {clause_hits[0].text}.",
             anchor_type,
-            tuple(claim_values),
-            tuple(clause_values),
+            claim_values,
+            clause_values,
         )
 
     for anchor in claim_anchors:
         if anchor.type == "quote" and verbatim_run_present(anchor.text, clause):
             return ClauseVerdict(
                 "present",
-                "the quoted language appears verbatim in the clause; review the full clause for context",
+                f'The quoted language "{anchor.text}" appears verbatim in {where}; '
+                "review the full clause for context.",
                 "quote",
             )
 
-    return ClauseVerdict("not_found", "the claim's language does not appear in the clause")
+    return ClauseVerdict("not_found", "The summary's language does not appear in the contract.")

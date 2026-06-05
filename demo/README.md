@@ -30,12 +30,17 @@ cannot do."
 
 ## Beat 3 — contract close (the confidential document never leaves the machine)
 
-Load `demo/contract-msa.md`, paste `demo/contract-ai-summary.md`.
+Load `demo/contract-msa.md`, paste `demo/contract-ai-summary.md`. Each verdict
+names the clause and quotes both values, so the record stands on its own:
 
-- "capped at $1,000,000" vs the contract's $500,000: **parametric contradiction**
-  (pure arithmetic, zero ML).
-- "two (2) years" matches the contract's term: **present** ("review the full
-  clause for context").
+- "executed on March 11, 2024" vs the contract's March 11, 2023:
+  **contradiction** ("The summary states March 11, 2024; Section 1 states
+  March 11, 2023").
+- "capped at $1,000,000" vs the contract's $500,000: **contradiction** ("The
+  summary states $1,000,000; Section 8 states $500,000"), pure arithmetic, zero
+  ML.
+- "two (2) years" matches the contract's term: **present** in Section 12
+  ("review the full clause for context").
 - "best efforts" carries no checkable anchor: the honest **could not check**, not
   a silent pass and not an accusation.
 

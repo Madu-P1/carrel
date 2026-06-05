@@ -1,5 +1,7 @@
 # Master Services Agreement (excerpt)
 
+Section 1. Effective Date. This Agreement is dated March 11, 2023.
+
 Section 8. Limitation of Liability. The aggregate liability of either party
 under this Agreement shall not exceed $500,000.
 

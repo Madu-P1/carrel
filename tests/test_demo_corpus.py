@@ -145,6 +145,14 @@ class ContractCorpusTests(unittest.TestCase):
 
     def test_inflated_liability_cap_is_a_contradiction(self) -> None:
         claim = self._verdict_for("capped at $1,000,000")
+        verdict = claim["contract_verdict"]
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        # Filing-grade: the detail names the section and both values.
+        self.assertIn("Section 8", verdict["detail"])
+        self.assertIn("$500,000", verdict["detail"])
+
+    def test_wrong_execution_date_is_a_contradiction(self) -> None:
+        claim = self._verdict_for("executed on March 11, 2024")
         self.assertEqual("parametric_contradiction", claim["contract_verdict"]["disposition"])
 
     def test_matching_term_is_present(self) -> None:
