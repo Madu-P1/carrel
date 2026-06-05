@@ -14,7 +14,7 @@ project:
 verify:
   commands:
     - name: "verify-suite"
-      run: "./.venv/bin/python -m unittest tests.test_verify tests.test_verify_stream tests.test_quote_check tests.test_align tests.test_briefs tests.test_briefs_routes"
+      run: "./.venv/bin/python -m unittest tests.test_verify tests.test_verify_characterization tests.test_verify_stream tests.test_quote_check tests.test_align tests.test_briefs tests.test_briefs_routes"
       pass_when: "exit_zero"
     - name: "legal-suite"
       run: "./.venv/bin/python -m unittest tests.test_legal_case_verification tests.test_legal_courtlistener"
