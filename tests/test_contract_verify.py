@@ -33,6 +33,17 @@ class ParametricContradictionTests(unittest.TestCase):
         )
         self.assertEqual("present", v.disposition)
 
+    def test_matching_amount_does_not_mask_a_falsified_date(self) -> None:
+        # Cross-type: a matching $500,000 must NOT short-circuit to "present" and
+        # hide a wrong date in the same sentence. A contradiction in ANY anchor type
+        # wins, so the engine cannot be laundered by leading with a correct value.
+        v = verify_claim_against_clause(
+            "The cap is $500,000, effective March 11, 2024.",
+            "liability shall not exceed $500,000; executed on March 11, 2023",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("date", v.anchor_type)
+
 
 class PresentTests(unittest.TestCase):
     def test_matching_money_value_is_present(self) -> None:

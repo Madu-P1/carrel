@@ -193,13 +193,14 @@ def _claim_dict_to_verdict(
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
     contract_verdict = claim_dict.get("contract_verdict")
     could_not_check_reason = claim_dict.get("could_not_check_reason")
-    quote_altered_reason = claim_dict.get("quote_altered_reason")
+    quote_could_not_check_reason = claim_dict.get("quote_could_not_check_reason")
     if citations:
         verdict: VerifyVerdict = "verified"
-    elif quote_altered_reason:
-        # A quoted run attributed to a real case but not present verbatim in it is
-        # a flag (the quote was altered), not an honest could-not-check.
-        verdict = "unsupported"
+    elif quote_could_not_check_reason:
+        # The cite may exist, but a quoted phrase could not be verified against the
+        # opinion text we hold. Refuse rather than verify-by-existence (a silent pass
+        # on the quote) or accuse (a false "altered"). The honest could-not-check.
+        verdict = "unknown"
     elif could_not_check_reason:
         # Anchor-free deterministic claim: not independently verifiable. The honest
         # could-not-check, never the accusatory "unsupported".
@@ -211,9 +212,13 @@ def _claim_dict_to_verdict(
     else:
         verdict = "unsupported"
     if verdict == "verified":
-        reason = None
-    elif quote_altered_reason:
-        reason = str(quote_altered_reason)
+        # A contract "present" finding stays positive but keeps its hedge detail
+        # (the value appears in the named clause; that is presence, not proof of
+        # truth), so the card never reads as a bare "this is true." A verified case
+        # cite carries no such hedge, so its reason stays None.
+        reason = str(contract_verdict.get("detail") or "") or None if contract_verdict else None
+    elif quote_could_not_check_reason:
+        reason = str(quote_could_not_check_reason)
     elif could_not_check_reason:
         reason = str(could_not_check_reason)
     else:
@@ -687,6 +692,25 @@ def verify_draft_stream(
             error="empty_draft",
             provider="",
         )
+        yield {"type": "result", "verify": verify_result_to_payload(result)}
+        return
+
+    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+        # The demo UI calls ONLY this stream endpoint (VerifyView -> /api/verify/
+        # stream), so the offline engine must run HERE too, not just in the
+        # non-stream verify_draft. Without this branch the stream falls through to
+        # the LLM path below, which reaches CourtListener with a real client and
+        # POSTs the draft off-device -- the "no data leaves this device" guarantee
+        # would be false on the live path. The deterministic engine is sub-second
+        # and synchronous, so it emits the canonical result in one shot rather than
+        # streaming per-cite labor (the result event renders the full surface, the
+        # same as the non-stream path).
+        from services.legal.deterministic_envelope import build_deterministic_envelope
+
+        envelope = build_deterministic_envelope(cleaned, conn=conn, doc_ids=doc_ids)
+        result = _verify_result_from_envelope(cleaned, envelope, started)
+        if result.quote_results:
+            yield {"type": "quote_batch", "quotes": list(result.quote_results)}
         yield {"type": "result", "verify": verify_result_to_payload(result)}
         return
 

@@ -60,5 +60,30 @@ class FastembedCachePinTests(unittest.TestCase):
         text_embedding.assert_called_once_with(model_name="BAAI/bge-small-en-v1.5", cache_dir=None)
 
 
+class OfflineEnvFloorTests(unittest.TestCase):
+    def test_offline_forced_even_when_preset_off(self) -> None:
+        # An inherited HF_HUB_OFFLINE=0 must NOT survive in deterministic mode: the
+        # floor uses unconditional assignment, not setdefault, so the embedder cannot
+        # download while the cert attests "no data left this device".
+        with mock.patch.dict(
+            os.environ,
+            {
+                "CACHET_DETERMINISTIC_VERIFY": "1",
+                "HF_HUB_OFFLINE": "0",
+                "TRANSFORMERS_OFFLINE": "0",
+            },
+            clear=False,
+        ):
+            embeddings._enforce_offline_env()
+            self.assertEqual("1", os.environ["HF_HUB_OFFLINE"])
+            self.assertEqual("1", os.environ["TRANSFORMERS_OFFLINE"])
+
+    def test_offline_not_touched_when_flag_off(self) -> None:
+        with mock.patch.dict(os.environ, {"HF_HUB_OFFLINE": "0"}, clear=False):
+            os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
+            embeddings._enforce_offline_env()
+            self.assertEqual("0", os.environ["HF_HUB_OFFLINE"])
+
+
 if __name__ == "__main__":
     unittest.main()

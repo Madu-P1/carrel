@@ -46,6 +46,13 @@ def _within_tolerance(a: float, b: float, rel: float = _DURATION_REL_TOLERANCE) 
 
 
 def _values_match(anchor_type: str, claim_values: list, clause_values: list) -> bool:
+    # Known limitation: with multiple values of one type on either side, this
+    # "any matches any" test can MASK a contradiction (a claim's $1M cap spuriously
+    # matching a clause's unrelated $1M line item). Resolving it needs role
+    # alignment (which claim value maps to which clause value), which is out of
+    # scope; the demo uses single-value clauses where this is exact. Surfaced as a
+    # coverage caveat (see demo/README honest scope), never a silent claim of full
+    # coverage: a multi-value contract sentence is not fully checked.
     if anchor_type == "duration":
         return any(_within_tolerance(c, k) for c in claim_values for k in clause_values)
     return bool(set(claim_values) & set(clause_values))
@@ -63,6 +70,13 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     section = next((a.text for a in clause_anchors if a.type == "section"), None)
     where = section or "the contract"
 
+    # Evaluate EVERY parametric type the claim carries, not just the first. A
+    # contradiction in ANY type wins outright: a sentence with a matching amount but a
+    # falsified date must read contradiction, not "present" (returning on the first
+    # type that matched would mask the wrong date). Among non-contradictions, a
+    # present finding beats a not_found.
+    present_verdict: ClauseVerdict | None = None
+    not_found_verdict: ClauseVerdict | None = None
     for anchor_type in _PARAMETRIC_TYPES:
         claim_hits = [
             a for a in claim_anchors if a.type == anchor_type and a.canonical_value is not None
@@ -75,21 +89,25 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         claim_values = tuple(a.canonical_value for a in claim_hits)
         clause_values = tuple(a.canonical_value for a in clause_hits)
         if not clause_hits:
-            return ClauseVerdict(
-                "not_found",
-                f"The summary states {claim_hits[0].text}, which does not appear in the contract.",
-                anchor_type,
-                claim_values,
-                (),
-            )
+            if not_found_verdict is None:
+                not_found_verdict = ClauseVerdict(
+                    "not_found",
+                    f"The summary states {claim_hits[0].text}, which does not appear in the contract.",
+                    anchor_type,
+                    claim_values,
+                    (),
+                )
+            continue
         if _values_match(anchor_type, list(claim_values), list(clause_values)):
-            return ClauseVerdict(
-                "present",
-                f"{claim_hits[0].text} appears in {where}; review the full clause for context.",
-                anchor_type,
-                claim_values,
-                clause_values,
-            )
+            if present_verdict is None:
+                present_verdict = ClauseVerdict(
+                    "present",
+                    f"{claim_hits[0].text} appears in {where}; review the full clause for context.",
+                    anchor_type,
+                    claim_values,
+                    clause_values,
+                )
+            continue
         return ClauseVerdict(
             "parametric_contradiction",
             f"The summary states {claim_hits[0].text}; {where} states {clause_hits[0].text}.",
@@ -97,6 +115,10 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             claim_values,
             clause_values,
         )
+    if present_verdict is not None:
+        return present_verdict
+    if not_found_verdict is not None:
+        return not_found_verdict
 
     for anchor in claim_anchors:
         if anchor.type == "quote" and verbatim_run_present(anchor.text, clause):

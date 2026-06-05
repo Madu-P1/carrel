@@ -23,6 +23,7 @@ from services.ingestion.persistence import embed_and_index_nodes, insert_typed_n
 from services.ingestion.typed_walker import TypedNode
 from services.legal.deterministic_envelope import build_deterministic_envelope
 from services.legal.local_caselaw import local_caselaw_client
+from services.verify import verify_draft_stream
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MIGRATIONS_SOURCE = REPO_ROOT / "migrations"
@@ -72,6 +73,57 @@ class LitigatorZeroEgressTests(unittest.TestCase):
         verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
         self.assertFalse(verdict["exists"])  # the catch fired, offline
         self.assertEqual("deterministic", env["provider"])
+
+    def test_litigator_opener_no_injected_client_opens_no_real_socket(self) -> None:
+        # The production path (services.verify.verify_draft) injects NO client. The
+        # engine must therefore be offline BY CONSTRUCTION, not contingent on an env
+        # flag. Token present (the demo sentinel) so the courtlistener token guard
+        # passes; if the engine fell through to a real one-shot client this draft
+        # would POST to courtlistener.com. CACHET_LOCAL_CASELAW is explicitly absent
+        # so this proves the floor, not the flag.
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            os.environ.pop("CACHET_LOCAL_CASELAW", None)
+            with _forbid_sockets():
+                env = build_deterministic_envelope("As held in 999 U.S. 999, the rule applies.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(verdict["exists"])  # caught offline with no client injected
+        self.assertEqual("deterministic", env["provider"])
+
+
+class StreamZeroEgressTests(unittest.TestCase):
+    """The demo UI's ONLY verify entrypoint is the stream (VerifyView -> POST
+    /api/verify/stream -> verify_draft_stream). With the deterministic flag on it
+    must be offline by construction, exactly like the non-stream path. The prior
+    zero-egress tests covered only build_deterministic_envelope, never the stream,
+    so a real cite through the live UI POSTed the draft to courtlistener.com."""
+
+    def test_stream_is_offline_when_deterministic_flag_on(self) -> None:
+        import sqlite3
+
+        conn = sqlite3.connect(":memory:")
+        events: list = []
+        with mock.patch.dict(
+            os.environ,
+            {"CACHET_DETERMINISTIC_VERIFY": "1", "COURTLISTENER_API_TOKEN": "local"},
+            clear=False,
+        ):
+            os.environ.pop("CACHET_LOCAL_CASELAW", None)
+            with _forbid_sockets():
+                for event in verify_draft_stream(
+                    conn,
+                    "As held in 999 U.S. 999, the rule applies.",
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                ):
+                    events.append(event)
+        conn.close()
+        results = [e for e in events if e.get("type") == "result"]
+        self.assertTrue(results, "stream emitted no result event")
+        verify = results[-1]["verify"]
+        # The deterministic engine ran (not the LLM path), offline, through the
+        # exact entrypoint the GUI uses.
+        self.assertEqual("deterministic", verify.get("provider"))
+        self.assertTrue(verify.get("claim_verdicts"), "no verdicts from the stream engine")
 
 
 class ContractZeroEgressTests(unittest.TestCase):
@@ -135,6 +187,38 @@ class ContractZeroEgressTests(unittest.TestCase):
         self.assertEqual(
             "parametric_contradiction", env["claims"][0]["contract_verdict"]["disposition"]
         )
+
+    def test_stream_contract_close_with_empty_doc_ids_is_offline(self) -> None:
+        # Demo-faithful: the UI sends NO doc_ids. The full-library fallback must scope
+        # to the ingested contract so the $1,000,000-vs-$500,000 contradiction fires
+        # through the STREAM (the entrypoint the GUI calls), offline. default_embedder
+        # is patched to the in-process embedder so no fastembed weights are fetched;
+        # the socket ban proves nothing else egresses either.
+        import services.retrieval.nodes_vector as nodes_vector
+
+        with (
+            mock.patch.dict(
+                os.environ,
+                {"CACHET_DETERMINISTIC_VERIFY": "1", "COURTLISTENER_API_TOKEN": "local"},
+                clear=False,
+            ),
+            mock.patch.object(nodes_vector, "default_embedder", lambda: self._embedder),
+            _forbid_sockets(),
+        ):
+            events = list(
+                verify_draft_stream(
+                    self._conn,
+                    "The aggregate liability is capped at $1,000,000.",
+                    log_study_event=lambda *a, **k: None,
+                    fetch_recent_events=lambda *a, **k: [],
+                )
+            )
+        results = [e for e in events if e.get("type") == "result"]
+        self.assertTrue(results, "stream emitted no result event")
+        cards = results[-1]["verify"].get("claim_verdicts") or []
+        self.assertTrue(cards, "no verdicts from the contract stream")
+        # The contradiction fired via the fallback (empty doc_ids), offline.
+        self.assertEqual("unsupported", cards[0]["verdict"])
 
 
 if __name__ == "__main__":

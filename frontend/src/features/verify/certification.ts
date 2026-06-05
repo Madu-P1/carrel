@@ -104,9 +104,20 @@ export function sha256OfText(text: string): string {
   return sha256Hex(new TextEncoder().encode(text));
 }
 
+// The attestation keys off the provider label. That is sound only because each
+// label is structurally tied to where it ran: "afm" (Apple on-device) and
+// "ollama" (localhost) are local models; "deterministic" is the no-LLM engine,
+// which is offline BY CONSTRUCTION (services/legal/deterministic_envelope cannot
+// egress without an explicitly injected online client; tests/test_zero_egress
+// locks this). "claude" is cloud. Anything unrecognized (""/"unknown") is treated
+// as NOT local, so the artifact never over-claims locality. If an online
+// deterministic mode is ever added, the attestation must move to an engine-emitted
+// signal rather than this label, because the label would no longer prove locality.
 const LOCAL_PROVIDERS = new Set(["afm", "ollama", "deterministic"]);
 
-/** True when the producing provider ran on-device (no data left the machine). */
+/** True when the producing provider ran on-device (no data left the machine).
+ * Fail-safe: an unrecognized provider is never local, so locality is never
+ * over-claimed in the filing-grade artifact. */
 export function isLocalExecution(provider: string): boolean {
   return LOCAL_PROVIDERS.has((provider ?? "").trim().toLowerCase());
 }

@@ -4,8 +4,9 @@ Produces the same envelope dict shape that
 ``services.verify._verify_result_from_envelope`` already consumes, but
 the unit selection is deterministic (T0): the draft is split into
 sentences, each sentence carrying a citation anchor is checked for
-case-existence (offline against the bundled corpus when
-``CACHET_LOCAL_CASELAW`` is set), holding-match stays OFF, and
+case-existence (offline against the bundled corpus, answered in-process
+with no network unless a caller explicitly injects an online client),
+holding-match stays OFF, and
 anchor-free sentences route to ``unsupported_spans`` instead of being
 silently dropped.
 
@@ -21,6 +22,7 @@ lock-step with the LLM path.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from typing import Sequence
 
@@ -49,10 +51,6 @@ def deterministic_verify_enabled() -> bool:
     return _enabled("CACHET_DETERMINISTIC_VERIFY")
 
 
-def local_caselaw_enabled() -> bool:
-    return _enabled("CACHET_LOCAL_CASELAW")
-
-
 def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
     """Annotate the deterministic litigator verdicts in place.
 
@@ -75,33 +73,86 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
                 v["caption_mismatch"] = True
 
 
-def _quote_altered_reason(sentence: str, case_verdicts: list[dict]) -> str | None:
-    """L4: a quoted run attributed to a cited case must appear verbatim in it.
-
-    Checks the sentence's quoted runs against the bundled opinion text of the
-    resolved cites. An absent run means the quote was altered (a word changed, or
-    an ellipsis dropping context). Returns None when there is nothing to quote or
-    no opinion text to check against (cannot determine, never a false flag).
-    """
-    spans = extract_draft_quote_spans(sentence)
-    if not spans:
-        return None
-    opinions = [
+def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:
+    """Bundled opinion texts for the cites that resolved in these verdicts."""
+    return [
         text
         for batch in case_verdicts
         for v in batch.get("verdicts", [])
         if v.get("exists") and (text := local_opinion_text(v.get("citation")))
     ]
-    if not opinions:
+
+
+def _quoted_subphrases(run: str) -> list[str]:
+    """The distinct quoted phrases inside a run, in case the span regex merged them.
+
+    The quote-span extractor captures greedily from the first quote mark to the
+    last, so a sentence with two quoted phrases ('"A" failed because "B"') yields a
+    single run with the inner marks retained ('A" failed because "B'). Splitting on
+    quote marks recovers the phrases at the even positions; the odd positions are
+    the lawyer's own connecting prose, which was never quoted and must not be
+    checked. A run with no inner marks yields itself unchanged.
+    """
+    parts = re.split(r'["“”]', run)
+    phrases = [p for idx, p in enumerate(parts) if idx % 2 == 0 and p.strip()]
+    return phrases or [run]
+
+
+def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
+    """A quoted phrase that is not verbatim in the cited opinion text we hold.
+
+    ``opinions`` is the bundled opinion text of the cases cited in THIS sentence
+    (the build loop attributes same-sentence only). A phrase that is present is
+    confirmed; a phrase that is ABSENT returns a could-not-check reason, NOT an
+    "altered" accusation: the bundled opinion text is not guaranteed complete, so an
+    absent phrase may be a misquote OR a real passage we do not hold. Refusing to
+    verify is the honest call; a false "you fabricated this quote" is the
+    malpractice direction. Returns None when there is nothing to quote or no opinion
+    to check against. Each run is split into its distinct quoted phrases first, so
+    two genuinely-verbatim quotes the greedy span regex merged into one run are
+    checked separately, not flagged as one.
+    """
+    spans = extract_draft_quote_spans(sentence)
+    if not spans or not opinions:
         return None
     for inner_text, _start, _end in spans:
         for run in split_runs(inner_text):
-            if run.strip() and not any(verbatim_run_present(run, op) for op in opinions):
-                return (
-                    f'The quoted language "{run.strip()}" does not appear verbatim in '
-                    "the cited opinion."
-                )
+            for phrase in _quoted_subphrases(run):
+                phrase = phrase.strip()
+                if phrase and not _run_present_any(phrase, opinions):
+                    return (
+                        f'The quoted language "{phrase}" could not be verified against '
+                        "the available opinion text."
+                    )
     return None
+
+
+def _first_letter_variants(run: str) -> tuple[str, ...]:
+    """The run, plus the run with its first alphabetic character's case toggled.
+
+    A lawyer who embeds a quote mid-sentence routinely lowercases the source's
+    leading capital ("separate educational facilities..." from a sentence that
+    opened "Separate ...") without the bracket convention ("[s]eparate"). That is
+    a universally accepted edit, not an alteration, so the altered-quote check
+    must accept either case at the leading letter. Interior case stays strict, so
+    a substituted interior word is still caught.
+    """
+    for i, ch in enumerate(run):
+        if ch.isalpha():
+            swapped = ch.lower() if ch.isupper() else ch.upper()
+            if swapped == ch:
+                break
+            return (run, run[:i] + swapped + run[i + 1 :])
+    return (run,)
+
+
+def _run_present_any(run: str, opinions: list[str]) -> bool:
+    """True if ``run`` (or its leading-letter case variant) is verbatim in any opinion."""
+    return any(
+        verbatim_run_present(variant, op)
+        for variant in _first_letter_variants(run)
+        for op in opinions
+    )
 
 
 def _contract_claim(
@@ -153,13 +204,35 @@ def build_deterministic_envelope(
     are given): each other anchor-bearing sentence is checked against the
     retrieved contract clause. Anchor-free sentences go to ``unsupported_spans``.
     """
-    cl_client = client
-    if cl_client is None and local_caselaw_enabled():
-        cl_client = local_caselaw_client()
+    # Offline by construction: case-existence is answered from the bundled corpus
+    # via an in-process MockTransport, never the network. Going online is an
+    # explicit code-level opt-in (inject a client); there is deliberately no env
+    # var that turns on egress, so "no data leaves this device" holds even if the
+    # operator's setup is wrong. The courtlistener token guard still passes with the
+    # demo sentinel token, so without this floor the litigator path would POST the
+    # brief text to courtlistener.com.
+    cl_client = client if client is not None else local_caselaw_client()
 
+    if conn is not None and not doc_ids:
+        # Full-library fallback: the demo UI's stream sends no doc_ids, so scope the
+        # contract check to every ready document. On the demo machine the only
+        # ingested document is the contract, so the contract close runs without a
+        # document picker. A litigator brief whose non-citation sentences match no
+        # clause simply yields could_not_check, so this never pollutes the opener.
+        # Fail safe to litigator-only if the documents table is absent.
+        try:
+            doc_ids = [
+                row[0] for row in conn.execute("SELECT id FROM documents WHERE status = 'ready'")
+            ]
+        except sqlite3.Error:
+            doc_ids = []
     contract_mode = conn is not None and bool(doc_ids)
+    sentences = split_sentences(draft)
     claims: list[dict] = []
-    for sentence in split_sentences(draft):
+    # Opinion text of the cases that resolved in each sentence, so the altered-quote
+    # pass can check a quote against cites in its own OR an adjacent sentence.
+    opinions_by_sentence: dict[int, list[str]] = {}
+    for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence)
         if any(a.type == "citation" for a in anchors):
             verdicts = verify_claims_for_cases(
@@ -170,11 +243,8 @@ def build_deterministic_envelope(
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
             _annotate_litigator_verdicts(sentence, serialized)
-            claim = {"text": sentence, "citations": [], "case_verdicts": serialized}
-            altered = _quote_altered_reason(sentence, serialized)
-            if altered:
-                claim["quote_altered_reason"] = altered
-            claims.append(claim)
+            opinions_by_sentence[i] = _opinions_from_verdicts(serialized)
+            claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
         elif contract_mode and anchors:
             claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
         else:
@@ -196,6 +266,18 @@ def build_deterministic_envelope(
                     "could_not_check_reason": reason,
                 }
             )
+
+    # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
+    # only against the cases cited in its OWN sentence. Proximity is not attribution:
+    # a quote in a sentence adjacent to an unrelated cite ("Brown, 347 U.S. 483. The
+    # contract defined 'X'.") must never be accused of misquoting that case. The cost
+    # is that an altered quote whose cite sits in a separate sentence is reported
+    # could-not-check rather than flagged, which is the right trade for a tool whose
+    # core promise is no false accusations.
+    for i, sentence in enumerate(sentences):
+        unverified = _quote_unverified_reason(sentence, opinions_by_sentence.get(i, []))
+        if unverified:
+            claims[i]["quote_could_not_check_reason"] = unverified
 
     return {
         "claims": claims,

@@ -66,9 +66,20 @@ DEMO_CORPUS: dict[str, LocalCase] = {
 
 
 def local_opinion_text(citation: str, corpus: dict[str, LocalCase] | None = None) -> str | None:
-    """The bundled opinion text for a resolved citation, or None if not bundled."""
+    """The bundled opinion text for a resolved citation, or None if not bundled.
+
+    Tries the citation as given, then eyecite's normalized form, so a cite
+    written in the official "347 U. S. 483" spacing still finds its opinion
+    text (the altered-quote check must not silently degrade to could_not_check
+    just because of reporter spacing).
+    """
     cases = corpus if corpus is not None else DEMO_CORPUS
     case = cases.get(citation)
+    if case is None and citation:
+        for ref in find_citations(citation):
+            case = cases.get(ref.corrected or ref.matched_text)
+            if case is not None:
+                break
     return case.opinion_text if case and case.opinion_text else None
 
 
@@ -77,7 +88,10 @@ def _lookup_response(text: str, corpus: dict[str, LocalCase]) -> list[dict]:
     out: list[dict] = []
     for ref in find_citations(text):
         cite = ref.matched_text
-        case = corpus.get(cite)
+        # Key the corpus on eyecite's normalized form so the official reporter
+        # spacing ("347 U. S. 483") and a trailing pincite/year still resolve;
+        # the displayed `citation` stays as the lawyer wrote it.
+        case = corpus.get(ref.corrected or cite) or corpus.get(cite)
         if case is None:
             out.append(
                 {

@@ -50,6 +50,15 @@ class MoneyAnchorTests(unittest.TestCase):
         # "$1.999" rounds to 200 cents, it does not truncate to $1.99.
         self.assertEqual(200, _first("$1.999", "money").canonical_value)
 
+    def test_mm_millions_suffix_scales(self) -> None:
+        # "MM" is the standard legal/finance notation for millions: "$5MM" is
+        # $5,000,000, not $5. It must scale and keep the suffix in the span text,
+        # so a contract check never compares a truncated $5 against the real value.
+        self.assertEqual("$5MM", _first("$5MM", "money").text)
+        self.assertEqual(500_000_000, _first("$5MM", "money").canonical_value)
+        self.assertEqual(500_000_000, _first("a $5MM fee", "money").canonical_value)
+        self.assertEqual(250_000_000, _first("$2.5MM", "money").canonical_value)
+
 
 class DurationAnchorTests(unittest.TestCase):
     def test_duration_canonical_days(self) -> None:

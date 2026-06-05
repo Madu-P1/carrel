@@ -21,10 +21,11 @@
  * Pure and deterministic. No confidence scores anywhere, by design.
  *
  * NOTE: the deterministic engine checks the user's draft quotes against the cited
- * opinion text (L4) and surfaces an altered quote as claim_unsupported carrying an
- * explanatory detail. A dedicated "quote altered" disposition kind (its own label
- * and register) is a polish item. The LLM path, which grounds its own extracted
- * quotes rather than the draft's, still cannot emit the signal.
+ * opinion text it holds. A quote it cannot confirm verbatim is surfaced as
+ * could_not_check (an honest refusal), never an "altered/unsupported" accusation,
+ * because the bundled opinion text is not guaranteed complete. The LLM path's
+ * brief-level quote panel, which grounds against a retrieved source pool, can still
+ * report a true "altered" status separately.
  */
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
@@ -225,6 +226,13 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       "Citation verified",
       "The cited case exists in the record checked. Whether it supports your proposition was not evaluated."
     );
+  }
+  // A contract "present" finding: the value or quoted language appears verbatim in
+  // a named clause. Positive (green), but the hedge detail keeps it honest, that
+  // this attests the language is PRESENT, not that the surrounding claim is true.
+  const presenceHedge = reasonText(card);
+  if (presenceHedge) {
+    return mk("supported", "Present in your sources", presenceHedge);
   }
   return mk("supported", "Supported", "");
 }

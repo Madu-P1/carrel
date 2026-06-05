@@ -52,7 +52,7 @@ _SLIP_OP = re.compile(r"\bNo\.\s+\d{1,4}-\d{1,6}\b|\bslip\s+op\.", re.IGNORECASE
 # ("$5M" scales, "$5 m" does not, because a spaced bare letter is ambiguous).
 _MONEY = re.compile(
     r"\$\s?\d[\d,]*(?:\.\d+)?"
-    r"(?:\s*(?:million|billion|thousand)(?![-\w])|(?:M|B|K)(?![-\w]))?",
+    r"(?:\s*(?:million|billion|thousand)(?![-\w])|(?:MM|M|B|K)(?![-\w]))?",
     re.IGNORECASE,
 )
 
@@ -82,6 +82,7 @@ _MONEY_SCALE = {
     "k": 1_000,
     "million": 1_000_000,
     "m": 1_000_000,
+    "mm": 1_000_000,  # legal/finance notation: $5MM == $5 million
     "billion": 1_000_000_000,
     "b": 1_000_000_000,
 }
@@ -91,7 +92,7 @@ _DURATION_DAYS = {"year": 365, "month": 30, "week": 7, "day": 1}
 def _money_cents(text: str) -> int | None:
     """Canonical integer cents for a matched money span, or None."""
     m = re.search(
-        r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand|M|B|K)?", text, re.IGNORECASE
+        r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand|MM|M|B|K)?", text, re.IGNORECASE
     )
     if not m:
         return None

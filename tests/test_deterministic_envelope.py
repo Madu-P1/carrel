@@ -58,9 +58,10 @@ class BuildEnvelopeTests(unittest.TestCase):
 
 class VerifyDraftWiringTests(unittest.TestCase):
     def test_flag_routes_verify_draft_through_the_offline_engine(self) -> None:
+        # No CACHET_LOCAL_CASELAW: the engine is offline by construction, so the
+        # no-client production path through verify_draft must stay local without it.
         flags = {
             "CACHET_DETERMINISTIC_VERIFY": "1",
-            "CACHET_LOCAL_CASELAW": "1",
             "COURTLISTENER_API_TOKEN": "local",
         }
         # If the LLM path were taken, this spy would be called; it must not be.
@@ -128,6 +129,23 @@ class VerdictDerivationTests(unittest.TestCase):
         )
         self.assertEqual("unknown", _verdict_from_contract({"disposition": "not_found"}))
 
+    def test_contract_present_keeps_its_hedge(self) -> None:
+        # A "present" finding is positive (verified) but must carry its hedge so the
+        # card attests the value APPEARS in the clause, never that the claim is true.
+        claim = {
+            "text": "The term is two (2) years.",
+            "citations": [],
+            "case_verdicts": [],
+            "contract_verdict": {
+                "disposition": "present",
+                "detail": "two (2) years appears in Section 12; review the full clause for context.",
+            },
+        }
+        card = _claim_dict_to_verdict(claim, 0)
+        self.assertEqual("verified", card.verdict)
+        self.assertIn("appears in", (card.unsupported_reason or "").lower())
+        self.assertIn("section 12", (card.unsupported_reason or "").lower())
+
     def test_claim_card_fabricated_cite_unsupported_with_reason(self) -> None:
         claim = {
             "text": "Per 999 U.S. 999, X.",
@@ -190,41 +208,99 @@ class CaptionMismatchTests(unittest.TestCase):
 
     def test_abbreviated_real_caption_is_not_false_flagged(self) -> None:
         env = self._build("Segregation was rejected in Brown v. Bd. of Educ., 347 U.S. 483.")
-        self.assertFalse(env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch"))
+        self.assertFalse(
+            env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch")
+        )
 
     def test_bare_citation_without_caption_is_not_flagged(self) -> None:
         env = self._build("The rule in 347 U.S. 483 controls this dispute.")
-        self.assertFalse(env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch"))
+        self.assertFalse(
+            env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch")
+        )
 
 
 class AlteredQuoteTests(unittest.TestCase):
-    """L4: a quoted run attributed to a cited case must appear verbatim in it."""
+    """A quoted phrase verbatim in the cited opinion is confirmed; a phrase we cannot
+    confirm is an honest could-not-check (the bundled opinion is not guaranteed
+    complete), never an "altered" accusation."""
 
     def _build(self, draft: str) -> dict:
         with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
             return build_deterministic_envelope(draft, client=local_caselaw_client())
 
-    def test_altered_quote_is_flagged(self) -> None:
+    def test_misquote_is_could_not_check_not_an_accusation(self) -> None:
+        # A misquote we cannot confirm against the held opinion text is could-not-check,
+        # never "altered/unsupported": the bundled opinion may be incomplete, so a
+        # false "you fabricated this quote" is the malpractice direction we refuse.
         env = self._build(
             'The Court said "separate facilities are inherently equal," '
             "Brown v. Board of Education, 347 U.S. 483."
         )
         claim = env["claims"][0]
-        self.assertIn("quote_altered_reason", claim)
-        self.assertEqual("unsupported", _claim_dict_to_verdict(claim, 0).verdict)
+        self.assertIn("quote_could_not_check_reason", claim)
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
 
-    def test_correct_quote_is_not_flagged(self) -> None:
+    def test_correct_quote_is_verified(self) -> None:
         env = self._build(
             'The Court held that "Separate educational facilities are inherently '
             'unequal." Brown v. Board of Education, 347 U.S. 483.'
         )
         claim = env["claims"][0]
-        self.assertNotIn("quote_altered_reason", claim)
+        self.assertNotIn("quote_could_not_check_reason", claim)
         self.assertEqual("verified", _claim_dict_to_verdict(claim, 0).verdict)
 
-    def test_bare_cite_without_a_quote_is_not_flagged(self) -> None:
+    def test_bare_cite_without_a_quote_is_verified(self) -> None:
         env = self._build("Brown v. Board of Education, 347 U.S. 483, controls this dispute.")
-        self.assertNotIn("quote_altered_reason", env["claims"][0])
+        self.assertNotIn("quote_could_not_check_reason", env["claims"][0])
+
+    def test_cross_sentence_quote_is_not_attributed(self) -> None:
+        # A quote whose cite is in a SEPARATE sentence is not attributed to it, so it
+        # is not checked here at all (no false accusation across a sentence boundary).
+        env = self._build(
+            "The Court rejected segregation in unmistakable terms. "
+            'It announced that separate facilities are "inherently equal" as a matter of law. '
+            "The controlling authority is Brown v. Board of Education, 347 U.S. 483."
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), "a quote was attributed across a sentence boundary")
+
+    def test_cross_sentence_correct_quote_is_not_flagged(self) -> None:
+        env = self._build(
+            "The Court rejected segregation in unmistakable terms. "
+            'It announced that "Separate educational facilities are inherently unequal" plainly. '
+            "The controlling authority is Brown v. Board of Education, 347 U.S. 483."
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"correct cross-sentence quote wrongly handled: {reasons}")
+
+    def test_quote_with_no_nearby_cite_is_not_checked(self) -> None:
+        # A quote from a non-cited source (a witness, the record) has no case cite
+        # within reach and must never be accused or even checked against one.
+        env = self._build('The witness testified, "I saw the defendant flee the scene."')
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"non-cited quote wrongly checked: {reasons}")
+
+    def test_non_cited_source_quote_adjacent_to_a_cite_is_not_flagged(self) -> None:
+        # The credibility-killer: a quote from a NON-cited source (a statute, the
+        # record, a contract) in a sentence next to an unrelated case cite must NOT
+        # be accused of being an altered quote of that case.
+        env = self._build(
+            "Brown v. Board of Education, 347 U.S. 483 (1954). "
+            'The contract there defined the term as "any motor vehicle" for all purposes.'
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"non-cited-source quote falsely accused: {reasons}")
+
+    def test_two_verbatim_quotes_in_one_sentence_are_verified(self) -> None:
+        # Lawyers routinely put two quoted phrases in one sentence. Both are verbatim
+        # in Brown; the greedy span regex merges them into one run, which must NOT be
+        # falsely flagged.
+        env = self._build(
+            'The doctrine of "separate but equal" failed because "Separate educational '
+            'facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483.'
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"two verbatim quotes wrongly flagged: {reasons}")
 
 
 if __name__ == "__main__":

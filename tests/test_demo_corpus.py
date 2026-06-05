@@ -70,14 +70,17 @@ class LitigatorCorpusTests(unittest.TestCase):
         self.assertTrue(exists.get("347 U.S. 483"))  # Brown, in the corpus
         self.assertFalse(exists.get("999 U.S. 999"))  # fabricated, the catch
 
-    def test_motion_catches_the_altered_quote(self) -> None:
+    def test_motion_refuses_the_doctored_quote(self) -> None:
+        # The doctored Brown quote is not verbatim in the held opinion text, so the
+        # engine REFUSES (could-not-check) rather than confirming it or accusing the
+        # author of fabrication. The refusal is the honest state, not a silent pass.
         with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
             env = build_deterministic_envelope(
                 _body(DEMO / "litigator-motion.md"), client=local_caselaw_client()
             )
-        altered = [c for c in env["claims"] if "quote_altered_reason" in c]
-        self.assertEqual(1, len(altered))  # the doctored Brown quote
-        self.assertIn("does not appear verbatim", altered[0]["quote_altered_reason"])
+        unverified = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
+        self.assertEqual(1, len(unverified))  # the doctored Brown quote
+        self.assertIn("could not be verified", unverified[0]["quote_could_not_check_reason"])
 
 
 class ContractCorpusTests(unittest.TestCase):

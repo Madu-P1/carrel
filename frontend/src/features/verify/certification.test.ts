@@ -157,6 +157,9 @@ describe("audit artifact provenance", () => {
     expect(isLocalExecution("ollama")).toBe(true);
     expect(isLocalExecution("claude")).toBe(false);
     expect(isLocalExecution("")).toBe(false);
+    // Fail-safe: unrecognized provider is never local, so locality is never over-claimed.
+    expect(isLocalExecution("unknown")).toBe(false);
+    expect(attestationFor("unknown")).toContain("cloud");
   });
 
   test("attestation states no data left the device for local, and is honest for cloud", () => {

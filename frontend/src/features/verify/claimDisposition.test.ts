@@ -131,6 +131,21 @@ describe("dispositionForClaim", () => {
     expect(d.kind).toBe("supported");
   });
 
+  test("a contract 'present' finding stays supported but surfaces its hedge, never a bare check", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [],
+        unsupported_reason: "two (2) years appears in Section 12; review the full clause for context."
+      })
+    );
+    expect(d.kind).toBe("supported");
+    expect(d.tier).toBe("pass");
+    // The hedge must reach the reader: presence, not proof of truth.
+    expect(d.detail).toContain("appears in Section 12");
+    expect(d.detail).not.toBe("");
+  });
+
   test("a holding that could not be read downgrades verified to could_not_check", () => {
     const d = dispositionForClaim(
       card({
