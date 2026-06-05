@@ -1,5 +1,6 @@
 import db
 
+from routes.cachet_web import register_cachet_web_routes
 from routes.anchors import register_anchor_routes
 from routes.ask_cards import register_ask_cards_routes
 from routes.briefs import register_briefs_routes
@@ -70,6 +71,12 @@ def register_cachet_routes(app) -> None:
     register_search_routes(app)  # hybrid retrieval over the loaded sources
     register_verify_routes(app)  # the product
     register_briefs_routes(app)  # the Shelf
+
+    # Serve the built frontend over loopback so the app runs in the user's own
+    # browser (cross-platform delivery), injecting the local-API token into the
+    # served HTML. Ungated (non-/api/ paths); protected by the loopback Host
+    # guard installed in main.py. See docs/plans/cachet-localhost-browser-2026-06-05.md.
+    register_cachet_web_routes(app)
 
     # /api/health lives in workspace.py alongside Carrel's workspace/srs routes,
     # which Cachet does not serve. Register the liveness probe directly so the
