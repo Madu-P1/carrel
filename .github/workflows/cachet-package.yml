@@ -37,10 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Mirror ci.yml: pnpm/action-setup honors the pnpm@9.12.0 pin in
+      # package.json (corepack alone pulled the latest pnpm 11, which needs
+      # Node >=22.13 / node:sqlite and crashes). Node 22 matches ci.yml.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: corepack enable
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - uses: actions/setup-python@v5
         with:
@@ -48,8 +54,8 @@ jobs:
 
       - name: Build the Cachet frontend
         run: |
-          corepack pnpm --dir frontend install --frozen-lockfile
-          corepack pnpm --dir frontend build:cachet
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend build:cachet
 
       - name: Install package deps (core only)
         run: pip install -r packaging/requirements-package.txt

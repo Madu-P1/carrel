@@ -9,6 +9,9 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0\.."
 
 echo [1/3] Building the Cachet frontend (build:cachet) ...
+REM Pin pnpm to the repo's version so a newer corepack default (which can need
+REM Node 22.13+) doesn't break the build.
+call corepack prepare pnpm@9.12.0 --activate || goto :err
 call corepack pnpm --dir frontend install --frozen-lockfile || goto :err
 call corepack pnpm --dir frontend build:cachet || goto :err
 

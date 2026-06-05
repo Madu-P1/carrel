@@ -11,6 +11,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo "[1/3] Building the Cachet frontend (build:cachet) ..."
+# Pin pnpm to the repo's version so a machine whose corepack defaults to a newer
+# pnpm (which can require Node >=22.13) doesn't break the build.
+corepack prepare pnpm@9.12.0 --activate
 corepack pnpm --dir frontend install --frozen-lockfile
 corepack pnpm --dir frontend build:cachet
 
