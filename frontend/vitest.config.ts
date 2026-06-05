@@ -12,13 +12,12 @@ export default defineConfig({
     environment: "jsdom",
     fileParallelism: false,
     globals: false,
+    // vitest 4 removed test.poolOptions and changed the default pool to "forks".
+    // Pin "threads" + a single worker to preserve the pre-4.x singleThread behavior
+    // (deterministic, low-memory runs for the three.js / pdfjs suites).
+    pool: "threads",
     maxWorkers: 1,
     minWorkers: 1,
-    poolOptions: {
-      threads: {
-        singleThread: true
-      }
-    },
     setupFiles: ["./tests/setup.ts"]
   }
 });

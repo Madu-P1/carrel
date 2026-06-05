@@ -1,0 +1,29 @@
+name: Warm embedding model
+description: >
+  Restore (or download once, with retries) the fastembed embedding model
+  (BAAI/bge-small-en-v1.5) into FASTEMBED_CACHE_PATH so Python jobs do not
+  depend on a live HuggingFace/CDN fetch on every run. That flaky download was
+  the top cause of non-deterministic python-tests / evals failures. Pair this
+  with HF_HUB_OFFLINE=1 on the test step so the run is hermetic against the cache.
+runs:
+  using: composite
+  steps:
+    - name: Restore embedding model cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.fastembed-cache
+        key: fastembed-${{ runner.os }}-bge-small-en-v1.5-v1
+    - name: Pre-fetch embedding model (retry with backoff)
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4 5; do
+          if python -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))"; then
+            echo "embedding model ready in ${FASTEMBED_CACHE_PATH}"
+            exit 0
+          fi
+          backoff=$((attempt * 15))
+          echo "::warning::fastembed model fetch attempt ${attempt}/5 failed; retrying in ${backoff}s"
+          sleep "${backoff}"
+        done
+        echo "::error::Could not fetch BAAI/bge-small-en-v1.5 after 5 attempts (HuggingFace/CDN unreachable)"
+        exit 1

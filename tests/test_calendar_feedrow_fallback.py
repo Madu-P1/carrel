@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -166,14 +167,20 @@ class CalendarFeedRowFallbackTests(unittest.TestCase):
         self.assertTrue(any("post-sync re-fetch" in m for m in captured.output))
 
     def test_upload_ics_falls_back_when_refetch_returns_none(self) -> None:
+        # Relative event date so it stays inside the parser's expansion window
+        # ([now - 30d, now + 90d]); a hardcoded date ages out and zeroes
+        # items_seen, breaking this regression test as wall-clock time passes.
+        event_start = datetime.now(timezone.utc) + timedelta(days=2)
+        dtstart = event_start.strftime("%Y%m%dT%H%M%SZ")
+        dtend = (event_start + timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
         body = (
             "BEGIN:VCALENDAR\r\n"
             "VERSION:2.0\r\n"
             "PRODID:-//apple-calendar-export//\r\n"
             "BEGIN:VEVENT\r\n"
             "UID:evt-1@example\r\n"
-            "DTSTART:20260504T140000Z\r\n"
-            "DTEND:20260504T150000Z\r\n"
+            f"DTSTART:{dtstart}\r\n"
+            f"DTEND:{dtend}\r\n"
             "SUMMARY:Corporate Finance\r\n"
             "END:VEVENT\r\n"
             "END:VCALENDAR\r\n"

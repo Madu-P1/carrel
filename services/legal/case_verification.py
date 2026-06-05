@@ -45,6 +45,11 @@ from .courtlistener import (
     lookup_citations_in_text,
 )
 
+try:
+    from .citations_eyecite import has_citation as _has_citation
+except ImportError:  # pragma: no cover - eyecite is a declared dependency
+    _has_citation = None
+
 LOGGER = get_logger("einstein.legal.case_verification")
 
 # Conservative pre-filter for "does this string plausibly contain a
@@ -331,16 +336,18 @@ class ClaimCaseVerdict:
 def _looks_like_legal_text(text: str) -> bool:
     """Cheap pre-filter to skip non-legal claim texts.
 
-    Returns True if `_CITATION_SHAPE` finds anything — a single
-    plausible citation triggers the full lookup. The shape is loose
-    on purpose: any positive that turns out to be non-legal will
-    come back as status=400/404 from CourtListener, which is
-    correct behavior. The pre-filter exists only to keep tutor
-    latency at zero on corpora with no legal content (the dominant
-    case for the existing study-tool flow).
+    Returns True if eyecite finds a full case- or law-citation. eyecite
+    catches reporters whose abbreviation contains a digit (F.3d,
+    F.Supp.2d, Cal.4th, N.Y.2d) that the legacy `_CITATION_SHAPE` regex
+    silently missed. The regex remains as a fallback if eyecite cannot
+    be imported. The pre-filter exists only to keep tutor latency at
+    zero on corpora with no legal content (the dominant case for the
+    existing study-tool flow).
     """
     if not text or not text.strip():
         return False
+    if _has_citation is not None:
+        return _has_citation(text)
     return _CITATION_SHAPE.search(text) is not None
 
 
