@@ -28,6 +28,33 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 | Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 | Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 
+## Cachet extraction: strangle Carrel in place (ADR-0011, 2026-06-05)
+
+Permanent separation of Cachet from Carrel by deleting the study app around the
+shared verification substrate, then renaming. Decision:
+`docs/adr/ADR-0011-extract-cachet-strangle-carrel.md`. Executable plan with
+per-phase gates: `docs/plans/cachet-extraction-2026-06-05.md`. Premise
+(operator-confirmed 2026-06-05): Carrel-the-study-app is dead; Cachet is the
+sole future product.
+
+Forge-eligible (safe, additive) phases are queued in
+`.claude/forge.cachet-extraction.tasks.md` under a scoped, non-activated
+contract (`.claude/forge.cachet-extraction.contract.yaml`). P2-P5 are
+operator-led.
+
+| Phase | What | Reversible? | Owner | Status |
+|---|---|---|---|---|
+| P0 | Pin verify behavior with a characterization net | yes (additive) | Forge (T-CX0) | pending |
+| P1 | Introduce the `grounding` seam (verify stops importing tutor directly) | yes (one file + import swap) | Forge (T-CX1) | pending |
+| P2 | Stand up Cachet-only end to end (`CACHET_ONLY` backend + verify-only frontend; reconcile the Option A branch) | yes (a flag) | operator | pending |
+| P3 | Strangle the baggage: delete study/SRS/calendar/concepts/reader/library/ask/dashboard/etc., one leaf-first slice per PR | yes per slice (revert until P5) | operator (Chesterton's Fence) | pending |
+| P4 | Collapse the schema: new forward migration drops the orphaned study tables | NO (data loss on dead tables) | operator (one-way door) | pending |
+| P5 | Cut the identity: einstein/carrel to cachet rename, Cachet becomes the default app | NO (irreversible) | operator (one-way door) | pending |
+
+Acceptance criteria, the KEEP/DELETE/DECIDE deletion inventory, the grep-gate
+method, and the rollback gates are in the plan. Run the verify chain green after
+every slice. P4/P5 do not begin until a standalone Cachet runs green.
+
 ## Notes
 - Each plan name in `docs/plans/<plan>.md` when written.
 - Pre-commit kill conditions and success metrics live in the originating plan, not here.

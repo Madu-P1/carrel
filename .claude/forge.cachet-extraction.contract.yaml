@@ -1,0 +1,80 @@
+# Forge contract — Cachet extraction, SAFE phases only (P0-P1)
+#
+# NOT ACTIVE. Forge reads `.claude/forge.contract.yaml`. To run this queue:
+#   cp .claude/forge.contract.yaml .claude/forge.contract.dogfood.bak.yaml   # keep the dogfood contract
+#   cp .claude/forge.cachet-extraction.contract.yaml .claude/forge.contract.yaml
+# Arming the autonomous loop on this work is an operator decision (ADR-0011).
+# This contract covers ONLY P0 (characterization net) and P1 (grounding seam).
+# P2-P5 are operator-led and are not in this queue.
+project:
+  name: "cachet-extraction"
+  root: "."                                  # the worktree (cwd); all paths relative to it
+  autonomous_env: "FORGE_AUTONOMOUS"
+
+verify:
+  commands:
+    - name: "verify-suite"
+      run: "./.venv/bin/python -m unittest tests.test_verify tests.test_verify_stream tests.test_quote_check tests.test_align tests.test_briefs tests.test_briefs_routes"
+      pass_when: "exit_zero"
+    - name: "legal-suite"
+      run: "./.venv/bin/python -m unittest tests.test_legal_case_verification tests.test_legal_courtlistener"
+      pass_when: "exit_zero"
+    - name: "ruff"
+      run: "./.venv/bin/python -m ruff check services routes tests"
+      pass_when: "exit_zero"
+  heavy: []
+
+invariants:
+  machine_checkable:
+    - name: "legal-engine-untouched"
+      run: "git diff --quiet -- services/legal/"      # the deterministic verify engine must not move
+    - name: "tutor-engine-untouched"
+      run: "git diff --quiet -- services/tutor.py"    # the seam wraps it; it is not edited
+    - name: "migrations-untouched"
+      run: "git diff --quiet -- migrations/"          # no schema change in P0-P1
+  prose:
+    - "Never modify services/legal/* or the deterministic verify core during these tasks."
+    - "T-CX1 must leave verify output byte-identical; the seam is a pure interposition, not a rewrite."
+    - "Tests assert real behavior and edge cases. No trivial always-true or 'it renders' assertions."
+
+definition_of_done: >
+  Per the task Acceptance in .claude/forge.cachet-extraction.tasks.md. T-CX0 adds
+  a characterization net over the verify path (the grounding envelope contract and
+  the per-claim verdict mapping) with no non-test file changed and the verify and
+  legal suites green. T-CX1 adds services/grounding.py and routes
+  services/verify.py through it, with verify output byte-identical, services/tutor.py
+  and services/legal/* unchanged, and no direct tutor import left in verify.py.
+
+signals:
+  evals: []
+  held_out: { path: "" }
+  golden_references: []
+  dev_server: { start: "", url: "" }
+  benchmarks: []
+
+human_gates:
+  craft:    { when_paths: ["**/*.css", "**/features/**/*.tsx"], note: "Visual taste; rubric pass not sufficient." }
+  security: { when_paths: ["**/legal/**", "**/*token*", "**/*secret*", "**/local_api_security*"], note: "Verify trust boundary; needs a human read." }
+  followups_log: ".claude/logs/operator-followups.jsonl"
+
+scope:
+  mode: "build-only"
+  drafts_only: true
+  hard_block_extra: ["services/legal/**", "migrations/**"]   # belt-and-suspenders: loop cannot touch these
+  audit_timeout_seconds: 300
+
+rubric: { use_default: true }
+
+queue:
+  source: ".claude/forge.cachet-extraction.tasks.md"
+  pick: "lowest-eligible"
+  active_plan_dir: "docs/plans/"
+
+adversary:
+  cross_model_cmd: "codex"
+  votes: 1
+
+runtime:
+  model: "opus"
+  kill_switch: ".claude/FORGE_HALT"          # NAMESPACED: not .claude/HALT (that is Carrel's)
+  watchdog: false
