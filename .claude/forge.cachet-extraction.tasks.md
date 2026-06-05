@@ -24,7 +24,7 @@ decision.
   the existing verify and legal suites stay green.
 
 ## T-CX1 — Introduce the grounding seam (plan P1)
-- Status: pending
+- Status: done (services/grounding.py + verify routed through it; verify suite 115 green, byte-identical; seam contract pinned by tests/test_grounding.py; forge-auditor APPROVED + forge-rater SHIP + codex cross-model gaps closed; 2026-06-05)
 - Deps: T-CX0 (done)
 - Acceptance: add `services/grounding.py` exposing `ground()` and
   `ground_stream()` that wrap `services.tutor.grounded_tutor_envelope`
