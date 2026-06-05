@@ -9,6 +9,8 @@ type CaseOver = Partial<{
   exists: boolean;
   holding_match: boolean | null;
   holding_error: string | null;
+  caption_mismatch: boolean;
+  holding_skipped: boolean;
 }>;
 
 function caseItem(over: CaseOver = {}) {
@@ -129,6 +131,21 @@ describe("dispositionForClaim", () => {
     expect(d.kind).toBe("supported");
   });
 
+  test("a contract 'present' finding stays supported but surfaces its hedge, never a bare check", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [],
+        unsupported_reason: "two (2) years appears in Section 12; review the full clause for context."
+      })
+    );
+    expect(d.kind).toBe("supported");
+    expect(d.tier).toBe("pass");
+    // The hedge must reach the reader: presence, not proof of truth.
+    expect(d.detail).toContain("appears in Section 12");
+    expect(d.detail).not.toBe("");
+  });
+
   test("a holding that could not be read downgrades verified to could_not_check", () => {
     const d = dispositionForClaim(
       card({
@@ -187,5 +204,102 @@ describe("dispositionForClaim", () => {
     for (const c of samples) {
       expect(dispositionForClaim(c).detail).not.toContain("%");
     }
+  });
+});
+
+// Phase 7: the deterministic engine derives the top-line verdict from
+// case-existence / contract results (services.verify._claim_dict_to_verdict).
+// These lock how those cards render through the existing disposition logic.
+describe("deterministic engine cards", () => {
+  test("a fabricated cite is citation_not_found (the catch), whatever the verdict", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [batch([caseItem({ status: 404, exists: false })])]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+    expect(d.tier).toBe("flag");
+  });
+
+  test("a real cite with holding off is a positive Citation verified, not a refusal", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [
+          batch([caseItem({ status: 200, exists: true, holding_match: null, holding_skipped: true })])
+        ]
+      })
+    );
+    expect(d.kind).toBe("supported");
+    expect(d.tier).toBe("pass");
+    expect(d.label).toBe("Citation verified");
+  });
+
+  test("a real cite whose holding check ERRORED is could_not_check", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [
+          batch([caseItem({ status: 200, exists: true, holding_match: null, holding_error: "fetch failed" })])
+        ]
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("a contract parametric contradiction is claim_unsupported with its detail", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [],
+        unsupported_reason: "the claim's money value contradicts the clause"
+      })
+    );
+    expect(d.kind).toBe("claim_unsupported");
+    expect(d.detail).toContain("contradict");
+  });
+
+  test("a contract not_found is could_not_check, not an accusatory flag", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [],
+        unsupported_reason: "the claim's language does not appear in the clause"
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("a contract present is supported", () => {
+    const d = dispositionForClaim(card({ verdict: "verified", case_verdicts: [] }));
+    expect(d.kind).toBe("supported");
+  });
+
+  test("a caption mismatch (real number, wrong case name) is citation_not_found", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [batch([caseItem({ status: 200, exists: true, caption_mismatch: true })])]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+    expect(d.tier).toBe("flag");
+    expect(d.detail).toContain("different case");
+  });
+
+  test("a no-anchor claim is could_not_check, never an accusatory unsupported", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [],
+        unsupported_reason:
+          "No verifiable anchor (citation, quotation, amount, or date) was found, so this statement was not independently checked."
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+    expect(d.detail).toContain("not independently checked");
   });
 });

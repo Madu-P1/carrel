@@ -148,16 +148,30 @@ def _log_sqlite_vec_warning(reason: str, **context: object) -> None:
     log_event(LOGGER, logging.WARNING, "sqlite_vec_unavailable", reason=reason, **context)
 
 
+def _sqlite_vec_required() -> bool:
+    """Demo/airplane mode: fail loud instead of silently degrading to BM25-only."""
+    return os.getenv("CACHET_REQUIRE_SQLITE_VEC", "").lower() in {"1", "true", "yes"}
+
+
+def _sqlite_vec_unavailable(reason: str, **context: object) -> bool:
+    """Log the reason, then raise in demo mode or return False to degrade."""
+    _log_sqlite_vec_warning(reason, **context)
+    if _sqlite_vec_required():
+        raise RuntimeError(
+            f"sqlite-vec is required (CACHET_REQUIRE_SQLITE_VEC) but unavailable: {reason}. "
+            "Vector retrieval would silently degrade to BM25-only."
+        )
+    return False
+
+
 def _load_extensions(conn: sqlite3.Connection) -> bool:
     if not hasattr(conn, "enable_load_extension"):
-        _log_sqlite_vec_warning("enable_load_extension_missing")
-        return False
+        return _sqlite_vec_unavailable("enable_load_extension_missing")
 
     try:
         conn.enable_load_extension(True)
     except Exception as exc:
-        _log_sqlite_vec_warning("enable_load_extension_failed", error=str(exc))
-        return False
+        return _sqlite_vec_unavailable("enable_load_extension_failed", error=str(exc))
 
     try:
         import sqlite_vec
@@ -165,8 +179,7 @@ def _load_extensions(conn: sqlite3.Connection) -> bool:
         sqlite_vec.load(conn)
         return True
     except Exception as exc:
-        _log_sqlite_vec_warning("sqlite_vec_load_failed", error=str(exc))
-        return False
+        return _sqlite_vec_unavailable("sqlite_vec_load_failed", error=str(exc))
     finally:
         try:
             conn.enable_load_extension(False)

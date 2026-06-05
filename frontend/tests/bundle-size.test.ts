@@ -127,7 +127,12 @@ const indexCssPath = resolve(distDir, "index.css");
 // Bumped 120 -> 124 KB for Cachet PR5b: the Workspace/Margin layout adds three
 // components (WorkspaceMargin, ExaminationDrawer, the segmentation + rail-layout
 // helpers) on the verify surface.
-const ENTRY_JS_GZIP_BUDGET = 124 * 1024;
+// Bumped 124 -> 125 KB for the deterministic verify engine UI (certification
+// exhibit with inline SHA-256, the local/cloud attestation, abbreviation-aware
+// disposition logic): ~124.5 KB gz live. Route-splitting /verify at click time
+// stays the lean-entry option, deferred per the file:// Suspense constraint
+// (see CLAUDE.md).
+const ENTRY_JS_GZIP_BUDGET = 125 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

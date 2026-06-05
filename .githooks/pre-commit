@@ -37,23 +37,70 @@ fail=0
 staged_py=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$' || true)
 staged_fe=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^frontend/.*\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
 
+# ---- resolve a ruff runner ---------------------------------------------------
+# A hardcoded ./.venv/bin/python fails open in a git worktree: there is no
+# local .venv under .claude/worktrees/<name>/, so the old check skipped python
+# lint entirely -- silently bypassing the gate exactly where agent sessions
+# commit. Resolve a usable ruff robustly instead, in preference order:
+#   1. this checkout's .venv         (main checkout / normal dev box)
+#   2. the main checkout's .venv     (worktrees share the main repo's .git)
+#   3. ruff on PATH
+#   4. python3 -m ruff
+# Each candidate is probed with `ruff --version`, so a venv that exists but
+# lacks ruff is rejected rather than trusted. On success RUFF_CMD holds the
+# runner as an argv array. If nothing resolves we FAIL the commit (loud, with
+# an escape hatch) rather than skip (silent) -- that silent skip is the bug
+# this fix closes. All probing happens under `if ! resolve_ruff`, so `set -e`
+# is suspended for the function body and a failing probe can't abort the hook.
+RUFF_CMD=()
+resolve_ruff() {
+  local common_dir main_root main_py
+  # 1. this checkout's venv
+  if [ -x "./.venv/bin/python" ] && ./.venv/bin/python -m ruff --version >/dev/null 2>&1; then
+    RUFF_CMD=("./.venv/bin/python" -m ruff); return 0
+  fi
+  # 2. the main checkout's venv (we may be inside a worktree)
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
+  if [ -n "$common_dir" ]; then
+    case "$common_dir" in /*) ;; *) common_dir="$PWD/$common_dir" ;; esac
+    main_root="$(cd "$(dirname "$common_dir")" 2>/dev/null && pwd)" || main_root=""
+    main_py="$main_root/.venv/bin/python"
+    if [ -n "$main_root" ] && [ -x "$main_py" ] && "$main_py" -m ruff --version >/dev/null 2>&1; then
+      RUFF_CMD=("$main_py" -m ruff); return 0
+    fi
+  fi
+  # 3. ruff on PATH
+  if command -v ruff >/dev/null 2>&1; then
+    RUFF_CMD=(ruff); return 0
+  fi
+  # 4. python3 -m ruff
+  if command -v python3 >/dev/null 2>&1 && python3 -m ruff --version >/dev/null 2>&1; then
+    RUFF_CMD=(python3 -m ruff); return 0
+  fi
+  return 1
+}
+
 # ---- python: ruff format + ruff check ----------------------------------------
 if [ -n "$staged_py" ]; then
-  if [ ! -x "./.venv/bin/python" ]; then
-    echo "${YELLOW}pre-commit: skipping python checks (./.venv/bin/python not found).${RESET}"
-    echo "${DIM}Run: uv venv && uv pip install -e \".[dev]\" to set up.${RESET}"
+  if ! resolve_ruff; then
+    echo "${RED}pre-commit: cannot lint staged python -- no usable ruff found.${RESET}"
+    echo "${YELLOW}Tried local .venv, the main checkout's .venv, ruff on PATH, and python3 -m ruff.${RESET}"
+    echo "${DIM}Fix: uv venv && uv pip install -e \".[dev]\"   (or: pipx install ruff)${RESET}"
+    echo "${DIM}Bypass once with --no-verify; CI still runs the full chain regardless.${RESET}"
+    fail=1
   else
-    echo "${DIM}pre-commit: ruff format --check on staged python...${RESET}"
-    if ! ./.venv/bin/python -m ruff format --check $staged_py; then
+    ruff_display="${RUFF_CMD[*]}"
+    echo "${DIM}pre-commit: ruff format --check on staged python (${ruff_display})...${RESET}"
+    if ! "${RUFF_CMD[@]}" format --check $staged_py; then
       echo "${RED}pre-commit: ruff format check failed.${RESET}"
-      echo "${YELLOW}Fix with:  ./.venv/bin/python -m ruff format $(echo $staged_py | tr '\n' ' ')${RESET}"
+      echo "${YELLOW}Fix with:  ${ruff_display} format $(echo $staged_py | tr '\n' ' ')${RESET}"
       fail=1
     fi
 
     echo "${DIM}pre-commit: ruff check on staged python...${RESET}"
-    if ! ./.venv/bin/python -m ruff check $staged_py; then
+    if ! "${RUFF_CMD[@]}" check $staged_py; then
       echo "${RED}pre-commit: ruff check failed.${RESET}"
-      echo "${YELLOW}Fix with:  ./.venv/bin/python -m ruff check --fix $(echo $staged_py | tr '\n' ' ')${RESET}"
+      echo "${YELLOW}Fix with:  ${ruff_display} check --fix $(echo $staged_py | tr '\n' ' ')${RESET}"
       fail=1
     fi
   fi

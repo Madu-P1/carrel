@@ -2,7 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import type { VerifyResponse } from "@/services/api/endpoints";
 
-import { buildCertification, fingerprintDraft, sealStateFor } from "./certification";
+import {
+  attestationFor,
+  buildCertification,
+  certificationToJson,
+  fingerprintDraft,
+  isLocalExecution,
+  sealStateFor
+} from "./certification";
 
 function resp(over: Partial<Record<string, unknown>> = {}): VerifyResponse {
   return {
@@ -138,5 +145,52 @@ describe("buildCertification", () => {
   test("no item label contains a percentage", () => {
     const m = buildCertification(resp({ draft_text: "x", claim_verdicts: [supported, fabricated] }), AT);
     for (const it of m.allItems) expect(it.label).not.toContain("%");
+  });
+});
+
+// Phase 8: filing-grade audit artifact (local/cloud provenance, attestation,
+// per-source fingerprints, machine-readable export).
+describe("audit artifact provenance", () => {
+  test("local providers are local; cloud is not", () => {
+    expect(isLocalExecution("deterministic")).toBe(true);
+    expect(isLocalExecution("afm")).toBe(true);
+    expect(isLocalExecution("ollama")).toBe(true);
+    expect(isLocalExecution("claude")).toBe(false);
+    expect(isLocalExecution("")).toBe(false);
+    // Fail-safe: unrecognized provider is never local, so locality is never over-claimed.
+    expect(isLocalExecution("unknown")).toBe(false);
+    expect(attestationFor("unknown")).toContain("cloud");
+  });
+
+  test("attestation states no data left the device for local, and is honest for cloud", () => {
+    expect(attestationFor("deterministic")).toContain("No data left this device");
+    const cloud = attestationFor("claude");
+    expect(cloud).toContain("claude");
+    expect(cloud).toContain("cloud");
+  });
+
+  test("buildCertification records local execution + attestation from the provider", () => {
+    const local = buildCertification(resp({ provider: "deterministic", claim_verdicts: [supported] }), AT);
+    expect(local.localExecution).toBe(true);
+    expect(local.attestation).toContain("No data left this device");
+
+    const cloud = buildCertification(resp({ provider: "claude", claim_verdicts: [supported] }), AT);
+    expect(cloud.localExecution).toBe(false);
+  });
+
+  test("each certified item carries a per-source SHA-256 aligned with its sources", () => {
+    const m = buildCertification(resp({ claim_verdicts: [supported] }), AT);
+    const item = m.allItems[0];
+    expect(item.sourceFingerprints).toHaveLength(item.sources.length);
+    for (const fp of item.sourceFingerprints) expect(fp).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("certificationToJson is valid JSON carrying a schema version and the attestation", () => {
+    const m = buildCertification(resp({ provider: "deterministic", claim_verdicts: [supported] }), AT);
+    const parsed = JSON.parse(certificationToJson(m));
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.localExecution).toBe(true);
+    expect(parsed.attestation).toContain("No data left this device");
+    expect(parsed.fingerprint).toMatch(/^[0-9a-f]{64}$/);
   });
 });

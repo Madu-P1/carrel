@@ -49,9 +49,11 @@ frontend/.vite/
 frontend/bun.lock
 frontend/bun.lockb
 
-chatgpt-app/node_modules/
-
 factory-reset-audit-*/
+
+# CI-only: fastembed caches the embedding model here (see
+# .github/actions/warm-embedding-model); restored via actions/cache, never committed.
+.fastembed-cache/
 
 macos-app/.build/
 macos-app/Resources/app.new.html

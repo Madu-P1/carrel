@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -140,14 +141,20 @@ class CalendarSecretTests(unittest.TestCase):
         self.assertIn("missing_secret", outcome.error or "")
 
     def test_upload_apple_ics_imports_events_without_storing_filename(self) -> None:
+        # Use an event a few days out so it always lands inside the parser's
+        # [now - 30d, now + 90d] expansion window. A hardcoded calendar date
+        # silently ages out of that window and drops items_seen to 0.
+        event_start = datetime.now(timezone.utc) + timedelta(days=2)
+        dtstart = event_start.strftime("%Y%m%dT%H%M%SZ")
+        dtend = (event_start + timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
         body = (
             "BEGIN:VCALENDAR\r\n"
             "VERSION:2.0\r\n"
             "PRODID:-//apple-calendar-export//\r\n"
             "BEGIN:VEVENT\r\n"
             "UID:apple-1@example\r\n"
-            "DTSTART:20260504T140000Z\r\n"
-            "DTEND:20260504T150000Z\r\n"
+            f"DTSTART:{dtstart}\r\n"
+            f"DTEND:{dtend}\r\n"
             "SUMMARY:Corporate Finance\r\n"
             "END:VEVENT\r\n"
             "END:VCALENDAR\r\n"

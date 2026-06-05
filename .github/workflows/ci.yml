@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# Pin fastembed's model cache to a cacheable directory so the embedding model
+# (BAAI/bge-small-en-v1.5) is fetched once and reused via actions/cache instead
+# of being re-downloaded from HuggingFace on every run. That flaky download was
+# the top cause of non-deterministic python-tests / evals failures.
+env:
+  FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.fastembed-cache
+
 jobs:
   python-quality:
     runs-on: ubuntu-latest
@@ -47,7 +54,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Warm embedding model
+        uses: ./.github/actions/warm-embedding-model
       - name: Maintained blocking test suites
+        env:
+          HF_HUB_OFFLINE: "1"
         run: |
           python -m unittest \
             tests.test_ai_router \
@@ -133,7 +144,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Warm embedding model
+        uses: ./.github/actions/warm-embedding-model
       - name: Advisory legacy LearningOS tests
+        env:
+          HF_HUB_OFFLINE: "1"
         run: python -m unittest tests.test_learning_os -v
 
   evals-smoke-schema:
@@ -148,7 +163,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Warm embedding model
+        uses: ./.github/actions/warm-embedding-model
       - name: Run blocking smoke evals
+        env:
+          HF_HUB_OFFLINE: "1"
         run: python -m evals.run_evals --suite smoke --mode smoke
       - name: Upload eval smoke reports
         if: always()
@@ -172,7 +191,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Warm embedding model
+        uses: ./.github/actions/warm-embedding-model
       - name: Run advisory full evals
+        env:
+          HF_HUB_OFFLINE: "1"
         run: python -m evals.run_evals --suite smoke --mode full
       - name: Upload eval full reports
         if: always()
@@ -193,7 +216,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      - name: Warm embedding model
+        uses: ./.github/actions/warm-embedding-model
       - name: Run advisory benchmark smoke
+        env:
+          HF_HUB_OFFLINE: "1"
         run: |
           python -m benchmarks.phase0 \
             --output data/benchmarks/ci-latest.json \
