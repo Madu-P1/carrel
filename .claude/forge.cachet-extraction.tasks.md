@@ -13,7 +13,7 @@ Activate this queue only by switching the active contract (see the header of
 decision.
 
 ## T-CX0 — Pin verify behavior with a characterization net (plan P0)
-- Status: pending
+- Status: done (tests/test_verify_characterization.py, 5 tests green, operator-built 2026-06-05)
 - Deps: none
 - Acceptance: add a characterization test over the verify path that pins the
   grounding envelope contract `services/verify.py` consumes (`claims`,
@@ -24,8 +24,8 @@ decision.
   the existing verify and legal suites stay green.
 
 ## T-CX1 — Introduce the grounding seam (plan P1)
-- Status: blocked-by T-CX0
-- Deps: T-CX0
+- Status: pending
+- Deps: T-CX0 (done)
 - Acceptance: add `services/grounding.py` exposing `ground()` and
   `ground_stream()` that wrap `services.tutor.grounded_tutor_envelope`
   (`services/verify.py:251`) and `grounded_tutor_envelope_steps`
