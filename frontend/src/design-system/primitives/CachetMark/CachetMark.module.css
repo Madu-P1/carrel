@@ -1,0 +1,74 @@
+/*
+ * Cachet mark, animated. The logo is the truncated C drawn as an open ring,
+ * severed in the upper-left. It moves with transforms (or a path-draw) so the
+ * shape is never altered. Ink is currentColor; reverses on paper or the dark desk.
+ *
+ *   idle      a near-imperceptible breath
+ *   wriggle   a small organic tilt back and forth
+ *   reveal    the ring draws itself along its own path (shape unchanged)
+ */
+
+.root {
+  display: inline-block;
+  line-height: 0;
+
+  --cachet-ease-io: cubic-bezier(0.4, 0, 0.2, 1);
+  --cachet-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --cachet-dur-breath: 3600ms;
+  --cachet-dur-wriggle: 1700ms;
+  --cachet-dur-reveal: 1100ms;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.c {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 16;
+  stroke-linecap: butt;
+}
+
+.mark,
+.cwrap {
+  transform-box: view-box;
+  transform-origin: 120px 120px;
+}
+
+.root[data-state="idle"] .mark {
+  animation: breath var(--cachet-dur-breath) var(--cachet-ease-io) infinite;
+}
+.root[data-state="wriggle"] .cwrap {
+  animation: wriggle var(--cachet-dur-wriggle) var(--cachet-ease-io) infinite;
+}
+.root[data-state="reveal"] .c {
+  stroke-dasharray: 100 100;
+  animation: draw var(--cachet-dur-reveal) var(--cachet-ease-in) 1 both;
+}
+
+@keyframes breath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+@keyframes wriggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(7deg); }
+  75% { transform: rotate(-7deg); }
+}
+@keyframes draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root .mark,
+  .root .cwrap,
+  .root .c {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+}
