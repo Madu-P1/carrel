@@ -35,8 +35,8 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
 
     def _call(self, envelope):
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope",
+            verify_service.grounding,
+            "ground",
             return_value=envelope,
         ):
             return verify_service.verify_draft(
@@ -53,9 +53,7 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
             envelope_calls.append((args, kwargs))
             return {}
 
-        with mock.patch.object(
-            verify_service.tutor_service, "grounded_tutor_envelope", side_effect=spy
-        ):
+        with mock.patch.object(verify_service.grounding, "ground", side_effect=spy):
             result = verify_service.verify_draft(
                 conn=None,
                 draft="   ",
@@ -252,7 +250,7 @@ class VerifyRouteSmokeTests(unittest.TestCase):
 
         with mock.patch("routes.verify.db.get_db", fake_db):
             with mock.patch(
-                "services.verify.tutor_service.grounded_tutor_envelope",
+                "services.verify.grounding.ground",
                 return_value=stub_envelope,
             ):
                 client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})

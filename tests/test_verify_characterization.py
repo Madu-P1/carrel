@@ -10,7 +10,7 @@ preserve byte-for-byte:
   - a draft quote absent from every cited source is never returned "verbatim"
   - a draft with no quoted spans produces no quote results
 
-The engine (grounded_tutor_envelope) is mocked, so these are deterministic and
+The grounding seam (grounding.ground) is mocked, so these are deterministic and
 make no network, DB, or LLM calls. See docs/plans/cachet-extraction-2026-06-05.md
 (P0) and docs/adr/ADR-0011-extract-cachet-strangle-carrel.md.
 """
@@ -43,8 +43,8 @@ def _envelope(**overrides):
 
 def _run(envelope, draft="The claim under audit."):
     with mock.patch.object(
-        verify_service.tutor_service,
-        "grounded_tutor_envelope",
+        verify_service.grounding,
+        "ground",
         return_value=envelope,
     ):
         return verify_service.verify_draft(

@@ -7,8 +7,8 @@ returns a grounded claim, UNSUPPORTED when it lands in the
 unsupported_spans bucket, UNKNOWN when the engine itself failed
 (empty retrieval, scope-fallback weak coverage, provider error).
 
-This module is a thin coordinator on top of
-`services.tutor.grounded_tutor_response`. The engine already does
+This module is a thin coordinator on top of the grounding seam
+(`services.grounding`, ADR-0011 P1). The engine behind it already does
 the hard work — quote validation, structural-citation drops,
 CourtListener case-existence verification (PR c6d5ec08). The
 verifier just changes the framing (question -> draft) and re-shapes
@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence
 
 from app_logging import get_logger, log_event
-from services import tutor as tutor_service
+from services import grounding
 from services.legal.align import align_claims_to_draft, placement_to_dict
 from services.legal.quote_check import (
     SourceText,
@@ -248,7 +248,7 @@ def verify_draft(
         )
 
     payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
-    envelope = tutor_service.grounded_tutor_envelope(
+    envelope = grounding.ground(
         conn,
         payload,
         log_study_event=log_study_event,
@@ -607,7 +607,7 @@ def verify_draft_stream(
 
     payload = _payload_for_envelope(cleaned, doc_ids, subject_name)
     envelope: Dict[str, Any] = {}
-    for event in tutor_service.grounded_tutor_envelope_steps(
+    for event in grounding.ground_stream(
         conn,
         payload,
         log_study_event=log_study_event,

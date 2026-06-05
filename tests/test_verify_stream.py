@@ -99,8 +99,8 @@ def _happy_events():
 class VerifyDraftStreamTests(unittest.TestCase):
     def _run(self, steps_factory):
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope_steps",
+            verify_service.grounding,
+            "ground_stream",
             side_effect=lambda *a, **k: steps_factory(),
         ):
             return list(
@@ -190,8 +190,8 @@ class VerifyDraftStreamTests(unittest.TestCase):
         )
         # identical to the non-stream verify_draft mapping for the same envelope
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope",
+            verify_service.grounding,
+            "ground",
             return_value=_final_envelope(),
         ):
             non_stream = verify_service.verify_result_to_payload(
@@ -235,8 +235,8 @@ class VerifyDraftStreamTests(unittest.TestCase):
 
         collected = []
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope_steps",
+            verify_service.grounding,
+            "ground_stream",
             side_effect=lambda *a, **k: dying_steps(),
         ):
             gen = verify_service.verify_draft_stream(
@@ -333,8 +333,8 @@ class QuoteWiringTests(unittest.TestCase):
 
     def _run(self, envelope, draft=QUOTED_DRAFT):
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope_steps",
+            verify_service.grounding,
+            "ground_stream",
             side_effect=lambda *a, **k: self._steps(envelope)(),
         ):
             return list(
@@ -585,8 +585,8 @@ class PlacementWiringTests(unittest.TestCase):
     def test_placement_on_result_cards_and_unplaced_tray(self) -> None:
         env = self._env()
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope_steps",
+            verify_service.grounding,
+            "ground_stream",
             side_effect=lambda *a, **k: self._steps(env)(),
         ):
             events = list(
@@ -611,8 +611,8 @@ class PlacementWiringTests(unittest.TestCase):
     def test_placement_identical_stream_vs_non_stream(self) -> None:
         env = self._env()
         with mock.patch.object(
-            verify_service.tutor_service,
-            "grounded_tutor_envelope_steps",
+            verify_service.grounding,
+            "ground_stream",
             side_effect=lambda *a, **k: self._steps(env)(),
         ):
             stream = next(
@@ -625,9 +625,7 @@ class PlacementWiringTests(unittest.TestCase):
                 )
                 if e["type"] == "result"
             )["verify"]
-        with mock.patch.object(
-            verify_service.tutor_service, "grounded_tutor_envelope", return_value=env
-        ):
+        with mock.patch.object(verify_service.grounding, "ground", return_value=env):
             non_stream = verify_service.verify_result_to_payload(
                 verify_service.verify_draft(
                     conn=None,
@@ -661,8 +659,8 @@ class VerifyStreamRouteTests(unittest.TestCase):
 
         with mock.patch("routes.verify.db.get_db", fake_db):
             with mock.patch.object(
-                verify_service.tutor_service,
-                "grounded_tutor_envelope_steps",
+                verify_service.grounding,
+                "ground_stream",
                 side_effect=lambda *a, **k: steps_factory(),
             ):
                 client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
