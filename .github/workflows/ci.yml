@@ -47,6 +47,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      # Cache the fastembed/HF embedding model so runs stop fetching it from
+      # HuggingFace live (the 429 rate-limit was flaking these blocking jobs).
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/fastembed
+            ~/.cache/huggingface
+          key: fastembed-bge-small-en-v1.5-${{ runner.os }}-v1
+      - name: Warm embedding model (retry through transient HF 429s)
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            python -c "from services.retrieval.embeddings import FastembedEmbedder; FastembedEmbedder(); print('embedding model ready')" && exit 0
+            echo "warm-up attempt $i failed (likely HuggingFace 429); sleeping 20s"
+            sleep 20
+          done
+          echo "::warning::embedding model warm-up did not complete after retries"
       - name: Maintained blocking test suites
         run: |
           python -m unittest \
@@ -148,6 +165,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+      # Cache + warm the embedding model so the smoke eval stops flaking on
+      # HuggingFace 429s (shared cache key with python-tests).
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/fastembed
+            ~/.cache/huggingface
+          key: fastembed-bge-small-en-v1.5-${{ runner.os }}-v1
+      - name: Warm embedding model (retry through transient HF 429s)
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            python -c "from services.retrieval.embeddings import FastembedEmbedder; FastembedEmbedder(); print('embedding model ready')" && exit 0
+            echo "warm-up attempt $i failed (likely HuggingFace 429); sleeping 20s"
+            sleep 20
+          done
+          echo "::warning::embedding model warm-up did not complete after retries"
       - name: Run blocking smoke evals
         run: python -m evals.run_evals --suite smoke --mode smoke
       - name: Upload eval smoke reports
