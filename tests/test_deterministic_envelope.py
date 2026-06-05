@@ -166,5 +166,36 @@ class VerdictDerivationTests(unittest.TestCase):
         self.assertIn("anchor", (card.unsupported_reason or "").lower())
 
 
+class CaptionMismatchTests(unittest.TestCase):
+    """Gap fix: a fabricated caption on a real reporter number must be caught."""
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_fabricated_caption_on_real_number_is_flagged(self) -> None:
+        env = self._build("As held in Fake v. Nobody, 347 U.S. 483, the rule applies.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(verdict["exists"])  # the number resolves
+        self.assertTrue(verdict.get("caption_mismatch"))  # but to a different case
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("not the case named", (card.unsupported_reason or "").lower())
+
+    def test_correct_caption_is_not_flagged(self) -> None:
+        env = self._build("Segregation was rejected in Brown v. Board of Education, 347 U.S. 483.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(verdict["exists"])
+        self.assertFalse(verdict.get("caption_mismatch"))
+
+    def test_abbreviated_real_caption_is_not_false_flagged(self) -> None:
+        env = self._build("Segregation was rejected in Brown v. Bd. of Educ., 347 U.S. 483.")
+        self.assertFalse(env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch"))
+
+    def test_bare_citation_without_caption_is_not_flagged(self) -> None:
+        env = self._build("The rule in 347 U.S. 483 controls this dispute.")
+        self.assertFalse(env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,8 @@ type CaseOver = Partial<{
   exists: boolean;
   holding_match: boolean | null;
   holding_error: string | null;
+  caption_mismatch: boolean;
+  holding_skipped: boolean;
 }>;
 
 function caseItem(over: CaseOver = {}) {
@@ -205,15 +207,30 @@ describe("deterministic engine cards", () => {
     expect(d.tier).toBe("flag");
   });
 
-  test("a real cite with holding off is could_not_check (exists, support not verified)", () => {
+  test("a real cite with holding off is a positive Citation verified, not a refusal", () => {
     const d = dispositionForClaim(
       card({
         verdict: "verified",
-        case_verdicts: [batch([caseItem({ status: 200, exists: true, holding_match: null })])]
+        case_verdicts: [
+          batch([caseItem({ status: 200, exists: true, holding_match: null, holding_skipped: true })])
+        ]
+      })
+    );
+    expect(d.kind).toBe("supported");
+    expect(d.tier).toBe("pass");
+    expect(d.label).toBe("Citation verified");
+  });
+
+  test("a real cite whose holding check ERRORED is could_not_check", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "verified",
+        case_verdicts: [
+          batch([caseItem({ status: 200, exists: true, holding_match: null, holding_error: "fetch failed" })])
+        ]
       })
     );
     expect(d.kind).toBe("could_not_check");
-    expect(d.tier).toBe("refusal");
   });
 
   test("a contract parametric contradiction is claim_unsupported with its detail", () => {
@@ -243,6 +260,18 @@ describe("deterministic engine cards", () => {
   test("a contract present is supported", () => {
     const d = dispositionForClaim(card({ verdict: "verified", case_verdicts: [] }));
     expect(d.kind).toBe("supported");
+  });
+
+  test("a caption mismatch (real number, wrong case name) is citation_not_found", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [batch([caseItem({ status: 200, exists: true, caption_mismatch: true })])]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+    expect(d.tier).toBe("flag");
+    expect(d.detail).toContain("different case");
   });
 
   test("a no-anchor claim is could_not_check, never an accusatory unsupported", () => {

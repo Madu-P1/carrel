@@ -28,6 +28,7 @@ import httpx
 
 from services.legal.anchors import extract_anchors
 from services.legal.case_verification import verify_claims_for_cases
+from services.legal.citations_eyecite import caption_matches, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
 from services.legal.local_caselaw import local_caselaw_client
 from services.legal.sentences import split_sentences
@@ -48,6 +49,28 @@ def deterministic_verify_enabled() -> bool:
 
 def local_caselaw_enabled() -> bool:
     return _enabled("CACHET_LOCAL_CASELAW")
+
+
+def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
+    """Annotate the deterministic litigator verdicts in place.
+
+    - ``holding_skipped``: holding-match was deliberately off, so a null holding
+      result is "not evaluated" (a positive existence confirmation), distinct
+      from the LLM path's "ran but could not determine".
+    - ``caption_mismatch``: the number resolves but to a different case than the
+      draft names (a fabricated caption on a real number). eyecite reads the
+      draft's party names; ``caption_matches`` compares them leniently so an
+      abbreviated real caption is never falsely flagged.
+    """
+    refs = {r.matched_text: r for r in find_citations(sentence)}
+    for batch in case_verdicts:
+        for v in batch.get("verdicts", []):
+            v["holding_skipped"] = True
+            if not v.get("exists") or not v.get("case_name"):
+                continue
+            ref = refs.get(v.get("citation"))
+            if ref is not None and not caption_matches(ref, v["case_name"]):
+                v["caption_mismatch"] = True
 
 
 def _contract_claim(
@@ -108,24 +131,15 @@ def build_deterministic_envelope(
     for sentence in split_sentences(draft):
         anchors = extract_anchors(sentence)
         if any(a.type == "citation" for a in anchors):
-            # FOLLOW-UP (review 2026-06-05): existence verifies the reporter number
-            # resolves, NOT that the draft's caption matches the resolved case. A
-            # fabricated caption on a real number ("Fake v. Nobody, 347 U.S. 483")
-            # returns exists=True today. Mitigation now: the resolved case_name is
-            # carried in the verdict so a human sees the mismatch. Deterministic
-            # caption-similarity check (vs eyecite plaintiff/defendant, normalized)
-            # is a tracked follow-up; it needs name normalization to avoid
-            # false-flagging abbreviated real captions.
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
             )
-            claims.append(
-                {
-                    "text": sentence,
-                    "citations": [],
-                    "case_verdicts": [_serialize_case_verdict(v) for v in verdicts],
-                }
-            )
+            serialized = [_serialize_case_verdict(v) for v in verdicts]
+            # Existence verifies the reporter number resolves; this also checks the
+            # draft's caption names the resolved case, so a fabricated caption on a
+            # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
+            _annotate_litigator_verdicts(sentence, serialized)
+            claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
         elif contract_mode and anchors:
             claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
         else:

@@ -131,7 +131,9 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
         if not cv.get("ok", True):
             any_failed = True
         for case in cv.get("verdicts") or []:
-            if case.get("exists"):
+            if case.get("caption_mismatch"):
+                any_missing = True  # resolves by number, but not the case named
+            elif case.get("exists"):
                 any_exists = True
             else:
                 any_missing = True
@@ -161,6 +163,11 @@ def _deterministic_reason(
         return str(contract_verdict.get("detail") or "") or None
     for cv in case_verdicts:
         for case in cv.get("verdicts") or []:
+            if case.get("caption_mismatch"):
+                return (
+                    f"Citation {case.get('citation')} resolves to "
+                    f"{case.get('case_name')}, not the case named in your draft."
+                )
             if not case.get("exists"):
                 return f"Cited case not found: {case.get('citation')}"
     return None

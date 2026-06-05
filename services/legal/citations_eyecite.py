@@ -12,6 +12,7 @@ tables plus regex extraction. No learned weights, no network.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from eyecite import get_citations
@@ -24,6 +25,8 @@ class CitationRef:
 
     ``start``/``end`` are character offsets into the text passed to
     :func:`find_citations`, so ``text[start:end] == matched_text``.
+    ``plaintiff``/``defendant`` are the party names eyecite read from the
+    draft text around the citation (None when the draft gives no caption).
     """
 
     matched_text: str
@@ -34,6 +37,8 @@ class CitationRef:
     reporter: str | None
     page: str | None
     parenthetical: str | None
+    plaintiff: str | None = None
+    defendant: str | None = None
 
 
 def find_citations(text: str) -> list[CitationRef]:
@@ -66,6 +71,8 @@ def find_citations(text: str) -> list[CitationRef]:
                 reporter=groups.get("reporter"),
                 page=groups.get("page"),
                 parenthetical=getattr(cite.metadata, "parenthetical", None),
+                plaintiff=getattr(cite.metadata, "plaintiff", None),
+                defendant=getattr(cite.metadata, "defendant", None),
             )
         )
     return refs
@@ -74,3 +81,29 @@ def find_citations(text: str) -> list[CitationRef]:
 def has_citation(text: str) -> bool:
     """True if ``text`` contains a full case- or law-citation."""
     return bool(find_citations(text))
+
+
+_CAPTION_CONNECTIVES = {"the", "and", "for", "vs"}
+
+
+def caption_tokens(text: str) -> set[str]:
+    """Significant lowercase word tokens of a case caption (drops connectives)."""
+    if not text:
+        return set()
+    raw = re.split(r"[^a-z0-9]+", text.lower())
+    return {t for t in raw if len(t) >= 3 and t not in _CAPTION_CONNECTIVES}
+
+
+def caption_matches(ref: CitationRef, case_name: str) -> bool:
+    """True if the draft's party names plausibly name the resolved case.
+
+    Lenient by design: any shared significant token counts as a match, so an
+    abbreviated real caption ("Bd. of Educ." vs "Board of Education") is never
+    falsely flagged. Returns True when the draft carries no caption to compare,
+    so a bare citation is never treated as a mismatch.
+    """
+    drafted = caption_tokens(ref.plaintiff or "") | caption_tokens(ref.defendant or "")
+    resolved = caption_tokens(case_name)
+    if not drafted or not resolved:
+        return True
+    return bool(drafted & resolved)

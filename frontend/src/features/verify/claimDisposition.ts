@@ -81,6 +81,12 @@ interface FlatCase {
   exists: boolean;
   holdingMatch: boolean | null;
   holdingError: string | null;
+  // Deterministic engine only (read with a cast in flattenCases; not on the wire
+  // schema). captionMismatch: the number resolved but to a different case than
+  // named. holdingSkipped: holding-match was off, so a null holding result is
+  // "not evaluated", distinct from the LLM path's "ran but could not determine".
+  captionMismatch: boolean;
+  holdingSkipped: boolean;
 }
 
 function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError: boolean } {
@@ -97,7 +103,9 @@ function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError
         status: typeof v.status === "number" ? v.status : 0,
         exists: Boolean(v.exists),
         holdingMatch: v.holding_match ?? null,
-        holdingError: v.holding_error ?? null
+        holdingError: v.holding_error ?? null,
+        captionMismatch: Boolean((v as { caption_mismatch?: boolean }).caption_mismatch),
+        holdingSkipped: Boolean((v as { holding_skipped?: boolean }).holding_skipped)
       });
     }
   }
@@ -125,12 +133,15 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
   // A cited case that does not resolve (404) or is malformed (400) is the
   // loudest flag: the fabricated-citation nightmare. It outranks everything,
   // including a claim whose surrounding prose was otherwise grounded.
-  const fabricated = cases.some((c) => c.status === 404 || c.status === 400);
+  const captionMismatch = cases.some((c) => c.captionMismatch);
+  const fabricated = cases.some((c) => c.status === 404 || c.status === 400) || captionMismatch;
   if (fabricated) {
     return mk(
       "citation_not_found",
       "Citation not found",
-      "No case matching this citation was found in the record checked."
+      captionMismatch
+        ? "This citation number resolves to a different case than the one named in the draft."
+        : "No case matching this citation was found in the record checked."
     );
   }
 
@@ -155,8 +166,12 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
         c.status === 429 ||
         (!c.exists && c.status !== 404 && c.status !== 400 && c.status !== 300)
     );
+  // "Could not check" covers a real holding ERROR, and the LLM path's "ran but
+  // could not determine" (holding null while NOT skipped). Holding being off
+  // (null + skipped) is not a failure and is rendered as a positive confirmation
+  // below.
   const holdingUncheckable = cases.some(
-    (c) => c.exists && (c.holdingError !== null || c.holdingMatch === null)
+    (c) => c.exists && (c.holdingError !== null || (c.holdingMatch === null && !c.holdingSkipped))
   );
 
   if (card.verdict === "unsupported") {
@@ -196,6 +211,19 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       "could_not_check",
       "Could not verify",
       "Grounded in your sources, but the cited opinion could not be read to confirm it supports the claim."
+    );
+  }
+  // The cited case exists but its holding was not evaluated (the assistive
+  // holding-match check is off). An honest positive confirmation: not a refusal,
+  // and not a claim of full support.
+  const existsUnevaluated = cases.some(
+    (c) => c.exists && c.holdingMatch === null && c.holdingError === null && c.holdingSkipped
+  );
+  if (existsUnevaluated) {
+    return mk(
+      "supported",
+      "Citation verified",
+      "The cited case exists in the record checked. Whether it supports your proposition was not evaluated."
     );
   }
   return mk("supported", "Supported", "");
