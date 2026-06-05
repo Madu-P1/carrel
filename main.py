@@ -14,6 +14,7 @@ from app_runtime import resolve_runtime_paths
 from routes import register_cachet_routes, register_routes
 from services.local_api_security import (
     has_valid_local_api_token,
+    install_loopback_host_guard,
     requires_local_api_token,
 )
 
@@ -163,6 +164,12 @@ async def require_local_api_token(request: Request, call_next):
 
 
 if _CACHET_ONLY:
+    # The Cachet web path serves the frontend with the token injected into the
+    # HTML, so guard against DNS-rebinding token theft: loopback Host only.
+    # Added before route registration so it wraps every request, including the
+    # ungated "/" + "/assets" the served page needs. Not installed for Carrel or
+    # the WKWebView path (their loopback-only traffic would pass anyway).
+    install_loopback_host_guard(app)
     register_cachet_routes(app)
 else:
     register_routes(app)

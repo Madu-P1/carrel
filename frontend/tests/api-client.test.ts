@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { ApiTimeoutError, BackendOfflineError, api } from "../src/services/api/client";
+import {
+  ApiTimeoutError,
+  BackendOfflineError,
+  api,
+  readWindowApiBase
+} from "../src/services/api/client";
 
 const LOCAL_TOKEN_HEADER = "X-Carrel-Local-Token";
 const TEST_TOKEN = "test-local-token";
@@ -16,6 +21,18 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+test("readWindowApiBase reads the injected same-origin base, else null", () => {
+  const w = window as Window & { __CARREL_API_BASE?: unknown };
+  delete w.__CARREL_API_BASE;
+  expect(readWindowApiBase()).toBeNull();
+  // The Cachet web-serving backend injects "" so calls go same-origin.
+  w.__CARREL_API_BASE = "";
+  expect(readWindowApiBase()).toBe("");
+  w.__CARREL_API_BASE = "http://127.0.0.1:9000";
+  expect(readWindowApiBase()).toBe("http://127.0.0.1:9000");
+  delete w.__CARREL_API_BASE;
 });
 
 test("api serializes JSON request bodies", async () => {
