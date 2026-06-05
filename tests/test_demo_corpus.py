@@ -70,6 +70,15 @@ class LitigatorCorpusTests(unittest.TestCase):
         self.assertTrue(exists.get("347 U.S. 483"))  # Brown, in the corpus
         self.assertFalse(exists.get("999 U.S. 999"))  # fabricated, the catch
 
+    def test_motion_catches_the_altered_quote(self) -> None:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            env = build_deterministic_envelope(
+                _body(DEMO / "litigator-motion.md"), client=local_caselaw_client()
+            )
+        altered = [c for c in env["claims"] if "quote_altered_reason" in c]
+        self.assertEqual(1, len(altered))  # the doctored Brown quote
+        self.assertIn("does not appear verbatim", altered[0]["quote_altered_reason"])
+
 
 class ContractCorpusTests(unittest.TestCase):
     def setUp(self) -> None:

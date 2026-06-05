@@ -30,10 +30,12 @@ from services.legal.anchors import extract_anchors
 from services.legal.case_verification import verify_claims_for_cases
 from services.legal.citations_eyecite import caption_matches, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
-from services.legal.local_caselaw import local_caselaw_client
+from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
+from services.legal.quote_check import extract_draft_quote_spans, split_runs
 from services.legal.sentences import split_sentences
 from services.retrieval.embeddings import Embedder
 from services.retrieval.typed_hybrid import search_typed_hybrid
+from services.retrieval.validators import verbatim_run_present
 from services.tutor import _serialize_case_verdict
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
@@ -71,6 +73,35 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
             ref = refs.get(v.get("citation"))
             if ref is not None and not caption_matches(ref, v["case_name"]):
                 v["caption_mismatch"] = True
+
+
+def _quote_altered_reason(sentence: str, case_verdicts: list[dict]) -> str | None:
+    """L4: a quoted run attributed to a cited case must appear verbatim in it.
+
+    Checks the sentence's quoted runs against the bundled opinion text of the
+    resolved cites. An absent run means the quote was altered (a word changed, or
+    an ellipsis dropping context). Returns None when there is nothing to quote or
+    no opinion text to check against (cannot determine, never a false flag).
+    """
+    spans = extract_draft_quote_spans(sentence)
+    if not spans:
+        return None
+    opinions = [
+        text
+        for batch in case_verdicts
+        for v in batch.get("verdicts", [])
+        if v.get("exists") and (text := local_opinion_text(v.get("citation")))
+    ]
+    if not opinions:
+        return None
+    for inner_text, _start, _end in spans:
+        for run in split_runs(inner_text):
+            if run.strip() and not any(verbatim_run_present(run, op) for op in opinions):
+                return (
+                    f'The quoted language "{run.strip()}" does not appear verbatim in '
+                    "the cited opinion."
+                )
+    return None
 
 
 def _contract_claim(
@@ -139,7 +170,11 @@ def build_deterministic_envelope(
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
             _annotate_litigator_verdicts(sentence, serialized)
-            claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
+            claim = {"text": sentence, "citations": [], "case_verdicts": serialized}
+            altered = _quote_altered_reason(sentence, serialized)
+            if altered:
+                claim["quote_altered_reason"] = altered
+            claims.append(claim)
         elif contract_mode and anchors:
             claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
         else:

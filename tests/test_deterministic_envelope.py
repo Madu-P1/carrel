@@ -197,5 +197,35 @@ class CaptionMismatchTests(unittest.TestCase):
         self.assertFalse(env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch"))
 
 
+class AlteredQuoteTests(unittest.TestCase):
+    """L4: a quoted run attributed to a cited case must appear verbatim in it."""
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_altered_quote_is_flagged(self) -> None:
+        env = self._build(
+            'The Court said "separate facilities are inherently equal," '
+            "Brown v. Board of Education, 347 U.S. 483."
+        )
+        claim = env["claims"][0]
+        self.assertIn("quote_altered_reason", claim)
+        self.assertEqual("unsupported", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_correct_quote_is_not_flagged(self) -> None:
+        env = self._build(
+            'The Court held that "Separate educational facilities are inherently '
+            'unequal." Brown v. Board of Education, 347 U.S. 483.'
+        )
+        claim = env["claims"][0]
+        self.assertNotIn("quote_altered_reason", claim)
+        self.assertEqual("verified", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_bare_cite_without_a_quote_is_not_flagged(self) -> None:
+        env = self._build("Brown v. Board of Education, 347 U.S. 483, controls this dispute.")
+        self.assertNotIn("quote_altered_reason", env["claims"][0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -193,8 +193,13 @@ def _claim_dict_to_verdict(
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
     contract_verdict = claim_dict.get("contract_verdict")
     could_not_check_reason = claim_dict.get("could_not_check_reason")
+    quote_altered_reason = claim_dict.get("quote_altered_reason")
     if citations:
         verdict: VerifyVerdict = "verified"
+    elif quote_altered_reason:
+        # A quoted run attributed to a real case but not present verbatim in it is
+        # a flag (the quote was altered), not an honest could-not-check.
+        verdict = "unsupported"
     elif could_not_check_reason:
         # Anchor-free deterministic claim: not independently verifiable. The honest
         # could-not-check, never the accusatory "unsupported".
@@ -207,6 +212,8 @@ def _claim_dict_to_verdict(
         verdict = "unsupported"
     if verdict == "verified":
         reason = None
+    elif quote_altered_reason:
+        reason = str(quote_altered_reason)
     elif could_not_check_reason:
         reason = str(could_not_check_reason)
     else:

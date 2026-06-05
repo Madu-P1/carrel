@@ -20,11 +20,11 @@
  *
  * Pure and deterministic. No confidence scores anywhere, by design.
  *
- * NOTE: a true "quote altered" disposition (the draft's quotation does not match
- * the cited source verbatim) is intentionally absent. The current engine grounds
- * its own extracted quotes, not the user's draft quotes, so it cannot honestly
- * emit that signal yet. It is scoped as a fast-follow; we do not render a state
- * we cannot populate.
+ * NOTE: the deterministic engine checks the user's draft quotes against the cited
+ * opinion text (L4) and surfaces an altered quote as claim_unsupported carrying an
+ * explanatory detail. A dedicated "quote altered" disposition kind (its own label
+ * and register) is a polish item. The LLM path, which grounds its own extracted
+ * quotes rather than the draft's, still cannot emit the signal.
  */
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 

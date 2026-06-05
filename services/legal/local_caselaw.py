@@ -40,6 +40,9 @@ class LocalCase:
     absolute_url: str
     court: str
     date_filed: str
+    # A verbatim opinion snippet, for the litigator altered-quote check (L4). The
+    # demo bundles a real holding passage; production would serve full text.
+    opinion_text: str = ""
 
 
 # Real, pre-vetted Supreme Court cases keyed by normalized citation.
@@ -49,12 +52,24 @@ DEMO_CORPUS: dict[str, LocalCase] = {
         "/opinion/103200/brown-v-board-of-education/",
         "scotus",
         "1954-05-17",
+        opinion_text=(
+            "We conclude that in the field of public education the doctrine of "
+            "separate but equal has no place. Separate educational facilities are "
+            "inherently unequal."
+        ),
     ),
     "576 U.S. 644": LocalCase(
         "Obergefell v. Hodges", "/opinion/3036702/obergefell-v-hodges/", "scotus", "2015-06-26"
     ),
     "410 U.S. 113": LocalCase("Roe v. Wade", "/opinion/108713/roe-v-wade/", "scotus", "1973-01-22"),
 }
+
+
+def local_opinion_text(citation: str, corpus: dict[str, LocalCase] | None = None) -> str | None:
+    """The bundled opinion text for a resolved citation, or None if not bundled."""
+    cases = corpus if corpus is not None else DEMO_CORPUS
+    case = cases.get(citation)
+    return case.opinion_text if case and case.opinion_text else None
 
 
 def _lookup_response(text: str, corpus: dict[str, LocalCase]) -> list[dict]:
