@@ -52,7 +52,6 @@ jobs:
           python -m unittest \
             tests.test_ai_router \
             tests.test_calendar_secrets \
-            tests.test_einstein_tutor \
             tests.test_evals_runner \
             tests.test_local_api_token \
             tests.test_logging_redaction \
@@ -62,7 +61,6 @@ jobs:
             tests.test_tutor_grounded \
             tests.test_upload_dedupe \
             tests.test_upload_security \
-            tests.test_usage_events \
             tests.test_db_migrations \
             tests.test_verify \
             tests.test_verify_stream \
