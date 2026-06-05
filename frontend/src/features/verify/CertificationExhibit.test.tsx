@@ -18,13 +18,16 @@ function model(fingerprint: string): CertificationModel {
       kind: "citation_not_found" as const,
       label: "Citation not found",
       claimText: "Cites a fake case.",
-      sources: ["999 U.S. 999"]
+      sources: ["999 U.S. 999"],
+      sourceFingerprints: ["0".repeat(64)]
     }
   ];
   return {
     generatedAtISO: "2026-05-29T12:00:00.000Z",
     fingerprint,
     provider: "claude",
+    localExecution: false,
+    attestation: "Verification ran via claude in the cloud.",
     totalStatements: 2,
     needsReviewCount: 1,
     counts: {
@@ -42,7 +45,8 @@ function model(fingerprint: string): CertificationModel {
         kind: "supported",
         label: "Supported",
         claimText: "A grounded statement.",
-        sources: ["Brief.pdf, p. 12"]
+        sources: ["Brief.pdf, p. 12"],
+        sourceFingerprints: ["0".repeat(64)]
       }
     ]
   };

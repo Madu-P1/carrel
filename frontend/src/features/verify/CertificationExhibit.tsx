@@ -2,8 +2,19 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Button } from "@/design-system";
 
-import { sealStateFor, type CertificationModel } from "./certification";
+import { certificationToJson, sealStateFor, type CertificationModel } from "./certification";
 import styles from "./VerifyView.module.css";
+
+/** Download the machine-readable certification alongside the print-to-PDF exhibit. */
+function downloadCertificationJson(model: CertificationModel): void {
+  const blob = new Blob([certificationToJson(model)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cachet-certification-${model.fingerprint.slice(0, 8)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function formatStamp(iso: string): string {
   return iso
@@ -197,6 +208,9 @@ export function CertificationExhibit({
         <Button type="button" variant="ghost" onClick={() => window.print()}>
           Save as PDF
         </Button>
+        <Button type="button" variant="ghost" onClick={() => downloadCertificationJson(model)}>
+          Save as JSON
+        </Button>
       </div>
 
       <article className={[styles.verifyScope, styles.certExhibit].join(" ")}>
@@ -295,9 +309,16 @@ export function CertificationExhibit({
             {model.provider ? (
               <div>
                 <dt>Checked by</dt>
-                <dd>{model.provider}</dd>
+                <dd>
+                  {model.provider}
+                  {model.localExecution ? " (on device)" : " (cloud)"}
+                </dd>
               </div>
             ) : null}
+            <div>
+              <dt>Data handling</dt>
+              <dd>{model.attestation}</dd>
+            </div>
           </dl>
         </header>
 
