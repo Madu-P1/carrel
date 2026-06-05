@@ -182,6 +182,39 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     // The calibrating "do this" is present, distinct from the explanation.
     expect(note?.textContent).toMatch(/verify again/i);
   });
+
+  it("with onResolve, the refusal's next action is a real button that fires it (C1)", () => {
+    const calls: number[] = [];
+    const { container } = render(
+      <WorkspaceMargin
+        draftText={DRAFT}
+        cards={[
+          card(0, {
+            text: "The statute was unconstitutional as applied.",
+            start: 0,
+            end: 44,
+            verdict: "unknown"
+          })
+        ]}
+        unattributedQuotes={[]}
+        examined={null}
+        onExamine={() => {}}
+        onResolve={() => calls.push(1)}
+      />
+    );
+    const note = container.querySelector('[data-note-key="0"]');
+    expect(note?.getAttribute("data-tier")).toBe("refusal");
+    // The most complete card opens by stating what Cachet checked (not a shrug).
+    expect(note?.textContent?.toLowerCase()).toContain("cachet read this statement");
+    // The precise next action is a real <button>, not a directive line, and it fires onResolve.
+    const buttons = Array.from(note?.querySelectorAll("button") ?? []);
+    const resolve = buttons.find((b) => /add the sources/i.test(b.textContent ?? ""));
+    expect(resolve).toBeTruthy();
+    resolve?.click();
+    expect(calls).toEqual([1]);
+    // The Examine drill stays available alongside the action.
+    expect(buttons.some((b) => /examine/i.test(b.textContent ?? ""))).toBe(true);
+  });
 });
 
 describe("nextFocusIndex (SM-V7 j/k cycle)", () => {

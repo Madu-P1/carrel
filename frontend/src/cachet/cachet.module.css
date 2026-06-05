@@ -458,3 +458,474 @@
     animation: none;
   }
 }
+
+/* Sources: the loaded-record dropzone + loaded state. Paper/ink, on-brand. */
+.sourceLoaded {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin: var(--space-4, 16px) 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-2, 6px);
+  background: var(--paper-2);
+}
+.sourceDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-1);
+}
+.sourceMeta {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.sourceName {
+  overflow: hidden;
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+  color: var(--ink-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sourceHint {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.sourceRemove {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.sourceRemove:hover {
+  color: var(--ink-1);
+}
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  margin-top: var(--space-3, 12px);
+  padding: var(--space-5, 20px);
+  border: 1px dashed var(--hair);
+  border-radius: var(--radius-2, 6px);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+.dropzone:hover {
+  border-color: var(--ink-3);
+}
+.dropzone[data-busy="true"] {
+  border-style: solid;
+  cursor: progress;
+}
+.dropzoneInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+}
+.dropzoneState {
+  pointer-events: none;
+}
+.sourceError {
+  margin-top: var(--space-3, 12px);
+  color: #7a2230;
+  font-size: 13px;
+}
+
+/* The lectern's inline "attach the record" affordance + its loaded state. Sits
+   under the sheet, centered with it as a quiet pill; never competes with the
+   sheet (the draft is the hero). Same paper/ink language as the Sources tab. */
+.lecternSource {
+  width: min(616px, 86vw);
+  margin: 18px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.lecternSourceAdd {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 9px 18px;
+  border: 1px dashed var(--hair);
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background 0.16s ease;
+}
+.lecternSourceAdd:hover {
+  border-color: var(--ink-3);
+  color: var(--ink-1);
+}
+.lecternSourceAdd[data-busy="true"] {
+  border-style: solid;
+  cursor: progress;
+  color: var(--ink-2);
+}
+.lecternSourceLoaded {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+.lecternSourceDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-1);
+}
+.lecternSourceName {
+  overflow: hidden;
+  max-width: 32ch;
+  font-family: var(--font-serif-body);
+  font-size: 14.5px;
+  color: var(--ink-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lecternSourceTag {
+  flex: none;
+  font-family: var(--font-serif-body);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lecternSourceChange {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.lecternSourceChange:hover {
+  color: var(--ink-1);
+}
+.lecternSourceError {
+  color: #7a2230;
+  font-size: 13px;
+  font-family: var(--font-serif-body);
+}
+
+/* ---------- Sources library: add-with-project + grouped records ---------- */
+
+/* The add-a-record card: pick the project to file into, then drop/choose a file. */
+.sourceAdd {
+  margin: var(--space-5, 20px) 0 var(--space-7, 28px);
+}
+.sourceAddRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  flex-wrap: wrap;
+}
+.sourceProjectField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sourceProjectLabel {
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sourceProjectSelect,
+.sourceProjectInput,
+.sourceMoveSelect {
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--ink-1);
+  background: var(--sheet);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+.sourceProjectSelect:hover,
+.sourceProjectInput:focus,
+.sourceMoveSelect:hover {
+  border-color: var(--ink-3);
+  outline: none;
+}
+.sourceProjectInput {
+  cursor: text;
+  min-width: 12rem;
+}
+
+/* The library list, grouped by project. */
+.sourceLibrary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+}
+.sourceLibraryNote {
+  margin: 0;
+  padding: var(--space-5, 20px) 0;
+  font-family: var(--font-serif-body);
+  font-size: 14.5px;
+  color: var(--ink-3);
+}
+.sourceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sourceGroupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hair-soft);
+}
+.sourceGroupName {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  color: var(--ink-1);
+  letter-spacing: 0.005em;
+}
+.sourceGroupCount {
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sourceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sourceRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2, 6px);
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease;
+}
+.sourceRow:hover {
+  background: var(--paper-2);
+}
+.sourceRow[data-active="true"] {
+  background: var(--paper-2);
+  border-color: var(--hair);
+}
+.sourceRowDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--ink-3);
+}
+.sourceRow[data-active="true"] .sourceRowDot {
+  background: var(--ink-1);
+  border-color: var(--ink-1);
+}
+.sourceRowMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.sourceRowName {
+  overflow: hidden;
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+  color: var(--ink-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sourceRowMeta {
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.sourceRowActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+}
+.sourceMoveSelect {
+  font-size: 12.5px;
+  padding: 5px 8px;
+  max-width: 13rem;
+  /* Lighter than the upload picker: it reads as the record's project tag that you
+     can change, not a heavy form control competing on every row. */
+  border-color: var(--hair-soft);
+  background: transparent;
+  color: var(--ink-2);
+}
+.sourceMoveSelect:hover {
+  background: var(--sheet);
+}
+.sourceUse {
+  flex: none;
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink-1);
+  border: 1px solid var(--ink-1);
+  border-radius: 2px;
+  padding: 6px 14px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sourceUse:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.sourceActive {
+  flex: none;
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.sourceClearActive {
+  align-self: flex-start;
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+.sourceClearActive:hover {
+  color: var(--ink-1);
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Sources carries richer rows (filename + meta + project + action) than the other
+   plain views, so it gets a wider column than .plainView's 64ch reading measure.
+   Defined after .plainView so this max-width wins; Settings keeps the narrow width.
+   The prose lede stays capped at 56ch on its own, so it never overstretches. */
+.sourcesView {
+  max-width: 56rem;
+}
+
+/* The verify record picker: which loaded record the deterministic check runs
+   against. Sits above the verify sheet, aligned to its 920px measure. */
+.recordBar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 20px 40px 0;
+}
+.recordBarLabel {
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.recordBarSelect {
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--ink-1);
+  background: var(--sheet);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 6px 12px;
+  max-width: 30rem;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+.recordBarSelect:hover {
+  border-color: var(--ink-3);
+}
+.recordBarHint {
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}

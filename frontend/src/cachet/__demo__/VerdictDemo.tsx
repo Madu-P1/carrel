@@ -13,6 +13,7 @@
  * Not shipped in the real flow; gated behind the query param in CachetApp.
  */
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
+import { navigateTo } from "@/app/shell/useAppShell";
 import { WorkspaceMargin } from "@/features/verify/WorkspaceMargin";
 // The verify token layer (paper surfaces + the scoped --verify-flag oxblood).
 // The real VerifyView root provides it; the demo must too, or scoped tokens
@@ -113,14 +114,21 @@ const CARDS: VerifyClaimVerdict[] = CLAIMS.map((c, i) => {
 });
 
 export function VerdictDemo() {
+  // Match VerifyView's real wrapper: .root is the bounded, centered 920px page
+  // (max-width + margin auto + padding) and .verifyScope is the paper-sheet
+  // palette + shadow. Without .root the sheet spans the full viewport and the
+  // content strands in the middle with the sheet's bottom shadow reading as a
+  // full-width divider line. The fixture must frame itself exactly as the
+  // product does, or it lies about the layout.
   return (
-    <div className={verifyStyles.verifyScope}>
+    <div className={[verifyStyles.root, verifyStyles.verifyScope].join(" ")}>
       <WorkspaceMargin
         draftText={DRAFT}
         cards={CARDS}
         unattributedQuotes={[]}
         examined={null}
         onExamine={() => {}}
+        onResolve={() => navigateTo("/sources")}
       />
     </div>
   );

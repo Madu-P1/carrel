@@ -42,8 +42,32 @@ export CARREL_LOCAL_API_TOKEN
 CARREL_LOCAL_API_TOKEN="$(cat "$TOKEN_PATH")"
 export CACHET_ONLY=1
 
-PY="${CACHET_PYTHON:-$ROOT_DIR/.venv/bin/python}"
-[[ -x "$PY" ]] || PY="python3"
+# Resolve a Python that actually has the repo's deps. Prefer CACHET_PYTHON, then
+# this checkout's .venv. A git worktree has no .venv of its own, so fall back to
+# the MAIN checkout's .venv (found via the common git dir) before bare python3 --
+# otherwise we silently land on a system python missing httpx/fastapi/etc.
+PY="${CACHET_PYTHON:-}"
+if [[ -z "$PY" || ! -x "$PY" ]]; then
+  _MAIN_VENV=""
+  if _CG="$(cd "$ROOT_DIR" && git rev-parse --git-common-dir 2>/dev/null)"; then
+    case "$_CG" in /*) ;; *) _CG="$ROOT_DIR/$_CG" ;; esac
+    _MAIN_ROOT="$(cd "$(dirname "$_CG")" 2>/dev/null && pwd || true)"
+    [[ -n "$_MAIN_ROOT" ]] && _MAIN_VENV="$_MAIN_ROOT/.venv/bin/python"
+  fi
+  for _cand in "$ROOT_DIR/.venv/bin/python" "$_MAIN_VENV"; do
+    if [[ -n "$_cand" && -x "$_cand" ]]; then PY="$_cand"; break; fi
+  done
+fi
+[[ -n "$PY" && -x "$PY" ]] || PY="python3"
+
+# Fail loud with the fix, not a cryptic ModuleNotFoundError mid-boot.
+if ! "$PY" -c 'import httpx, fastapi, uvicorn' 2>/dev/null; then
+  echo "run-cachet: '$PY' is missing backend deps (httpx / fastapi / uvicorn)." >&2
+  echo "run-cachet: point CACHET_PYTHON at a venv that has them, e.g.:" >&2
+  echo "  CACHET_PYTHON=${_MAIN_VENV:-/path/to/Codex/.venv/bin/python} $0" >&2
+  exit 1
+fi
+echo "Cachet backend python -> $PY"
 
 echo "Cachet backend (CACHET_ONLY) -> http://127.0.0.1:${PORT}"
 "$PY" -m uvicorn main:app --host 127.0.0.1 --port "$PORT" &

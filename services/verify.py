@@ -255,7 +255,7 @@ def verify_draft(
         fetch_recent_events=fetch_recent_events,
     )
 
-    return _verify_result_from_envelope(cleaned, envelope, started)
+    return _verify_result_from_envelope(cleaned, envelope, started, conn=conn, doc_ids=doc_ids)
 
 
 def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
@@ -283,6 +283,9 @@ def _verify_result_from_envelope(
     cleaned: str,
     envelope: Dict[str, Any],
     started: float,
+    *,
+    conn: sqlite3.Connection | None = None,
+    doc_ids: Sequence[str] | None = None,
 ) -> VerifyResult:
     """Map a grounded-tutor envelope into the per-claim VerifyResult.
 
@@ -308,6 +311,12 @@ def _verify_result_from_envelope(
                 continue
             for cv in claim_dict.get("case_verdicts") or []:
                 source_pool.extend(_opinion_sources_from_case_verdict(cv))
+        # Cachet no-cloud catch: also ground the draft quotes against the loaded
+        # document(s) directly, so the deterministic check fires even when the
+        # grounded-answer envelope surfaced no citations (empty retrieval, or the
+        # high-stakes provider gate on a local model). No model, no network.
+        if conn is not None:
+            source_pool.extend(_loaded_doc_full_sources(conn, doc_ids))
         quote_results = tuple(
             _quote_result_to_dict(check_quote_against_sources(q, source_pool), i)
             for i, q in enumerate(draft_quotes)
@@ -336,7 +345,13 @@ def _verify_result_from_envelope(
             continue
         verdicts.append(_unsupported_span_to_verdict(str(span), base_index + offset))
 
-    if not verdicts:
+    # When the engine produced no per-claim verdicts but the deterministic quote
+    # check DID produce findings (the no-cloud path: semantic grounding withheld,
+    # yet the verbatim quote check ran against the loaded record), those quote
+    # results ARE the verification. Don't surface a synthetic "could not verify"
+    # card that competes with the catch; the withheld state is carried by the
+    # empty claim set plus the quote panel.
+    if not verdicts and not quote_results:
         verdicts.append(_engine_failure_verdict(cleaned, engine_error))
 
     verified = sum(1 for v in verdicts if v.verdict == "verified")
@@ -515,6 +530,31 @@ def _loaded_doc_sources(claim_cards: list[Dict[str, Any]]) -> list[SourceText]:
     return out
 
 
+def _loaded_doc_full_sources(
+    conn: sqlite3.Connection, doc_ids: Sequence[str] | None
+) -> list[SourceText]:
+    """The full text of each explicitly-loaded document, as a complete source.
+
+    Cachet no-cloud catch: ground the draft-quote check against the loaded
+    document(s) DIRECTLY (joined from their chunks), independent of the grounded
+    answer envelope. The envelope is Claude-gated for high-stakes and surfaces no
+    citations on a local provider (empty retrieval), so without this the catch
+    silently degrades to could_not_check. A loaded doc is a complete, untruncated
+    source, so a quoted run absent from it is a real `altered`, not a refusal.
+    Deterministic and local: no model, no network.
+    """
+    sources: list[SourceText] = []
+    for doc_id in doc_ids or ():
+        rows = conn.execute(
+            "SELECT content FROM chunks WHERE doc_id = ? ORDER BY chunk_index ASC",
+            (str(doc_id),),
+        ).fetchall()
+        text = "\n".join(str(r[0]) for r in rows if r and r[0])
+        if text.strip():
+            sources.append(SourceText(text=text, complete=True, truncated=False))
+    return sources
+
+
 def _opinion_sources_from_case_verdict(case_verdict: Dict[str, Any]) -> list[SourceText]:
     """Pull retained opinion text out of a serialized case-verdict batch.
 
@@ -647,7 +687,7 @@ def verify_draft_stream(
     # for the watch-the-labor reveal; the result payload also carries it so a
     # reload / non-stream caller is identical. Cachet PR4 quote verdicts are
     # BRIEF-LEVEL; per-claim placement is deferred to PR5 claim-span alignment.
-    result = _verify_result_from_envelope(cleaned, envelope, started)
+    result = _verify_result_from_envelope(cleaned, envelope, started, conn=conn, doc_ids=doc_ids)
     if result.quote_results:
         yield {"type": "quote_batch", "quotes": list(result.quote_results)}
     yield {"type": "result", "verify": verify_result_to_payload(result)}
