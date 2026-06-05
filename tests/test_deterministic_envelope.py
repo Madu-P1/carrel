@@ -42,12 +42,12 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertTrue(_verdicts(env["claims"][0])[0]["exists"])
         self.assertEqual("Brown v. Board of Education", _verdicts(env["claims"][0])[0]["case_name"])
 
-    def test_anchor_free_sentence_is_unsupported_not_dropped(self) -> None:
+    def test_anchor_free_sentence_is_could_not_check_not_dropped(self) -> None:
         env = self._build("The defendant acted in good faith throughout.")
-        self.assertEqual([], env["claims"])
-        self.assertEqual(
-            ["The defendant acted in good faith throughout."], env["unsupported_spans"]
-        )
+        self.assertEqual([], env["unsupported_spans"])
+        self.assertEqual(1, len(env["claims"]))
+        self.assertIn("could_not_check_reason", env["claims"][0])
+        self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
 
     def test_envelope_shape_is_deterministic(self) -> None:
         env = self._build("Per 410 F.3d 138, the rule is XYZ.")
@@ -153,6 +153,17 @@ class VerdictDerivationTests(unittest.TestCase):
     def test_llm_path_with_in_corpus_citations_still_verified(self) -> None:
         claim = {"text": "x", "citations": [{"content": "..."}], "case_verdicts": []}
         self.assertEqual("verified", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_no_anchor_claim_is_could_not_check_with_reason(self) -> None:
+        claim = {
+            "text": "The defendant acted in good faith.",
+            "citations": [],
+            "case_verdicts": [],
+            "could_not_check_reason": "No verifiable anchor was found.",
+        }
+        card = _claim_dict_to_verdict(claim, 0)
+        self.assertEqual("unknown", card.verdict)
+        self.assertIn("anchor", (card.unsupported_reason or "").lower())
 
 
 if __name__ == "__main__":

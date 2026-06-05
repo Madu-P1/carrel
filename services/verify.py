@@ -185,17 +185,25 @@ def _claim_dict_to_verdict(
     citations = tuple(claim_dict.get("citations") or [])
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
     contract_verdict = claim_dict.get("contract_verdict")
+    could_not_check_reason = claim_dict.get("could_not_check_reason")
     if citations:
         verdict: VerifyVerdict = "verified"
+    elif could_not_check_reason:
+        # Anchor-free deterministic claim: not independently verifiable. The honest
+        # could-not-check, never the accusatory "unsupported".
+        verdict = "unknown"
     elif contract_verdict:
         verdict = _verdict_from_contract(contract_verdict)
     elif case_verdicts:
         verdict = _verdict_from_case_verdicts(case_verdicts)
     else:
         verdict = "unsupported"
-    reason = (
-        None if verdict == "verified" else _deterministic_reason(case_verdicts, contract_verdict)
-    )
+    if verdict == "verified":
+        reason = None
+    elif could_not_check_reason:
+        reason = str(could_not_check_reason)
+    else:
+        reason = _deterministic_reason(case_verdicts, contract_verdict)
     return VerifyClaimVerdict(
         claim_index=index,
         claim_text=text,

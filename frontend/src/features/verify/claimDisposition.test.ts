@@ -244,4 +244,18 @@ describe("deterministic engine cards", () => {
     const d = dispositionForClaim(card({ verdict: "verified", case_verdicts: [] }));
     expect(d.kind).toBe("supported");
   });
+
+  test("a no-anchor claim is could_not_check, never an accusatory unsupported", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [],
+        unsupported_reason:
+          "No verifiable anchor (citation, quotation, amount, or date) was found, so this statement was not independently checked."
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+    expect(d.detail).toContain("not independently checked");
+  });
 });

@@ -105,7 +105,6 @@ def build_deterministic_envelope(
 
     contract_mode = conn is not None and bool(doc_ids)
     claims: list[dict] = []
-    unsupported: list[str] = []
     for sentence in split_sentences(draft):
         anchors = extract_anchors(sentence)
         if any(a.type == "citation" for a in anchors):
@@ -127,17 +126,31 @@ def build_deterministic_envelope(
                     "case_verdicts": [_serialize_case_verdict(v) for v in verdicts],
                 }
             )
-        elif anchors and contract_mode:
+        elif contract_mode and anchors:
             claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
-        elif anchors:
-            # Carries a non-citation anchor but no contract to check against.
-            claims.append({"text": sentence, "citations": [], "case_verdicts": []})
         else:
-            unsupported.append(sentence)
+            # No citation to check, and either no anchor or nothing to check a
+            # non-citation anchor against. The honest "could not check": never a
+            # silent pass, never an accusatory "unsupported".
+            reason = (
+                "No verifiable anchor (citation, quotation, amount, or date) was found, "
+                "so this statement was not independently checked."
+                if not anchors
+                else "This statement carries a checkable value but no source was provided "
+                "to check it against."
+            )
+            claims.append(
+                {
+                    "text": sentence,
+                    "citations": [],
+                    "case_verdicts": [],
+                    "could_not_check_reason": reason,
+                }
+            )
 
     return {
         "claims": claims,
-        "unsupported_spans": unsupported,
+        "unsupported_spans": [],
         "model": _DETERMINISTIC_MODEL,
         "error": None,
         "provider": "deterministic",

@@ -99,6 +99,31 @@ export function sealStateFor(
   return sealedFingerprint === currentFingerprint ? "sealed" : "cracked";
 }
 
+/** SHA-256 (64-char hex) of UTF-8 text. Same primitive as the draft fingerprint. */
+export function sha256OfText(text: string): string {
+  return sha256Hex(new TextEncoder().encode(text));
+}
+
+const LOCAL_PROVIDERS = new Set(["afm", "ollama", "deterministic"]);
+
+/** True when the producing provider ran on-device (no data left the machine). */
+export function isLocalExecution(provider: string): boolean {
+  return LOCAL_PROVIDERS.has((provider ?? "").trim().toLowerCase());
+}
+
+/**
+ * The named "no data left this device" attestation, honest about cloud vs local.
+ * For a cloud provider it states plainly that the draft and sources were sent out,
+ * so the artifact never implies a local guarantee it cannot make.
+ */
+export function attestationFor(provider: string): string {
+  if (isLocalExecution(provider)) {
+    return "No data left this device. All verification ran locally against the documents you loaded.";
+  }
+  const named = (provider ?? "").trim() || "a cloud model";
+  return `Verification ran via ${named} in the cloud. The draft and the sources it was checked against were sent to that provider.`;
+}
+
 export interface CertificationItem {
   /** 1-based display index in original draft order. */
   index: number;
@@ -107,12 +132,18 @@ export interface CertificationItem {
   claimText: string;
   /** Document names / case citations the statement was checked against. */
   sources: string[];
+  /** SHA-256 of each checked source's content, same order as `sources`. */
+  sourceFingerprints: string[];
 }
 
 export interface CertificationModel {
   generatedAtISO: string;
   fingerprint: string;
   provider: string;
+  /** Whether the producing provider ran on-device. */
+  localExecution: boolean;
+  /** The named "no data left this device" attestation (honest cloud vs local). */
+  attestation: string;
   totalStatements: number;
   needsReviewCount: number;
   counts: Record<DispositionKind, number>;
@@ -136,6 +167,28 @@ function sourcesFor(card: VerifyClaimVerdict): string[] {
   return out;
 }
 
+/** Per-source SHA-256, aligned with sourcesFor: the cited content where present,
+ * otherwise the citation string. Proves which exact source text was checked. */
+function sourceFingerprintsFor(card: VerifyClaimVerdict): string[] {
+  const out: string[] = [];
+  for (const c of card.citations ?? []) {
+    const content = (c as { content?: string }).content;
+    out.push(sha256OfText(typeof content === "string" && content ? content : ""));
+  }
+  for (const batch of card.case_verdicts ?? []) {
+    if (!batch?.ok) continue;
+    for (const v of batch.verdicts ?? []) {
+      out.push(sha256OfText(v.citation));
+    }
+  }
+  return out;
+}
+
+/** Machine-readable export: the full certification model plus a schema version. */
+export function certificationToJson(model: CertificationModel): string {
+  return JSON.stringify({ schema_version: 1, ...model }, null, 2);
+}
+
 export function buildCertification(
   response: VerifyResponse,
   generatedAtISO: string
@@ -156,16 +209,20 @@ export function buildCertification(
       kind: d.kind,
       label: d.label,
       claimText: card.claim_text ?? "",
-      sources: sourcesFor(card)
+      sources: sourcesFor(card),
+      sourceFingerprints: sourceFingerprintsFor(card)
     };
   });
   const flagged = allItems
     .filter((it) => it.kind !== "supported")
     .sort((a, b) => DISPOSITION_ORDER[a.kind] - DISPOSITION_ORDER[b.kind]);
+  const provider = response.provider ?? "";
   return {
     generatedAtISO,
     fingerprint: fingerprintDraft(response.draft_text ?? ""),
-    provider: response.provider ?? "",
+    provider,
+    localExecution: isLocalExecution(provider),
+    attestation: attestationFor(provider),
     totalStatements: allItems.length,
     needsReviewCount: flagged.length,
     counts,

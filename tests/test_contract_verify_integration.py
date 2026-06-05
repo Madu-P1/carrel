@@ -142,15 +142,16 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual("unsupported", card.verdict)
         self.assertIn("contradict", (card.unsupported_reason or "").lower())
 
-    def test_anchor_free_claim_goes_to_unsupported(self) -> None:
+    def test_anchor_free_claim_is_could_not_check(self) -> None:
         env = build_deterministic_envelope(
             "The vendor is solely responsible for all defects.",
             conn=self._conn,
             doc_ids=["contract-1"],
             embedder=self._embedder,
         )
-        self.assertEqual([], env["claims"])
-        self.assertEqual(1, len(env["unsupported_spans"]))
+        self.assertEqual([], env["unsupported_spans"])
+        self.assertEqual(1, len(env["claims"]))
+        self.assertIn("could_not_check_reason", env["claims"][0])
 
 
 if __name__ == "__main__":
