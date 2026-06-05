@@ -1,0 +1,84 @@
+name: Cachet desktop package
+
+# Builds the bundled, double-click Cachet app for Windows + macOS. PyInstaller
+# can't cross-compile, so each binary is built on its own OS runner. Run manually
+# (workflow_dispatch) to get downloadable artifacts, or push a `cachet-v*` tag to
+# publish a GitHub Release. See docs/plans/cachet-localhost-browser-2026-06-05.md.
+#
+# NOTE: binaries are UNSIGNED. First launch shows a SmartScreen / Gatekeeper
+# warning until code-signing certs are set up (Phase 4).
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      # Build the bundle when this delivery branch is pushed (workflow_dispatch
+      # only fires from the default branch, so a branch trigger is how we get a
+      # downloadable Windows artifact before this lands on main). Remove once the
+      # workflow is on main and dispatch/tags suffice.
+      - "claude/nostalgic-mclaren-93d91a"
+    tags:
+      - "cachet-v*"
+
+permissions:
+  contents: write # the release job attaches binaries
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: Cachet-windows
+          - os: macos-latest
+            artifact: Cachet-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: corepack enable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the Cachet frontend
+        run: |
+          corepack pnpm --dir frontend install --frozen-lockfile
+          corepack pnpm --dir frontend build:cachet
+
+      - name: Install package deps (core only)
+        run: pip install -r packaging/requirements-package.txt
+
+      - name: Freeze with PyInstaller
+        run: pyinstaller --clean --noconfirm packaging/cachet.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          body: |
+            Bundled Cachet desktop builds (Windows + macOS).
+
+            UNSIGNED: on first launch, Windows shows "Windows protected your PC"
+            (click More info -> Run anyway) and macOS shows an unidentified-developer
+            warning (right-click -> Open). Code signing is a later step.

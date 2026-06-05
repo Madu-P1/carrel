@@ -1,0 +1,27 @@
+# Deps for the bundled Cachet desktop build (deterministic core only).
+# Deliberately EXCLUDES the lazy ML stack from requirements.txt:
+#   - docling (~1-2 GB OCR + models)
+#   - fastembed (onnxruntime + ~1 GB embedding/rerank models)
+# Both are lazy-imported in the backend, so the frozen app runs without them:
+# retrieval falls back to FTS5 and scanned-PDF OCR is unavailable. DOCX /
+# digital-PDF ingest + CourtListener cite-existence + verbatim-quote all work.
+fastapi
+uvicorn
+pydantic
+icalendar
+recurring-ical-events
+PyPDF2
+python-multipart>=0.0.27
+anthropic
+python-dotenv
+python-docx
+python-pptx
+openpyxl
+ebooklib
+beautifulsoup4
+chardet
+striprtf
+sqlite-vec~=0.1
+
+# Build tool.
+pyinstaller~=6.11
