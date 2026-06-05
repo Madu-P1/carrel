@@ -131,6 +131,30 @@ describe("dispositionForClaim", () => {
     expect(flag.nextAction).toBeUndefined();
   });
 
+  test("the refusal states what it checked and a button verb (C1), and never shrugs (C2)", () => {
+    // Rubric C1: the refusal is the most COMPLETE card — it opens with the work
+    // Cachet did (`checked`) and ends in a button verb (`actionLabel`). C2: it
+    // never shrugs; it leads with what it did, not "could not check / run".
+    const refusal = dispositionForClaim(card({ verdict: "unknown" }));
+    expect(refusal.checked).toBeTruthy();
+    expect(refusal.actionLabel).toBeTruthy();
+    expect(refusal.checked?.toLowerCase()).not.toContain("could not");
+    expect(refusal.detail.toLowerCase()).not.toContain("could not run");
+    // The three parts are distinct: what was checked, what cannot be said, the action.
+    expect(refusal.checked).not.toBe(refusal.detail);
+    expect(refusal.actionLabel).not.toBe(refusal.nextAction);
+
+    // checked/actionLabel are refusal-only; no other disposition carries them.
+    const supported = dispositionForClaim(card({ verdict: "verified" }));
+    expect(supported.checked).toBeUndefined();
+    expect(supported.actionLabel).toBeUndefined();
+    const flag = dispositionForClaim(
+      card({ case_verdicts: [batch([caseItem({ status: 404, exists: false })])] })
+    );
+    expect(flag.checked).toBeUndefined();
+    expect(flag.actionLabel).toBeUndefined();
+  });
+
   test("verified prose with no citations is supported and unmarked", () => {
     const d = dispositionForClaim(card({ verdict: "verified" }));
     expect(d.kind).toBe("supported");

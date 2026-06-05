@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { ErrorBoundary, ToastHost } from "@/design-system";
-import { appShell, pathnameFromRoute } from "@/app/shell/useAppShell";
+import { appShell, navigateTo, pathnameFromRoute } from "@/app/shell/useAppShell";
 import { VerifyView } from "@/features/verify/VerifyView";
 import { ShelfView } from "@/features/shelf/ShelfView";
 
@@ -11,7 +11,9 @@ import { CachetRail } from "./CachetRail";
 import { LecternView } from "./LecternView";
 import { SourcesView } from "./SourcesView";
 import { SettingsView } from "./SettingsView";
+import { liveDraft } from "./liveDraft";
 import { takePendingDraft } from "./pendingDraft";
+import { clearSource, loadedSource, refreshSources, setActiveRecord, sourceDocs } from "./source";
 import { VerdictDemo } from "./__demo__/VerdictDemo";
 import { StreamFlipDemo } from "./__demo__/StreamFlipDemo";
 import styles from "./cachet.module.css";
@@ -36,15 +38,74 @@ function briefFromRoute(route: string): string | null {
 }
 
 /**
- * Verify station. Consumes a lectern-seeded draft exactly once per mount (the
- * useState initializer runs once), so the user's paste on the lectern becomes
- * the verify. A reopened brief (briefId set) ignores any seed. CachetApp swaps
- * views by route, so leaving and returning to Verify remounts this and clears
- * any stale seed.
+ * Verify station. Seeds the draft from a lectern hand-off (consumed once) or the
+ * shared live draft (`liveDraft`), and writes every edit back so leaving and
+ * returning to Verify keeps the draft. The live draft is shared with the lectern,
+ * so a paste on the home page survives navigation too. A reopened brief (briefId
+ * set) hydrates from the saved brief instead and is never persisted to the live
+ * draft.
  */
 function VerifyStation({ briefId }: { briefId: string | null }) {
   const [seed] = useState(() => (briefId ? null : takePendingDraft()));
-  return <VerifyView key={briefId ?? "live"} briefId={briefId} initialDraft={seed} />;
+  const docs = sourceDocs.value;
+  const active = loadedSource.value;
+
+  // The deterministic quote check needs the doc id of the record to check
+  // against. Load the record list so the picker is populated even when the user
+  // came straight to Verify, and let them choose which record is active here so
+  // the check never silently runs with no source.
+  useEffect(() => {
+    void refreshSources();
+    // A lectern hand-off persists immediately, so navigating away before typing
+    // does not lose it.
+    if (seed) liveDraft.value = seed;
+  }, [seed]);
+
+  return (
+    <>
+      <div className={styles.recordBar}>
+        <span className={styles.recordBarLabel}>Checking against</span>
+        <select
+          className={styles.recordBarSelect}
+          value={active?.docId ?? ""}
+          onChange={(e) => {
+            const id = (e.target as HTMLSelectElement).value;
+            const doc = (docs ?? []).find((d) => d.id === id);
+            if (doc) setActiveRecord(doc);
+            else clearSource();
+          }}
+        >
+          <option value="">No record loaded — choose one</option>
+          {(docs ?? []).map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.filename}
+            </option>
+          ))}
+        </select>
+        {active ? null : (
+          <span className={styles.recordBarHint}>Add a record in Sources, then pick it here.</span>
+        )}
+      </div>
+      {/* A refusal's "give Cachet what it needs" action routes to Sources, where the
+          user loads the record the draft relies on. The shared verify surface stays
+          host-agnostic; the record picker above lives in the Cachet shell. */}
+      <VerifyView
+        key={briefId ?? "live"}
+        briefId={briefId}
+        initialDraft={briefId ? seed : (seed ?? liveDraft.value)}
+        // Auto-run only on a genuine lectern hand-off (a fresh pending draft was
+        // consumed), never on a plain return to /verify. Without this guard, the
+        // persisted live draft would make the station re-verify on every visit.
+        autoRun={!briefId && seed !== null}
+        onDraftChange={briefId ? undefined : (v) => (liveDraft.value = v)}
+        onResolve={() => navigateTo("/sources")}
+        headerTitle="Check the AI's read of your contract."
+        headerSubtitle="Paste what an assistant told you about the document. Cachet checks every quoted clause against the record you loaded, on this device."
+        samplePlaceholder="The agreement caps the supplier’s total liability at “£250,000” and renews automatically for successive 12-month terms unless either party gives 90 days’ written notice."
+        docIds={active?.docId ? [active.docId] : undefined}
+      />
+    </>
+  );
 }
 
 function renderRoute(route: string) {

@@ -72,6 +72,14 @@ interface WorkspaceMarginProps {
   /** claim_index currently open in the Examination drawer, or null. */
   examined: number | null;
   onExamine: (claimIndex: number) => void;
+  /**
+   * Resolve the refusal: the host's handler for "give Cachet what it needs"
+   * (the Cachet shell routes to Sources). When provided, a refusal note renders
+   * its next action as a real button (rubric C1); when omitted (e.g. the Carrel
+   * substrate, which has no Sources route), the refusal states the next action
+   * as a directive line instead, so neither host ships a dead button.
+   */
+  onResolve?: () => void;
 }
 
 interface ClaimMeta {
@@ -84,7 +92,8 @@ export function WorkspaceMargin({
   cards,
   unattributedQuotes,
   examined,
-  onExamine
+  onExamine,
+  onResolve
 }: WorkspaceMarginProps) {
   const metaByIndex = new Map<number, ClaimMeta>();
   cards.forEach((card, i) => {
@@ -215,6 +224,7 @@ export function WorkspaceMargin({
               card={meta.card}
               top={topFor(idx)}
               onExamine={onExamine}
+              onResolve={onResolve}
             />
           );
         })}
@@ -324,22 +334,63 @@ function MarginNote({
   disposition,
   card,
   top,
-  onExamine
+  onExamine,
+  onResolve
 }: {
   claimIndex: number;
   disposition: ClaimDisposition;
   card: VerifyClaimVerdict;
   top: number | undefined;
   onExamine: (claimIndex: number) => void;
+  onResolve?: () => void;
 }) {
   const tier = noteTier(disposition.tier);
-  const trail = card.unsupported_reason && tier === "refusal" ? card.unsupported_reason : null;
+  const positioned = top != null ? { position: "absolute", top: `${top}px` } : undefined;
+
+  // The refusal is the most COMPLETE card in the product (rubric C1-C3), not the
+  // emptiest. It states, in order: what Cachet checked, what it therefore cannot
+  // stand behind (reliance-calibrating, never the "could not check" shrug), and
+  // the precise next action. That action is a real button when the host wires
+  // onResolve (the Cachet shell routes it to Sources); when omitted (the Carrel
+  // substrate, which has no Sources route) it stays a directive line so neither
+  // host ships a dead button. Grave, neutral ink; it never animates.
+  if (tier === "refusal") {
+    const trail = card.unsupported_reason ?? null;
+    return (
+      <div
+        className={[styles.marginNote, styles.refusalNote].join(" ")}
+        data-note-key={claimIndex}
+        data-tier="refusal"
+        style={positioned}
+      >
+        <p className={styles.noteKind}>{disposition.label}</p>
+        {disposition.checked ? (
+          <p className={styles.refusalChecked}>{disposition.checked}</p>
+        ) : null}
+        {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
+        {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
+        <div className={styles.refusalActions}>
+          {onResolve && disposition.actionLabel ? (
+            <button type="button" className={styles.refusalResolve} onClick={onResolve}>
+              {disposition.actionLabel}
+            </button>
+          ) : disposition.nextAction ? (
+            <p className={styles.noteAction}>{disposition.nextAction}</p>
+          ) : null}
+          <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
+            Examine
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={styles.marginNote}
       data-note-key={claimIndex}
       data-tier={tier ?? undefined}
-      style={top != null ? { position: "absolute", top: `${top}px` } : undefined}
+      style={positioned}
     >
       <p className={styles.noteKind}>
         {disposition.label}
@@ -348,13 +399,6 @@ function MarginNote({
         ) : null}
       </p>
       {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
-      {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
-      {disposition.nextAction ? (
-        // SM-V5: the calibrating "do this". A refusal that hands responsibility
-        // back with a precise next step, never a shrug. Rendered as a directive
-        // line, not a dead button, since source ingest is not wired yet.
-        <p className={styles.noteAction}>{disposition.nextAction}</p>
-      ) : null}
       <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
         Examine
       </button>

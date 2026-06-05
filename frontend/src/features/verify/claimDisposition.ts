@@ -50,6 +50,13 @@ export interface ClaimDisposition {
   tier: DispositionTier;
   /** Litigator-facing headline label. */
   label: string;
+  /**
+   * What Cachet actually did, set only on the refusal (could_not_check). The
+   * refusal opens by stating the work it performed, never a shrug, so the card
+   * reads as a completed examination that stopped short of certifying, not an
+   * empty "could not check" (rubric C1: the refusal is the most COMPLETE card).
+   */
+  checked?: string;
   /** One-line plain-language reason. Empty for the unmarked pass. */
   detail: string;
   /**
@@ -59,6 +66,12 @@ export interface ClaimDisposition {
    * other disposition.
    */
   nextAction?: string;
+  /**
+   * The verb for the refusal's action button (rubric C1: the next action is a
+   * button, not a directive line). Set only on the refusal; the host wires the
+   * click via onResolve. Absent on every other disposition.
+   */
+  actionLabel?: string;
 }
 
 /** Sort order, worst-first by severity and independent of the render register:
@@ -126,6 +139,31 @@ function mk(
 }
 
 /**
+ * Build a refusal (could_not_check) disposition. The refusal is the one card
+ * that states its work in full (rubric C1-C3): `checked` says what Cachet did,
+ * `detail` says what it therefore cannot stand behind and how to treat the
+ * statement until then (reliance-calibrating, never a shrug), `nextAction` is
+ * the precise step in prose, and `actionLabel` is the verb the host renders as
+ * a button. Grave, neutral ink; it never wears the oxblood flag.
+ */
+function mkRefusal(
+  checked: string,
+  detail: string,
+  nextAction: string,
+  actionLabel: string
+): ClaimDisposition {
+  return {
+    kind: "could_not_check",
+    tier: "refusal",
+    label: "Could not verify",
+    checked,
+    detail,
+    nextAction,
+    actionLabel
+  };
+}
+
+/**
  * Collapse one claim's signals into a single disposition. Precedence runs
  * worst-first: a fabricated citation outranks a wrong-proposition citation,
  * which outranks an ungrounded claim, which outranks an honest "could not
@@ -179,39 +217,40 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
     );
   }
   if (card.verdict === "unknown") {
-    return mk(
-      "could_not_check",
-      "Could not verify",
-      reasonText(card) ??
-        "Verification could not run, so nothing here is confirmed against a source.",
-      "Add the sources this draft relies on, then verify again."
+    return mkRefusal(
+      "Cachet read this statement and searched for an authority to support it.",
+      "It found nothing to check the statement against, so it cannot stand behind it. Treat the statement as unverified until you confirm it yourself.",
+      "Add the sources this draft relies on, then verify again.",
+      "Add the sources"
     );
   }
 
   // verdict === "verified": grounded in the user's sources. Downgrade to the
-  // honest refusal if any cited authority could not be fully checked.
+  // honest refusal if any cited authority could not be fully checked. Each card
+  // leads with what Cachet did so the refusal reads as a finished examination,
+  // and separates the grounding (which stands) from the authority (which does not).
   if (ambiguousCite) {
-    return mk(
-      "could_not_check",
-      "Could not verify",
-      "Grounded in your sources, but this citation matches more than one case, so the authority is unconfirmed.",
-      "Confirm which case you mean, then verify again."
+    return mkRefusal(
+      "Cachet found this statement grounded in your sources and looked up the citation.",
+      "The citation matches more than one case, so the authority behind it is unconfirmed. The grounding stands; which case you mean does not.",
+      "Confirm which case you mean, then verify again.",
+      "Confirm the citation"
     );
   }
   if (caseLookupError) {
-    return mk(
-      "could_not_check",
-      "Could not verify",
-      "Grounded in your sources, but the citation could not be checked, so its authority is unconfirmed.",
-      "Open the source to confirm, or verify again."
+    return mkRefusal(
+      "Cachet found this statement grounded in your sources and tried to look up the citation.",
+      "The citation could not be reached, so its authority is unconfirmed. The grounding stands; the citation has not been checked.",
+      "Open the source to confirm, or verify again.",
+      "Open the source"
     );
   }
   if (holdingUncheckable) {
-    return mk(
-      "could_not_check",
-      "Could not verify",
-      "Grounded in your sources, but the cited opinion could not be read, so it is unconfirmed that it supports this.",
-      "Add the opinion text, then verify again."
+    return mkRefusal(
+      "Cachet found this statement grounded in your sources and opened the cited case.",
+      "The opinion could not be read, so it stays unconfirmed that the case supports this. The grounding stands; the holding has not been checked.",
+      "Add the opinion text, then verify again.",
+      "Add the opinion"
     );
   }
   return mk("supported", "Supported", "");

@@ -192,3 +192,32 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     expect(screen.queryByText("Save to Shelf")).toBeNull();
   });
 });
+
+describe("VerifyView auto-run gate (lectern hand-off only)", () => {
+  // Regression for the Shelf -> back state-loss bug: the Cachet shell persists the
+  // draft and re-seeds the station on a return visit. The mount auto-run must fire
+  // ONLY on a genuine lectern hand-off (autoRun=true), never on a plain return,
+  // otherwise every navigation back to /verify would silently re-verify.
+  it("does NOT auto-verify on mount when autoRun is unset (a return to /verify)", async () => {
+    render(<VerifyView briefId={null} initialDraft="A persisted draft from a prior visit." />);
+    // The persisted draft is shown...
+    await waitFor(() => {
+      expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+        "A persisted draft from a prior visit."
+      );
+    });
+    // ...but the return must never kick off a fresh verification.
+    expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+
+  it("auto-verifies once on mount when autoRun is true (a fresh lectern hand-off)", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: storedResponse() };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    render(<VerifyView briefId={null} initialDraft="A freshly pasted draft." autoRun />);
+    await waitFor(() => expect(mockDraftStream).toHaveBeenCalledTimes(1));
+  });
+});

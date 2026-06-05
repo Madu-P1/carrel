@@ -402,8 +402,39 @@ function QuotePanel({ quotes }: QuotePanelProps) {
 
 export function VerifyView({
   briefId,
-  initialDraft
-}: { briefId?: string | null; initialDraft?: string | null } = {}) {
+  initialDraft,
+  onDraftChange,
+  onResolve,
+  headerTitle,
+  headerSubtitle,
+  samplePlaceholder,
+  docIds,
+  autoRun
+}: {
+  briefId?: string | null;
+  initialDraft?: string | null;
+  /** Called on every user edit of the draft. The Cachet shell persists it so the
+   *  draft survives in-shell navigation (Verify -> Sources -> Verify); Carrel omits it. */
+  onDraftChange?: (value: string) => void;
+  /** Host handler for a refusal's "give Cachet what it needs" action. The Cachet
+   *  shell routes this to Sources; Carrel omits it (no Sources route). */
+  onResolve?: () => void;
+  /** Host-specific intro copy. Cachet's contract wedge overrides the default
+   *  litigator framing; Carrel omits these and keeps the default. */
+  headerTitle?: string;
+  headerSubtitle?: string;
+  /** Empty-draft placeholder. Cachet's contract wedge overrides the default
+   *  litigator (case-law) example with a contract-claim one; Carrel keeps the default. */
+  samplePlaceholder?: string;
+  /** The loaded Source(s) to verify against. The Cachet shell passes the record the
+   *  user loaded in Sources; Carrel omits it (verifies over the whole corpus). */
+  docIds?: string[];
+  /** Run the check once on mount. The Cachet shell sets this ONLY on a true lectern
+   *  hand-off (a fresh pasted draft handed to /verify), never on a return visit, so
+   *  navigating back to Verify shows the persisted draft without silently re-verifying.
+   *  Carrel omits it (never auto-runs). */
+  autoRun?: boolean;
+} = {}) {
   const [draft, setDraft] = useState(initialDraft ?? "");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<VerifyResponse | null>(null);
@@ -502,8 +533,11 @@ export function VerifyView({
     let live = initialStreamState();
     setStream(live);
     try {
+      // Scope the check to the loaded Source(s) the host provided (the in-house
+      // wedge: verify the AI's claims against the contract the user loaded). Carrel
+      // passes none and verifies over the whole corpus.
       for await (const event of verifyApi.draftStream(
-        { draft: trimmed },
+        { draft: trimmed, doc_ids: docIds && docIds.length > 0 ? docIds : undefined },
         { signal: controller.signal }
       )) {
         live = reduceStreamEvent(live, event);
@@ -533,12 +567,14 @@ export function VerifyView({
     }
   };
 
-  // Lectern hand-off (Cachet standalone shell): when an initial draft is seeded
-  // (the paste happened on the lectern's sheet), run the check once on mount so
-  // the user's paste IS the verify, never a second box. Guarded to the live path
-  // (no briefId) so reopening a saved brief never re-verifies. Runs once.
+  // Lectern hand-off (Cachet standalone shell): when the host explicitly requests
+  // it (autoRun) AND a draft is seeded, run the check once on mount so the user's
+  // paste IS the verify, never a second box. autoRun is set ONLY on a genuine
+  // lectern hand-off, never on a plain return to /verify, so navigating away and
+  // back shows the persisted draft without silently re-verifying. Guarded to the
+  // live path (no briefId) so reopening a saved brief never re-verifies. Runs once.
   useEffect(() => {
-    if (initialDraft && initialDraft.trim() && !briefId) {
+    if (autoRun && initialDraft && initialDraft.trim() && !briefId) {
       void submit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -563,7 +599,13 @@ export function VerifyView({
     );
   }, [draft]);
 
-  const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
+  const cards = ((response?.claim_verdicts ?? []) as VerifyClaimVerdict[]).filter(
+    // The grounded engine emits "No source chunks matched the question: ..." as
+    // an unsupported span when retrieval is empty (the no-cloud path, where the
+    // semantic grounding is withheld). That is an engine diagnostic, not a
+    // lawyer's claim, so it must never render as a verdict card.
+    (c) => !String(c.claim_text ?? "").startsWith("No source chunks matched the question")
+  );
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
   // headline of the surface.
@@ -645,10 +687,10 @@ export function VerifyView({
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Verify your draft.</h1>
+        <h1 className={styles.title}>{headerTitle ?? "Verify your draft."}</h1>
         <Text className={styles.subtitle}>
-          Paste a brief, memo, or claim. Every statement is checked against the sources you provide,
-          and any cited cases are checked for existence and holding.
+          {headerSubtitle ??
+            "Paste a brief, memo, or claim. Every statement is checked against the sources you provide, and any cited cases are checked for existence and holding."}
         </Text>
       </header>
 
@@ -660,8 +702,12 @@ export function VerifyView({
           id="verify-draft-input"
           className={styles.draftInput}
           value={draft}
-          placeholder={SAMPLE_DRAFT}
-          onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+          placeholder={samplePlaceholder ?? SAMPLE_DRAFT}
+          onInput={(e) => {
+            const value = (e.target as HTMLTextAreaElement).value;
+            setDraft(value);
+            onDraftChange?.(value);
+          }}
           onKeyDown={(e) => {
             // Keyboard-first (SM-V7): Cmd/Ctrl + Enter verifies from the draft.
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -734,7 +780,12 @@ export function VerifyView({
         </div>
       ) : null}
 
-      {response?.error === "provider_below_quality_bar" ? (
+      {response?.error === "provider_below_quality_bar" && quoteResults.length === 0 ? (
+        // The semantic grounding was withheld (no Claude). Only take over the whole
+        // surface with the gate banner when there is nothing else to show. When the
+        // deterministic quote check produced findings (the no-cloud contract catch),
+        // fall through and render them: the catch is the result, and the withheld
+        // state is carried by the calm note under it.
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
       ) : (
         <>
@@ -778,7 +829,17 @@ export function VerifyView({
               unattributedQuotes={quoteResults.filter((q) => q.status !== "verbatim")}
               examined={selected}
               onExamine={(idx) => setSelected(selected === idx ? null : idx)}
+              onResolve={onResolve}
             />
+          ) : response && quoteResults.length > 0 ? (
+            // No-cloud path: the deterministic quote check ran against the loaded
+            // record, but the semantic claim-grounding was withheld (no model it
+            // can stand behind). Say that honestly: never "load the sources" (they
+            // are loaded) or "nothing came back" (the quote check IS the result).
+            <div className={styles.emptyState}>
+              The quoted language was checked against the record on this device. Cachet withholds a
+              judgment on the claims themselves without a model it can stand behind.
+            </div>
           ) : response ? (
             <div className={styles.emptyState}>
               No statements came back from the engine. Load the sources this draft relies on, then

@@ -295,7 +295,15 @@ private struct ProcessSpawnEnv {
         // Walk the candidate Python list in the same order as the bash
         // launcher: prefer the venv, fall back to system. If none
         // exist, abort.
-        let pythonCandidates: [URL] = [
+        // An explicit interpreter, baked into the bundle's Info.plist
+        // (LSEnvironment) by run-cachet-app.sh, wins. This closes the
+        // worktree gap: a git worktree has no .venv of its own, so the
+        // repoRoot/.venv candidates miss and the system-python3 fallback
+        // lacks httpx/fastapi/uvicorn, leaving the app unable to respawn its
+        // own backend. The launcher resolves the real venv and hands it here.
+        let explicitPython = ProcessInfo.processInfo.environment["CACHET_BACKEND_PYTHON"]
+            .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        let pythonCandidates: [URL] = [explicitPython].compactMap { $0 } + [
             repoRoot.appendingPathComponent(".venv/bin/python3"),
             repoRoot.appendingPathComponent(".venv/bin/python"),
             URL(fileURLWithPath: "/opt/homebrew/bin/python3"),
