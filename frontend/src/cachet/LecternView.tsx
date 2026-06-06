@@ -62,7 +62,7 @@ export function LecternView() {
 
   return (
     <section className={styles.lectern}>
-      <CachetMark size={76} strokeWidth={26} className={styles.lecternMark} />
+      <CachetMark size={76} className={styles.lecternMark} />
       <h1 className={styles.wordmark}>Cachet</h1>
       <p className={styles.tagline}>
         Independent verification for high-stakes drafts. Cachet certifies only what

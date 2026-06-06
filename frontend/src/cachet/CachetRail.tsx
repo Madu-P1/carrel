@@ -96,7 +96,7 @@ export function CachetRail({ currentPath }: { currentPath: string }) {
         title="Cachet"
         onClick={() => navigateTo("/")}
       >
-        <CachetMark size={26} strokeWidth={19} />
+        <CachetMark size={26} />
       </button>
       <div className={styles.railGroup}>
         {MAIN_ITEMS.map((item) => (

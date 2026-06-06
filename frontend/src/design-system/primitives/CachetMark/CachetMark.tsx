@@ -8,8 +8,8 @@ import styles from "./CachetMark.module.css";
  * path-draw, so the mark's shape is never altered.
  *
  * Path data is the real brand asset (cachet-landing/assets/brand/cachet-mark.svg),
- * viewBox 0 0 240 240. `strokeWidth` is in viewBox units (16 = the mark variant,
- * 19 = the heavier rail glyph, 26 = the lectern hero).
+ * viewBox 0 0 240 240. `strokeWidth` is in viewBox units; the default 20 is the
+ * weight used on the landing page.
  *
  * States:
  * - `idle`    a near-imperceptible breath. The resting state.
@@ -27,7 +27,7 @@ export interface CachetMarkProps {
   state?: CachetMarkState;
   /** Rendered square size in px. Defaults to 40. */
   size?: number;
-  /** Stroke weight in viewBox units (16 mark, 19 rail, 26 lectern). Defaults to 16. */
+  /** Stroke weight in viewBox units. Defaults to 20 (the landing-page weight). */
   strokeWidth?: number;
   /** Accessible label. Defaults to "Cachet". */
   title?: string;
@@ -40,7 +40,7 @@ export interface CachetMarkProps {
 export function CachetMark({
   state = "idle",
   size = 40,
-  strokeWidth = 16,
+  strokeWidth = 20,
   title = "Cachet",
   onRevealEnd,
   className
@@ -58,13 +58,13 @@ export function CachetMark({
           <g className={styles.cwrap}>
             <path
               className={styles.c}
-              strokeWidth={strokeWidth}
+              stroke-width={strokeWidth}
               pathLength={100}
               d="M174.25 86.02 A64 64 0 0 1 80.53 69.56"
             />
             <path
               className={styles.c}
-              strokeWidth={strokeWidth}
+              stroke-width={strokeWidth}
               pathLength={100}
               d="M64.53 88.00 A64 64 0 0 0 174.25 153.98"
               onAnimationEnd={() => {
