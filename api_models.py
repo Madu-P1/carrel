@@ -590,11 +590,6 @@ class StudioGenerateRequest(BaseModel):
     show_citations: bool = False
 
 
-class SynthesisRunRequest(BaseModel):
-    source_ids: List[str]
-    synthesis_type: str = "compare"
-
-
 # ----------------------------------------------------------------------
 # Calendar feeds + plan (Phase 1 of the coach feature)
 # ----------------------------------------------------------------------

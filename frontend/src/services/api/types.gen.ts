@@ -1224,40 +1224,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/synthesis/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Synthesis Run */
-        post: operations["synthesis_run_api_synthesis_run_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/synthesis/contradictions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Synthesis Contradictions */
-        get: operations["synthesis_contradictions_api_synthesis_contradictions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/evidence": {
         parameters: {
             query?: never;
@@ -3048,16 +3014,6 @@ export interface components {
             status: string;
             /** Error */
             error?: string | null;
-        };
-        /** SynthesisRunRequest */
-        SynthesisRunRequest: {
-            /** Source Ids */
-            source_ids: string[];
-            /**
-             * Synthesis Type
-             * @default compare
-             */
-            synthesis_type: string;
         };
         /** TextDocumentCreateRequest */
         TextDocumentCreateRequest: {
@@ -5737,74 +5693,6 @@ export interface operations {
             path: {
                 artifact_id: string;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    synthesis_run_api_synthesis_run_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SynthesisRunRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    synthesis_contradictions_api_synthesis_contradictions_get: {
-        parameters: {
-            query?: {
-                source_ids?: string[] | null;
-            };
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody?: never;

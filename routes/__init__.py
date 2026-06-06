@@ -15,7 +15,6 @@ from routes.reader_nodes import register_reader_node_routes
 from routes.search import register_search_routes
 from routes.studio import register_studio_routes
 from routes.study import register_study_routes
-from routes.synthesis import register_synthesis_routes
 from routes.system import register_system_routes
 from routes.tutor import register_tutor_routes
 from routes.verify import register_verify_routes
@@ -35,7 +34,6 @@ def register_routes(app) -> None:
     register_briefs_routes(app)
     register_anchor_routes(app)
     register_studio_routes(app)
-    register_synthesis_routes(app)
     register_evidence_routes(app)
     register_event_routes(app)
     register_export_routes(app)
