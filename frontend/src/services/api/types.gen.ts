@@ -3356,6 +3356,12 @@ export interface components {
             /** Unsupported Reason */
             unsupported_reason?: string | null;
             placement?: components["schemas"]["VerifyPlacementItem"] | null;
+            /** Assessed Confidence */
+            assessed_confidence?: number | null;
+            /** Assessed Model */
+            assessed_model?: string | null;
+            /** Assessed Label */
+            assessed_label?: string | null;
         };
         /**
          * VerifyPlacementItem

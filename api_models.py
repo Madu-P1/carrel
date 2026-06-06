@@ -314,6 +314,12 @@ class VerifyClaimVerdictItem(BaseModel):
     # cards). A placed=False placement means the claim is in the unplaced tray;
     # deterministic, never mis-pinned (services.legal.align).
     placement: Optional["VerifyPlacementItem"] = None
+    # T1 recall tier (ADR-0012): assessed-tier provenance, set by nothing yet (dark
+    # until the calibration gate passes). assessed_confidence rides the wire for the
+    # gate + audit but is not rendered on the card (D3); 0-100 scale.
+    assessed_confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    assessed_model: Optional[str] = None
+    assessed_label: Optional[str] = None
 
 
 class VerifySummaryItem(BaseModel):

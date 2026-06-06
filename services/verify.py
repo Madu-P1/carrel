@@ -67,6 +67,14 @@ class VerifyClaimVerdict:
     # cards, the engine-failure card). A placed=False placement means the claim
     # is in the unplaced tray. Deterministic; never mis-pinned (services.legal.align).
     placement: Dict[str, Any] | None = None
+    # T1 recall tier (ADR-0012): assessed-tier provenance, defaulted None and set by
+    # nothing yet (the selector is wired in a later PR, dark until the calibration gate
+    # passes). assessed_confidence stays on the wire for the gate + audit record but is
+    # NOT rendered on the card (D3); the frontend reuses the existing `assistive` tier
+    # without a number.
+    assessed_confidence: float | None = None
+    assessed_model: str | None = None
+    assessed_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -500,6 +508,9 @@ def _verdict_card_to_dict(verdict: VerifyClaimVerdict) -> Dict[str, Any]:
         "case_verdicts": [_strip_opinion_text(cv) for cv in verdict.case_verdicts],
         "unsupported_reason": verdict.unsupported_reason,
         "placement": verdict.placement,
+        "assessed_confidence": verdict.assessed_confidence,
+        "assessed_model": verdict.assessed_model,
+        "assessed_label": verdict.assessed_label,
     }
 
 
