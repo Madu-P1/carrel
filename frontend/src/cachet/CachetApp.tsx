@@ -16,6 +16,7 @@ import { takePendingDraft } from "./pendingDraft";
 import { clearSource, loadedSource, refreshSources, setActiveRecord, sourceDocs } from "./source";
 import { VerdictDemo } from "./__demo__/VerdictDemo";
 import { StreamFlipDemo } from "./__demo__/StreamFlipDemo";
+import { CachetMarkDemo } from "./__demo__/CachetMarkDemo";
 import styles from "./cachet.module.css";
 
 /**
@@ -119,6 +120,9 @@ function renderRoute(route: string) {
   }
   if (demo === "stream") {
     return <StreamFlipDemo />;
+  }
+  if (demo === "mark") {
+    return <CachetMarkDemo />;
   }
 
   if (path.startsWith("/verify")) {
