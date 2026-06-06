@@ -1480,23 +1480,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/onboarding/demo-library": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Seed Demo Library Route */
-        post: operations["seed_demo_library_route_api_onboarding_demo_library_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/system/provider": {
         parameters: {
             query?: never;
@@ -2322,15 +2305,6 @@ export interface components {
         DeleteResponse: {
             /** Deleted */
             deleted: boolean;
-        };
-        /** DemoLibrarySeedResponse */
-        DemoLibrarySeedResponse: {
-            /** Seeded */
-            seeded: boolean;
-            /** Documents */
-            documents?: components["schemas"]["DocumentUploadResponse"][];
-            /** Skipped Reason */
-            skipped_reason?: string | null;
         };
         /** DialogueMessageRequest */
         DialogueMessageRequest: {
@@ -6160,37 +6134,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    seed_demo_library_route_api_onboarding_demo_library_post: {
-        parameters: {
-            query?: {
-                force?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoLibrarySeedResponse"];
                 };
             };
             /** @description Validation Error */

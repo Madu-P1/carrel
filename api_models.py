@@ -815,12 +815,6 @@ class AnchorPromotionRequest(BaseModel):
     concept_id: Optional[str] = None
 
 
-class DemoLibrarySeedResponse(BaseModel):
-    seeded: bool
-    documents: List[DocumentUploadResponse] = Field(default_factory=list)
-    skipped_reason: Optional[str] = None
-
-
 # --- Cachet PR6: Shelf persistence (saved briefs) ---------------------------
 #
 # A brief is one checked draft the lawyer kept. `response` and `cert` are
