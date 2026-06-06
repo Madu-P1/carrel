@@ -573,23 +573,6 @@ class SessionStartRequest(BaseModel):
     mode: str = "mixed"
 
 
-class StudioGenerateRequest(BaseModel):
-    artifact_kind: str = "study_guide"
-    source_scope: Optional[List[str]] = None
-    concept_scope: Optional[List[str]] = None
-    goal_id: Optional[str] = None
-    session_id: Optional[str] = None
-    audience: str = "student"
-    difficulty: str = "standard"
-    depth: str = "standard"
-    style: str = "prose"
-    output_length: str = "medium"
-    evidence_strictness: str = "normal"
-    custom_prompt: Optional[str] = None
-    grounding_mode: str = "internal_only"
-    show_citations: bool = False
-
-
 # ----------------------------------------------------------------------
 # Calendar feeds + plan (Phase 1 of the coach feature)
 # ----------------------------------------------------------------------
