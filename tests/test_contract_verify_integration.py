@@ -151,6 +151,20 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertIn("$1,000,000", card.unsupported_reason or "")
         self.assertIn("$500,000", card.unsupported_reason or "")
 
+    def test_multi_value_sentence_is_could_not_check_not_a_guess(self) -> None:
+        # A summary sentence carrying two money values cannot be aligned to the clause
+        # deterministically. The card must read could-not-check (unknown) with an honest
+        # reason, never a masked "verified" or a guessed "unsupported".
+        draft = "The aggregate liability caps are $500,000 and $1,000,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "aggregate liability caps")
+        self.assertEqual("multi_value_unverifiable", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        self.assertIn("not independently checked", card.unsupported_reason or "")
+
     def test_anchor_free_claim_is_could_not_check(self) -> None:
         env = build_deterministic_envelope(
             "The vendor is solely responsible for all defects.",
