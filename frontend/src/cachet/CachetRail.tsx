@@ -1,6 +1,6 @@
 import { navigateTo } from "@/app/shell/useAppShell";
+import { CachetMark } from "@/design-system";
 
-import { CachetMark } from "./CachetMark";
 import styles from "./cachet.module.css";
 
 /**

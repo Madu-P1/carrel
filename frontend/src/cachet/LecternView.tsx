@@ -1,8 +1,8 @@
 import { useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
+import { CachetMark } from "@/design-system";
 
-import { CachetMark } from "./CachetMark";
 import { liveDraft } from "./liveDraft";
 import { stashPendingDraft } from "./pendingDraft";
 import { clearSource, loadedSource, sourceUpload, uploadSource } from "./source";

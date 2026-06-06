@@ -52,3 +52,5 @@ export { LoadingBoundary } from "./primitives/LoadingBoundary";
 export type { LoadingBoundaryProps } from "./primitives/LoadingBoundary";
 export { Markdown } from "./primitives/Markdown";
 export type { MarkdownComponents, MarkdownProps } from "./primitives/Markdown";
+export { CachetMark } from "./primitives/CachetMark";
+export type { CachetMarkProps, CachetMarkState } from "./primitives/CachetMark";
