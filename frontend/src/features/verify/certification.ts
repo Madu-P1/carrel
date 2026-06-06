@@ -210,7 +210,12 @@ export function buildCertification(
     citation_not_found: 0,
     proposition_unsupported: 0,
     claim_unsupported: 0,
-    could_not_check: 0
+    could_not_check: 0,
+    // T1 (ADR-0012): always 0 until the selector is wired and its gate passes (PR-6+).
+    // An assessed finding is not "supported", so it flows into `flagged` / needsReview
+    // like any non-confirmed item. Whether a certification record should attest T1
+    // assistive findings at all is a PR-6 decision (revisit when assessed goes live).
+    assessed: 0
   };
   const allItems: CertificationItem[] = cards.map((card, i) => {
     const d = dispositionForClaim(card);
