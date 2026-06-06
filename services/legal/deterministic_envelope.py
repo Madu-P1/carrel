@@ -11,8 +11,10 @@ anchor-free sentences route to ``unsupported_spans`` instead of being
 silently dropped.
 
 ``services.verify.verify_draft`` swaps ``grounded_tutor_envelope`` for
-this builder when ``CACHET_DETERMINISTIC_VERIFY`` is set. The flag
-defaults off, so the existing LLM flow is unchanged.
+this builder on the deterministic path. The Cachet ``/api/verify`` route
+defaults to this builder (no egress, no LLM); the LLM grounding path is an
+explicit opt-out via ``CACHET_DETERMINISTIC_VERIFY=0``. A direct caller of
+``verify_draft`` keeps the conservative legacy opt-in default.
 
 The case-verdict dict shape is produced by the canonical serializer
 ``services.legal.case_verification.serialize_case_verdict`` so the wire contract

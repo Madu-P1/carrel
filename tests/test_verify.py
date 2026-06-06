@@ -12,6 +12,7 @@ existing grounded-tutor engine:
 
 from __future__ import annotations
 
+import os
 import unittest
 from unittest import mock
 
@@ -250,13 +251,16 @@ class VerifyRouteSmokeTests(unittest.TestCase):
         def fake_db():
             yield None
 
-        with mock.patch("routes.verify.db.get_db", fake_db):
-            with mock.patch(
-                "services.verify.tutor_service.grounded_tutor_envelope",
-                return_value=stub_envelope,
-            ):
-                client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
-                response = client.post("/api/verify", json={"draft": "Mitosis is the process."})
+        # This route test exercises the LLM path, now the explicit opt-out: the
+        # /api/verify surface defaults to the deterministic engine (PR-3).
+        with mock.patch.dict(os.environ, {"CACHET_DETERMINISTIC_VERIFY": "0"}, clear=False):
+            with mock.patch("routes.verify.db.get_db", fake_db):
+                with mock.patch(
+                    "services.verify.tutor_service.grounded_tutor_envelope",
+                    return_value=stub_envelope,
+                ):
+                    client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+                    response = client.post("/api/verify", json={"draft": "Mitosis is the process."})
 
         self.assertEqual(200, response.status_code)
         body = response.json()
@@ -265,6 +269,65 @@ class VerifyRouteSmokeTests(unittest.TestCase):
         self.assertEqual(1, body["summary"]["total"])
         self.assertEqual(1, body["summary"]["verified"])
         self.assertEqual("verified", body["claim_verdicts"][0]["verdict"])
+
+    def test_post_verify_defaults_to_deterministic_engine(self) -> None:
+        # PR-3: the /api/verify surface defaults to the no-LLM deterministic engine
+        # when the flag is unset. The LLM grounding path must NOT run, so no draft
+        # text can reach CourtListener off-device on the default production path.
+        from contextlib import contextmanager
+
+        from fastapi.testclient import TestClient
+
+        import main
+        from services.local_api_security import HEADER_NAME, get_local_api_token
+
+        @contextmanager
+        def fake_db():
+            yield None
+
+        llm_calls: list[int] = []
+
+        def llm_spy(*a, **k):
+            llm_calls.append(1)
+            return {}
+
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)  # unset -> default on
+            with mock.patch("routes.verify.db.get_db", fake_db):
+                with mock.patch(
+                    "services.verify.tutor_service.grounded_tutor_envelope",
+                    side_effect=llm_spy,
+                ):
+                    client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+                    response = client.post(
+                        "/api/verify",
+                        json={"draft": "As held in 999 U.S. 999, the rule applies."},
+                    )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("deterministic-v1", response.json()["model"])
+        self.assertEqual([], llm_calls, "the LLM path must not run on the default Cachet surface")
+
+    def test_deterministic_surface_default_resolution(self) -> None:
+        # Unset -> deterministic; only an explicit 0/false/no opts out to the LLM path.
+        from routes.verify import _deterministic_surface_default
+
+        cases = [
+            (None, True),
+            ("1", True),
+            ("true", True),
+            ("0", False),
+            ("false", False),
+            ("no", False),
+            ("", True),
+        ]
+        for value, expected in cases:
+            with mock.patch.dict(os.environ, {}, clear=False):
+                if value is None:
+                    os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
+                else:
+                    os.environ["CACHET_DETERMINISTIC_VERIFY"] = value
+                self.assertEqual(expected, _deterministic_surface_default(), f"value={value!r}")
 
 
 if __name__ == "__main__":

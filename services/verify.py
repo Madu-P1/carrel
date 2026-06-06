@@ -298,12 +298,28 @@ def _payload_for_envelope(
     )
 
 
+def _resolve_deterministic(deterministic: bool | None) -> bool:
+    """Whether to run the no-LLM deterministic engine for this verify call.
+
+    An explicit ``deterministic`` wins: the Cachet verify route passes its
+    surface default (deterministic on) here. When None (direct callers, tests),
+    fall back to the legacy opt-in env flag so direct-call behavior is unchanged,
+    deterministic only when ``CACHET_DETERMINISTIC_VERIFY`` is explicitly on. The
+    surface-level default (on, with an explicit opt-out) lives at the route, not
+    here, so importing this orchestrator never silently changes a caller's path.
+    """
+    if deterministic is not None:
+        return deterministic
+    return os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}
+
+
 def verify_draft(
     conn: sqlite3.Connection,
     draft: str,
     *,
     doc_ids: Sequence[str] | None = None,
     subject_name: str | None = None,
+    deterministic: bool | None = None,
     log_study_event,
     fetch_recent_events,
 ) -> VerifyResult:
@@ -328,7 +344,7 @@ def verify_draft(
             provider="",
         )
 
-    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+    if _resolve_deterministic(deterministic):
         # No-LLM litigator path (Cachet). Anchor-driven unit selection +
         # offline case-existence; holding-match stays off. Imported lazily so
         # the default (flag-off) path keeps its original import contract and
@@ -655,6 +671,7 @@ def verify_draft_stream(
     *,
     doc_ids: Sequence[str] | None = None,
     subject_name: str | None = None,
+    deterministic: bool | None = None,
     log_study_event,
     fetch_recent_events,
 ) -> Iterator[Dict[str, Any]]:
@@ -695,7 +712,7 @@ def verify_draft_stream(
         yield {"type": "result", "verify": verify_result_to_payload(result)}
         return
 
-    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+    if _resolve_deterministic(deterministic):
         # The demo UI calls ONLY this stream endpoint (VerifyView -> /api/verify/
         # stream), so the offline engine must run HERE too, not just in the
         # non-stream verify_draft. Without this branch the stream falls through to

@@ -8,6 +8,7 @@ per-claim verdict surface. Thin wrapper over
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, Iterator
 
 from fastapi import APIRouter
@@ -21,6 +22,17 @@ from services.app_state import fetch_recent_events, log_study_event
 router = APIRouter()
 
 
+def _deterministic_surface_default() -> bool:
+    """The /api/verify surface IS Cachet (no egress, no LLM), so the deterministic
+    engine is the default and the LLM grounding path is an explicit opt-out
+    (``CACHET_DETERMINISTIC_VERIFY=0/false/no``). Unset -> deterministic. The
+    decision lives here, at the surface, not in the verify orchestrator: a direct
+    caller of ``verify_draft`` keeps the conservative legacy default, while the
+    production route defaults safe for the privacy product.
+    """
+    return os.getenv("CACHET_DETERMINISTIC_VERIFY", "").strip().lower() not in {"0", "false", "no"}
+
+
 @router.post("/api/verify", response_model=VerifyResponse)
 def verify_endpoint(payload: VerifyRequest) -> Dict[str, Any]:
     with db.get_db() as conn:
@@ -29,6 +41,7 @@ def verify_endpoint(payload: VerifyRequest) -> Dict[str, Any]:
             payload.draft,
             doc_ids=payload.doc_ids,
             subject_name=payload.subject_name,
+            deterministic=_deterministic_surface_default(),
             log_study_event=log_study_event,
             fetch_recent_events=fetch_recent_events,
         )
@@ -57,6 +70,7 @@ def verify_stream_endpoint(payload: VerifyRequest) -> StreamingResponse:
                     payload.draft,
                     doc_ids=payload.doc_ids,
                     subject_name=payload.subject_name,
+                    deterministic=_deterministic_surface_default(),
                     log_study_event=log_study_event,
                     fetch_recent_events=fetch_recent_events,
                 ):
