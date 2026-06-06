@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from services.legal.anchors import Anchor, extract_anchors, has_anchor
+from services.legal.anchors import Anchor, build_alias_table, extract_anchors, has_anchor
 
 
 def _types(span: str) -> list[str]:
@@ -18,6 +18,14 @@ def _types(span: str) -> list[str]:
 
 def _first(span: str, kind: str) -> Anchor:
     return next(a for a in extract_anchors(span) if a.type == kind)
+
+
+def _of(span: str, kind: str) -> list[Anchor]:
+    return [a for a in extract_anchors(span) if a.type == kind]
+
+
+def _texts(span: str, kind: str) -> list[str]:
+    return [a.text for a in _of(span, kind)]
 
 
 class MoneyAnchorTests(unittest.TestCase):
@@ -134,6 +142,207 @@ class QuoteAndGateTests(unittest.TestCase):
         anchor = _first("$5,000", "money")
         with self.assertRaises(Exception):
             anchor.text = "x"  # type: ignore[misc]
+
+
+class PartyAnchorTests(unittest.TestCase):
+    def test_parenthetical_alias(self) -> None:
+        self.assertEqual(_texts('(the "Buyer") shall pay.', "party"), ['(the "Buyer")'])
+        self.assertEqual(_texts('Named ("Seller") here.', "party"), ['("Seller")'])
+        self.assertEqual(
+            _texts('(the "Initial Purchaser") agrees.', "party"), ['(the "Initial Purchaser")']
+        )
+
+    def test_entity_suffix(self) -> None:
+        cases = {
+            "Paid by Acme Inc. today.": "Acme Inc.",
+            "Globex LLC operates.": "Globex LLC",
+            "Wayne Enterprises, Inc. filed.": "Wayne Enterprises, Inc.",
+            "Run by Acme Corp. here.": "Acme Corp.",
+            "Held by Acme Ltd. abroad.": "Acme Ltd.",
+            "Funded by Acme Capital L.P. now.": "Acme Capital L.P.",
+            "Listed as Acme PLC today.": "Acme PLC",
+            "Made by Acme GmbH overseas.": "Acme GmbH",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(_texts(text, "party"), [expected])
+
+    def test_suffix_boundary_and_spelled_out_forms_do_not_false_positive(self) -> None:
+        # The trailing boundary stops a suffix from matching a longer word, and the
+        # ambiguous spelled-out forms are dropped, so all of these yield no party.
+        # "Acme Corporation"/"Smith Incorporated" are a documented recall gap.
+        for text in [
+            "Acme Corporate offices opened.",
+            "Acme LLCs were formed.",
+            "The Limited Partners met.",
+            "Important Limited Warranty applies.",
+            "Plaintiff Corporation Counsel spoke.",
+            "Smith Incorporated agreed.",
+            "Acme Corporation agreed.",
+            "Acme Corp.oration argued.",
+            "Acme Inc.idental issue.",
+            "Acme L.P.s invested.",
+            "The Acme Inc-owned warehouse closed.",
+            "Important PLC-level guidance arrived.",
+            "Acme LP-style funds are rare.",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(_of(text, "party"), [])
+
+    def test_within_name_connectors(self) -> None:
+        self.assertEqual(
+            _texts("Bank of America Corp. lent it.", "party"), ["Bank of America Corp."]
+        )
+        self.assertEqual(
+            _texts("Johnson & Johnson Inc. makes it.", "party"), ["Johnson & Johnson Inc."]
+        )
+
+    def test_and_does_not_merge_distinct_parties(self) -> None:
+        self.assertEqual(
+            _texts("Acme Inc. and Globex LLC are parties.", "party"),
+            ["Acme Inc.", "Globex LLC"],
+        )
+
+    def test_generic_company_word_and_prose_are_not_parties(self) -> None:
+        # "Company"/"Co" are excluded as too generic, even with a name prefix;
+        # plain prose has no party.
+        for text in [
+            "The Company shall pay.",
+            "Acme Company filed.",
+            "Acme Co. filed.",
+            "The parties met on Tuesday.",
+            "An ordinary sentence.",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(_of(text, "party"), [])
+
+    def test_inherent_capitalized_word_limits_are_pinned(self) -> None:
+        # Pinned (not hidden) inherent T0-NER limits; real NER is T1/off (per the
+        # design doc). Each still points at a real entity span and routes to the
+        # verifier (never a false verdict); the precision point is a human gate.
+        # (1) a capitalized prose word directly before a suffix is swept in:
+        self.assertEqual(
+            _texts("Defendant Stark Industries LLC denies.", "party"),
+            ["Defendant Stark Industries LLC"],
+        )
+        # (2) an all-caps heading whose suffix is itself all-caps (LLC/LP/PLC):
+        self.assertEqual(_texts("THE BOARD LLC MET TODAY.", "party"), ["THE BOARD LLC"])
+
+    def test_offsets_and_no_canonical_value(self) -> None:
+        text = 'Acme Inc. (the "Buyer") and Globex LLC agree.'
+        parties = _of(text, "party")
+        # exact list + document order, not just "non-empty"
+        self.assertEqual([a.text for a in parties], ["Acme Inc.", '(the "Buyer")', "Globex LLC"])
+        for a in parties:
+            with self.subTest(anchor=a.text):
+                self.assertEqual(text[a.start : a.end], a.text)
+                self.assertIsNone(a.canonical_value)
+
+
+class DefinedTermTests(unittest.TestCase):
+    DOC = (
+        'Acme Inc. (the "Buyer") shall pay. "Confidential Information" means '
+        "non-public data. The Buyer must protect Confidential Information."
+    )
+
+    def test_build_alias_table_from_both_forms(self) -> None:
+        # parenthetical (the "Buyer") + definition '"Confidential Information" means'
+        self.assertEqual(
+            build_alias_table(self.DOC),
+            {"Buyer": "Buyer", "Confidential Information": "Confidential Information"},
+        )
+
+    def test_defined_term_anchors_with_canonical_value(self) -> None:
+        table = build_alias_table(self.DOC)
+        dt = [a for a in extract_anchors(self.DOC, alias_table=table) if a.type == "defined_term"]
+        # both terms, each at its definition site and its later reference, in document order
+        self.assertEqual(
+            [a.text for a in dt],
+            ["Buyer", "Confidential Information", "Buyer", "Confidential Information"],
+        )
+        for a in dt:
+            with self.subTest(anchor=a.text):
+                self.assertEqual(self.DOC[a.start : a.end], a.text)
+                self.assertEqual(a.canonical_value, a.text)
+
+    def test_default_equals_alias_output_minus_defined_term(self) -> None:
+        # Load-bearing: the default run equals the alias run with its defined_term
+        # anchors removed (so the other detectors are unchanged AND present), and
+        # the alias run genuinely adds defined_term anchors.
+        table = build_alias_table(self.DOC)
+        default = extract_anchors(self.DOC)
+        with_aliases = extract_anchors(self.DOC, alias_table=table)
+        self.assertEqual(default, [a for a in with_aliases if a.type != "defined_term"])
+        self.assertTrue(any(a.type == "defined_term" for a in with_aliases))
+
+    def test_precision_is_structural_undefined_caps_ignored(self) -> None:
+        # only terms the document itself defined enter the table, so an undefined
+        # capitalized word is never a defined_term.
+        doc = "The Court ruled and the Tribunal agreed."
+        table = build_alias_table(doc)
+        self.assertEqual(table, {})
+        self.assertEqual(
+            [a for a in extract_anchors(doc, alias_table=table) if a.type == "defined_term"],
+            [],
+        )
+
+    def test_case_sensitivity_is_isolated(self) -> None:
+        # Isolates the case rule: same sentence + definition verb, differing only in
+        # the term's leading case - lowercase rejected, Title-case captured.
+        self.assertEqual(build_alias_table('The "data" means everything.'), {})
+        self.assertEqual(build_alias_table('The "Data" means everything.'), {"Data": "Data"})
+
+    def test_canonical_value_comes_from_the_table_not_the_term(self) -> None:
+        # Non-identity table: canonical_value must be the table's value, proving the
+        # detector propagates the canonical rather than echoing the matched term.
+        dt = [
+            (a.text, a.canonical_value)
+            for a in extract_anchors("The Buyer agrees.", alias_table={"Buyer": "Acme Inc."})
+            if a.type == "defined_term"
+        ]
+        self.assertEqual(dt, [("Buyer", "Acme Inc.")])
+
+    def test_term_with_regex_metachars_is_matched_literally(self) -> None:
+        # re.escape is load-bearing: the term "A.B" matches "A.B" literally, not the
+        # regex-dot "AxB". Without escaping this assertion would also capture "AxB".
+        hits = [
+            a.text
+            for a in extract_anchors("See A.B and AxB here.", alias_table={"A.B": "X"})
+            if a.type == "defined_term"
+        ]
+        self.assertEqual(hits, ["A.B"])
+
+    def test_over_captures_rhetorical_definition_by_design(self) -> None:
+        # Pinned (not hidden): a rhetorical `"X" means Y` in prose enters the table.
+        # The safe direction - an extra review anchor routed to the tray, never a
+        # false verdict; whether to tighten is an operator (human-gate) call.
+        self.assertEqual(build_alias_table('"Justice" means a lot to her.'), {"Justice": "Justice"})
+
+    def test_alias_table_is_keyword_only_and_inert_when_no_term_occurs(self) -> None:
+        # alias_table is keyword-only; a table whose terms never occur in the text
+        # adds no anchors, so the result equals the default run.
+        text = "Governed by Section 12.3 and Schedule 2 of the deal."
+        self.assertEqual(
+            extract_anchors(text), extract_anchors(text, alias_table={"Buyer": "Buyer"})
+        )
+
+
+class CitationSectionOverlapTests(unittest.TestCase):
+    def test_statute_section_symbol_not_double_counted(self) -> None:
+        # "42 U.S.C. § 1983" is one statute citation; a section anchor that sits
+        # inside that citation span must NOT also be emitted (the overlap guard).
+        # The citation is detected and no section anchor overlaps its span.
+        text = "Liability under 42 U.S.C. § 1983 and §1983 again."
+        self.assertEqual(_texts(text, "citation"), ["42 U.S.C. § 1983"])
+        cite = _of(text, "citation")[0]
+        for sec in _of(text, "section"):
+            with self.subTest(section=sec.text):
+                self.assertFalse(sec.start < cite.end and cite.start < sec.end)
+
+    def test_standalone_word_section_outside_a_citation_survives(self) -> None:
+        # A keyword-form section reference with no enclosing citation is not
+        # suppressed by the overlap guard.
+        self.assertEqual(_texts("Governed by Section 9.2 of the deal.", "section"), ["Section 9.2"])
 
 
 if __name__ == "__main__":
