@@ -273,16 +273,22 @@ class ContractPathIntegrationTests(unittest.TestCase):
             .verdict,
         )
 
-    def test_missing_section_is_could_not_check_never_accused(self) -> None:
+    def test_missing_section_is_unsupported(self) -> None:
+        # A draft citing a section the source contract does not contain is a hard
+        # unsupported verdict (the source yielded Section 8, so source_sections is
+        # non-empty and the precision gate is satisfied). Unlike a party, section
+        # numbering is regular enough that an absent number is genuinely absent, not
+        # name-form variance, so it earns a verdict rather than a could-not-check.
         draft = "The obligations of Section 99 are incorporated by reference."
         env = build_deterministic_envelope(
             draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
         )
         claim = env["claims"][0]
-        self.assertIn("could not be located", claim["could_not_check_reason"])
+        self.assertNotIn("could_not_check_reason", claim)
+        self.assertEqual("section_absent", claim["section_verdict"]["disposition"])
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
-        self.assertEqual("unknown", card.verdict)
-        self.assertNotEqual("unsupported", card.verdict)
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("could not be located", (card.unsupported_reason or "").lower())
 
     def test_grounding_never_overrides_a_contradiction(self) -> None:
         # ADR-0012 invariant 2 across all grounding types: a party/section present

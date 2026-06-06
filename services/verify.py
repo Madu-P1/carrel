@@ -200,10 +200,20 @@ def _claim_dict_to_verdict(
     citations = tuple(claim_dict.get("citations") or [])
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
     contract_verdict = claim_dict.get("contract_verdict")
+    section_verdict = claim_dict.get("section_verdict")
     could_not_check_reason = claim_dict.get("could_not_check_reason")
     quote_could_not_check_reason = claim_dict.get("quote_could_not_check_reason")
+    section_absent = (
+        bool(section_verdict) and section_verdict.get("disposition") == "section_absent"
+    )
     if citations:
         verdict: VerifyVerdict = "verified"
+    elif section_absent:
+        # A draft sentence citing a section the source contract does not contain is
+        # unsupported regardless of its predicate. Only set on pure-section sentences
+        # (a clause-checkable anchor suppresses it upstream), so it never overrides a
+        # parametric present/contradiction.
+        verdict = "unsupported"
     elif quote_could_not_check_reason:
         # The cite may exist, but a quoted phrase could not be verified against the
         # opinion text we hold. Refuse rather than verify-by-existence (a silent pass
@@ -225,6 +235,8 @@ def _claim_dict_to_verdict(
         # truth), so the card never reads as a bare "this is true." A verified case
         # cite carries no such hedge, so its reason stays None.
         reason = str(contract_verdict.get("detail") or "") or None if contract_verdict else None
+    elif section_absent:
+        reason = str(section_verdict.get("detail") or "") or None
     elif quote_could_not_check_reason:
         reason = str(quote_could_not_check_reason)
     elif could_not_check_reason:
