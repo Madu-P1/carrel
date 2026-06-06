@@ -94,6 +94,28 @@ class SectionAnchorTests(unittest.TestCase):
     def test_numbered_section_is_an_anchor(self) -> None:
         self.assertIn("section", _types("see Section 9.2 of the agreement"))
 
+    def test_section_sign_glyph_is_an_anchor(self) -> None:
+        # A bare "§ 1983" / "§ 7.2" must be caught; the leading word boundary
+        # used to swallow the section-sign form entirely.
+        self.assertEqual(_texts("the claim arises under § 1983", "section"), ["§ 1983"])
+        self.assertEqual(_texts("governed by § 7.2 of the Agreement", "section"), ["§ 7.2"])
+
+    def test_section_sign_without_space_and_subparts(self) -> None:
+        self.assertEqual(_texts("pursuant to §12(b) of the Act", "section"), ["§12(b)"])
+
+    def test_plural_section_sign_is_an_anchor(self) -> None:
+        self.assertIn("§§ 5", _texts("see §§ 5 and 6", "section"))
+
+    def test_section_sign_inside_a_citation_is_not_double_counted(self) -> None:
+        # "42 U.S.C. § 1983" is one law citation; its "§ 1983" is the citation's
+        # own section symbol, so the overlap guard drops it as a section anchor.
+        text = "See 42 U.S.C. § 1983 for the standard."
+        self.assertEqual(_texts(text, "section"), [])
+        self.assertIn("citation", _types(text))
+
+    def test_section_keyword_does_not_match_inside_a_word(self) -> None:
+        self.assertNotIn("section", _types("in subsection 5 of the policy"))
+
 
 class CitationAnchorTests(unittest.TestCase):
     REPORTERS = [
