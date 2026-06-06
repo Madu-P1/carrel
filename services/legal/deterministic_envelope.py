@@ -15,8 +15,8 @@ this builder when ``CACHET_DETERMINISTIC_VERIFY`` is set. The flag
 defaults off, so the existing LLM flow is unchanged.
 
 The case-verdict dict shape is produced by the canonical serializer
-``services.tutor._serialize_case_verdict`` so the wire contract stays in
-lock-step with the LLM path.
+``services.legal.case_verification.serialize_case_verdict`` so the wire contract
+stays in lock-step with the LLM path.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import Sequence
 import httpx
 
 from services.legal.anchors import Anchor, build_alias_table, extract_anchors
-from services.legal.case_verification import verify_claims_for_cases
+from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
 from services.legal.citations_eyecite import caption_matches, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
 from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
@@ -38,7 +38,6 @@ from services.legal.sentences import split_sentences
 from services.retrieval.embeddings import Embedder
 from services.retrieval.typed_hybrid import search_typed_hybrid
 from services.retrieval.validators import verbatim_run_present
-from services.tutor import _serialize_case_verdict
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
 
@@ -402,7 +401,7 @@ def build_deterministic_envelope(
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
             )
-            serialized = [_serialize_case_verdict(v) for v in verdicts]
+            serialized = [serialize_case_verdict(v) for v in verdicts]
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.

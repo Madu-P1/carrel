@@ -333,6 +333,49 @@ class ClaimCaseVerdict:
     error_message: str | None
 
 
+def serialize_case_verdict(verdict: ClaimCaseVerdict) -> dict[str, Any]:
+    """Canonical wire serialization for one claim's case-existence verdict batch.
+
+    The single source of truth for this dict shape, imported by both the LLM tutor
+    path (``services.tutor``) and the deterministic Cachet path
+    (``services.legal.deterministic_envelope``) so the two produce a byte-identical
+    wire contract. Lives in this neutral module, not in the LLM module, so the
+    deterministic core never imports ``services.tutor``.
+    """
+    return {
+        "claim_index": verdict.claim_index,
+        "ok": verdict.ok,
+        "error_code": verdict.error_code,
+        "error_message": verdict.error_message,
+        "verdicts": [
+            {
+                "citation": case.citation,
+                "normalized_citation": case.normalized_citation,
+                "status": case.status,
+                "exists": case.exists,
+                "case_name": case.case_name,
+                "absolute_url": case.absolute_url,
+                "court": case.court,
+                "date_filed": case.date_filed,
+                "error_message": case.error_message,
+                # Carrel V2 half-2: holding-match fields. None on
+                # cites where the follow-up wasn't run or couldn't
+                # decide; populated when fetch + verifier succeeded.
+                "holding_match": case.holding_match,
+                "holding_concern": case.holding_concern,
+                "holding_excerpt": case.holding_excerpt,
+                "holding_error": case.holding_error,
+                # Cachet PR4: server-internal. The verify layer reads this to
+                # build the draft-quote source pool, then strips it before the
+                # SSE boundary (services.verify._strip_opinion_text) so the wire
+                # stays lean. Ask ignores it. None unless an opinion was fetched.
+                "opinion_text": case.opinion_text,
+            }
+            for case in verdict.verdicts
+        ],
+    }
+
+
 def _looks_like_legal_text(text: str) -> bool:
     """Cheap pre-filter to skip non-legal claim texts.
 

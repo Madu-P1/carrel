@@ -28,6 +28,7 @@ from services.extraction.text_artifacts import strip_extraction_artifacts
 from services.ingestion import normalize_subject_name
 from services.legal.case_verification import (
     ClaimCaseVerdict,
+    serialize_case_verdict,
     verify_claims_for_cases_steps,
 )
 from services.retrieval import ScoredHit, search_hybrid
@@ -1182,41 +1183,6 @@ def _flatten_claim_citations(
     return flattened
 
 
-def _serialize_case_verdict(verdict: ClaimCaseVerdict) -> Dict[str, Any]:
-    return {
-        "claim_index": verdict.claim_index,
-        "ok": verdict.ok,
-        "error_code": verdict.error_code,
-        "error_message": verdict.error_message,
-        "verdicts": [
-            {
-                "citation": case.citation,
-                "normalized_citation": case.normalized_citation,
-                "status": case.status,
-                "exists": case.exists,
-                "case_name": case.case_name,
-                "absolute_url": case.absolute_url,
-                "court": case.court,
-                "date_filed": case.date_filed,
-                "error_message": case.error_message,
-                # Carrel V2 half-2: holding-match fields. None on
-                # cites where the follow-up wasn't run or couldn't
-                # decide; populated when fetch + verifier succeeded.
-                "holding_match": case.holding_match,
-                "holding_concern": case.holding_concern,
-                "holding_excerpt": case.holding_excerpt,
-                "holding_error": case.holding_error,
-                # Cachet PR4: server-internal. The verify layer reads this to
-                # build the draft-quote source pool, then strips it before the
-                # SSE boundary (services.verify._strip_opinion_text) so the wire
-                # stays lean. Ask ignores it. None unless an opinion was fetched.
-                "opinion_text": case.opinion_text,
-            }
-            for case in verdict.verdicts
-        ],
-    }
-
-
 def _serialize_claims(
     claims: Sequence[Claim],
     contexts: Sequence[HydratedNodeContext],
@@ -1233,7 +1199,7 @@ def _serialize_claims(
                     if citation.node_id in context_by_node_id
                 ],
                 "case_verdicts": [
-                    _serialize_case_verdict(verdict) for verdict in claim.case_verdicts
+                    serialize_case_verdict(verdict) for verdict in claim.case_verdicts
                 ],
             }
         )
@@ -1931,7 +1897,7 @@ def grounded_tutor_envelope_steps(
             yield {
                 "type": "cite_verdict",
                 "claim_index": value.claim_index,
-                "case_verdict": _serialize_case_verdict(value),
+                "case_verdict": serialize_case_verdict(value),
             }
         elif kind == "result":
             grounded = value
