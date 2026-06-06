@@ -36,6 +36,14 @@ from services.legal.contract_verify import ClauseVerdict, verify_claim_against_c
 from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
 from services.legal.quote_check import extract_draft_quote_spans, split_runs
 from services.legal.sentences import split_sentences
+from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
+from services.legal.t1_selector import (
+    T1Assessment,
+    T1Candidate,
+    active_model_id,
+    assess,
+    default_scorer,
+)
 from services.retrieval.embeddings import Embedder
 from services.retrieval.typed_hybrid import search_typed_hybrid
 from services.retrieval.validators import verbatim_run_present
@@ -338,6 +346,46 @@ def _contract_claim(
     return claim
 
 
+def _t1_anchor_free_assessment(
+    conn: sqlite3.Connection,
+    sentence: str,
+    doc_ids: Sequence[str],
+    embedder: Embedder | None,
+) -> dict | None:
+    """ADR-0012 T1: a local-model assessment for an anchor-free sentence, or None.
+
+    Dark behind ``t1_permitted()`` (the caller gates on it). Retrieves the top
+    ``rank_cutoff`` source clauses and returns the BEST above-threshold assessment over
+    them (best-of-K). ``rank_cutoff`` and the verdict threshold are read from the gate-bound
+    thresholds.json. For the runtime false-affirmative rate to equal the gated rate, the
+    gate's predictions must be generated under this same best-of-K strategy; that
+    equivalence is the corpus step's responsibility and is not yet mechanically enforced
+    (ADR-0012 "Implementation notes"). None keeps the claim in the could-not-check tray
+    (invariant 2: no coverage-by-guessing).
+    """
+    thresholds = load_runtime_thresholds()
+    if thresholds is None:
+        return None
+    verdict_threshold, rank_cutoff = thresholds
+    nodes = search_typed_hybrid(
+        conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=rank_cutoff
+    )
+    scorer = default_scorer()
+    best: T1Assessment | None = None
+    for rank, node in enumerate(nodes, start=1):
+        assessment = assess(
+            T1Candidate(sentence=sentence, clause=node.verbatim_text, rank=rank),
+            scorer=scorer,
+            verdict_threshold=verdict_threshold,
+            rank_cutoff=rank_cutoff,
+        )
+        if assessment is not None and (best is None or assessment.confidence > best.confidence):
+            best = assessment
+    if best is None:
+        return None
+    return {"label": best.label, "confidence": best.confidence, "model": active_model_id()}
+
+
 def build_deterministic_envelope(
     draft: str,
     *,
@@ -424,14 +472,22 @@ def build_deterministic_envelope(
                 else "This statement carries a checkable value but no source was provided "
                 "to check it against."
             )
-            claims.append(
-                {
-                    "text": sentence,
-                    "citations": [],
-                    "case_verdicts": [],
-                    "could_not_check_reason": reason,
-                }
-            )
+            claim = {
+                "text": sentence,
+                "citations": [],
+                "case_verdicts": [],
+                "could_not_check_reason": reason,
+            }
+            # ADR-0012 T1 recall tier, DARK behind t1_permitted() (False on main: no
+            # gate-pass artifact exists). When permitted in contract mode, a local model
+            # may assess this anchor-free claim against the source clauses. It never
+            # changes the verdict (the claim stays could-not-check / unknown); it only
+            # attaches assessed-tier provenance for the assistive surface (invariant 1).
+            if contract_mode and conn is not None and doc_ids and t1_permitted():
+                assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, embedder)
+                if assessment is not None:
+                    claim["t1_assessment"] = assessment
+            claims.append(claim)
 
     # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
     # only against the cases cited in its OWN sentence. Proximity is not attribution:

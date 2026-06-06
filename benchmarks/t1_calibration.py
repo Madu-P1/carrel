@@ -114,6 +114,11 @@ def thresholds_complete(thresholds: JsonDict | None) -> bool:
         return False
     if thresholds.get("threshold_epsilon") is None:
         return False
+    # rank_cutoff is the top-K candidacy floor the runtime runs best-of. It rides this
+    # file's hash, so requiring it here is what makes the gate certify the same K the
+    # runtime uses: a gate that passed without it would measure an undefined strategy.
+    if thresholds.get("rank_cutoff") is None:
+        return False
     ceilings = thresholds.get("far_ceiling")
     if not isinstance(ceilings, dict) or not ceilings:
         return False

@@ -73,6 +73,7 @@ class CalibrationGateTests(unittest.TestCase):
             {
                 "schema_version": 1,
                 "threshold_epsilon": 80.0,
+                "rank_cutoff": 3,
                 "far_ceiling": {s: ceiling for s in surfaces},
             },
         )
@@ -105,7 +106,7 @@ class CalibrationGateTests(unittest.TestCase):
             any(
                 "B6" in e
                 for e in gate.check_thresholds(
-                    {"threshold_epsilon": 80.0, "far_ceiling": {"litigator": 0.2}}
+                    {"threshold_epsilon": 80.0, "rank_cutoff": 3, "far_ceiling": {"litigator": 0.2}}
                 )
             )
         )
