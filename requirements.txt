@@ -22,3 +22,9 @@ eyecite~=2.7
 # Optional: typed-node ingest path (PR 1, behind INGEST_USE_DOCLING flag).
 # First install pulls ~1-2 GB of model weights — see docs/algorithms/ask-pipeline-pr1-typed-nodes.md.
 docling~=2.93
+# T1 recall tier (ADR-0012), dark/off until calibrated. The local NLI entailment
+# selector runs on transformers + torch. Promoted from transitive-via-docling to
+# explicit pins so the T1 path survives a docling change; co-resolved with
+# docling~=2.93 today. onnxruntime stays covered by fastembed above.
+torch~=2.11
+transformers~=5.8
