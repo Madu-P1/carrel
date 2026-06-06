@@ -28,7 +28,7 @@ from typing import Sequence
 
 import httpx
 
-from services.legal.anchors import extract_anchors
+from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import verify_claims_for_cases
 from services.legal.citations_eyecite import caption_matches, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
@@ -41,6 +41,12 @@ from services.retrieval.validators import verbatim_run_present
 from services.tutor import _serialize_case_verdict
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
+
+# Anchor types verify_claim_against_clause actually tests against a clause. A
+# sentence carrying one of these has a proposition the contract path can confirm or
+# contradict; a defined_term alone does not (PR-1 grounds the defined term as
+# context, never as a clause-checked verdict).
+_CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
 
 
 def _enabled(name: str) -> bool:
@@ -155,11 +161,38 @@ def _run_present_any(run: str, opinions: list[str]) -> bool:
     )
 
 
+def _source_alias_table(
+    conn: sqlite3.Connection | None, doc_ids: Sequence[str] | None
+) -> dict[str, str] | None:
+    """Defined-term alias table built from the source documents' own text (T0).
+
+    Offline by construction: reads node text from the local DB, no network. Returns
+    None (the detector stays inert, the default behavior) when there is no source,
+    the nodes table is absent, or no term is defined, so a chunks-path corpus and
+    the litigator-only path are byte-identical to before.
+    """
+    if conn is None or not doc_ids:
+        return None
+    placeholders = ",".join("?" for _ in doc_ids)
+    try:
+        rows = conn.execute(
+            f"SELECT verbatim_text FROM nodes WHERE doc_id IN ({placeholders}) "
+            "ORDER BY doc_id, reading_order",
+            list(doc_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    source_text = "\n".join(row[0] for row in rows if row[0])
+    return build_alias_table(source_text) or None
+
+
 def _contract_claim(
     conn: sqlite3.Connection,
     sentence: str,
     doc_ids: Sequence[str],
     embedder: Embedder | None,
+    *,
+    anchors: list[Anchor],
 ) -> dict:
     """Verify one summary sentence against the retrieved contract clause (T0)."""
     nodes = search_typed_hybrid(conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=3)
@@ -174,7 +207,7 @@ def _contract_claim(
             verdict = candidate
             section = node.heading_path
             break
-    return {
+    claim = {
         "text": sentence,
         "citations": [],
         "case_verdicts": [],
@@ -187,6 +220,22 @@ def _contract_claim(
             "section": section,
         },
     }
+    # PR-1 defined_term consumption. When the sentence's only checkable signal is a
+    # defined term (no money/date/duration/quote to test against a clause), the
+    # parametric verdict is a vacuous not_found whose "language does not appear"
+    # detail misleads: the term DOES appear in the source (that is why it anchored).
+    # Replace it with an honest term-grounded could-not-check. This never fires when
+    # the sentence carries a real parametric/quote anchor, so a located or
+    # contradicted value still wins outright (ADR-0012 invariant 2: a defined term
+    # never manufactures a verdict).
+    defined_terms = [a.text for a in anchors if a.type == "defined_term"]
+    if defined_terms and not any(a.type in _CLAUSE_CHECKABLE for a in anchors):
+        terms = ", ".join(dict.fromkeys(defined_terms))
+        claim["could_not_check_reason"] = (
+            f"This statement uses defined term(s) {terms} from the source contract, "
+            "but its assertion was not independently verified against a clause."
+        )
+    return claim
 
 
 def build_deterministic_envelope(
@@ -227,13 +276,17 @@ def build_deterministic_envelope(
         except sqlite3.Error:
             doc_ids = []
     contract_mode = conn is not None and bool(doc_ids)
+    # Defined-term detection keys off the source contract's own definitions: built
+    # once here (offline) and passed to every sentence's extraction. None on the
+    # litigator-only path, leaving that path unchanged.
+    alias_table = _source_alias_table(conn, doc_ids) if contract_mode else None
     sentences = split_sentences(draft)
     claims: list[dict] = []
     # Opinion text of the cases that resolved in each sentence, so the altered-quote
     # pass can check a quote against cites in its own OR an adjacent sentence.
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
-        anchors = extract_anchors(sentence)
+        anchors = extract_anchors(sentence, alias_table=alias_table)
         if any(a.type == "citation" for a in anchors):
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
@@ -246,7 +299,7 @@ def build_deterministic_envelope(
             opinions_by_sentence[i] = _opinions_from_verdicts(serialized)
             claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
         elif contract_mode and anchors:
-            claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
+            claims.append(_contract_claim(conn, sentence, doc_ids, embedder, anchors=anchors))
         else:
             # No citation to check, and either no anchor or nothing to check a
             # non-citation anchor against. The honest "could not check": never a

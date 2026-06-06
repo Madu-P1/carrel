@@ -102,6 +102,11 @@ class ContractPathIntegrationTests(unittest.TestCase):
             _node(0, "The aggregate liability of the parties shall not exceed $500,000."),
             _node(1, "This Agreement shall continue for a confidentiality term of two (2) years."),
             _node(2, "The parties shall cooperate in good faith on all matters."),
+            _node(
+                3,
+                'Acme Inc. (the "Buyer") is the recipient. "Confidential Information" '
+                "means all non-public information disclosed under this Agreement.",
+            ),
         ]
         ids = insert_typed_nodes(self._conn, "contract-1", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
@@ -154,6 +159,56 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual([], env["unsupported_spans"])
         self.assertEqual(1, len(env["claims"]))
         self.assertIn("could_not_check_reason", env["claims"][0])
+
+    def test_source_alias_table_reads_definitions_from_nodes(self) -> None:
+        # PR-1: build_alias_table is now reached in production (was dead code). The
+        # source's own definitions, the parenthetical alias and the "X" means form,
+        # become the table; no source / no nodes / no term all stay inert (None).
+        from services.legal.deterministic_envelope import _source_alias_table
+
+        self.assertEqual(
+            {"Buyer": "Buyer", "Confidential Information": "Confidential Information"},
+            _source_alias_table(self._conn, ["contract-1"]),
+        )
+        self.assertIsNone(_source_alias_table(None, ["contract-1"]))
+        self.assertIsNone(_source_alias_table(self._conn, []))
+
+    def test_defined_term_only_claim_is_grounded_could_not_check(self) -> None:
+        # A sentence whose only checkable signal is a defined term gets an honest
+        # term-grounded could-not-check that NAMES the term, never the misleading
+        # "language does not appear" (the term IS defined in the source).
+        env = build_deterministic_envelope(
+            "The Buyer must safeguard Confidential Information at all times.",
+            conn=self._conn,
+            doc_ids=["contract-1"],
+            embedder=self._embedder,
+        )
+        claim = env["claims"][0]
+        self.assertIn("could_not_check_reason", claim)
+        reason = claim["could_not_check_reason"]
+        self.assertIn("defined term", reason.lower())
+        self.assertIn("Confidential Information", reason)
+        self.assertNotIn("does not appear", reason.lower())
+        card = verify_service._verify_result_from_envelope(claim["text"], env, 0.0).claim_verdicts[
+            0
+        ]
+        self.assertEqual("unknown", card.verdict)
+
+    def test_defined_term_never_overrides_a_contradiction(self) -> None:
+        # ADR-0012 invariant 2: a defined term must not manufacture or soften a
+        # verdict. "Buyer" is a defined term AND the $1M contradicts the $500K cap;
+        # the contradiction wins and the card stays unsupported with both values.
+        draft = "The Buyer's aggregate liability is capped at $1,000,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        claim = env["claims"][0]
+        self.assertNotIn("could_not_check_reason", claim)
+        self.assertEqual("parametric_contradiction", claim["contract_verdict"]["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("$1,000,000", card.unsupported_reason or "")
+        self.assertIn("$500,000", card.unsupported_reason or "")
 
 
 if __name__ == "__main__":
