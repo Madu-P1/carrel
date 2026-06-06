@@ -6,12 +6,53 @@
  * Cachet palette (DESIGN.md 2026-05-29): warm paper, near-black ink, no study
  * accent. A later pass unifies these into a shared Cachet token layer. */
 
+/* Self-hosted Libre Caslon Display, the Cachet COLD display face (operator
+ * decision 2026-06-02, overriding Instrument Serif which read "AI-esque").
+ * Bundled, OFL, no CDN. Only the shell root rebinds --font-serif to it (below),
+ * so the study app keeps Instrument Serif untouched. */
+@font-face {
+  font-family: "Libre Caslon Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/libre-caslon-display-latin-400.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Libre Caslon Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/libre-caslon-display-latin-ext-400.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
+    U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 .shell {
   min-height: 100vh;
   background: #efe7d9;
   color: #1c1814;
   display: flex;
   flex-direction: column;
+
+  /* Rebind the design-system accent to ink. The reused primitives (Button,
+   * links) default to the study teal --color-accent, a brand violation here:
+   * Cachet has no green. The only chromatic accent is the oxblood --verify-flag,
+   * reserved for flags inside the verify surface. (Port of nostalgic-mclaren.) */
+  --color-accent: #1c1814;
+  --color-accent-hover: #322d27;
+  --accent: #1c1814;
+  --accent-hover: #322d27;
+  --accent-pressed: #0f0c0a;
+
+  /* The Cachet cold display face. Cascades into the verify/shelf titles within
+   * the shell; the study app, with no .shell ancestor, keeps Instrument Serif. */
+  --font-serif: "Libre Caslon Display", Charter, Georgia, "Times New Roman", serif;
 }
 
 .bar {
