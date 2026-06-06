@@ -78,11 +78,31 @@ class OfflineEnvFloorTests(unittest.TestCase):
             self.assertEqual("1", os.environ["HF_HUB_OFFLINE"])
             self.assertEqual("1", os.environ["TRANSFORMERS_OFFLINE"])
 
-    def test_offline_not_touched_when_flag_off(self) -> None:
-        with mock.patch.dict(os.environ, {"HF_HUB_OFFLINE": "0"}, clear=False):
+    def test_default_construction_leaves_offline_untouched(self) -> None:
+        # The non-deterministic study-app path must not clobber the user's HF env.
+        # The "when" now lives at the construction layer (offline defaults False),
+        # not inside _enforce_offline_env, so a plain FastembedEmbedder() with the
+        # flag off leaves HF_HUB_OFFLINE alone.
+        with (
+            mock.patch("fastembed.TextEmbedding"),
+            mock.patch.dict(os.environ, {"HF_HUB_OFFLINE": "0"}, clear=False),
+        ):
             os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
-            embeddings._enforce_offline_env()
+            embeddings.FastembedEmbedder()
             self.assertEqual("0", os.environ["HF_HUB_OFFLINE"])
+
+    def test_offline_flag_forces_offline_with_env_unset(self) -> None:
+        # The clean-box unit regression: the verify surface defaults deterministic
+        # on with CACHET_DETERMINISTIC_VERIFY unset, so offline=True alone must force
+        # the floor before any weights load. Without it a cold cache egresses.
+        with (
+            mock.patch("fastembed.TextEmbedding"),
+            mock.patch.dict(os.environ, {"HF_HUB_OFFLINE": "0"}, clear=False),
+        ):
+            os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
+            embeddings.FastembedEmbedder(offline=True)
+            self.assertEqual("1", os.environ["HF_HUB_OFFLINE"])
+            self.assertEqual("1", os.environ["TRANSFORMERS_OFFLINE"])
 
 
 if __name__ == "__main__":
