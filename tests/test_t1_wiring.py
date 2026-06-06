@@ -87,6 +87,9 @@ class GateGuardTests(unittest.TestCase):
             "guideline_version": _sha(self.guideline),
             "model_sha256": "deadbeef",
             "feature_version": FEATURE_VERSION,
+            # Simulates a future enable-PR artifact where best-of-K is gate-enforced; today's
+            # write_gate_pass stamps False, which the interlock test below exercises.
+            "best_of_k_enforced": True,
         }
         artifact.update(overrides)
         self.gate_pass.write_text(json.dumps(artifact), encoding="utf-8")
@@ -128,6 +131,14 @@ class GateGuardTests(unittest.TestCase):
         self._write_artifact(passed=False)
         with mock.patch.dict("os.environ", {"CACHET_T1_RECALL": "1"}, clear=False):
             self.assertFalse(t1_gate.t1_permitted())
+
+    def test_fail_closed_until_best_of_k_enforced(self) -> None:
+        # The spine interlock: even a fully valid artifact must not enable T1 while the
+        # gate has not mechanically enforced best-of-K. False and missing both fail closed.
+        for value in (False, None):
+            self._write_artifact(best_of_k_enforced=value)
+            with mock.patch.dict("os.environ", {"CACHET_T1_RECALL": "1"}, clear=False):
+                self.assertFalse(t1_gate.t1_permitted())
 
     def test_fail_closed_on_corrupt_artifact_never_raises(self) -> None:
         # A non-UTF-8 / partially-written artifact must resolve to dark, not raise

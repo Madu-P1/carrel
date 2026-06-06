@@ -5,7 +5,10 @@ runs the local NLI selector. It is fail-closed: True only when the operator has 
 opted in (``CACHET_T1_RECALL`` truthy) AND a calibration gate-pass artifact exists whose
 recorded inputs still match the files on disk. Any drift (someone widened thresholds,
 swapped the corpus or guideline, or bumped the feature code without re-running the gate)
-invalidates the pass, so a stale or hand-forged artifact can never silently enable T1.
+invalidates the pass, so a stale or hand-forged artifact can never silently enable T1. It
+also refuses any artifact whose ``best_of_k_enforced`` flag is not True: the fail-closed
+interlock that keeps T1 dark until the gate mechanically enforces the best-of-K equivalence
+(ADR-0012). The gate stamps that flag False today, so no honestly-minted artifact enables T1.
 
 This lives in ``services`` and NOT in ``benchmarks`` on purpose: the runtime must not
 import the dev/CI gate harness, which is not guaranteed to ship in a packaged app. The
@@ -83,6 +86,13 @@ def t1_permitted() -> bool:
         # any unreadable or corrupt artifact resolves to dark, honoring "never raises".
         return False
     if not isinstance(artifact, dict) or artifact.get("passed") is not True:
+        return False
+    # Spine interlock (ADR-0012): refuse to enable until the gate mechanically enforces the
+    # best-of-K equivalence. The gate stamps this False today (it measures a per-pair FAR,
+    # the runtime runs best-of-K), so no honestly-minted artifact can turn T1 on; the enable
+    # PR flips benchmarks.t1_calibration.BEST_OF_K_GATE_ENFORCED only when the gate reduces
+    # best-of-K. This makes the deferral fail-closed in code, not just documented.
+    if artifact.get("best_of_k_enforced") is not True:
         return False
     if artifact.get("feature_version") != FEATURE_VERSION:
         return False
