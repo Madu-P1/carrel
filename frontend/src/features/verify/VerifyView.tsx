@@ -394,8 +394,25 @@ function QuotePanel({ quotes }: QuotePanelProps) {
   );
 }
 
-export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
-  const [draft, setDraft] = useState("");
+export function VerifyView({
+  briefId,
+  initialDraft,
+  onDraftChange,
+  headerTitle,
+  headerSubtitle,
+  samplePlaceholder,
+}: {
+  briefId?: string | null;
+  // Host-agnostic props for the standalone Cachet shell. All optional and
+  // defaulting to the study app's current behavior, so VerifyView inside Carrel
+  // is unchanged when they are absent.
+  initialDraft?: string | null;
+  onDraftChange?: (value: string) => void;
+  headerTitle?: string;
+  headerSubtitle?: string;
+  samplePlaceholder?: string;
+} = {}) {
+  const [draft, setDraft] = useState(initialDraft ?? "");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -578,10 +595,10 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Verify your draft.</h1>
+        <h1 className={styles.title}>{headerTitle ?? "Verify your draft."}</h1>
         <Text className={styles.subtitle}>
-          Paste a brief, memo, or claim. Every statement is checked against the sources you provide,
-          and any cited cases are checked for existence and holding.
+          {headerSubtitle ??
+            "Paste a brief, memo, or claim. Every statement is checked against the sources you provide, and any cited cases are checked for existence and holding."}
         </Text>
       </header>
 
@@ -593,8 +610,12 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
           id="verify-draft-input"
           className={styles.draftInput}
           value={draft}
-          placeholder={SAMPLE_DRAFT}
-          onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+          placeholder={samplePlaceholder ?? SAMPLE_DRAFT}
+          onInput={(e) => {
+            const value = (e.target as HTMLTextAreaElement).value;
+            setDraft(value);
+            onDraftChange?.(value);
+          }}
           disabled={loading || hydrating}
         />
       </div>
