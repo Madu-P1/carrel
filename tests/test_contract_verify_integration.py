@@ -99,7 +99,9 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "VALUES ('contract-1', 'msa.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
         )
         nodes = [
-            _node(0, "The aggregate liability of the parties shall not exceed $500,000."),
+            _node(
+                0, "Section 8. The aggregate liability of the parties shall not exceed $500,000."
+            ),
             _node(1, "This Agreement shall continue for a confidentiality term of two (2) years."),
             _node(2, "The parties shall cooperate in good faith on all matters."),
             _node(
@@ -193,6 +195,94 @@ class ContractPathIntegrationTests(unittest.TestCase):
             0
         ]
         self.assertEqual("unknown", card.verdict)
+
+    def test_source_party_section_sets_reads_from_nodes(self) -> None:
+        # PR-2: party + section detectors are now collected from the source, offline,
+        # via the same extract_anchors the draft uses. Normalized: "Acme Inc." -> acme,
+        # (the "Buyer") -> buyer, "Section 8." -> 8.
+        from services.legal.deterministic_envelope import _source_party_section_sets
+
+        parties, sections = _source_party_section_sets(self._conn, ["contract-1"])
+        self.assertIn("acme", parties)
+        self.assertIn("buyer", parties)
+        self.assertIn("8", sections)
+        self.assertEqual(
+            (frozenset(), frozenset()), _source_party_section_sets(None, ["contract-1"])
+        )
+
+    def test_party_named_in_draft_is_grounded_could_not_check(self) -> None:
+        # A party that IS in the source contract grounds the sentence without claiming
+        # its assertion is verified: an honest could-not-check that names the party.
+        env = build_deterministic_envelope(
+            "Acme Inc. shall indemnify the counterparty for any breach.",
+            conn=self._conn,
+            doc_ids=["contract-1"],
+            embedder=self._embedder,
+        )
+        claim = env["claims"][0]
+        self.assertIn("could_not_check_reason", claim)
+        self.assertIn("party to the source contract", claim["could_not_check_reason"])
+        self.assertEqual(
+            "unknown",
+            verify_service._verify_result_from_envelope(claim["text"], env, 0.0)
+            .claim_verdicts[0]
+            .verdict,
+        )
+
+    def test_unmatched_party_is_could_not_check_never_accused(self) -> None:
+        # The never-accuse guarantee: a party NOT found in the source is reported as a
+        # could-not-check ("could not be matched"), never as unsupported, because a
+        # name-form difference must not become a false accusation.
+        draft = "Globex LLC shall be solely liable for all damages."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        claim = env["claims"][0]
+        self.assertIn("could not be matched to a party", claim["could_not_check_reason"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        self.assertNotEqual("unsupported", card.verdict)
+
+    def test_section_reference_found_is_grounded(self) -> None:
+        env = build_deterministic_envelope(
+            "The cap is governed by Section 8 of the agreement.",
+            conn=self._conn,
+            doc_ids=["contract-1"],
+            embedder=self._embedder,
+        )
+        claim = env["claims"][0]
+        self.assertIn("exists in the source contract", claim["could_not_check_reason"])
+        self.assertEqual(
+            "unknown",
+            verify_service._verify_result_from_envelope(claim["text"], env, 0.0)
+            .claim_verdicts[0]
+            .verdict,
+        )
+
+    def test_missing_section_is_could_not_check_never_accused(self) -> None:
+        draft = "The obligations of Section 99 are incorporated by reference."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        claim = env["claims"][0]
+        self.assertIn("could not be located", claim["could_not_check_reason"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        self.assertNotEqual("unsupported", card.verdict)
+
+    def test_grounding_never_overrides_a_contradiction(self) -> None:
+        # ADR-0012 invariant 2 across all grounding types: a party/section present
+        # alongside a contradicted value must not soften the verdict. The $1M
+        # contradicts the $500K cap; the card stays unsupported, no grounding reason.
+        draft = "Under Section 8, Acme Inc.'s aggregate liability is capped at $1,000,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        claim = env["claims"][0]
+        self.assertNotIn("could_not_check_reason", claim)
+        self.assertEqual("parametric_contradiction", claim["contract_verdict"]["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
 
     def test_defined_term_never_overrides_a_contradiction(self) -> None:
         # ADR-0012 invariant 2: a defined term must not manufacture or soften a
