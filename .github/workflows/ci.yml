@@ -79,6 +79,7 @@ jobs:
             tests.test_verify_stream \
             tests.test_quote_check \
             tests.test_t1_offline_model \
+            tests.test_t1_selector \
             tests.test_align \
             tests.test_briefs \
             tests.test_briefs_routes \
