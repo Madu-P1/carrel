@@ -199,6 +199,18 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         self.assertEqual(payload["draft_text"], roundtripped["draft_text"])
         self.assertEqual(1, roundtripped["summary"]["verified"])
 
+    def test_assessed_fields_default_none_on_the_wire(self) -> None:
+        # T1 PR-2: the assessed_* tier fields exist on every card, default None, and
+        # round-trip through the payload. Nothing sets them yet (the selector is dark).
+        envelope = self._envelope(
+            claims=[{"text": "x", "citations": [{"node_id": "c1"}], "case_verdicts": []}]
+        )
+        result = self._call(envelope)
+        card = verify_service.verify_result_to_payload(result)["claim_verdicts"][0]
+        for key in ("assessed_confidence", "assessed_model", "assessed_label"):
+            self.assertIn(key, card)
+            self.assertIsNone(card[key])
+
 
 class VerifyRouteSmokeTests(unittest.TestCase):
     """Carrel V2 Stage 1: confirms the /api/verify route is registered,
