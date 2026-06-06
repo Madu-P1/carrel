@@ -23,7 +23,6 @@ stays in lock-step with the LLM path.
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 from typing import Sequence
@@ -48,14 +47,6 @@ _DETERMINISTIC_MODEL = "deterministic-v1"
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
 # context, never as a clause-checked verdict).
 _CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
-
-
-def _enabled(name: str) -> bool:
-    return os.getenv(name, "").lower() in {"1", "true", "yes"}
-
-
-def deterministic_verify_enabled() -> bool:
-    return _enabled("CACHET_DETERMINISTIC_VERIFY")
 
 
 def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
