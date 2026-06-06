@@ -3,7 +3,6 @@ from routes.ask_cards import register_ask_cards_routes
 from routes.briefs import register_briefs_routes
 from routes.calendar import register_calendar_routes
 from routes.concepts import register_concept_routes
-from routes.dashboard import register_dashboard_routes
 from routes.documents import register_document_routes
 from routes.evidence import register_evidence_routes
 from routes.events import register_event_routes
@@ -38,7 +37,6 @@ def register_routes(app) -> None:
     register_job_routes(app)
     register_onboarding_routes(app)
     register_system_routes(app)
-    register_dashboard_routes(app)
     # Hybrid (FTS + vector) library search. Wraps services.retrieval.
     register_search_routes(app)
     # Free-tier Ask cards over the typed-node retrieval path (PR 4).

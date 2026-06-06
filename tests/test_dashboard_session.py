@@ -53,46 +53,6 @@ class DashboardSessionTests(unittest.TestCase):
         main.SCHEMA_PATH = self.original_schema_path
         self.temp_dir.cleanup()
 
-    # ---------- dashboard payload shape ----------
-
-    def test_dashboard_includes_streak_target_and_week_by_day(self) -> None:
-        response = self.client.get("/api/dashboard")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        stats = body["stats"]
-        self.assertIn("streak_target_days", stats)
-        self.assertEqual(stats["streak_target_days"], 30)
-        self.assertIn("week_minutes_by_day", stats)
-        self.assertIsInstance(stats["week_minutes_by_day"], list)
-        self.assertEqual(len(stats["week_minutes_by_day"]), 7)
-        # Every entry is a number — serializing through JSON preserves float/int.
-        for value in stats["week_minutes_by_day"]:
-            self.assertIsInstance(value, (int, float))
-
-    def test_dashboard_active_session_is_null_when_none(self) -> None:
-        response = self.client.get("/api/dashboard")
-        self.assertIsNone(response.json()["active_session"])
-
-    def test_dashboard_surfaces_active_session_after_start(self) -> None:
-        payload = SessionStartRequest(
-            goal_id=None,
-            source_scope=None,
-            concept_scope=None,
-            difficulty_target=0.5,
-            duration_minutes=25,
-            mode="focus_sprint",
-            objective="Cover chapter 8",
-        )
-        create_session_route(payload)  # direct call commits via dependency
-
-        response = self.client.get("/api/dashboard")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertIsNotNone(body["active_session"])
-        self.assertEqual(body["active_session"]["objective"], "Cover chapter 8")
-        self.assertEqual(body["active_session"]["mode"], "focus_sprint")
-        self.assertEqual(body["active_session"]["duration_minutes"], 25)
-
     # ---------- /api/sessions/active endpoint ----------
 
     def test_active_endpoint_returns_null_envelope_when_none(self) -> None:
@@ -148,9 +108,8 @@ class DashboardSessionTests(unittest.TestCase):
 
     def test_abandoned_sessions_are_not_surfaced(self) -> None:
         """A session marked 'active' but started > 12h ago is considered
-        abandoned. Both /api/sessions/active and /api/dashboard should
-        report no active session, regardless of how many stale rows
-        exist in the table.
+        abandoned. /api/sessions/active should report no active session,
+        regardless of how many stale rows exist in the table.
 
         This is the real-world case where the user started a session,
         closed the app, and came back days later. Surfacing it would
@@ -177,8 +136,6 @@ class DashboardSessionTests(unittest.TestCase):
 
         active = self.client.get("/api/sessions/active").json()
         self.assertIsNone(active["active_session"])
-        dash = self.client.get("/api/dashboard").json()
-        self.assertIsNone(dash["active_session"])
 
     def test_started_at_includes_utc_timezone_marker(self) -> None:
         """Regression: sessions must serialize `started_at` as UTC-aware ISO
@@ -235,8 +192,6 @@ class DashboardSessionTests(unittest.TestCase):
 
         active = self.client.get("/api/sessions/active").json()
         self.assertEqual(active["active_session"]["id"], "fresh")
-        dash = self.client.get("/api/dashboard").json()
-        self.assertEqual(dash["active_session"]["id"], "fresh")
 
 
 if __name__ == "__main__":

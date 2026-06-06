@@ -160,10 +160,8 @@ def get_active_session() -> Dict[str, Any]:
 
     Abandonment: rows with `status='active'` but `started_at` older than
     ACTIVE_SESSION_MAX_AGE_HOURS are treated as dormant and NOT returned.
-    This mirrors services.dashboard._active_session so both endpoints
-    agree on what "active" means. Without the filter, a closed-then-
-    reopened app would show a 96-hour timer on a session the user
-    already forgot about.
+    Without the filter, a closed-then-reopened app would show a 96-hour
+    timer on a session the user already forgot about.
 
     Defensive: multiple eligible rows → return the most recent.
     """
@@ -174,8 +172,7 @@ def get_active_session() -> Dict[str, Any]:
     # services.session_engine writes via datetime.now().isoformat().
     # Space-separator cutoffs broke SQLite lexical TEXT comparison
     # (`T` > ` `), so every active row passed the cutoff check
-    # regardless of age. Same fix applied in
-    # services.dashboard._active_session.
+    # regardless of age.
     cutoff_iso = cutoff.isoformat()
     with db.get_db() as conn:
         row = conn.execute(
