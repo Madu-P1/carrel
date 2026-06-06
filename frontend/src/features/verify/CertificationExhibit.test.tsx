@@ -35,7 +35,8 @@ function model(fingerprint: string): CertificationModel {
       citation_not_found: 1,
       proposition_unsupported: 0,
       claim_unsupported: 0,
-      could_not_check: 0
+      could_not_check: 0,
+      assessed: 0
     },
     flagged,
     allItems: [

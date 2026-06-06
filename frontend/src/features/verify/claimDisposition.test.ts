@@ -117,6 +117,47 @@ describe("dispositionForClaim", () => {
     expect(d.tier).toBe("refusal");
   });
 
+  test("an unknown card with a T1 assessment renders the assistive 'assessed' tier, no number", () => {
+    const d = dispositionForClaim(
+      card({ verdict: "unknown", assessed_confidence: 80, assessed_label: "support" })
+    );
+    expect(d.kind).toBe("assessed");
+    expect(d.tier).toBe("assistive");
+    expect(d.label).toBe("Assessed (local model)");
+    // D3: the confidence rides the wire for the gate but no number is ever rendered.
+    expect(`${d.label} ${d.detail}`).not.toMatch(/\d/);
+  });
+
+  test("a T1 contradiction assessment stays the quiet assistive register, never a flag", () => {
+    const d = dispositionForClaim(
+      card({ verdict: "unknown", assessed_confidence: 95, assessed_label: "contradict" })
+    );
+    expect(d.kind).toBe("assessed");
+    expect(d.tier).toBe("assistive");
+    expect(`${d.label} ${d.detail}`).not.toMatch(/\d/);
+  });
+
+  test("an unknown card with no T1 assessment stays could_not_check", () => {
+    const d = dispositionForClaim(card({ verdict: "unknown", assessed_confidence: null }));
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("a stray assessed_confidence never overrides a deterministic verdict (T0 precedence)", () => {
+    // The assessed branch lives only inside verdict === "unknown"; a verified or
+    // unsupported card carrying a stray assessment keeps its deterministic disposition.
+    const verified = dispositionForClaim(card({ verdict: "verified", assessed_confidence: 99 }));
+    expect(verified.kind).not.toBe("assessed");
+    const unsupported = dispositionForClaim(
+      card({ verdict: "unsupported", assessed_confidence: 99 })
+    );
+    expect(unsupported.kind).toBe("claim_unsupported");
+  });
+
+  test("the assessed tier sorts below the honest refusal and above clean passes", () => {
+    expect(DISPOSITION_ORDER.assessed).toBeGreaterThan(DISPOSITION_ORDER.could_not_check);
+    expect(DISPOSITION_ORDER.assessed).toBeLessThan(DISPOSITION_ORDER.supported);
+  });
+
   test("verified prose with no citations is supported and unmarked", () => {
     const d = dispositionForClaim(card({ verdict: "verified" }));
     expect(d.kind).toBe("supported");
