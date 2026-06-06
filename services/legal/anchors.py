@@ -70,6 +70,45 @@ _SECTION = re.compile(
     re.IGNORECASE,
 )
 
+# --- Party-name detector (canonical_value None). Two T0 sub-patterns. Real NER
+# for un-aliased names is T1 and off (per the design doc), so the entity branch is
+# a best-effort T0 heuristic with two inherent capitalized-word limits, both
+# documented + tested and routed to the verifier (never a false verdict; the
+# precision/recall point is an operator human-gate call): a capitalized prose word
+# directly before a suffix is swept in ("Defendant Stark Industries LLC"), and an
+# all-caps heading whose suffix is itself all-caps (LLC/LP/PLC) can match ("THE
+# BOARD LLC"). The parenthetical-alias branch has no such ambiguity. ---
+
+# Defined-party alias in parentheses: ("Buyer"), (the "Seller"), (the "Initial
+# Purchaser"). Unambiguous and precise.
+_PARTY_ALIAS = re.compile(r"""\((?:the\s+)?["“']([A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)*)["”']\)""")
+# Company name ending in an UNAMBIGUOUS corporate suffix abbreviation. The
+# terminal "(?:\.(?![A-Za-z])|(?![A-Za-z.-]))" stops a suffix from matching a
+# longer word ("Corporate", "LLCs", "Incorporated"), a dot-then-letter
+# ("Corp.oration", "L.P.s"), or a hyphen-adjective ("PLC-level", "Inc-owned"),
+# while still allowing the optional trailing dot ("Inc."). Generic "Company"/"Co"
+# and the spelled-out forms "Corporation"/"Limited"/"N.A" are excluded (common
+# English words that false-positive in prose like "The Limited Partners") - a
+# documented recall gap. "and" is NOT a connector (it joins distinct parties);
+# "&"/"of" are (within-name: "Bank of America").
+_PARTY_ENTITY = re.compile(
+    r"\b[A-Z][A-Za-z0-9&.'\-]*(?:\s(?:&|of|[A-Z][A-Za-z0-9&.'\-]*))*"
+    r",?\s(?:Inc|LLC|L\.L\.C|Corp|Ltd|L\.P|LP|PLC|GmbH)(?:\.(?![A-Za-z])|(?![A-Za-z.\-]))"
+)
+
+# Defined-term definition pattern: a quoted, capitalized term (one or more words,
+# all-caps included) immediately followed by `means | shall mean | refers to`. The
+# parenthetical-alias form (the "Term") reuses _PARTY_ALIAS. Case-sensitive on the
+# leading capital, so a lowercase "buyer" is not captured. It DOES over-capture a
+# rhetorical `"X" means Y` from prose (e.g. `"Justice" means a lot`); that is the
+# safe direction - an extra review anchor routed to the tray, never a false verdict;
+# whether to tighten is a human gate. Single-letter and hyphenated terms ("A",
+# "Class A", "Non-Competition") are a documented recall gap.
+_DEFN = re.compile(
+    r"""["“']([A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)*)["”']"""
+    r"\s+(?:means|shall\s+mean|refers?\s+to|shall\s+refer\s+to)\b"
+)
+
 _DATE = re.compile(
     r"\b(?:\d{4}-\d{2}-\d{2}"
     r"|(?:January|February|March|April|May|June|July|August|September|October|November|December)"
@@ -115,13 +154,65 @@ def _date_iso(text: str) -> str | None:
         return None
 
 
-def extract_anchors(span: str) -> list[Anchor]:
-    """Return every verifiable anchor in ``span`` (possibly several types)."""
+def _party_anchors(text: str) -> list[Anchor]:
+    anchors: list[Anchor] = []
+    for pattern in (_PARTY_ALIAS, _PARTY_ENTITY):
+        for m in pattern.finditer(text):
+            anchors.append(Anchor("party", m.group(0), m.start(), m.end()))
+    return anchors
+
+
+def build_alias_table(text: str) -> dict[str, str]:
+    """Build a {defined-term -> canonical} map from a document's own definitions.
+
+    Two T0 sources: the parenthetical alias form `(the "Buyer")` and the
+    definition form `"Confidential Information" means ...`. canonical is the
+    defined term itself (the normalization key); a richer canonical (what the term
+    resolves to) is left to a later unit. Pass the result to `extract_anchors` as
+    `alias_table` to detect occurrences of these terms as `defined_term` anchors.
+    """
+    table: dict[str, str] = {}
+    for pattern in (_PARTY_ALIAS, _DEFN):
+        for m in pattern.finditer(text):
+            term = m.group(1)
+            table[term] = term
+    return table
+
+
+def _defined_term_anchors(text: str, alias_table: dict[str, str]) -> list[Anchor]:
+    # Occurrences of an actually-defined term. Precision is structural: only terms
+    # the document itself defined are in the table, so this cannot fire on an
+    # undefined capitalized word. canonical_value is the term's canonical form
+    # (from the table, not the matched text). Terms are matched literally
+    # (re.escape) at word boundaries; a term whose edge char is non-word (e.g.
+    # "U.S.") may not match - build_alias_table only ever produces word-edge terms.
+    anchors: list[Anchor] = []
+    for term, canonical in alias_table.items():
+        for m in re.finditer(rf"\b{re.escape(term)}\b", text):
+            anchors.append(Anchor("defined_term", m.group(0), m.start(), m.end(), canonical))
+    return anchors
+
+
+def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> list[Anchor]:
+    """Return every verifiable anchor in ``span`` (possibly several types).
+
+    ``alias_table`` ({defined-term -> canonical}, e.g. from
+    :func:`build_alias_table`) turns on the defined-term detector: occurrences of
+    each defined term become ``defined_term`` anchors. With the default ``None``,
+    no defined-term anchors are emitted and the result is identical to the other
+    detectors alone. Anchors are returned sorted in document order.
+    """
     if not span or not span.strip():
         return []
     anchors: list[Anchor] = []
+    citation_spans: list[tuple[int, int]] = []
     for ref in find_citations(span):
         anchors.append(Anchor("citation", ref.matched_text, ref.start, ref.end))
+        citation_spans.append((ref.start, ref.end))
+
+    def _within_citation(a: Anchor) -> bool:
+        return any(a.start < ce and cs < a.end for cs, ce in citation_spans)
+
     for m in _SLIP_OP.finditer(span):
         anchors.append(Anchor("slip_op", m.group(0), m.start(), m.end()))
     for text, start, end in extract_draft_quote_spans(span):
@@ -140,7 +231,17 @@ def extract_anchors(span: str) -> list[Anchor]:
             # an anchor whose canonical_value is None (two would compare equal).
             anchors.append(Anchor("date", m.group(0), m.start(), m.end(), iso))
     for m in _SECTION.finditer(span):
-        anchors.append(Anchor("section", m.group(0), m.start(), m.end()))
+        # A "section" hit inside a citation span is that citation's own section
+        # symbol (e.g. the "§ 1983" of "42 U.S.C. § 1983"), not an intra-document
+        # section reference; drop it so a statute is not double-counted. A
+        # standalone section reference has no overlapping citation and survives.
+        candidate = Anchor("section", m.group(0), m.start(), m.end())
+        if not _within_citation(candidate):
+            anchors.append(candidate)
+    anchors.extend(_party_anchors(span))
+    if alias_table:
+        anchors.extend(_defined_term_anchors(span, alias_table))
+    anchors.sort(key=lambda a: (a.start, a.end))
     return anchors
 
 
