@@ -141,10 +141,8 @@ export interface paths {
          *
          *     Abandonment: rows with `status='active'` but `started_at` older than
          *     ACTIVE_SESSION_MAX_AGE_HOURS are treated as dormant and NOT returned.
-         *     This mirrors services.dashboard._active_session so both endpoints
-         *     agree on what "active" means. Without the filter, a closed-then-
-         *     reopened app would show a 96-hour timer on a session the user
-         *     already forgot about.
+         *     Without the filter, a closed-then-reopened app would show a 96-hour
+         *     timer on a session the user already forgot about.
          *
          *     Defensive: multiple eligible rows → return the most recent.
          */
