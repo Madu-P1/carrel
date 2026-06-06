@@ -299,6 +299,54 @@ def _grounding_reason(
     )
 
 
+def _grounding_verdict(
+    anchors: list[Anchor],
+    source_sections: frozenset[str],
+) -> dict | None:
+    """A hard verdict from a grounding anchor, or None.
+
+    The only grounding anchor that yields a deterministic *verdict* (not merely
+    could-not-check context) is a section reference ABSENT from the source: a draft
+    that cites a section the contract does not contain is unsupported regardless of
+    the surrounding predicate. Returns None when a clause-checkable anchor is present
+    (the clause verdict wins, ADR-0012 invariant 2).
+
+    Asymmetry, deliberately:
+      - The POSITIVE direction (a section that exists) is NOT promoted to a verdict.
+        Existence is not proof of the sentence's predicate ("S 7.2 governs X" only
+        verifies that 7.2 exists, not that it governs X), so it stays the honest
+        could-not-check affirmation from ``_grounding_reason`` - never an
+        overclaiming "verified".
+      - PARTY anchors yield no verdict in either direction: the positive overclaims
+        the same way, and an unmatched party is far more often name-form variance
+        ("Acme" vs "Acme Corp.") than a fabricated party, so a hard "not a party"
+        is the false-accusation direction the product refuses.
+
+    Precision gate on the negative: fires only when ``source_sections`` is
+    non-empty. An empty set means no sections were extracted from the source (an
+    un-ingested source, or numbering in a form the detector misses, e.g. roman
+    "Article VII"), in which case every draft section would read absent - so we stay
+    could-not-check rather than false-accuse.
+    """
+    if any(a.type in _CLAUSE_CHECKABLE for a in anchors):
+        return None
+    if not source_sections:
+        return None
+    sections = list(dict.fromkeys(a.text for a in anchors if a.type == "section"))
+    absent = [s for s in sections if _normalize_section(s) not in source_sections]
+    if not absent:
+        return None
+    listed = ", ".join(absent)
+    return {
+        "disposition": "section_absent",
+        "sections": absent,
+        "detail": (
+            f"This statement references {listed}, which could not be located in the "
+            "source contract."
+        ),
+    }
+
+
 def _contract_claim(
     conn: sqlite3.Connection,
     sentence: str,
@@ -348,9 +396,16 @@ def _contract_claim(
     # names them, never the misleading "language does not appear" and never a verdict.
     # A clause-checkable anchor suppresses it, so a parametric/quote result always
     # wins outright (ADR-0012 invariant 2).
-    reason = _grounding_reason(anchors, source_parties, source_sections)
-    if reason:
-        claim["could_not_check_reason"] = reason
+    # A section reference absent from the source is a hard unsupported verdict; it
+    # supersedes the could-not-check grounding prose (which would otherwise just name
+    # the same missing section). Everything else stays could-not-check context.
+    section_verdict = _grounding_verdict(anchors, source_sections)
+    if section_verdict is not None:
+        claim["section_verdict"] = section_verdict
+    else:
+        reason = _grounding_reason(anchors, source_parties, source_sections)
+        if reason:
+            claim["could_not_check_reason"] = reason
     return claim
 
 
