@@ -66,7 +66,11 @@ _DURATION = re.compile(
 )
 
 _SECTION = re.compile(
-    r"\b(?:Section|Sec\.|§|Clause|Article|Schedule|Exhibit)\s+\d+(?:\.\d+)*(?:\([a-z0-9]+\))?",
+    # Word keywords need a word boundary; the section sign (and its plural, §§)
+    # does not. A leading \b before § never asserts (a space-to-§ run is non-word
+    # to non-word), which is why a bare "§ 1983" / "§ 7.2" matched nothing before.
+    r"(?:\b(?:Section|Sec\.|Clause|Article|Schedule|Exhibit)\s+|§§?\s?)"
+    r"\d+(?:\.\d+)*(?:\([a-z0-9]+\))?",
     re.IGNORECASE,
 )
 
