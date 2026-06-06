@@ -73,6 +73,7 @@ class CalibrationGateTests(unittest.TestCase):
             {
                 "schema_version": 1,
                 "threshold_epsilon": 80.0,
+                "rank_cutoff": 3,
                 "far_ceiling": {s: ceiling for s in surfaces},
             },
         )
@@ -105,7 +106,7 @@ class CalibrationGateTests(unittest.TestCase):
             any(
                 "B6" in e
                 for e in gate.check_thresholds(
-                    {"threshold_epsilon": 80.0, "far_ceiling": {"litigator": 0.2}}
+                    {"threshold_epsilon": 80.0, "rank_cutoff": 3, "far_ceiling": {"litigator": 0.2}}
                 )
             )
         )
@@ -174,13 +175,14 @@ class CalibrationGateTests(unittest.TestCase):
         self.assertEqual(1, stats["false_affirmatives"])
         self.assertAlmostEqual(1 / 3, stats["far"], places=4)
 
-    def test_gate_pass_artifact_records_five_hashes(self) -> None:
+    def test_gate_pass_artifact_records_input_hashes_and_interlock(self) -> None:
         self._complete_thresholds()
         gate.write_gate_pass(
             model_sha256="deadbeef",
             feature_version="feat-v1",
             thresholds_path=self.thresholds,
             corpus_path=self.corpus,  # missing file -> hash None, still recorded
+            predictions_path=self.preds,  # missing file -> hash None, still recorded
             guideline_path=self.dir / "GUIDELINE.md",
             gate_pass_path=self.gate_pass,
             far_by_surface={"litigator": 0.0},
@@ -188,14 +190,18 @@ class CalibrationGateTests(unittest.TestCase):
         artifact = json.loads(self.gate_pass.read_text(encoding="utf-8"))
         for key in (
             "corpus_sha256",
+            "predictions_sha256",
             "thresholds_sha256",
             "guideline_version",
             "model_sha256",
             "feature_version",
+            "best_of_k_enforced",
         ):
             self.assertIn(key, artifact)
         self.assertEqual("deadbeef", artifact["model_sha256"])
         self.assertEqual("feat-v1", artifact["feature_version"])
+        # The interlock ships False: an artifact minted today cannot enable T1 at runtime.
+        self.assertFalse(artifact["best_of_k_enforced"])
 
 
 if __name__ == "__main__":

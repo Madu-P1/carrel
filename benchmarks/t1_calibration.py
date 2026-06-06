@@ -64,6 +64,16 @@ FAR_CEILING_SANITY_CAP = 0.05
 # any ceiling). Each gated surface's affirmative count must clear this floor.
 MIN_AFFIRMATIVES = 30
 
+# Fail-closed interlock for the best-of-K equivalence (ADR-0012 "Implementation notes").
+# The runtime runs best-of-K, but this gate measures a per-pair FAR and does NOT yet perform
+# the best-of-K reduction itself, so a top-1 predictions file would certify a FAR the runtime
+# exceeds. Until that reduction lands (the enable-PR checklist), the gate stamps False into
+# every artifact and services.legal.t1_gate.t1_permitted() REFUSES to enable T1 on a False
+# artifact. Flip to True ONLY in the PR that makes the gate reduce best-of-K and adds a test
+# that a top-1 / wrong-K predictions file fails. This is the one code-enforced reason T1
+# cannot go live yet; do not flip it to make a demo work.
+BEST_OF_K_GATE_ENFORCED = False
+
 AFFIRMATIVE = frozenset({"support", "contradict"})
 GOLD_LABELS = frozenset({"support", "contradict", "cannot_determine"})
 PREDICTED_LABELS = frozenset({"support", "contradict", "refused"})
@@ -113,6 +123,11 @@ def thresholds_complete(thresholds: JsonDict | None) -> bool:
     if not isinstance(thresholds, dict):
         return False
     if thresholds.get("threshold_epsilon") is None:
+        return False
+    # rank_cutoff is the top-K candidacy floor the runtime runs best-of. It rides this
+    # file's hash, so requiring it here is what makes the gate certify the same K the
+    # runtime uses: a gate that passed without it would measure an undefined strategy.
+    if thresholds.get("rank_cutoff") is None:
         return False
     ceilings = thresholds.get("far_ceiling")
     if not isinstance(ceilings, dict) or not ceilings:
@@ -287,20 +302,25 @@ def write_gate_pass(
     feature_version: str,
     thresholds_path: Path = DEFAULT_THRESHOLDS,
     corpus_path: Path = DEFAULT_CORPUS,
+    predictions_path: Path = DEFAULT_PREDICTIONS,
     guideline_path: Path = DEFAULT_GUIDELINE,
     gate_pass_path: Path = DEFAULT_GATE_PASS,
     far_by_surface: dict[str, float] | None = None,
 ) -> Path:
     """Write the gate-pass artifact the runtime guard re-checks. Caller writes this ONLY
-    after a passing run; the five hashes bind the pass to an exact model/corpus/threshold
-    tuple, so any later drift invalidates it."""
+    after a passing run; the hashes bind the pass to an exact model/corpus/predictions/
+    threshold tuple, so any later drift invalidates it. ``best_of_k_enforced`` carries the
+    fail-closed interlock (see BEST_OF_K_GATE_ENFORCED): while False the runtime refuses to
+    enable T1, so an artifact minted by this code today cannot turn the tier on."""
     artifact = {
         "passed": True,
         "corpus_sha256": _sha256_file(corpus_path),
+        "predictions_sha256": _sha256_file(predictions_path),
         "thresholds_sha256": _sha256_file(thresholds_path),
         "guideline_version": _sha256_file(guideline_path),
         "model_sha256": model_sha256,
         "feature_version": feature_version,
+        "best_of_k_enforced": BEST_OF_K_GATE_ENFORCED,
         "far_by_surface": far_by_surface or {},
     }
     gate_pass_path.parent.mkdir(parents=True, exist_ok=True)

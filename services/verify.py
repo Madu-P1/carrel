@@ -231,6 +231,18 @@ def _claim_dict_to_verdict(
         reason = str(could_not_check_reason)
     else:
         reason = _deterministic_reason(case_verdicts, contract_verdict)
+    # T1 recall tier (ADR-0012): assessed-tier provenance is STRICTLY subordinate to an
+    # `unknown` could-not-check verdict. Only an anchor-free claim that stayed unknown via
+    # could_not_check can carry an assessment; a T0 verdict (verified / unsupported) never
+    # does, so a future Site-A change can't paint a local-model guess over a deterministic
+    # fact. The assessment never changes the verdict; it only rides assessed_* for the
+    # assistive surface, and stays None (the default) until T1's calibration gate passes.
+    assessed_confidence = assessed_model = assessed_label = None
+    t1_assessment = claim_dict.get("t1_assessment")
+    if isinstance(t1_assessment, dict) and verdict == "unknown" and could_not_check_reason:
+        assessed_confidence = t1_assessment.get("confidence")
+        assessed_model = t1_assessment.get("model")
+        assessed_label = t1_assessment.get("label")
     return VerifyClaimVerdict(
         claim_index=index,
         claim_text=text,
@@ -239,6 +251,9 @@ def _claim_dict_to_verdict(
         case_verdicts=case_verdicts,
         unsupported_reason=reason,
         placement=placement,
+        assessed_confidence=assessed_confidence,
+        assessed_model=assessed_model,
+        assessed_label=assessed_label,
     )
 
 

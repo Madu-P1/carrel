@@ -140,6 +140,16 @@ class TransformersEntailment:
         return out
 
 
+def active_model_id() -> str:
+    """The NLI model id the default scorer resolves to (env override or the pinned default).
+
+    Used as the assessed-tier ``model`` provenance on the wire (audit), never rendered as a
+    score on the card (D3). Single source for the same resolution ``TransformersEntailment``
+    applies, so the recorded provenance matches the model that actually scored.
+    """
+    return os.getenv("CACHET_NLI_MODEL") or DEFAULT_NLI_MODEL
+
+
 _default: EntailmentScorer | None = None
 
 
