@@ -10,6 +10,11 @@ candidate clause from the executed contract, decide deterministically (T0):
     This attests that the language appears, NEVER that the surrounding
     proposition is legally correct (a carve-out can change the meaning), so the
     detail tells the reader to review the full clause for context.
+  - ``multi_value_unverifiable``: the claim and the clause each carry more than
+    one value of the same type, so a deterministic check cannot align them
+    one-to-one. Routed to the could-not-check tray instead of guessing: a guessed
+    match would MASK a contradiction and a guessed miss would be a false
+    accusation (ADR-0012 invariant 2). Role-aligned multi-value checking is T1.
   - ``not_found``: the claim asserts a value or language the clause does not
     contain. The honest scope exit, never dressed as a clean pass.
 
@@ -46,13 +51,12 @@ def _within_tolerance(a: float, b: float, rel: float = _DURATION_REL_TOLERANCE) 
 
 
 def _values_match(anchor_type: str, claim_values: list, clause_values: list) -> bool:
-    # Known limitation: with multiple values of one type on either side, this
-    # "any matches any" test can MASK a contradiction (a claim's $1M cap spuriously
-    # matching a clause's unrelated $1M line item). Resolving it needs role
-    # alignment (which claim value maps to which clause value), which is out of
-    # scope; the demo uses single-value clauses where this is exact. Surfaced as a
-    # coverage caveat (see demo/README honest scope), never a silent claim of full
-    # coverage: a multi-value contract sentence is not fully checked.
+    # Invoked only on SINGLE-value pairs (one value per side): the caller routes any
+    # multi-value type to multi_value_unverifiable, because "any matches any" cannot
+    # align multiple values and would mask a contradiction (a claim's $1M cap spuriously
+    # matching a clause's unrelated $1M line item). On a single pair the intersection
+    # test below is exact equality; duration keeps a small tolerance so equivalent terms
+    # ("12 months" vs "1 year") are not flagged as a contradiction.
     if anchor_type == "duration":
         return any(_within_tolerance(c, k) for c in claim_values for k in clause_values)
     return bool(set(claim_values) & set(clause_values))
@@ -77,6 +81,7 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     # present finding beats a not_found.
     present_verdict: ClauseVerdict | None = None
     not_found_verdict: ClauseVerdict | None = None
+    multi_value_verdict: ClauseVerdict | None = None
     for anchor_type in _PARAMETRIC_TYPES:
         claim_hits = [
             a for a in claim_anchors if a.type == anchor_type and a.canonical_value is not None
@@ -98,6 +103,26 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     (),
                 )
             continue
+        if len(claim_values) > 1 or len(clause_values) > 1:
+            # Multiple values of this type on a side: a deterministic clause-level check
+            # cannot say WHICH claim value maps to WHICH clause value. The old
+            # "any matches any" test could MASK a real contradiction (a claim's $1M cap
+            # spuriously matching a clause's unrelated $1M line) or, on a clean miss, name
+            # a guessed first-value contradiction (a false accusation). Neither is honest,
+            # so route to the could-not-check tray (ADR-0012 invariant 2: below-confidence
+            # is never a guessed verdict). Role-aligned multi-value checking is T1 work.
+            if multi_value_verdict is None:
+                multi_value_verdict = ClauseVerdict(
+                    "multi_value_unverifiable",
+                    (
+                        f"The {anchor_type} values in the summary and {where} cannot be aligned "
+                        "one-to-one deterministically, so this sentence was not independently checked."
+                    ),
+                    anchor_type,
+                    claim_values,
+                    clause_values,
+                )
+            continue
         if _values_match(anchor_type, list(claim_values), list(clause_values)):
             if present_verdict is None:
                 present_verdict = ClauseVerdict(
@@ -115,6 +140,12 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             claim_values,
             clause_values,
         )
+    # Precedence: a single-value contradiction already returned outright above. Among the
+    # rest, an honest could-not-check (a type carried multiple values we could not align)
+    # outranks a present, because a sentence is not "present" if any checkable part of it
+    # went unaligned; a present in turn outranks a bare not_found.
+    if multi_value_verdict is not None:
+        return multi_value_verdict
     if present_verdict is not None:
         return present_verdict
     if not_found_verdict is not None:

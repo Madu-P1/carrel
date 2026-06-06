@@ -29,6 +29,13 @@ from services.tutor import fetch_notes
 LOGGER = get_logger("workspace_api")
 router = APIRouter()
 
+# Sessions whose `started_at` is older than this are treated as dormant and not
+# returned as the "active" session. Inlined here (it was imported from
+# services.dashboard) so the workspace surface carries no dependency on the
+# study-app dashboard module, which the Cachet extraction (P3) removes. This is
+# the single source for the dormancy window once services/dashboard.py is gone.
+ACTIVE_SESSION_MAX_AGE_HOURS = 12
+
 
 @router.get("/", response_model=None)
 def root() -> FileResponse:
@@ -160,7 +167,6 @@ def get_active_session() -> Dict[str, Any]:
 
     Defensive: multiple eligible rows → return the most recent.
     """
-    from services.dashboard import ACTIVE_SESSION_MAX_AGE_HOURS
     from datetime import datetime, timedelta, timezone
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ACTIVE_SESSION_MAX_AGE_HOURS)

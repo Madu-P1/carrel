@@ -161,7 +161,7 @@ def _verdict_from_contract(contract_verdict: Dict[str, Any]) -> VerifyVerdict:
         return "verified"
     if disposition == "parametric_contradiction":
         return "unsupported"
-    return "unknown"  # not_found
+    return "unknown"  # not_found / multi_value_unverifiable -> could-not-check
 
 
 def _deterministic_reason(

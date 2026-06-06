@@ -312,16 +312,24 @@ def _contract_claim(
     """Verify one summary sentence against the retrieved contract clause (T0)."""
     nodes = search_typed_hybrid(conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=3)
     # Retrieval is imprecise, so the matching clause may not be rank 1. Take the
-    # first retrieved clause that yields a definitive verdict (present or
-    # contradiction); fall back to not_found only if none does.
+    # first retrieved clause that yields a clean verdict (present or contradiction).
+    # A multi_value_unverifiable result is a could-not-check fallback used only when no
+    # clause yields a clean verdict: we never hunt other clauses for a contradiction
+    # (clause B's $600k must not "contradict" a claim whose $500k clause A confirmed),
+    # and a clean present/contradiction always outranks a multi-value could-not-check.
     verdict = ClauseVerdict("not_found", "no matching clause found in the contract")
     section = None
+    multi_value: tuple[ClauseVerdict, str | None] | None = None
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
-        if candidate.disposition != "not_found":
+        if candidate.disposition in ("present", "parametric_contradiction"):
             verdict = candidate
             section = node.heading_path
             break
+        if candidate.disposition == "multi_value_unverifiable" and multi_value is None:
+            multi_value = (candidate, node.heading_path)
+    if verdict.disposition == "not_found" and multi_value is not None:
+        verdict, section = multi_value
     claim = {
         "text": sentence,
         "citations": [],

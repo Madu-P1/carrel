@@ -7,7 +7,6 @@ from routes.dashboard import register_dashboard_routes
 from routes.documents import register_document_routes
 from routes.evidence import register_evidence_routes
 from routes.events import register_event_routes
-from routes.exports import register_export_routes
 from routes.jobs import register_job_routes
 from routes.onboarding import register_onboarding_routes
 from routes.plan import register_plan_routes
@@ -36,7 +35,6 @@ def register_routes(app) -> None:
     register_studio_routes(app)
     register_evidence_routes(app)
     register_event_routes(app)
-    register_export_routes(app)
     register_job_routes(app)
     register_onboarding_routes(app)
     register_system_routes(app)
