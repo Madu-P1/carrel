@@ -1,6 +1,7 @@
 import { render } from "preact";
 
 import { App } from "./app/App";
+import { CachetApp } from "./cachet/CachetApp";
 import { markAppBootedAfterInteractive } from "./app/shell/boot";
 import { appShell, initializeTheme } from "./app/shell/useAppShell";
 import { reportInteractive } from "./services/native/telemetry";
@@ -81,9 +82,16 @@ if (!root) {
   throw new Error("Missing #root container");
 }
 
-initializeTheme();
-
-render(<App />, root);
+if (import.meta.env.VITE_CACHET_ONLY === "true") {
+  // Cachet as its own product: paper always, only the verify/shelf surfaces, no
+  // study chrome. Default off, so an unset flag leaves the study app unchanged.
+  document.documentElement.classList.remove("theme-dark");
+  document.documentElement.classList.add("theme-light");
+  render(<CachetApp />, root);
+} else {
+  initializeTheme();
+  render(<App />, root);
+}
 bootWindow.nativeTelemetry?.emit("main-script-rendered", {
   childElementCount: root.childElementCount
 });

@@ -1,0 +1,71 @@
+/* Standalone Cachet shell (demo skeleton).
+ *
+ * The frame around the verify/shelf surfaces when Cachet runs as its own
+ * product (VITE_CACHET_ONLY). It is a quiet paper desk: the verify sheet and
+ * the shelf scope their own warmer paper on top of it. Colors are the locked
+ * Cachet palette (DESIGN.md 2026-05-29): warm paper, near-black ink, no study
+ * accent. A later pass unifies these into a shared Cachet token layer. */
+
+.shell {
+  min-height: 100vh;
+  background: #efe7d9;
+  color: #1c1814;
+  display: flex;
+  flex-direction: column;
+}
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  background: #f1ebe0;
+  border-bottom: 1px solid rgb(28 24 20 / 14%);
+}
+
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #1c1814;
+}
+
+.nav {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.navItem,
+.navItemActive {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-mono);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  background: transparent;
+  color: #685f4d;
+  cursor: pointer;
+  border-radius: var(--radius-1);
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.navItem:hover {
+  color: #4e463c;
+}
+
+.navItem:focus-visible,
+.navItemActive:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.navItemActive {
+  color: #1c1814;
+}
+
+.canvas {
+  flex: 1;
+  width: 100%;
+}
