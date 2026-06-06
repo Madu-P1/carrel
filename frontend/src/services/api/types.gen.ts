@@ -1576,23 +1576,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ask/cards": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Ask Cards */
-        get: operations["ask_cards_api_ask_cards_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/reader/node/{node_id}": {
         parameters: {
             query?: never;
@@ -6277,43 +6260,6 @@ export interface operations {
                 limit?: number;
                 subject_name?: string | null;
                 doc_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ask_cards_api_ask_cards_get: {
-        parameters: {
-            query: {
-                q: string;
-                limit?: number;
-                subject_name?: string | null;
-                doc_id?: string | null;
-                use_reranker?: boolean | null;
             };
             header?: never;
             path?: never;
