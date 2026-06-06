@@ -191,6 +191,53 @@ class ContractZeroEgressTests(unittest.TestCase):
             "parametric_contradiction", env["claims"][0]["contract_verdict"]["disposition"]
         )
 
+    def test_contract_close_is_offline_with_env_unset(self) -> None:
+        # The clean-box regression. The /api/verify surface defaults deterministic
+        # on with CACHET_DETERMINISTIC_VERIFY UNSET, so offline enforcement cannot
+        # hang off that env. With it unset and no embedder injected, the
+        # deterministic path must still acquire the offline embedder itself; the
+        # prior gap let it fall through to a network-capable default_embedder() that
+        # would download fastembed weights off-device on a cold cache. Here:
+        #   - the env flag is absent (a clean production box),
+        #   - HF_HUB_OFFLINE starts absent,
+        #   - any reach for nodes_vector.default_embedder fails loud,
+        #   - FastembedEmbedder is stubbed so no real weights load,
+        # and the path must (a) reach the contradiction verdict and (b) have forced
+        # HF_HUB_OFFLINE=1 on its own.
+        import services.retrieval.embeddings as embeddings
+        import services.retrieval.nodes_vector as nodes_vector
+
+        in_process = self._embedder
+
+        def _stub_fastembed(*_args, **_kwargs):
+            return in_process
+
+        def _no_default(*_args, **_kwargs):
+            raise AssertionError(
+                "deterministic path fell back to the network-capable default_embedder"
+            )
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
+            os.environ.pop("HF_HUB_OFFLINE", None)
+            os.environ.pop("TRANSFORMERS_OFFLINE", None)
+            with (
+                mock.patch.object(embeddings, "FastembedEmbedder", _stub_fastembed),
+                mock.patch.object(embeddings, "_offline_default", None),
+                mock.patch.object(nodes_vector, "default_embedder", _no_default),
+                _forbid_sockets(),
+            ):
+                env = build_deterministic_envelope(
+                    "The aggregate liability is capped at $1,000,000.",
+                    conn=self._conn,
+                    doc_ids=["c1"],
+                )
+                # The path forced HF offline itself, with the env flag never set.
+                self.assertEqual("1", os.environ.get("HF_HUB_OFFLINE"))
+        self.assertEqual(
+            "parametric_contradiction", env["claims"][0]["contract_verdict"]["disposition"]
+        )
+
     def test_stream_contract_close_with_empty_doc_ids_is_offline(self) -> None:
         # Demo-faithful: the UI sends NO doc_ids. The full-library fallback must scope
         # to the ingested contract so the $1,000,000-vs-$500,000 contradiction fires

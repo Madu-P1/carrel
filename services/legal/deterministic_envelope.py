@@ -44,7 +44,7 @@ from services.legal.t1_selector import (
     assess,
     default_scorer,
 )
-from services.retrieval.embeddings import Embedder
+from services.retrieval.embeddings import Embedder, offline_embedder
 from services.retrieval.typed_hybrid import search_typed_hybrid
 from services.retrieval.validators import verbatim_run_present
 
@@ -432,6 +432,15 @@ def build_deterministic_envelope(
         except sqlite3.Error:
             doc_ids = []
     contract_mode = conn is not None and bool(doc_ids)
+    # Offline by construction extends to retrieval. The contract path embeds the
+    # draft to find clauses; with no injected embedder the retrieval layer would
+    # otherwise build a network-capable default_embedder(). Acquire the
+    # offline-enforced embedder here, driven by the path actually running, not by
+    # CACHET_DETERMINISTIC_VERIFY being exported (the verify surface defaults
+    # deterministic on with that env unset). The litigator-only path needs no
+    # embedder, so it is left untouched.
+    if contract_mode and embedder is None:
+        embedder = offline_embedder()
     # Defined-term detection keys off the source contract's own definitions: built
     # once here (offline) and passed to every sentence's extraction. None on the
     # litigator-only path, leaving that path unchanged.
