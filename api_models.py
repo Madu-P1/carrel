@@ -766,38 +766,6 @@ class EvidenceResolution(BaseModel):
     text_offset_end: Optional[int] = None
 
 
-class AnchorCreateRequest(BaseModel):
-    document_id: str = Field(..., min_length=1, max_length=128)
-    quote_text: str = Field(..., min_length=1, max_length=8000)
-    origin: Literal["highlight", "ai_answer_citation", "manual", "imported"] = "manual"
-    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"] = "weak"
-    chunk_id: Optional[str] = Field(default=None, max_length=128)
-    page_num: Optional[int] = Field(default=None, ge=1)
-    bbox: Optional[List[float]] = None
-    text_offset_start: Optional[int] = None
-    text_offset_end: Optional[int] = None
-    user_question: Optional[str] = None
-    claim_text: Optional[str] = None
-    thread_id: Optional[str] = None
-    confidence: Optional[float] = Field(default=None, ge=0, le=1)
-
-
-class AnchorTransitionRequest(BaseModel):
-    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"]
-    srs_card_id: Optional[str] = Field(default=None, max_length=128)
-
-
-class AnchorCardDraftRequest(BaseModel):
-    count: int = Field(default=3, ge=1, le=3)
-
-
-class AnchorPromotionRequest(BaseModel):
-    front: str = Field(..., min_length=1, max_length=4000)
-    back: str = Field(..., min_length=1, max_length=4000)
-    card_type: str = Field(default="anchor", max_length=64)
-    concept_id: Optional[str] = None
-
-
 # --- Cachet PR6: Shelf persistence (saved briefs) ---------------------------
 #
 # A brief is one checked draft the lawyer kept. `response` and `cert` are

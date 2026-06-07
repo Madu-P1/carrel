@@ -1,4 +1,3 @@
-from routes.anchors import register_anchor_routes
 from routes.briefs import register_briefs_routes
 from routes.calendar import register_calendar_routes
 from routes.concepts import register_concept_routes
@@ -26,7 +25,6 @@ def register_routes(app) -> None:
     register_verify_routes(app)
     # Cachet PR6 — Shelf persistence (saved briefs) over services.briefs.
     register_briefs_routes(app)
-    register_anchor_routes(app)
     register_evidence_routes(app)
     register_event_routes(app)
     register_job_routes(app)
