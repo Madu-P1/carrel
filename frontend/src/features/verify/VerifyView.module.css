@@ -529,11 +529,17 @@
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-mono);
   text-transform: uppercase;
-  color: var(--text-secondary);
+  /* Visible exit: was --text-secondary, which read as a faint label next to the
+     Save buttons and left litigators unable to find the way out. A bordered pill
+     in primary ink reads unmistakably as the close control. */
+  color: var(--text-primary);
+  border: 1px solid var(--border-default, rgba(28, 25, 23, 0.24));
+  border-radius: 6px;
 }
 
 .inspectorClose:hover {
   color: var(--text-primary);
+  background: var(--surface-hover, rgba(28, 25, 23, 0.06));
 }
 
 .inspectorClose:focus-visible {
