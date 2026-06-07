@@ -1,7 +1,6 @@
 from routes.anchors import register_anchor_routes
 from routes.briefs import register_briefs_routes
 from routes.calendar import register_calendar_routes
-from routes.concepts import register_concept_routes
 from routes.documents import register_document_routes
 from routes.evidence import register_evidence_routes
 from routes.events import register_event_routes
@@ -19,7 +18,6 @@ from routes.workspace import register_workspace_routes
 def register_routes(app) -> None:
     register_workspace_routes(app)
     register_document_routes(app)
-    register_concept_routes(app)
     register_study_routes(app)
     register_tutor_routes(app)
     # Carrel V2 Stage 1 — Verify-mode endpoint over the existing

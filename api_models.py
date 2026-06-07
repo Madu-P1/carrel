@@ -422,11 +422,6 @@ class NoteExpandRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=240)
 
 
-class CompareRequest(BaseModel):
-    left_id: str
-    right_id: str
-
-
 class DocumentSubjectRequest(BaseModel):
     subject_name: str
 
