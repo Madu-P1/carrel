@@ -44,7 +44,19 @@ function checksFor(card: VerifyClaimVerdict): CheckRow[] {
   const holding = anyCase?.holding_match;
   const holdingState: CheckState =
     holding === true ? "query" : holding === false ? "flag" : "unknown";
-  const grounded: CheckState = card.verdict === "verified" ? "pass" : card.verdict === "unsupported" ? "flag" : "unknown";
+  // "Grounded in your sources" reflects ONLY loaded-source (contract) grounding.
+  // A citation claim is judged by "Cited case exists" instead, and the litigator
+  // cite-check loads no sources, so deriving this from the top-line verdict would
+  // flag "nothing supports this" when there is nothing to support against. A
+  // citation claim therefore reads N/A here, never a red contradiction.
+  const grounded: CheckState =
+    cases.length > 0
+      ? "unknown"
+      : card.verdict === "verified"
+        ? "pass"
+        : card.verdict === "unsupported"
+          ? "flag"
+          : "unknown";
 
   return [
     {
