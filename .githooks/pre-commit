@@ -10,6 +10,7 @@
 # commit through. Catches the drift class that has historically hit
 # this repo:
 #   - python format / lint  (ruff)
+#   - python types          (mypy, only when a strict-gated island file is staged)
 #   - frontend lint         (pnpm lint via eslint)
 #
 # Slow checks (pnpm typecheck, pnpm test, pnpm build:macos, pytest)
@@ -36,6 +37,10 @@ fail=0
 # ---- staged-file detection ---------------------------------------------------
 staged_py=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$' || true)
 staged_fe=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^frontend/.*\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+# Files under the mypy strict-gated islands (mirrors mypy.ini `files=`). Only these need
+# the type gate locally; a services/ or frontend edit skips it for speed. This is the
+# check that catches the gated-island type error CI rejects but ruff misses (the #132 class).
+staged_typed=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(benchmarks/|evals/|ai/router\.py|app_runtime\.py|app_logging\.py)' || true)
 
 # ---- resolve a ruff runner ---------------------------------------------------
 # A hardcoded ./.venv/bin/python fails open in a git worktree: there is no
@@ -80,6 +85,31 @@ resolve_ruff() {
   return 1
 }
 
+# ---- resolve a mypy runner ---------------------------------------------------
+# Same worktree-aware preference order as resolve_ruff: a hardcoded ./.venv path
+# fails open under .claude/worktrees/<name>/. Probed with `mypy --version`, so a venv
+# without mypy is rejected (then the caller warns and skips rather than blocks).
+MYPY_CMD=()
+resolve_mypy() {
+  local common_dir main_root main_py
+  if [ -x "./.venv/bin/python" ] && ./.venv/bin/python -m mypy --version >/dev/null 2>&1; then
+    MYPY_CMD=("./.venv/bin/python" -m mypy); return 0
+  fi
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
+  if [ -n "$common_dir" ]; then
+    case "$common_dir" in /*) ;; *) common_dir="$PWD/$common_dir" ;; esac
+    main_root="$(cd "$(dirname "$common_dir")" 2>/dev/null && pwd)" || main_root=""
+    main_py="$main_root/.venv/bin/python"
+    if [ -n "$main_root" ] && [ -x "$main_py" ] && "$main_py" -m mypy --version >/dev/null 2>&1; then
+      MYPY_CMD=("$main_py" -m mypy); return 0
+    fi
+  fi
+  if command -v python3 >/dev/null 2>&1 && python3 -m mypy --version >/dev/null 2>&1; then
+    MYPY_CMD=(python3 -m mypy); return 0
+  fi
+  return 1
+}
+
 # ---- python: ruff format + ruff check ----------------------------------------
 if [ -n "$staged_py" ]; then
   if ! resolve_ruff; then
@@ -101,6 +131,28 @@ if [ -n "$staged_py" ]; then
     if ! "${RUFF_CMD[@]}" check $staged_py; then
       echo "${RED}pre-commit: ruff check failed.${RESET}"
       echo "${YELLOW}Fix with:  ${ruff_display} check --fix $(echo $staged_py | tr '\n' ' ')${RESET}"
+      fail=1
+    fi
+  fi
+fi
+
+# ---- python: mypy on the strict-gated islands --------------------------------
+# Only when a staged file lives under a mypy-gated path. mypy needs whole-module
+# context, so it runs the configured gate (no file args, mypy.ini `files=`), not
+# per-file. This catches the gated-island type error that ruff misses and CI rejects
+# (how #132 slipped). When a gated file is staged but mypy is not installed, warn and
+# skip (CI still gates) rather than block a contributor who has no mypy; this stays
+# additive and never makes the hook slower for the common services/frontend edit.
+if [ -n "$staged_typed" ]; then
+  if ! resolve_mypy; then
+    echo "${YELLOW}pre-commit: skipping mypy (no usable mypy found); a gated file is staged.${RESET}"
+    echo "${DIM}CI still runs the mypy gate. Install dev deps to gate locally.${RESET}"
+  else
+    echo "${DIM}pre-commit: mypy on the gated islands (${MYPY_CMD[*]})...${RESET}"
+    if ! "${MYPY_CMD[@]}" > /tmp/carrel-precommit-mypy.log 2>&1; then
+      echo "${RED}pre-commit: mypy failed.${RESET}"
+      tail -20 /tmp/carrel-precommit-mypy.log
+      echo "${YELLOW}Full output: /tmp/carrel-precommit-mypy.log${RESET}"
       fail=1
     fi
   fi

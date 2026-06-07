@@ -29,6 +29,13 @@ from services.tutor import fetch_notes
 LOGGER = get_logger("workspace_api")
 router = APIRouter()
 
+# Sessions whose `started_at` is older than this are treated as dormant and not
+# returned as the "active" session. Inlined here (it was imported from
+# services.dashboard) so the workspace surface carries no dependency on the
+# study-app dashboard module, which the Cachet extraction (P3) removes. This is
+# the single source for the dormancy window once services/dashboard.py is gone.
+ACTIVE_SESSION_MAX_AGE_HOURS = 12
+
 
 @router.get("/", response_model=None)
 def root() -> FileResponse:
@@ -153,14 +160,11 @@ def get_active_session() -> Dict[str, Any]:
 
     Abandonment: rows with `status='active'` but `started_at` older than
     ACTIVE_SESSION_MAX_AGE_HOURS are treated as dormant and NOT returned.
-    This mirrors services.dashboard._active_session so both endpoints
-    agree on what "active" means. Without the filter, a closed-then-
-    reopened app would show a 96-hour timer on a session the user
-    already forgot about.
+    Without the filter, a closed-then-reopened app would show a 96-hour
+    timer on a session the user already forgot about.
 
     Defensive: multiple eligible rows → return the most recent.
     """
-    from services.dashboard import ACTIVE_SESSION_MAX_AGE_HOURS
     from datetime import datetime, timedelta, timezone
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ACTIVE_SESSION_MAX_AGE_HOURS)
@@ -168,8 +172,7 @@ def get_active_session() -> Dict[str, Any]:
     # services.session_engine writes via datetime.now().isoformat().
     # Space-separator cutoffs broke SQLite lexical TEXT comparison
     # (`T` > ` `), so every active row passed the cutoff check
-    # regardless of age. Same fix applied in
-    # services.dashboard._active_session.
+    # regardless of age.
     cutoff_iso = cutoff.isoformat()
     with db.get_db() as conn:
         row = conn.execute(

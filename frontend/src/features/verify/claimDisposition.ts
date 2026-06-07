@@ -12,13 +12,18 @@
  *   claim_unsupported       we checked the loaded sources and found no support
  *   could_not_check         we could not check (no source loaded, ambiguous cite,
  *                           verification unavailable). The honest refusal, full weight.
+ *   assessed                a local model (T1, ADR-0012) assessed this anchor-free
+ *                           claim above the calibration threshold; the quiet assistive
+ *                           register, for the lawyer's review, never a verified/flag.
  *
  * The product attests to grounding, never to truth. A "supported" disposition
  * means "this matches a source you gave me," not "this is correct." Anything we
  * could not fully check is surfaced as could_not_check rather than waved through
  * as supported, because a silent pass is the one disqualifying behavior.
  *
- * Pure and deterministic. No confidence scores anywhere, by design.
+ * Pure and deterministic mapping. The T1 "assessed" tier reflects a local-model
+ * judgment whose confidence rides the wire for the calibration gate but is never
+ * rendered as a score on the card (D3): no confidence number appears in the UI, by design.
  *
  * NOTE: the deterministic engine checks the user's draft quotes against the cited
  * opinion text it holds. A quote it cannot confirm verbatim is surfaced as
@@ -34,6 +39,7 @@ export type DispositionKind =
   | "citation_not_found"
   | "proposition_unsupported"
   | "claim_unsupported"
+  | "assessed"
   | "could_not_check";
 
 /**
@@ -63,7 +69,10 @@ export const DISPOSITION_ORDER: Record<DispositionKind, number> = {
   proposition_unsupported: 1,
   claim_unsupported: 2,
   could_not_check: 3,
-  supported: 4
+  // T1 assistive assessment sorts below the deterministic taxonomy and the honest
+  // refusal (a soft model judgment never outranks a known gap), above clean passes.
+  assessed: 4,
+  supported: 5
 };
 
 const TIER: Record<DispositionKind, DispositionTier> = {
@@ -74,6 +83,9 @@ const TIER: Record<DispositionKind, DispositionTier> = {
   proposition_unsupported: "assistive",
   claim_unsupported: "flag",
   could_not_check: "refusal",
+  // T1 (ADR-0012): a local-model assessment is an AI judgment, so it wears the same
+  // quiet assistive register, never a verified pass or an oxblood flag.
+  assessed: "assistive",
   supported: "pass"
 };
 
@@ -183,6 +195,27 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
     );
   }
   if (card.verdict === "unknown") {
+    // T1 recall tier (ADR-0012): a local model assessed this anchor-free claim above
+    // the calibration threshold. It rides the quiet `assistive` register (a margin note
+    // for review), never a verified/flag, and never overrides a T0 disposition: the
+    // deterministic flag, unsupported, and verified branches above have already
+    // returned, so only a genuinely could-not-check card reaches here. A verified or
+    // unsupported card carrying a stray assessed_confidence keeps its deterministic
+    // disposition because it never enters this branch. assessed_confidence stays on the
+    // wire for the gate; D3 keeps it off the card, so no number is rendered.
+    if (card.assessed_confidence != null) {
+      const direction =
+        card.assessed_label === "contradict"
+          ? "suggests this may not match your sources"
+          : card.assessed_label === "support"
+            ? "assessed this as matching your sources"
+            : "assessed this against your sources";
+      return mk(
+        "assessed",
+        "Assessed (local model)",
+        `A local model ${direction}, for your review. Not a deterministic verification.`
+      );
+    }
     return mk(
       "could_not_check",
       "Could not verify",

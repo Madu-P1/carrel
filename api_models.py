@@ -314,6 +314,12 @@ class VerifyClaimVerdictItem(BaseModel):
     # cards). A placed=False placement means the claim is in the unplaced tray;
     # deterministic, never mis-pinned (services.legal.align).
     placement: Optional["VerifyPlacementItem"] = None
+    # T1 recall tier (ADR-0012): assessed-tier provenance, set by nothing yet (dark
+    # until the calibration gate passes). assessed_confidence rides the wire for the
+    # gate + audit but is not rendered on the card (D3); 0-100 scale.
+    assessed_confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    assessed_model: Optional[str] = None
+    assessed_label: Optional[str] = None
 
 
 class VerifySummaryItem(BaseModel):
@@ -414,11 +420,6 @@ class NoteTransformRequest(BaseModel):
 class NoteExpandRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=40_000)
     title: Optional[str] = Field(default=None, max_length=240)
-
-
-class CompareRequest(BaseModel):
-    left_id: str
-    right_id: str
 
 
 class DocumentSubjectRequest(BaseModel):
@@ -565,28 +566,6 @@ class SessionStartRequest(BaseModel):
     difficulty_target: Optional[float] = None
     duration_minutes: int = 20
     mode: str = "mixed"
-
-
-class StudioGenerateRequest(BaseModel):
-    artifact_kind: str = "study_guide"
-    source_scope: Optional[List[str]] = None
-    concept_scope: Optional[List[str]] = None
-    goal_id: Optional[str] = None
-    session_id: Optional[str] = None
-    audience: str = "student"
-    difficulty: str = "standard"
-    depth: str = "standard"
-    style: str = "prose"
-    output_length: str = "medium"
-    evidence_strictness: str = "normal"
-    custom_prompt: Optional[str] = None
-    grounding_mode: str = "internal_only"
-    show_citations: bool = False
-
-
-class SynthesisRunRequest(BaseModel):
-    source_ids: List[str]
-    synthesis_type: str = "compare"
 
 
 # ----------------------------------------------------------------------
@@ -780,44 +759,6 @@ class EvidenceResolution(BaseModel):
     bbox: Optional[List[float]] = None
     text_offset_start: Optional[int] = None
     text_offset_end: Optional[int] = None
-
-
-class AnchorCreateRequest(BaseModel):
-    document_id: str = Field(..., min_length=1, max_length=128)
-    quote_text: str = Field(..., min_length=1, max_length=8000)
-    origin: Literal["highlight", "ai_answer_citation", "manual", "imported"] = "manual"
-    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"] = "weak"
-    chunk_id: Optional[str] = Field(default=None, max_length=128)
-    page_num: Optional[int] = Field(default=None, ge=1)
-    bbox: Optional[List[float]] = None
-    text_offset_start: Optional[int] = None
-    text_offset_end: Optional[int] = None
-    user_question: Optional[str] = None
-    claim_text: Optional[str] = None
-    thread_id: Optional[str] = None
-    confidence: Optional[float] = Field(default=None, ge=0, le=1)
-
-
-class AnchorTransitionRequest(BaseModel):
-    promotion_state: Literal["weak", "saved", "carded", "mastered", "archived"]
-    srs_card_id: Optional[str] = Field(default=None, max_length=128)
-
-
-class AnchorCardDraftRequest(BaseModel):
-    count: int = Field(default=3, ge=1, le=3)
-
-
-class AnchorPromotionRequest(BaseModel):
-    front: str = Field(..., min_length=1, max_length=4000)
-    back: str = Field(..., min_length=1, max_length=4000)
-    card_type: str = Field(default="anchor", max_length=64)
-    concept_id: Optional[str] = None
-
-
-class DemoLibrarySeedResponse(BaseModel):
-    seeded: bool
-    documents: List[DocumentUploadResponse] = Field(default_factory=list)
-    skipped_reason: Optional[str] = None
 
 
 # --- Cachet PR6: Shelf persistence (saved briefs) ---------------------------

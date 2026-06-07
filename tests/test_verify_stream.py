@@ -12,6 +12,7 @@ Covers ``services.verify.verify_draft_stream`` + ``POST /api/verify/stream``:
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from unittest import mock
 
@@ -659,14 +660,18 @@ class VerifyStreamRouteTests(unittest.TestCase):
         def fake_db():
             yield None
 
-        with mock.patch("routes.verify.db.get_db", fake_db):
-            with mock.patch.object(
-                verify_service.tutor_service,
-                "grounded_tutor_envelope_steps",
-                side_effect=lambda *a, **k: steps_factory(),
-            ):
-                client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
-                return client.post("/api/verify/stream", json={"draft": DRAFT})
+        # These route tests exercise the LLM stream path, which is now the explicit
+        # opt-out: the /api/verify surface defaults to the deterministic engine (PR-3),
+        # so opt out here to drive the mocked grounded_tutor_envelope_steps.
+        with mock.patch.dict(os.environ, {"CACHET_DETERMINISTIC_VERIFY": "0"}, clear=False):
+            with mock.patch("routes.verify.db.get_db", fake_db):
+                with mock.patch.object(
+                    verify_service.tutor_service,
+                    "grounded_tutor_envelope_steps",
+                    side_effect=lambda *a, **k: steps_factory(),
+                ):
+                    client = TestClient(main.app, headers={HEADER_NAME: get_local_api_token()})
+                    return client.post("/api/verify/stream", json={"draft": DRAFT})
 
     @staticmethod
     def _data_events(body: str):

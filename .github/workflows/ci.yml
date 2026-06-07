@@ -78,10 +78,28 @@ jobs:
             tests.test_verify \
             tests.test_verify_stream \
             tests.test_quote_check \
+            tests.test_t1_offline_model \
+            tests.test_t1_selector \
             tests.test_align \
             tests.test_briefs \
             tests.test_briefs_routes \
+            tests.test_t1_calibration \
             -v
+
+  t1-calibration-gate:
+    # ADR-0012 T1 recall tier: this gate keeps T1 dark until it passes on a labeled
+    # held-out corpus. Default (dark-guard) mode exits 0 while T1 is dark (null
+    # thresholds, no gate-pass artifact), and fails the moment someone sets thresholds
+    # to enable T1 without a passing corpus. Pure stdlib (no model, no third-party
+    # deps), so it runs in seconds with no install step.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: T1 calibration gate (dark-guard)
+        run: python -m benchmarks.t1_calibration
 
   frontend-build:
     runs-on: ubuntu-latest

@@ -19,5 +19,26 @@
     "path": "cell_division.pdf",
     "file_type": "pdf",
     "subject_name": "EvalBiology"
+  },
+  {
+    "source_id": "meridian_v_coastal",
+    "filename": "meridian_v_coastal.md",
+    "path": "meridian_v_coastal.md",
+    "file_type": "md",
+    "subject_name": "VerificationLegal"
+  },
+  {
+    "source_id": "premises_notice_act_s12",
+    "filename": "premises_notice_act_s12.md",
+    "path": "premises_notice_act_s12.md",
+    "file_type": "md",
+    "subject_name": "VerificationLegal"
+  },
+  {
+    "source_id": "harlow_v_brightwater",
+    "filename": "harlow_v_brightwater.md",
+    "path": "harlow_v_brightwater.md",
+    "file_type": "md",
+    "subject_name": "VerificationLegal"
   }
 ]

@@ -7,12 +7,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
-from api_models import FlashcardDraftRequest, StudioGenerateRequest
+from api_models import FlashcardDraftRequest
 from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from routes.documents import upload_document
 from routes.study import draft_flashcards
-from routes.studio import studio_generate, studio_get_artifact
 from services import documents as document_service
 from services.graph import fetch_graph
 from services.ingestion import ingest_document_record
@@ -642,28 +641,6 @@ class EinsteinTutorBackendTests(unittest.TestCase):
         self.assertNotIn("returns estimate expected", rendered)
         self.assertTrue(all(card["type"] == "definition" for card in result["cards"]))
         self.assertTrue(all(len(card["a"].split()) >= 5 for card in result["cards"]))
-
-    def test_summary_artifact_hides_source_labels_by_default(self) -> None:
-        doc_id = self.ingest(
-            "tax-law.txt",
-            "Double taxation happens when the same income is taxed by more than one tax authority. Tax treaties can reduce double taxation by allocating taxing rights.",
-            "Law",
-        )
-
-        result = studio_generate(
-            StudioGenerateRequest(
-                artifact_kind="summary",
-                source_scope=[doc_id],
-            )
-        )
-
-        markdown = result["artifact"]["output_markdown"].lower()
-        artifact_detail = studio_get_artifact(result["artifact"]["id"])
-        self.assertNotIn("tax-law.txt", markdown)
-        self.assertNotIn("source:", markdown)
-        self.assertNotIn("page ", markdown)
-        self.assertEqual("internal_only", artifact_detail["output_json"]["grounding_mode"])
-        self.assertFalse(artifact_detail["output_json"]["show_citations"])
 
     def test_cleaned_labels_flow_into_graph_and_due_cards(self) -> None:
         with main.get_db() as conn:

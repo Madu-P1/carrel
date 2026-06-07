@@ -11,44 +11,50 @@ anchor-free sentences route to ``unsupported_spans`` instead of being
 silently dropped.
 
 ``services.verify.verify_draft`` swaps ``grounded_tutor_envelope`` for
-this builder when ``CACHET_DETERMINISTIC_VERIFY`` is set. The flag
-defaults off, so the existing LLM flow is unchanged.
+this builder on the deterministic path. The Cachet ``/api/verify`` route
+defaults to this builder (no egress, no LLM); the LLM grounding path is an
+explicit opt-out via ``CACHET_DETERMINISTIC_VERIFY=0``. A direct caller of
+``verify_draft`` keeps the conservative legacy opt-in default.
 
 The case-verdict dict shape is produced by the canonical serializer
-``services.tutor._serialize_case_verdict`` so the wire contract stays in
-lock-step with the LLM path.
+``services.legal.case_verification.serialize_case_verdict`` so the wire contract
+stays in lock-step with the LLM path.
 """
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 from typing import Sequence
 
 import httpx
 
-from services.legal.anchors import extract_anchors
-from services.legal.case_verification import verify_claims_for_cases
+from services.legal.anchors import Anchor, build_alias_table, extract_anchors
+from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
 from services.legal.citations_eyecite import caption_matches, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
 from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
 from services.legal.quote_check import extract_draft_quote_spans, split_runs
 from services.legal.sentences import split_sentences
-from services.retrieval.embeddings import Embedder
+from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
+from services.legal.t1_selector import (
+    T1Assessment,
+    T1Candidate,
+    active_model_id,
+    assess,
+    default_scorer,
+)
+from services.retrieval.embeddings import Embedder, offline_embedder
 from services.retrieval.typed_hybrid import search_typed_hybrid
 from services.retrieval.validators import verbatim_run_present
-from services.tutor import _serialize_case_verdict
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
 
-
-def _enabled(name: str) -> bool:
-    return os.getenv(name, "").lower() in {"1", "true", "yes"}
-
-
-def deterministic_verify_enabled() -> bool:
-    return _enabled("CACHET_DETERMINISTIC_VERIFY")
+# Anchor types verify_claim_against_clause actually tests against a clause. A
+# sentence carrying one of these has a proposition the contract path can confirm or
+# contradict; a defined_term alone does not (PR-1 grounds the defined term as
+# context, never as a clause-checked verdict).
+_CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
 
 
 def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
@@ -155,26 +161,224 @@ def _run_present_any(run: str, opinions: list[str]) -> bool:
     )
 
 
+def _source_alias_table(
+    conn: sqlite3.Connection | None, doc_ids: Sequence[str] | None
+) -> dict[str, str] | None:
+    """Defined-term alias table built from the source documents' own text (T0).
+
+    Offline by construction: reads node text from the local DB, no network. Returns
+    None (the detector stays inert, the default behavior) when there is no source,
+    the nodes table is absent, or no term is defined, so a chunks-path corpus and
+    the litigator-only path are byte-identical to before.
+    """
+    if conn is None or not doc_ids:
+        return None
+    placeholders = ",".join("?" for _ in doc_ids)
+    try:
+        rows = conn.execute(
+            f"SELECT verbatim_text FROM nodes WHERE doc_id IN ({placeholders}) "
+            "ORDER BY doc_id, reading_order",
+            list(doc_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    source_text = "\n".join(row[0] for row in rows if row[0])
+    return build_alias_table(source_text) or None
+
+
+# Strip a trailing corporate suffix so "Acme Inc." and "Acme, Inc" normalize to the
+# same key as the source's party list; the parenthetical-alias form keeps its inner
+# term. Matching is lenient by design: an unmatched party is a could-not-check, never
+# an accusation, so a missed normalization costs recall, never precision.
+_PARTY_SUFFIX = re.compile(
+    r"[,\s]+(?:Inc|LLC|L\.L\.C|Corp|Ltd|L\.P|LP|PLC|GmbH)\.?\s*$", re.IGNORECASE
+)
+_ALIAS_INNER = re.compile(r"""["“']([^"”']+)["”']""")
+_SECTION_NUMBER = re.compile(r"\d+(?:\.\d+)*")
+
+
+def _normalize_party(text: str) -> str:
+    alias = _ALIAS_INNER.search(text)
+    core = (
+        alias.group(1) if text.lstrip().startswith("(") and alias else _PARTY_SUFFIX.sub("", text)
+    )
+    return re.sub(r"\s+", " ", core).strip().lower()
+
+
+def _normalize_section(text: str) -> str:
+    m = _SECTION_NUMBER.search(text)
+    return m.group(0) if m else text.strip().lower()
+
+
+def _source_party_section_sets(
+    conn: sqlite3.Connection | None, doc_ids: Sequence[str] | None
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Normalized party and section identifiers found in the source documents (T0).
+
+    Offline by construction (reads node text from the local DB, no network), and
+    symmetric with the draft: source parties/sections come from the same
+    ``extract_anchors`` detectors the draft uses. Empty sets when there is no source
+    or no nodes table, so a draft party or section is then simply unmatched, a
+    could-not-check, never a false verdict.
+    """
+    if conn is None or not doc_ids:
+        return frozenset(), frozenset()
+    placeholders = ",".join("?" for _ in doc_ids)
+    try:
+        rows = conn.execute(
+            f"SELECT verbatim_text FROM nodes WHERE doc_id IN ({placeholders}) "
+            "ORDER BY doc_id, reading_order",
+            list(doc_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return frozenset(), frozenset()
+    parties: set[str] = set()
+    sections: set[str] = set()
+    for (text,) in rows:
+        if not text:
+            continue
+        for anchor in extract_anchors(text):
+            if anchor.type == "party":
+                parties.add(_normalize_party(anchor.text))
+            elif anchor.type == "section":
+                sections.add(_normalize_section(anchor.text))
+    return frozenset(parties), frozenset(sections)
+
+
+def _grounding_reason(
+    anchors: list[Anchor],
+    source_parties: frozenset[str],
+    source_sections: frozenset[str],
+) -> str | None:
+    """An honest could-not-check reason for a sentence whose only checkable signals
+    are grounding anchors (defined_term / party / section). Never a verdict.
+
+    Returns None when the sentence carries a clause-checkable anchor (money / date /
+    duration / quote), so a parametric or quote verdict always wins (ADR-0012
+    invariant 2: a grounding anchor never manufactures or softens a verdict). Party
+    and section are grounded against the source but never accused: an unmatched party
+    or an unlocated section reads could-not-check, never unsupported, because
+    name-form and numbering variance make a hard "not in the contract" the
+    false-accusation direction the product refuses.
+    """
+    if any(a.type in _CLAUSE_CHECKABLE for a in anchors):
+        return None
+    parts: list[str] = []
+
+    defined = list(dict.fromkeys(a.text for a in anchors if a.type == "defined_term"))
+    if defined:
+        parts.append(f"uses defined term(s) {', '.join(defined)} from the source contract")
+
+    parties = list(dict.fromkeys(a.text for a in anchors if a.type == "party"))
+    matched = [p for p in parties if _normalize_party(p) in source_parties]
+    unmatched = [p for p in parties if _normalize_party(p) not in source_parties]
+    if matched:
+        parts.append(f"names {', '.join(matched)}, a party to the source contract")
+    if unmatched:
+        parts.append(
+            f"names {', '.join(unmatched)}, which could not be matched to a party "
+            "in the source contract"
+        )
+
+    sections = list(dict.fromkeys(a.text for a in anchors if a.type == "section"))
+    found = [s for s in sections if _normalize_section(s) in source_sections]
+    missing = [s for s in sections if _normalize_section(s) not in source_sections]
+    if found:
+        parts.append(f"references {', '.join(found)}, which exists in the source contract")
+    if missing:
+        parts.append(
+            f"references {', '.join(missing)}, which could not be located in the source contract"
+        )
+
+    if not parts:
+        return None
+    return (
+        "This statement "
+        + "; ".join(parts)
+        + ", but its assertion was not independently verified against a clause."
+    )
+
+
+def _grounding_verdict(
+    anchors: list[Anchor],
+    source_sections: frozenset[str],
+) -> dict | None:
+    """A hard verdict from a grounding anchor, or None.
+
+    The only grounding anchor that yields a deterministic *verdict* (not merely
+    could-not-check context) is a section reference ABSENT from the source: a draft
+    that cites a section the contract does not contain is unsupported regardless of
+    the surrounding predicate. Returns None when a clause-checkable anchor is present
+    (the clause verdict wins, ADR-0012 invariant 2).
+
+    Asymmetry, deliberately:
+      - The POSITIVE direction (a section that exists) is NOT promoted to a verdict.
+        Existence is not proof of the sentence's predicate ("S 7.2 governs X" only
+        verifies that 7.2 exists, not that it governs X), so it stays the honest
+        could-not-check affirmation from ``_grounding_reason`` - never an
+        overclaiming "verified".
+      - PARTY anchors yield no verdict in either direction: the positive overclaims
+        the same way, and an unmatched party is far more often name-form variance
+        ("Acme" vs "Acme Corp.") than a fabricated party, so a hard "not a party"
+        is the false-accusation direction the product refuses.
+
+    Precision gate on the negative: fires only when ``source_sections`` is
+    non-empty. An empty set means no sections were extracted from the source (an
+    un-ingested source, or numbering in a form the detector misses, e.g. roman
+    "Article VII"), in which case every draft section would read absent - so we stay
+    could-not-check rather than false-accuse.
+    """
+    if any(a.type in _CLAUSE_CHECKABLE for a in anchors):
+        return None
+    if not source_sections:
+        return None
+    sections = list(dict.fromkeys(a.text for a in anchors if a.type == "section"))
+    absent = [s for s in sections if _normalize_section(s) not in source_sections]
+    if not absent:
+        return None
+    listed = ", ".join(absent)
+    return {
+        "disposition": "section_absent",
+        "sections": absent,
+        "detail": (
+            f"This statement references {listed}, which could not be located in the "
+            "source contract."
+        ),
+    }
+
+
 def _contract_claim(
     conn: sqlite3.Connection,
     sentence: str,
     doc_ids: Sequence[str],
     embedder: Embedder | None,
+    *,
+    anchors: list[Anchor],
+    source_parties: frozenset[str],
+    source_sections: frozenset[str],
 ) -> dict:
     """Verify one summary sentence against the retrieved contract clause (T0)."""
     nodes = search_typed_hybrid(conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=3)
     # Retrieval is imprecise, so the matching clause may not be rank 1. Take the
-    # first retrieved clause that yields a definitive verdict (present or
-    # contradiction); fall back to not_found only if none does.
+    # first retrieved clause that yields a clean verdict (present or contradiction).
+    # A multi_value_unverifiable result is a could-not-check fallback used only when no
+    # clause yields a clean verdict: we never hunt other clauses for a contradiction
+    # (clause B's $600k must not "contradict" a claim whose $500k clause A confirmed),
+    # and a clean present/contradiction always outranks a multi-value could-not-check.
     verdict = ClauseVerdict("not_found", "no matching clause found in the contract")
     section = None
+    multi_value: tuple[ClauseVerdict, str | None] | None = None
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
-        if candidate.disposition != "not_found":
+        if candidate.disposition in ("present", "parametric_contradiction"):
             verdict = candidate
             section = node.heading_path
             break
-    return {
+        if candidate.disposition == "multi_value_unverifiable" and multi_value is None:
+            multi_value = (candidate, node.heading_path)
+    if verdict.disposition == "not_found" and multi_value is not None:
+        verdict, section = multi_value
+    claim = {
         "text": sentence,
         "citations": [],
         "case_verdicts": [],
@@ -187,6 +391,62 @@ def _contract_claim(
             "section": section,
         },
     }
+    # Grounding overlay (defined_term + party + section). A sentence whose only
+    # checkable signals are grounding anchors gets an honest could-not-check that
+    # names them, never the misleading "language does not appear" and never a verdict.
+    # A clause-checkable anchor suppresses it, so a parametric/quote result always
+    # wins outright (ADR-0012 invariant 2).
+    # A section reference absent from the source is a hard unsupported verdict; it
+    # supersedes the could-not-check grounding prose (which would otherwise just name
+    # the same missing section). Everything else stays could-not-check context.
+    section_verdict = _grounding_verdict(anchors, source_sections)
+    if section_verdict is not None:
+        claim["section_verdict"] = section_verdict
+    else:
+        reason = _grounding_reason(anchors, source_parties, source_sections)
+        if reason:
+            claim["could_not_check_reason"] = reason
+    return claim
+
+
+def _t1_anchor_free_assessment(
+    conn: sqlite3.Connection,
+    sentence: str,
+    doc_ids: Sequence[str],
+    embedder: Embedder | None,
+) -> dict | None:
+    """ADR-0012 T1: a local-model assessment for an anchor-free sentence, or None.
+
+    Dark behind ``t1_permitted()`` (the caller gates on it). Retrieves the top
+    ``rank_cutoff`` source clauses and returns the BEST above-threshold assessment over
+    them (best-of-K). ``rank_cutoff`` and the verdict threshold are read from the gate-bound
+    thresholds.json. For the runtime false-affirmative rate to equal the gated rate, the
+    gate's predictions must be generated under this same best-of-K strategy; that
+    equivalence is the corpus step's responsibility and is not yet mechanically enforced
+    (ADR-0012 "Implementation notes"). None keeps the claim in the could-not-check tray
+    (invariant 2: no coverage-by-guessing).
+    """
+    thresholds = load_runtime_thresholds()
+    if thresholds is None:
+        return None
+    verdict_threshold, rank_cutoff = thresholds
+    nodes = search_typed_hybrid(
+        conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=rank_cutoff
+    )
+    scorer = default_scorer()
+    best: T1Assessment | None = None
+    for rank, node in enumerate(nodes, start=1):
+        assessment = assess(
+            T1Candidate(sentence=sentence, clause=node.verbatim_text, rank=rank),
+            scorer=scorer,
+            verdict_threshold=verdict_threshold,
+            rank_cutoff=rank_cutoff,
+        )
+        if assessment is not None and (best is None or assessment.confidence > best.confidence):
+            best = assessment
+    if best is None:
+        return None
+    return {"label": best.label, "confidence": best.confidence, "model": active_model_id()}
 
 
 def build_deterministic_envelope(
@@ -227,18 +487,34 @@ def build_deterministic_envelope(
         except sqlite3.Error:
             doc_ids = []
     contract_mode = conn is not None and bool(doc_ids)
+    # Offline by construction extends to retrieval. The contract path embeds the
+    # draft to find clauses; with no injected embedder the retrieval layer would
+    # otherwise build a network-capable default_embedder(). Acquire the
+    # offline-enforced embedder here, driven by the path actually running, not by
+    # CACHET_DETERMINISTIC_VERIFY being exported (the verify surface defaults
+    # deterministic on with that env unset). The litigator-only path needs no
+    # embedder, so it is left untouched.
+    if contract_mode and embedder is None:
+        embedder = offline_embedder()
+    # Defined-term detection keys off the source contract's own definitions: built
+    # once here (offline) and passed to every sentence's extraction. None on the
+    # litigator-only path, leaving that path unchanged.
+    alias_table = _source_alias_table(conn, doc_ids) if contract_mode else None
+    source_parties, source_sections = (
+        _source_party_section_sets(conn, doc_ids) if contract_mode else (frozenset(), frozenset())
+    )
     sentences = split_sentences(draft)
     claims: list[dict] = []
     # Opinion text of the cases that resolved in each sentence, so the altered-quote
     # pass can check a quote against cites in its own OR an adjacent sentence.
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
-        anchors = extract_anchors(sentence)
+        anchors = extract_anchors(sentence, alias_table=alias_table)
         if any(a.type == "citation" for a in anchors):
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
             )
-            serialized = [_serialize_case_verdict(v) for v in verdicts]
+            serialized = [serialize_case_verdict(v) for v in verdicts]
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
@@ -246,7 +522,17 @@ def build_deterministic_envelope(
             opinions_by_sentence[i] = _opinions_from_verdicts(serialized)
             claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
         elif contract_mode and anchors:
-            claims.append(_contract_claim(conn, sentence, doc_ids, embedder))
+            claims.append(
+                _contract_claim(
+                    conn,
+                    sentence,
+                    doc_ids,
+                    embedder,
+                    anchors=anchors,
+                    source_parties=source_parties,
+                    source_sections=source_sections,
+                )
+            )
         else:
             # No citation to check, and either no anchor or nothing to check a
             # non-citation anchor against. The honest "could not check": never a
@@ -258,14 +544,22 @@ def build_deterministic_envelope(
                 else "This statement carries a checkable value but no source was provided "
                 "to check it against."
             )
-            claims.append(
-                {
-                    "text": sentence,
-                    "citations": [],
-                    "case_verdicts": [],
-                    "could_not_check_reason": reason,
-                }
-            )
+            claim = {
+                "text": sentence,
+                "citations": [],
+                "case_verdicts": [],
+                "could_not_check_reason": reason,
+            }
+            # ADR-0012 T1 recall tier, DARK behind t1_permitted() (False on main: no
+            # gate-pass artifact exists). When permitted in contract mode, a local model
+            # may assess this anchor-free claim against the source clauses. It never
+            # changes the verdict (the claim stays could-not-check / unknown); it only
+            # attaches assessed-tier provenance for the assistive surface (invariant 1).
+            if contract_mode and conn is not None and doc_ids and t1_permitted():
+                assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, embedder)
+                if assessment is not None:
+                    claim["t1_assessment"] = assessment
+            claims.append(claim)
 
     # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
     # only against the cases cited in its OWN sentence. Proximity is not attribution:

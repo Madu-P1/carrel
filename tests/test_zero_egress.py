@@ -9,6 +9,7 @@ network-monitor demonstration.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import shutil
@@ -21,8 +22,10 @@ from unittest import mock
 import db
 from services.ingestion.persistence import embed_and_index_nodes, insert_typed_nodes
 from services.ingestion.typed_walker import TypedNode
+from services.legal import t1_gate, t1_selector
 from services.legal.deterministic_envelope import build_deterministic_envelope
 from services.legal.local_caselaw import local_caselaw_client
+from services.legal.t1_gate import FEATURE_VERSION
 from services.verify import verify_draft_stream
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -188,6 +191,53 @@ class ContractZeroEgressTests(unittest.TestCase):
             "parametric_contradiction", env["claims"][0]["contract_verdict"]["disposition"]
         )
 
+    def test_contract_close_is_offline_with_env_unset(self) -> None:
+        # The clean-box regression. The /api/verify surface defaults deterministic
+        # on with CACHET_DETERMINISTIC_VERIFY UNSET, so offline enforcement cannot
+        # hang off that env. With it unset and no embedder injected, the
+        # deterministic path must still acquire the offline embedder itself; the
+        # prior gap let it fall through to a network-capable default_embedder() that
+        # would download fastembed weights off-device on a cold cache. Here:
+        #   - the env flag is absent (a clean production box),
+        #   - HF_HUB_OFFLINE starts absent,
+        #   - any reach for nodes_vector.default_embedder fails loud,
+        #   - FastembedEmbedder is stubbed so no real weights load,
+        # and the path must (a) reach the contradiction verdict and (b) have forced
+        # HF_HUB_OFFLINE=1 on its own.
+        import services.retrieval.embeddings as embeddings
+        import services.retrieval.nodes_vector as nodes_vector
+
+        in_process = self._embedder
+
+        def _stub_fastembed(*_args, **_kwargs):
+            return in_process
+
+        def _no_default(*_args, **_kwargs):
+            raise AssertionError(
+                "deterministic path fell back to the network-capable default_embedder"
+            )
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CACHET_DETERMINISTIC_VERIFY", None)
+            os.environ.pop("HF_HUB_OFFLINE", None)
+            os.environ.pop("TRANSFORMERS_OFFLINE", None)
+            with (
+                mock.patch.object(embeddings, "FastembedEmbedder", _stub_fastembed),
+                mock.patch.object(embeddings, "_offline_default", None),
+                mock.patch.object(nodes_vector, "default_embedder", _no_default),
+                _forbid_sockets(),
+            ):
+                env = build_deterministic_envelope(
+                    "The aggregate liability is capped at $1,000,000.",
+                    conn=self._conn,
+                    doc_ids=["c1"],
+                )
+                # The path forced HF offline itself, with the env flag never set.
+                self.assertEqual("1", os.environ.get("HF_HUB_OFFLINE"))
+        self.assertEqual(
+            "parametric_contradiction", env["claims"][0]["contract_verdict"]["disposition"]
+        )
+
     def test_stream_contract_close_with_empty_doc_ids_is_offline(self) -> None:
         # Demo-faithful: the UI sends NO doc_ids. The full-library fallback must scope
         # to the ingested contract so the $1,000,000-vs-$500,000 contradiction fires
@@ -219,6 +269,71 @@ class ContractZeroEgressTests(unittest.TestCase):
         self.assertTrue(cards, "no verdicts from the contract stream")
         # The contradiction fired via the fallback (empty doc_ids), offline.
         self.assertEqual("unsupported", cards[0]["verdict"])
+
+    def test_t1_enabled_model_load_path_opens_no_real_socket(self) -> None:
+        # ADR-0012 T1, made executable: with the recall tier HONESTLY enabled (env opt-in
+        # plus a valid gate-pass artifact whose hashes match the files on disk), an
+        # anchor-free contract claim runs the REAL NLI selector - no stub. The pinned
+        # model is forced to an uncached id, so the offline loader fails LOUD on a cold
+        # cache (RuntimeError, caught by assess -> None) instead of reaching the network.
+        # The claim stays could-not-check with no guessed assessment, and the socket ban
+        # not firing proves the live, model-loading path is on-device by construction.
+        cal = Path(self._tmp.name) / "calibration"
+        cal.mkdir()
+        thresholds = cal / "thresholds.json"
+        corpus = cal / "test.jsonl"
+        guideline = cal / "GUIDELINE.md"
+        gate_pass = cal / "gate-pass.json"
+        thresholds.write_text(
+            '{"threshold_epsilon": 70.0, "rank_cutoff": 3, "far_ceiling": {"contract": 0.02}}',
+            encoding="utf-8",
+        )
+        corpus.write_text('{"id": "c0"}\n', encoding="utf-8")
+        guideline.write_text("# guideline v1\n", encoding="utf-8")
+
+        def _sha(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        gate_pass.write_text(
+            json.dumps(
+                {
+                    "passed": True,
+                    "corpus_sha256": _sha(corpus),
+                    "thresholds_sha256": _sha(thresholds),
+                    "guideline_version": _sha(guideline),
+                    "model_sha256": "deadbeef",
+                    "feature_version": FEATURE_VERSION,
+                    "best_of_k_enforced": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        with (
+            mock.patch.object(t1_gate, "_THRESHOLDS", thresholds),
+            mock.patch.object(t1_gate, "_CORPUS", corpus),
+            mock.patch.object(t1_gate, "_GUIDELINE", guideline),
+            mock.patch.object(t1_gate, "_GATE_PASS", gate_pass),
+            # Reset the process-cached scorer so default_scorer() re-reads CACHET_NLI_MODEL.
+            mock.patch.object(t1_selector, "_default", None),
+            mock.patch.dict(
+                os.environ,
+                {"CACHET_T1_RECALL": "1", "CACHET_NLI_MODEL": "cachet-nonexistent/fake-nli-xyz"},
+                clear=False,
+            ),
+            _forbid_sockets(),
+        ):
+            self.assertTrue(t1_gate.t1_permitted(), "the synthetic artifact should open the gate")
+            env = build_deterministic_envelope(
+                "The supplier must behave reasonably in every circumstance.",
+                conn=self._conn,
+                doc_ids=["c1"],
+                embedder=self._embedder,
+            )
+        # The selector engaged but the uncached model failed loud offline: no assessment,
+        # no guess, and - proven by the ban not raising - no socket.
+        claim = env["claims"][0]
+        self.assertIn("could_not_check_reason", claim)
+        self.assertNotIn("t1_assessment", claim)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,8 @@ import unittest
 from unittest import mock
 
 from services import verify as verify_service
-from services.legal.deterministic_envelope import build_deterministic_envelope
+from services.legal.anchors import extract_anchors
+from services.legal.deterministic_envelope import _grounding_verdict, build_deterministic_envelope
 from services.legal.local_caselaw import local_caselaw_client
 from services.verify import (
     _claim_dict_to_verdict,
@@ -301,6 +302,71 @@ class AlteredQuoteTests(unittest.TestCase):
         )
         reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
         self.assertFalse(any(reasons), f"two verbatim quotes wrongly flagged: {reasons}")
+
+
+class GroundingVerdictTests(unittest.TestCase):
+    """PR-2: a section reference absent from the source is a hard verdict; the
+    positive direction and party anchors deliberately yield none."""
+
+    _SRC = frozenset({"8", "7.2"})
+
+    def test_absent_section_with_nonempty_source_is_section_absent(self) -> None:
+        verdict = _grounding_verdict(
+            extract_anchors("The obligations of Section 99 are incorporated."), self._SRC
+        )
+        self.assertIsNotNone(verdict)
+        self.assertEqual("section_absent", verdict["disposition"])
+        self.assertIn("Section 99", verdict["sections"])
+
+    def test_present_section_yields_no_verdict(self) -> None:
+        # Existence is not proof of the predicate; it stays could-not-check, never an
+        # overclaiming "verified".
+        self.assertIsNone(_grounding_verdict(extract_anchors("Per Section 8, X."), self._SRC))
+
+    def test_glyph_form_matches_keyword_source(self) -> None:
+        # A bare-glyph draft ref normalizes to the same key as a keyword source ref,
+        # so "Section 7.2" in the source covers a draft "S 7.2"; only a truly absent
+        # number is flagged.
+        self.assertIsNone(_grounding_verdict(extract_anchors("See § 7.2 here."), self._SRC))
+        self.assertEqual(
+            "section_absent",
+            _grounding_verdict(extract_anchors("See § 9.9 here."), self._SRC)["disposition"],
+        )
+
+    def test_empty_source_never_accuses(self) -> None:
+        # The precision gate: no sections extracted from the source means the source
+        # numbering may be in a form the detector misses, so we stay could-not-check.
+        self.assertIsNone(_grounding_verdict(extract_anchors("Per Section 99, X."), frozenset()))
+
+    def test_clause_checkable_anchor_suppresses_the_verdict(self) -> None:
+        # ADR-0012 invariant 2: a parametric value wins, so a section ref riding
+        # alongside money never produces a section_absent verdict.
+        self.assertIsNone(
+            _grounding_verdict(
+                extract_anchors("Under Section 99, the cap is $5,000,000."), self._SRC
+            )
+        )
+
+    def test_party_anchor_yields_no_verdict(self) -> None:
+        # Party gets no verdict in either direction (positive overclaims; an unmatched
+        # party is more often name-form variance than a fabrication).
+        self.assertIsNone(_grounding_verdict(extract_anchors("Acme Inc. is liable."), self._SRC))
+
+    def test_section_absent_card_is_unsupported_with_reason(self) -> None:
+        claim = {
+            "text": "The obligations of Section 99 are incorporated.",
+            "citations": [],
+            "case_verdicts": [],
+            "section_verdict": {
+                "disposition": "section_absent",
+                "sections": ["Section 99"],
+                "detail": "This statement references Section 99, which could not be located "
+                "in the source contract.",
+            },
+        }
+        card = _claim_dict_to_verdict(claim, 0)
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("could not be located", (card.unsupported_reason or "").lower())
 
 
 if __name__ == "__main__":

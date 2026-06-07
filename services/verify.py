@@ -67,6 +67,14 @@ class VerifyClaimVerdict:
     # cards, the engine-failure card). A placed=False placement means the claim
     # is in the unplaced tray. Deterministic; never mis-pinned (services.legal.align).
     placement: Dict[str, Any] | None = None
+    # T1 recall tier (ADR-0012): assessed-tier provenance, defaulted None and set by
+    # nothing yet (the selector is wired in a later PR, dark until the calibration gate
+    # passes). assessed_confidence stays on the wire for the gate + audit record but is
+    # NOT rendered on the card (D3); the frontend reuses the existing `assistive` tier
+    # without a number.
+    assessed_confidence: float | None = None
+    assessed_model: str | None = None
+    assessed_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -153,7 +161,7 @@ def _verdict_from_contract(contract_verdict: Dict[str, Any]) -> VerifyVerdict:
         return "verified"
     if disposition == "parametric_contradiction":
         return "unsupported"
-    return "unknown"  # not_found
+    return "unknown"  # not_found / multi_value_unverifiable -> could-not-check
 
 
 def _deterministic_reason(
@@ -192,10 +200,20 @@ def _claim_dict_to_verdict(
     citations = tuple(claim_dict.get("citations") or [])
     case_verdicts = tuple(claim_dict.get("case_verdicts") or [])
     contract_verdict = claim_dict.get("contract_verdict")
+    section_verdict = claim_dict.get("section_verdict")
     could_not_check_reason = claim_dict.get("could_not_check_reason")
     quote_could_not_check_reason = claim_dict.get("quote_could_not_check_reason")
+    section_absent = (
+        bool(section_verdict) and section_verdict.get("disposition") == "section_absent"
+    )
     if citations:
         verdict: VerifyVerdict = "verified"
+    elif section_absent:
+        # A draft sentence citing a section the source contract does not contain is
+        # unsupported regardless of its predicate. Only set on pure-section sentences
+        # (a clause-checkable anchor suppresses it upstream), so it never overrides a
+        # parametric present/contradiction.
+        verdict = "unsupported"
     elif quote_could_not_check_reason:
         # The cite may exist, but a quoted phrase could not be verified against the
         # opinion text we hold. Refuse rather than verify-by-existence (a silent pass
@@ -217,12 +235,26 @@ def _claim_dict_to_verdict(
         # truth), so the card never reads as a bare "this is true." A verified case
         # cite carries no such hedge, so its reason stays None.
         reason = str(contract_verdict.get("detail") or "") or None if contract_verdict else None
+    elif section_absent:
+        reason = str(section_verdict.get("detail") or "") or None
     elif quote_could_not_check_reason:
         reason = str(quote_could_not_check_reason)
     elif could_not_check_reason:
         reason = str(could_not_check_reason)
     else:
         reason = _deterministic_reason(case_verdicts, contract_verdict)
+    # T1 recall tier (ADR-0012): assessed-tier provenance is STRICTLY subordinate to an
+    # `unknown` could-not-check verdict. Only an anchor-free claim that stayed unknown via
+    # could_not_check can carry an assessment; a T0 verdict (verified / unsupported) never
+    # does, so a future Site-A change can't paint a local-model guess over a deterministic
+    # fact. The assessment never changes the verdict; it only rides assessed_* for the
+    # assistive surface, and stays None (the default) until T1's calibration gate passes.
+    assessed_confidence = assessed_model = assessed_label = None
+    t1_assessment = claim_dict.get("t1_assessment")
+    if isinstance(t1_assessment, dict) and verdict == "unknown" and could_not_check_reason:
+        assessed_confidence = t1_assessment.get("confidence")
+        assessed_model = t1_assessment.get("model")
+        assessed_label = t1_assessment.get("label")
     return VerifyClaimVerdict(
         claim_index=index,
         claim_text=text,
@@ -231,6 +263,9 @@ def _claim_dict_to_verdict(
         case_verdicts=case_verdicts,
         unsupported_reason=reason,
         placement=placement,
+        assessed_confidence=assessed_confidence,
+        assessed_model=assessed_model,
+        assessed_label=assessed_label,
     )
 
 
@@ -298,12 +333,28 @@ def _payload_for_envelope(
     )
 
 
+def _resolve_deterministic(deterministic: bool | None) -> bool:
+    """Whether to run the no-LLM deterministic engine for this verify call.
+
+    An explicit ``deterministic`` wins: the Cachet verify route passes its
+    surface default (deterministic on) here. When None (direct callers, tests),
+    fall back to the legacy opt-in env flag so direct-call behavior is unchanged,
+    deterministic only when ``CACHET_DETERMINISTIC_VERIFY`` is explicitly on. The
+    surface-level default (on, with an explicit opt-out) lives at the route, not
+    here, so importing this orchestrator never silently changes a caller's path.
+    """
+    if deterministic is not None:
+        return deterministic
+    return os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}
+
+
 def verify_draft(
     conn: sqlite3.Connection,
     draft: str,
     *,
     doc_ids: Sequence[str] | None = None,
     subject_name: str | None = None,
+    deterministic: bool | None = None,
     log_study_event,
     fetch_recent_events,
 ) -> VerifyResult:
@@ -328,7 +379,7 @@ def verify_draft(
             provider="",
         )
 
-    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+    if _resolve_deterministic(deterministic):
         # No-LLM litigator path (Cachet). Anchor-driven unit selection +
         # offline case-existence; holding-match stays off. Imported lazily so
         # the default (flag-off) path keeps its original import contract and
@@ -484,6 +535,9 @@ def _verdict_card_to_dict(verdict: VerifyClaimVerdict) -> Dict[str, Any]:
         "case_verdicts": [_strip_opinion_text(cv) for cv in verdict.case_verdicts],
         "unsupported_reason": verdict.unsupported_reason,
         "placement": verdict.placement,
+        "assessed_confidence": verdict.assessed_confidence,
+        "assessed_model": verdict.assessed_model,
+        "assessed_label": verdict.assessed_label,
     }
 
 
@@ -655,6 +709,7 @@ def verify_draft_stream(
     *,
     doc_ids: Sequence[str] | None = None,
     subject_name: str | None = None,
+    deterministic: bool | None = None,
     log_study_event,
     fetch_recent_events,
 ) -> Iterator[Dict[str, Any]]:
@@ -695,7 +750,7 @@ def verify_draft_stream(
         yield {"type": "result", "verify": verify_result_to_payload(result)}
         return
 
-    if os.getenv("CACHET_DETERMINISTIC_VERIFY", "").lower() in {"1", "true", "yes"}:
+    if _resolve_deterministic(deterministic):
         # The demo UI calls ONLY this stream endpoint (VerifyView -> /api/verify/
         # stream), so the offline engine must run HERE too, not just in the
         # non-stream verify_draft. Without this branch the stream falls through to

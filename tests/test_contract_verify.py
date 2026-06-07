@@ -79,5 +79,42 @@ class NotFoundTests(unittest.TestCase):
         self.assertEqual("not_found", v.disposition)
 
 
+class MultiValueTests(unittest.TestCase):
+    """Multiple values of one type cannot be aligned to a clause deterministically, so
+    the engine refuses to guess: no masked contradiction, no false accusation, just an
+    honest could-not-check (multi_value_unverifiable). Role-aligned multi-value checking
+    is T1 work; until then a guessed verdict would violate ADR-0012 invariant 2."""
+
+    def test_multi_value_match_does_not_mask_a_contradiction(self) -> None:
+        # any-matches-any would launder this to "present" on the shared $50,000, hiding
+        # that the claim's $1,000,000 cap conflicts with the clause's $2,000,000 cap.
+        v = verify_claim_against_clause(
+            "The liability cap is $1,000,000 with a $50,000 deductible.",
+            "a deductible of $50,000 applies; the aggregate cap shall not exceed $2,000,000",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+        self.assertEqual("money", v.anchor_type)
+        self.assertIn("not independently checked", v.detail)
+
+    def test_multi_value_miss_is_not_a_false_contradiction(self) -> None:
+        # Two claim amounts, two unrelated clause amounts: naming "$1,000,000 vs
+        # $3,000,000" would be a guessed alignment (a false accusation). Could-not-check.
+        v = verify_claim_against_clause(
+            "Fees are $1,000,000 and $2,000,000 respectively.",
+            "the fees are $3,000,000 and $4,000,000 respectively",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+
+    def test_single_value_contradiction_wins_over_a_multi_value_type(self) -> None:
+        # A clean single-value contradiction (duration) must still win outright even when
+        # another type in the same sentence (money) is multi-value-unalignable.
+        v = verify_claim_against_clause(
+            "The term is 5 years; fees are $1,000,000 and $2,000,000.",
+            "this Agreement continues for 2 years; fees are $1,000,000 and $3,000,000",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("duration", v.anchor_type)
+
+
 if __name__ == "__main__":
     unittest.main()

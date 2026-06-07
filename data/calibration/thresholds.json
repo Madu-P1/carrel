@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "_comment": "T1 calibration thresholds (ADR-0012). Operator-owned. These ship as null placeholders that HARD-FAIL the gate (B1): T1 stays dark until an operator commits real values that a passing run over the held-out test split produced. threshold_epsilon is the verdict confidence floor (0-100); rank_cutoff is the top-K retrieval-rank candidacy floor (>=1, the K the runtime runs best-of); far_ceiling is the per-surface false-affirmative ceiling, each at or below the gate's sanity cap (0.05). rank_cutoff rides this file's hash, so changing K invalidates a prior pass; the gate's predictions must themselves be generated best-of-K at this K for the certified FAR to match the runtime (enforced by the corpus step, not yet mechanically checked; ADR-0012). Do not hand-edit these to enable T1: every value here is an output of a passing gate, never a typed-in number.",
+  "threshold_epsilon": null,
+  "rank_cutoff": null,
+  "far_ceiling": {
+    "litigator": null,
+    "contract": null
+  }
+}

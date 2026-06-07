@@ -28,6 +28,12 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 | Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 | Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 
+## Active backlog (Cachet source-viewer, queued 2026-06-07)
+
+| Plan | Trigger | Why deferred | Source |
+|---|---|---|---|
+| Cachet `SourceView` (reader recycled for verification) | Operator wants Cachet users to open a saved brief and view its sources at the exact verified span | Build a thin, study-free Cachet source viewer reusing `routes/reader_nodes.py` + `useNodeDeepLink`/`usePdfDocument`/`PdfViewer`; wire a `/source` route into `CachetApp` so `SourceInspector.openInReader()` stops dead-ending. Do NOT port `features/reader/ReaderView.tsx` (study chrome). Honest highlight only, no generation. **P3 note: `reader_nodes` is KEEP, not a delete-leaf; extract the render primitives before deleting `features/reader`.** | `docs/notes/2026-06-07-cachet-source-viewer.md` |
+
 ## Notes
 - Each plan name in `docs/plans/<plan>.md` when written.
 - Pre-commit kill conditions and success metrics live in the originating plan, not here.
