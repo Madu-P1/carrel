@@ -15,7 +15,7 @@ const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
   claude: { label: "Claude", tone: "success", location: "cloud" },
   afm: { label: "Apple Intelligence", tone: "neutral", location: "local" },
   ollama: { label: "Ollama", tone: "neutral", location: "local" },
-  deterministic: { label: "Deterministic", tone: "success", location: "local" },
+  deterministic: { label: "Deterministic", tone: "neutral", location: "local" },
   null: { label: "Unavailable", tone: "danger", location: "none" },
 };
 
