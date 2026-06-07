@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "cachet",
+      "runtimeExecutable": "/Users/madu/Desktop/Codex/.venv/bin/python",
+      "runtimeArgs": ["/Users/madu/Desktop/Codex/script/serve-cachet.py"],
+      "port": 8000
+    },
+    {
       "name": "cachet-proto",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4178", "--directory", "/Users/madu/Desktop/Codex/.claude/worktrees/busy-chaplygin-1e0173/prototypes"],

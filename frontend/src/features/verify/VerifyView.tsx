@@ -401,6 +401,8 @@ export function VerifyView({
   headerTitle,
   headerSubtitle,
   samplePlaceholder,
+  docIds,
+  autoRun,
 }: {
   briefId?: string | null;
   // Host-agnostic props for the standalone Cachet shell. All optional and
@@ -411,6 +413,15 @@ export function VerifyView({
   headerTitle?: string;
   headerSubtitle?: string;
   samplePlaceholder?: string;
+  // Cachet standalone shell only. `docIds` scopes the check to the records the
+  // shell has loaded (the contract-close picks one record); `autoRun` runs the
+  // check once on a genuine lectern hand-off so the user's paste IS the verify.
+  // `onResolve` is reserved for the shell's resolve-to-Sources affordance; the
+  // current (post-P3) VerifyView renders no refusal CTA, so it is accepted but
+  // not yet wired (follow-up: restore the WorkspaceMargin resolve action).
+  docIds?: string[];
+  autoRun?: boolean;
+  onResolve?: () => void;
 } = {}) {
   const [draft, setDraft] = useState(initialDraft ?? "");
   const [loading, setLoading] = useState(false);
@@ -506,7 +517,7 @@ export function VerifyView({
     setStream(live);
     try {
       for await (const event of verifyApi.draftStream(
-        { draft: trimmed },
+        { draft: trimmed, doc_ids: docIds && docIds.length > 0 ? docIds : undefined },
         { signal: controller.signal }
       )) {
         live = reduceStreamEvent(live, event);
@@ -535,6 +546,18 @@ export function VerifyView({
       setLoading(false);
     }
   };
+
+  // Lectern hand-off (Cachet standalone shell): when the host explicitly requests
+  // it (autoRun) AND a draft is seeded, run the check once on mount so the user's
+  // paste IS the verify, never a second box. Set ONLY on a genuine lectern
+  // hand-off, never on a plain return to /verify, and guarded to the live path
+  // (no briefId) so reopening a saved brief never re-verifies. Runs once.
+  useEffect(() => {
+    if (autoRun && initialDraft && initialDraft.trim() && !briefId) {
+      void submit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
   // Compute one disposition per claim, then order flags first, the honest
