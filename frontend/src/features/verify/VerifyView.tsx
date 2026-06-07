@@ -19,12 +19,13 @@ import {
 } from "./claimDisposition";
 import { ExaminationDrawer } from "./ExaminationDrawer";
 import {
-  checkedProgress,
   initialStreamState,
   isCardChecking,
+  readingLabel,
   reduceStreamEvent,
   type VerifyStreamState
 } from "./streamProgress";
+import { useFlipReorder } from "./useFlipReorder";
 import { WorkspaceMargin } from "./WorkspaceMargin";
 import styles from "./VerifyView.module.css";
 
@@ -186,6 +187,9 @@ interface VerdictCardProps {
    *  no "View source" affordance, since the inspector reads the settled
    *  citation that only exists once the result lands. Default true. */
   interactive?: boolean;
+  /** Stable key for the FLIP reorder (SM-V2). Set on the streaming list so a
+   *  card keeps its node when the sort moves it; absent on non-reordering uses. */
+  flipKey?: string;
 }
 
 function VerdictCard({
@@ -195,7 +199,8 @@ function VerdictCard({
   isSelected,
   onInspect,
   checking = false,
-  interactive = true
+  interactive = true,
+  flipKey
 }: VerdictCardProps) {
   const caseBatches = card.case_verdicts ?? [];
   const citationCount = (card.citations ?? []).length;
@@ -239,6 +244,7 @@ function VerdictCard({
         checking ? styles.verdictCardChecking : ""
       ].join(" ")}
       data-tier={checking ? "checking" : disposition.tier}
+      data-flip-key={flipKey}
     >
       <header className={styles.verdictHeader}>
         <span className={styles.verdictIndex}>[{index + 1}]</span>
@@ -394,8 +400,42 @@ function QuotePanel({ quotes }: QuotePanelProps) {
   );
 }
 
-export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
-  const [draft, setDraft] = useState("");
+export function VerifyView({
+  briefId,
+  initialDraft,
+  onDraftChange,
+  onResolve,
+  headerTitle,
+  headerSubtitle,
+  samplePlaceholder,
+  docIds,
+  autoRun
+}: {
+  briefId?: string | null;
+  initialDraft?: string | null;
+  /** Called on every user edit of the draft. The Cachet shell persists it so the
+   *  draft survives in-shell navigation (Verify -> Sources -> Verify); Carrel omits it. */
+  onDraftChange?: (value: string) => void;
+  /** Host handler for a refusal's "give Cachet what it needs" action. The Cachet
+   *  shell routes this to Sources; Carrel omits it (no Sources route). */
+  onResolve?: () => void;
+  /** Host-specific intro copy. Cachet's contract wedge overrides the default
+   *  litigator framing; Carrel omits these and keeps the default. */
+  headerTitle?: string;
+  headerSubtitle?: string;
+  /** Empty-draft placeholder. Cachet's contract wedge overrides the default
+   *  litigator (case-law) example with a contract-claim one; Carrel keeps the default. */
+  samplePlaceholder?: string;
+  /** The loaded Source(s) to verify against. The Cachet shell passes the record the
+   *  user loaded in Sources; Carrel omits it (verifies over the whole corpus). */
+  docIds?: string[];
+  /** Run the check once on mount. The Cachet shell sets this ONLY on a true lectern
+   *  hand-off (a fresh pasted draft handed to /verify), never on a return visit, so
+   *  navigating back to Verify shows the persisted draft without silently re-verifying.
+   *  Carrel omits it (never auto-runs). */
+  autoRun?: boolean;
+} = {}) {
+  const [draft, setDraft] = useState(initialDraft ?? "");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -410,6 +450,11 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
   // the in-flight working indicator and the per-card "Checking…" state.
   const [stream, setStream] = useState<VerifyStreamState>(initialStreamState);
   const abortRef = useRef<AbortController | null>(null);
+  // SM-V1 The Paste: the draft field settles once, the first time it holds text.
+  const draftFieldRef = useRef<HTMLDivElement | null>(null);
+  const hasSettledRef = useRef(false);
+  // SM-V2 The Read: FLIP reorder of the streaming verdict list as checks land.
+  const liveListRef = useFlipReorder<HTMLDivElement>();
   // Cachet PR6b re-hydration seeds (set only when a saved brief is reopened):
   // sealedSeed = the stored seal fingerprint when seal_state === "sealed", so the
   // certification exhibit shows sealed (or cracked, if the draft later differs)
@@ -488,8 +533,11 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
     let live = initialStreamState();
     setStream(live);
     try {
+      // Scope the check to the loaded Source(s) the host provided (the in-house
+      // wedge: verify the AI's claims against the contract the user loaded). Carrel
+      // passes none and verifies over the whole corpus.
       for await (const event of verifyApi.draftStream(
-        { draft: trimmed },
+        { draft: trimmed, doc_ids: docIds && docIds.length > 0 ? docIds : undefined },
         { signal: controller.signal }
       )) {
         live = reduceStreamEvent(live, event);
@@ -519,7 +567,45 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
     }
   };
 
-  const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
+  // Lectern hand-off (Cachet standalone shell): when the host explicitly requests
+  // it (autoRun) AND a draft is seeded, run the check once on mount so the user's
+  // paste IS the verify, never a second box. autoRun is set ONLY on a genuine
+  // lectern hand-off, never on a plain return to /verify, so navigating away and
+  // back shows the persisted draft without silently re-verifying. Guarded to the
+  // live path (no briefId) so reopening a saved brief never re-verifies. Runs once.
+  useEffect(() => {
+    if (autoRun && initialDraft && initialDraft.trim() && !briefId) {
+      void submit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SM-V1 The Paste: the moment the draft first holds text (a paste, a first
+  // keystroke, or a lectern hand-off on mount) the field settles into its sheet
+  // with one quiet fadeUp. WAAPI, not a CSS keyframe, so the verifyScope motion
+  // guard holds; skipped under reduced motion. Fires once.
+  useEffect(() => {
+    if (hasSettledRef.current || !draft.trim()) return;
+    hasSettledRef.current = true;
+    const el = draftFieldRef.current;
+    if (!el || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate(
+      [
+        { opacity: 0.6, transform: "translateY(8px)" },
+        { opacity: 1, transform: "translateY(0)" }
+      ],
+      { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+    );
+  }, [draft]);
+
+  const cards = ((response?.claim_verdicts ?? []) as VerifyClaimVerdict[]).filter(
+    // The grounded engine emits "No source chunks matched the question: ..." as
+    // an unsupported span when retrieval is empty (the no-cloud path, where the
+    // semantic grounding is withheld). That is an engine diagnostic, not a
+    // lawyer's claim, so it must never render as a verdict card.
+    (c) => !String(c.claim_text ?? "").startsWith("No source chunks matched the question")
+  );
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
   // headline of the surface.
@@ -568,24 +654,47 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
             (a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]
           )
       : [];
-  const progress = checkedProgress(stream);
   // Cachet PR4: brief-level draft-quote-verbatim results. Settled view reads the
   // canonical payload; live view shows the quote_batch the moment it lands. Only
   // surface quotes that need attention (altered / could-not-check); a fully
   // verbatim quote needs no callout (absence of a flag is the pass).
   const quoteResults = response?.quote_results ?? stream.quotes ?? [];
 
+  // SM-V7 The Command Spine: the ⌘K verify verbs reach this surface through a
+  // `cachet:command` event, so the palette never touches VerifyView's internals
+  // (and Carrel, which never dispatches it, is unaffected). A latest-handler ref
+  // keeps the closure fresh without re-binding the listener on every render.
+  const commandHandler = (id: string) => {
+    if (id === "verify-draft") {
+      if (draft.trim() && !loading) void submit();
+    } else if (id === "seal") {
+      if (response && !isSealed) void saveToShelf("sealed");
+    } else if (id === "export") {
+      if (response) setCertAt(certAtSeed ?? new Date().toISOString());
+    }
+  };
+  const commandHandlerRef = useRef(commandHandler);
+  commandHandlerRef.current = commandHandler;
+  useEffect(() => {
+    const onCommand = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (typeof id === "string") commandHandlerRef.current(id);
+    };
+    window.addEventListener("cachet:command", onCommand);
+    return () => window.removeEventListener("cachet:command", onCommand);
+  }, []);
+
   return (
     <div className={[styles.root, styles.verifyScope].join(" ")}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Verify your draft.</h1>
+        <h1 className={styles.title}>{headerTitle ?? "Verify your draft."}</h1>
         <Text className={styles.subtitle}>
-          Paste a brief, memo, or claim. Every statement is checked against the sources you provide,
-          and any cited cases are checked for existence and holding.
+          {headerSubtitle ??
+            "Paste a brief, memo, or claim. Every statement is checked against the sources you provide, and any cited cases are checked for existence and holding."}
         </Text>
       </header>
 
-      <div className={styles.draftField}>
+      <div className={styles.draftField} ref={draftFieldRef}>
         <label className={styles.draftLabel} htmlFor="verify-draft-input">
           Draft
         </label>
@@ -593,8 +702,19 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
           id="verify-draft-input"
           className={styles.draftInput}
           value={draft}
-          placeholder={SAMPLE_DRAFT}
-          onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
+          placeholder={samplePlaceholder ?? SAMPLE_DRAFT}
+          onInput={(e) => {
+            const value = (e.target as HTMLTextAreaElement).value;
+            setDraft(value);
+            onDraftChange?.(value);
+          }}
+          onKeyDown={(e) => {
+            // Keyboard-first (SM-V7): Cmd/Ctrl + Enter verifies from the draft.
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
           disabled={loading || hydrating}
         />
       </div>
@@ -631,34 +751,41 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
         // The settled verdict summary carries its own role=status announcement.
         <div className={styles.workingIndicator} aria-hidden="true">
           <Spinner size={16} />
-          <span className={styles.workingLabel}>
-            {stream.phase === "checking" && progress.total > 0
-              ? `Checking citations · ${progress.checked} of ${progress.total}`
-              : "Reading the draft and extracting claims…"}
-          </span>
+          <span className={styles.workingLabel}>{readingLabel(stream)}</span>
         </div>
       ) : null}
 
       {streaming && liveItems.length > 0 ? (
         <div className={styles.workspace}>
-          <div className={styles.verdictList}>
-            {liveItems.map((it, i) => (
-              <VerdictCard
-                key={`live-${it.card.claim_index}-${i}`}
-                card={it.card}
-                disposition={it.disposition}
-                index={i}
-                isSelected={false}
-                onInspect={() => {}}
-                checking={isCardChecking(stream, it.card)}
-                interactive={false}
-              />
-            ))}
+          <div className={styles.verdictList} ref={liveListRef}>
+            {liveItems.map((it, i) => {
+              // Stable key (claim_index, never the sorted position) so a card
+              // keeps its node when a landing flag re-sorts it: the FLIP needs it.
+              const k = typeof it.card.claim_index === "number" ? it.card.claim_index : i;
+              return (
+                <VerdictCard
+                  key={`live-${k}`}
+                  flipKey={`live-${k}`}
+                  card={it.card}
+                  disposition={it.disposition}
+                  index={i}
+                  isSelected={false}
+                  onInspect={() => {}}
+                  checking={isCardChecking(stream, it.card)}
+                  interactive={false}
+                />
+              );
+            })}
           </div>
         </div>
       ) : null}
 
-      {response?.error === "provider_below_quality_bar" ? (
+      {response?.error === "provider_below_quality_bar" && quoteResults.length === 0 ? (
+        // The semantic grounding was withheld (no Claude). Only take over the whole
+        // surface with the gate banner when there is nothing else to show. When the
+        // deterministic quote check produced findings (the no-cloud contract catch),
+        // fall through and render them: the catch is the result, and the withheld
+        // state is carried by the calm note under it.
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
       ) : (
         <>
@@ -702,7 +829,17 @@ export function VerifyView({ briefId }: { briefId?: string | null } = {}) {
               unattributedQuotes={quoteResults.filter((q) => q.status !== "verbatim")}
               examined={selected}
               onExamine={(idx) => setSelected(selected === idx ? null : idx)}
+              onResolve={onResolve}
             />
+          ) : response && quoteResults.length > 0 ? (
+            // No-cloud path: the deterministic quote check ran against the loaded
+            // record, but the semantic claim-grounding was withheld (no model it
+            // can stand behind). Say that honestly: never "load the sources" (they
+            // are loaded) or "nothing came back" (the quote check IS the result).
+            <div className={styles.emptyState}>
+              The quoted language was checked against the record on this device. Cachet withholds a
+              judgment on the claims themselves without a model it can stand behind.
+            </div>
           ) : response ? (
             <div className={styles.emptyState}>
               No statements came back from the engine. Load the sources this draft relies on, then

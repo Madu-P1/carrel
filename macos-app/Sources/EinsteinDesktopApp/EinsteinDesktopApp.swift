@@ -12,7 +12,7 @@ struct EinsteinDesktopApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Carrel") {
+        WindowGroup(ProcessInfo.processInfo.environment["CACHET_BUNDLE"] != nil ? "Cachet" : "Carrel") {
             ContentView()
                 .frame(minWidth: 1100, minHeight: 720)
         }

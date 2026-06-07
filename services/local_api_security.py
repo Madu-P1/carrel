@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 import secrets
 
-from fastapi import Request
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 
 HEADER_NAME = "X-Carrel-Local-Token"
@@ -71,3 +72,55 @@ def has_valid_local_api_token(request: Request) -> bool:
 # the broader predicate so any out-of-tree imports keep working without
 # silently reverting to the laxer rule.
 is_mutating_api_request = requires_local_api_token
+
+
+# Loopback host-header allowlist. When the Cachet backend SERVES the frontend
+# over HTTP (the localhost-browser delivery path), it injects the local-API
+# token into the served HTML. That opens one new vector the WKWebView (file://)
+# path never had: DNS rebinding. A malicious page can rebind its own hostname to
+# 127.0.0.1, become "same origin" in the browser, GET "/" (ungated), and read the
+# injected token. The standard defense is to serve ONLY when the request is
+# genuinely addressed to loopback, since a rebound attacker page still carries
+# its own hostname in the Host header (e.g. "evil.com"), never "localhost".
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def is_loopback_host(host_header: str | None) -> bool:
+    """True when the Host header names loopback (any port). IPv6 forms like
+    ``[::1]:8000`` and bare ``localhost`` are accepted; anything else (a real
+    hostname a DNS-rebind attack would carry) is rejected."""
+
+    if not host_header:
+        return False
+    host = host_header.strip()
+    if host.startswith("["):  # [::1] or [::1]:port
+        end = host.find("]")
+        if end == -1:
+            return False
+        hostname = host[1:end]
+    elif host.count(":") > 1:  # bare IPv6 with brackets omitted, e.g. "::1"
+        hostname = host
+    else:
+        hostname = host.split(":", 1)[0]  # host or host:port
+    return hostname.lower() in _LOOPBACK_HOSTS
+
+
+def install_loopback_host_guard(app: FastAPI) -> None:
+    """Reject any request whose Host header is not loopback. Installed only on the
+    Cachet web-serving path (CACHET_ONLY), where the token is injected into served
+    HTML; the WKWebView (file://) and Carrel paths never call this, so their
+    loopback-only traffic is unaffected. See ``is_loopback_host``."""
+
+    @app.middleware("http")
+    async def _enforce_loopback_host(request: Request, call_next):
+        if not is_loopback_host(request.headers.get("host")):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": {
+                        "code": "non_loopback_host",
+                        "message": "Cachet serves loopback only.",
+                    }
+                },
+            )
+        return await call_next(request)

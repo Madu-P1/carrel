@@ -1,4 +1,18 @@
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+/**
+ * The API origin the frontend talks to. The Cachet web-serving backend injects
+ * `window.__CARREL_API_BASE = ""` so calls go same-origin (port-agnostic, the
+ * launcher can pick any free port). The WKWebView `.app` (file://) and Carrel
+ * dev (neither injects it) fall back to `VITE_API_BASE` or the loopback default.
+ * Mirrors the token-via-window pattern in resolveLocalApiToken.
+ */
+export function readWindowApiBase(): string | null {
+  if (typeof window === "undefined") return null;
+  const base = (window as Window & { __CARREL_API_BASE?: unknown }).__CARREL_API_BASE;
+  return typeof base === "string" ? base : null;
+}
+
+export const API_BASE =
+  readWindowApiBase() ?? import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
 /**
  * The backend returned a non-2xx HTTP response. `status` and `body`

@@ -8,6 +8,7 @@ connection; the schema persists in the temp file across connections.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tempfile
 import unittest
@@ -118,6 +119,45 @@ class BriefsServiceTests(unittest.TestCase):
             self.assertNotIn("draft", summary)
             self.assertNotIn("response", summary)
             self.assertNotIn("cert", summary)
+
+    def test_list_surfaces_cracked_seal_when_draft_drifts(self) -> None:
+        # SM-V8 the live ledger: a sealed brief is re-verified per read. One whose
+        # stored draft still hashes to its sealed fingerprint stays "sealed"; one
+        # whose draft drifted from the fingerprint (tampering, corruption,
+        # migration) surfaces as "cracked". The integrity state is derived per
+        # read and never persisted, and only a sealed brief can crack.
+        intact_draft = "The statute applies as written."
+        intact_fp = hashlib.sha256(intact_draft.encode("utf-8")).hexdigest()
+        with db.get_db() as conn:
+            intact = briefs.save_brief(
+                conn,
+                draft=intact_draft,
+                fingerprint=intact_fp,
+                response=SAMPLE_RESPONSE,
+                seal_state="sealed",
+            )
+            drifted = briefs.save_brief(
+                conn,
+                draft="A different draft than the one that was sealed.",
+                fingerprint=HEX64_B,  # does not hash the draft -> drift
+                response=SAMPLE_RESPONSE,
+                seal_state="sealed",
+            )
+            unsealed = briefs.save_brief(
+                conn,
+                draft="An unsealed working draft.",
+                fingerprint=HEX64_C,  # mismatched, but unsealed never cracks
+                response=SAMPLE_RESPONSE,
+            )
+            listed = {row["id"]: row["seal_state"] for row in briefs.list_briefs(conn)}
+            # The stored state is untouched; "cracked" is render-derived only.
+            stored = briefs.get_brief(conn, drifted["id"])
+            assert stored is not None
+            self.assertEqual(stored["seal_state"], "sealed")
+
+        self.assertEqual(listed[intact["id"]], "sealed")
+        self.assertEqual(listed[drifted["id"]], "cracked")
+        self.assertEqual(listed[unsealed["id"]], "unsealed")
 
     def test_list_orders_most_recent_first(self) -> None:
         with db.get_db() as conn:
@@ -248,18 +288,21 @@ class BriefsServiceTests(unittest.TestCase):
         # win (last write wins), and the Shelf still shows exactly one brief.
         first_response = {"draft_text": "first", "claims": []}
         second_response = {"draft_text": "second", "claims": [{"id": 9}]}
+        # A real content fingerprint (sha256 of the draft), so the sealed row
+        # passes the SM-V8 integrity re-check and lists as "sealed", not cracked.
+        same_fp = hashlib.sha256(b"Same draft").hexdigest()
         with db.get_db() as conn:
             briefs.save_brief(
                 conn,
                 draft="Same draft",
-                fingerprint=HEX64_A,
+                fingerprint=same_fp,
                 response=first_response,
                 seal_state="unsealed",
             )
             second = briefs.save_brief(
                 conn,
                 draft="Same draft",
-                fingerprint=HEX64_A,
+                fingerprint=same_fp,
                 response=second_response,
                 seal_state="sealed",
             )

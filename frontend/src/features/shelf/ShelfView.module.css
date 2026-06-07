@@ -44,9 +44,13 @@
   --glass-highlight: transparent;
   --glass-highlight-strong: transparent;
 
-  max-width: 50rem;
-  margin: 0 auto;
-  padding: var(--space-8, 2rem) var(--space-6, 1.5rem) var(--space-12, 3rem);
+  /* Fills the wide standalone-app canvas as a deliberate warm sheet, not a thin
+     band stranded in empty space. The warm cream GROUND fills the canvas while
+     the briefs sit in a steady reading column via the padding-inline max() trick,
+     so the room reads warm edge-to-edge at any width and rows never overstretch. */
+  width: 100%;
+  padding: var(--space-8, 2rem) max(var(--space-6, 1.5rem), calc((100% - 60rem) / 2))
+    var(--space-12, 3rem);
   background: var(--paper);
   color: var(--ink);
   min-height: 100%;
@@ -226,6 +230,27 @@
   fill: none;
   stroke: var(--ink-2);
   stroke-width: 1.2;
+}
+
+/* SM-V8: a cracked seal. A spent seal reads quieter, fractured by a line in the
+   ground colour so the disc looks split. Ink only, no oxblood. */
+.sealBroken .sealRing,
+.sealBroken .sealCore {
+  stroke: var(--ink-3);
+}
+.sealCrackLine {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.crackedNote {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-serif-body, Charter, Georgia, serif);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
 }
 
 .confirm {

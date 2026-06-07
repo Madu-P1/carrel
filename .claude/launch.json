@@ -12,6 +12,28 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4319", "--directory", "/Users/madu/Desktop/Codex/.claude/worktrees/jovial-almeida-fcc09f/cachet-landing"],
       "port": 4319
+    },
+    {
+      "name": "cachet-font-gate",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8746", "--directory", "/tmp/cachet-font-gate"],
+      "port": 8746
+    },
+    {
+      "name": "cachet-shell-mock",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8745", "--directory", "/tmp/cachet-shell-mock"],
+      "port": 8745
+    },
+    {
+      "name": "cachet-dev",
+      "runtimeExecutable": "/Users/madu/Library/pnpm/bin/node",
+      "runtimeArgs": [
+        "/Users/madu/Desktop/Codex/.claude/worktrees/nostalgic-mclaren-93d91a/frontend/node_modules/vite/bin/vite.js",
+        "/Users/madu/Desktop/Codex/.claude/worktrees/nostalgic-mclaren-93d91a/frontend",
+        "--port", "5191", "--strictPort"
+      ],
+      "port": 5191
     }
   ]
 }

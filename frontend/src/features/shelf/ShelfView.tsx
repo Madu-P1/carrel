@@ -51,6 +51,21 @@ function SealDisc() {
   );
 }
 
+/** SM-V8: a cracked seal — the same disc split by a fracture in the ground
+ *  colour. Quiet ink, no oxblood (the Shelf carries no verdict accent); the
+ *  caption beside it carries the plain meaning. */
+function CrackedSealDisc() {
+  return (
+    <span className={`${styles.seal} ${styles.sealBroken}`} aria-hidden="true">
+      <svg viewBox="0 0 18 18">
+        <circle className={styles.sealRing} cx="9" cy="9" r="7" />
+        <circle className={styles.sealCore} cx="9" cy="9" r="3" />
+        <path className={styles.sealCrackLine} d="M9 1.8 L7.4 7 L10.6 9.2 L7.4 11.4 L9 16.2" />
+      </svg>
+    </span>
+  );
+}
+
 export function ShelfView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -135,11 +150,19 @@ export function ShelfView() {
     );
   }
 
-  const sealed = state.items.filter((brief) => brief.seal_state === "sealed");
-  const unsealed = state.items.filter((brief) => brief.seal_state !== "sealed");
+  // A cracked seal is a sealed record whose draft drifted (SM-V8); it stays in
+  // the Sealed section (it was sealed) but renders its broken state inline, so
+  // the section is a live ledger of what still holds, not a list of past acts.
+  const sealed = state.items.filter(
+    (brief) => brief.seal_state === "sealed" || brief.seal_state === "cracked"
+  );
+  const unsealed = state.items.filter(
+    (brief) => brief.seal_state !== "sealed" && brief.seal_state !== "cracked"
+  );
 
   const renderRow = (brief: BriefSummary) => {
-    const isSealed = brief.seal_state === "sealed";
+    const cracked = brief.seal_state === "cracked";
+    const isSealed = brief.seal_state === "sealed" || cracked;
     const date = formatSavedAt(brief.created_at);
     const title = brief.title || "Untitled brief";
     return (
@@ -170,9 +193,14 @@ export function ShelfView() {
             ) : null}
             <code className={styles.fingerprint}>{shortFingerprint(brief.fingerprint)}</code>
           </span>
+          {cracked ? (
+            <span className={styles.crackedNote}>
+              Seal cracked. The draft no longer matches what was sealed.
+            </span>
+          ) : null}
         </div>
         <div className={styles.right}>
-          {isSealed ? <SealDisc /> : null}
+          {cracked ? <CrackedSealDisc /> : isSealed ? <SealDisc /> : null}
           {confirmingId === brief.id ? (
             // Armed: keep the two-step confirm (a hard delete has no undo).
             <span className={styles.confirm}>

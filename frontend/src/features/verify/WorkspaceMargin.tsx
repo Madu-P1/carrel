@@ -20,7 +20,7 @@
  * Motion (ink-in choreography, claim pulse) is deferred to the operator visual
  * gate; this slice ships structure + functional transitions only.
  */
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { VerifyClaimVerdict, VerifyQuoteResult } from "@/services/api/endpoints";
 
@@ -47,6 +47,15 @@ function markClass(tier: ClaimDisposition["tier"]): string {
   }
 }
 
+/** SM-V7 keyboard path: the index to focus next when cycling findings with
+ *  j/k. `current` is -1 when nothing in the set is focused yet (j -> first,
+ *  k -> last); otherwise it wraps. Pure so it can be tested without the DOM. */
+export function nextFocusIndex(count: number, current: number, dir: 1 | -1): number {
+  if (count <= 0) return -1;
+  if (current < 0) return dir === 1 ? 0 : count - 1;
+  return (current + dir + count) % count;
+}
+
 /** The rail-note tier attribute (flag/query/refusal) for the left border. */
 function noteTier(tier: ClaimDisposition["tier"]): "flag" | "query" | "refusal" | null {
   if (tier === "flag") return "flag";
@@ -63,6 +72,14 @@ interface WorkspaceMarginProps {
   /** claim_index currently open in the Examination drawer, or null. */
   examined: number | null;
   onExamine: (claimIndex: number) => void;
+  /**
+   * Resolve the refusal: the host's handler for "give Cachet what it needs"
+   * (the Cachet shell routes to Sources). When provided, a refusal note renders
+   * its next action as a real button (rubric C1); when omitted (e.g. the Carrel
+   * substrate, which has no Sources route), the refusal states the next action
+   * as a directive line instead, so neither host ships a dead button.
+   */
+  onResolve?: () => void;
 }
 
 interface ClaimMeta {
@@ -75,7 +92,8 @@ export function WorkspaceMargin({
   cards,
   unattributedQuotes,
   examined,
-  onExamine
+  onExamine,
+  onResolve
 }: WorkspaceMarginProps) {
   const metaByIndex = new Map<number, ClaimMeta>();
   cards.forEach((card, i) => {
@@ -134,6 +152,39 @@ export function WorkspaceMargin({
     // Re-run when the set of rail claims, the draft, or the open drawer changes.
   }, [draftText, railKey, examined]);
 
+  // SM-V7 keyboard path: j/k move focus between the flagged findings (the
+  // non-pass marks) so a reviewer can walk the document hands-on, a clerk down
+  // the page. Each mark is already a button, so Enter or ⌥↵ drills it open via
+  // its own handler. Guarded so j/k still type normally in any text field
+  // (the draft, the command palette). Reads the DOM fresh, so it stays correct
+  // as findings stream in and re-sort; bound once.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "j" && event.key !== "k") return;
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
+      const body = bodyRef.current;
+      if (!body) return;
+      const marks = Array.from(
+        body.querySelectorAll<HTMLElement>("[data-claim-index]")
+      ).filter((el) => el.dataset.tier && el.dataset.tier !== "pass");
+      if (marks.length === 0) return;
+      event.preventDefault();
+      const current = active ? marks.indexOf(active) : -1;
+      const next = nextFocusIndex(marks.length, current, event.key === "j" ? 1 : -1);
+      marks[next]?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const topFor = (idx: number): number | undefined =>
     placements.find((p) => p.key === idx)?.top;
 
@@ -173,6 +224,7 @@ export function WorkspaceMargin({
               card={meta.card}
               top={topFor(idx)}
               onExamine={onExamine}
+              onResolve={onResolve}
             />
           );
         })}
@@ -206,12 +258,47 @@ function ClaimMark({
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
+
+  // SM-V3 The Catch: the one motion worth breaking the near-zero-motion rule for
+  // (operator-approved 2026-06-03 as the 2nd exception after the seal). On a
+  // deterministic flag, the oxblood underline draws across the dead claim left
+  // to right, like a proofreader's pen: Cachet strikes what it cannot stand
+  // behind. The rule is a background gradient (box-decoration-break: clone, so
+  // it follows every wrapped line) and we draw it by animating background-size
+  // via WAAPI, not a CSS keyframe, so the verifyScope motion guard holds. The
+  // resting CSS is the full-width rule, so reduced-motion and re-renders simply
+  // show the struck mark.
+  const markRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (tier !== "flag") return;
+    const el = markRef.current;
+    if (!el || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    // No fill: the CSS resting state is the full-width rule, so once this ends
+    // the element rests on the visible strike. During [0,360ms] it draws 0->100%.
+    const anim = el.animate(
+      [{ backgroundSize: "0% 2px" }, { backgroundSize: "100% 2px" }],
+      { duration: 360, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+    );
+    // Safety net: a fabricated-cite strike must never be left invisible if the
+    // animation clock stalls (backgrounded/throttled tab). finish() jumps to the
+    // end; with no fill the element then rests on the CSS full-width rule.
+    const t = window.setTimeout(() => {
+      try {
+        anim.finish();
+      } catch {
+        /* already finished or cancelled */
+      }
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [tier]);
   const aria =
     tier === "pass"
       ? `Statement, checked and supported: ${segment.text}`
       : `Statement flagged ${label}${fuzzy ? ", placement approximate" : ""}: ${segment.text}`;
   return (
     <span
+      ref={markRef}
       className={[
         styles.claimMark,
         markClass(tier),
@@ -247,22 +334,63 @@ function MarginNote({
   disposition,
   card,
   top,
-  onExamine
+  onExamine,
+  onResolve
 }: {
   claimIndex: number;
   disposition: ClaimDisposition;
   card: VerifyClaimVerdict;
   top: number | undefined;
   onExamine: (claimIndex: number) => void;
+  onResolve?: () => void;
 }) {
   const tier = noteTier(disposition.tier);
-  const trail = card.unsupported_reason && tier === "refusal" ? card.unsupported_reason : null;
+  const positioned = top != null ? { position: "absolute", top: `${top}px` } : undefined;
+
+  // The refusal is the most COMPLETE card in the product (rubric C1-C3), not the
+  // emptiest. It states, in order: what Cachet checked, what it therefore cannot
+  // stand behind (reliance-calibrating, never the "could not check" shrug), and
+  // the precise next action. That action is a real button when the host wires
+  // onResolve (the Cachet shell routes it to Sources); when omitted (the Carrel
+  // substrate, which has no Sources route) it stays a directive line so neither
+  // host ships a dead button. Grave, neutral ink; it never animates.
+  if (tier === "refusal") {
+    const trail = card.unsupported_reason ?? null;
+    return (
+      <div
+        className={[styles.marginNote, styles.refusalNote].join(" ")}
+        data-note-key={claimIndex}
+        data-tier="refusal"
+        style={positioned}
+      >
+        <p className={styles.noteKind}>{disposition.label}</p>
+        {disposition.checked ? (
+          <p className={styles.refusalChecked}>{disposition.checked}</p>
+        ) : null}
+        {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
+        {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
+        <div className={styles.refusalActions}>
+          {onResolve && disposition.actionLabel ? (
+            <button type="button" className={styles.refusalResolve} onClick={onResolve}>
+              {disposition.actionLabel}
+            </button>
+          ) : disposition.nextAction ? (
+            <p className={styles.noteAction}>{disposition.nextAction}</p>
+          ) : null}
+          <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
+            Examine
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={styles.marginNote}
       data-note-key={claimIndex}
       data-tier={tier ?? undefined}
-      style={top != null ? { position: "absolute", top: `${top}px` } : undefined}
+      style={positioned}
     >
       <p className={styles.noteKind}>
         {disposition.label}
@@ -271,7 +399,6 @@ function MarginNote({
         ) : null}
       </p>
       {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
-      {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
       <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
         Examine
       </button>

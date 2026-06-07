@@ -139,6 +139,13 @@ class OllamaClient:
     `ClaudeCallResult` shape so downstream code does not branch on provider.
     """
 
+    # Declares the provider identity the T64 high-stakes gate reads
+    # (ai.providers.ensure_provider_allowed via getattr(router, "kind", "claude")).
+    # Without this, OllamaClient defaulted to "claude" and the gate failed OPEN:
+    # tutor.grounded_answer (Ask + Verify) ran a 60s-timeout local model instead
+    # of withholding, so the no-cloud catch waited a full minute behind it.
+    kind = "ollama"
+
     def __init__(
         self,
         *,

@@ -117,3 +117,20 @@ export function isCardChecking(state: VerifyStreamState, card: VerifyClaimVerdic
 export function checkedProgress(state: VerifyStreamState): { checked: number; total: number } {
   return { checked: state.checked.size, total: state.cards.length };
 }
+
+/**
+ * SM-V1 The Paste: the honest reading signal shown while the engine works.
+ *
+ * Before claims are extracted the tool says only that it is reading. The moment
+ * it knows the shape of the work it states the count first ("Reading the draft.
+ * 14 statements.") and judges nothing yet; the live citation check is appended
+ * only once a check has actually landed. The statement count is the first honest
+ * signal, never a verdict, and never a pass.
+ */
+export function readingLabel(state: VerifyStreamState): string {
+  const n = state.cards.length;
+  if (n === 0) return "Reading the draft and extracting claims…";
+  const statements = `Reading the draft. ${n} statement${n === 1 ? "" : "s"}.`;
+  const { checked, total } = checkedProgress(state);
+  return checked > 0 ? `${statements} Checking ${checked} of ${total}.` : statements;
+}

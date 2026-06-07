@@ -6,6 +6,7 @@
 .pycache/
 __pycache__/
 dist/
+dist-cachet/
 
 .env
 .env.local
@@ -57,3 +58,5 @@ macos-app/.build/
 macos-app/Resources/app.new.html
 macos-app/Resources/app.new*.html
 macos-app/Resources/assets.new/
+macos-app/Resources/cachet.new.html
+macos-app/Resources/cachet-assets.new/

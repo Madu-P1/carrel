@@ -10,6 +10,7 @@ import {
   checkedProgress,
   initialStreamState,
   isCardChecking,
+  readingLabel,
   reduceStreamEvent,
   type VerifyStreamState
 } from "./streamProgress";
@@ -199,5 +200,45 @@ describe("quote_batch + result quote reconciliation (Cachet PR4)", () => {
     ]);
     expect(s.quotes).toHaveLength(1);
     expect(s.quotes[0].status).toBe("could_not_check");
+  });
+});
+
+describe("readingLabel (SM-V1 honest reading signal)", () => {
+  const base = initialStreamState();
+
+  it("says only that it is reading while still extracting (no count yet)", () => {
+    expect(readingLabel({ ...base, phase: "extracting" })).toBe(
+      "Reading the draft and extracting claims…"
+    );
+  });
+
+  it("states the statement count first, before judging, once claims land", () => {
+    const s: VerifyStreamState = { ...base, phase: "checking", cards: [card(0), card(1), card(2)] };
+    expect(readingLabel(s)).toBe("Reading the draft. 3 statements.");
+  });
+
+  it("uses the singular for a single statement", () => {
+    const s: VerifyStreamState = { ...base, phase: "checking", cards: [card(0)] };
+    expect(readingLabel(s)).toBe("Reading the draft. 1 statement.");
+  });
+
+  it("appends the live citation check only once a check has actually landed", () => {
+    const s: VerifyStreamState = {
+      ...base,
+      phase: "checking",
+      cards: [card(0), card(1)],
+      checked: new Set([0])
+    };
+    expect(readingLabel(s)).toBe("Reading the draft. 2 statements. Checking 1 of 2.");
+  });
+
+  it("never reports a percentage or a verdict word", () => {
+    const s: VerifyStreamState = {
+      ...base,
+      phase: "checking",
+      cards: [card(0), card(1)],
+      checked: new Set([0])
+    };
+    expect(readingLabel(s)).not.toMatch(/%|verified|supported|\bpass\b/i);
   });
 });
