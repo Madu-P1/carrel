@@ -8,7 +8,6 @@ from routes.events import register_event_routes
 from routes.jobs import register_job_routes
 from routes.plan import register_plan_routes
 from routes.reader_nodes import register_reader_node_routes
-from routes.search import register_search_routes
 from routes.study import register_study_routes
 from routes.system import register_system_routes
 from routes.tutor import register_tutor_routes
@@ -32,8 +31,6 @@ def register_routes(app) -> None:
     register_event_routes(app)
     register_job_routes(app)
     register_system_routes(app)
-    # Hybrid (FTS + vector) library search. Wraps services.retrieval.
-    register_search_routes(app)
     # Reader-side typed-node lookup (PR 4.2). Powers ?node=N deep links.
     register_reader_node_routes(app)
     # Calendar-driven study planning (Phase 1: feed sync + stub coach).
