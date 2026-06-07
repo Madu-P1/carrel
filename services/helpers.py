@@ -80,15 +80,3 @@ def concept_positions(concepts: List[Dict[str, object]]) -> List[Dict[str, objec
 def concept_takeaway(description: str) -> str:
     sentences = split_sentences(description)
     return sentences[0] if sentences else description[:220]
-
-
-def build_explanation(description: str, level: int) -> str:
-    summary = concept_takeaway(description)
-    if level <= 1:
-        return summary
-    if level == 2:
-        return f"{summary} Focus on the core rule, then explain one example from memory."
-    return (
-        f"{summary} Then connect it to a neighboring concept, explain why it matters, "
-        "and describe a common mistake learners make."
-    )
