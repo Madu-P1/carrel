@@ -510,7 +510,12 @@ def build_deterministic_envelope(
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence, alias_table=alias_table)
-        if any(a.type == "citation" for a in anchors):
+        # Case-existence applies only to CASE citations. A law/regulation cite
+        # (C.F.R., U.S.C., an EU Directive) is a citation anchor for grounding, but
+        # it is not a case: routing it here would report a real regulation as
+        # "cited case not found" (a false accusation). It instead flows to the
+        # contract / could-not-check path, checked via its other anchors.
+        if any(r.kind == "case" for r in find_citations(sentence)):
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
             )

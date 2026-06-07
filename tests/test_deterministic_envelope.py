@@ -50,6 +50,19 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertIn("could_not_check_reason", env["claims"][0])
         self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
 
+    def test_law_citation_is_not_treated_as_a_missing_case(self) -> None:
+        # A regulation/statute cite (C.F.R., U.S.C., an EU Directive) is not a case.
+        # Case-existence must NOT run on it, or a real regulation reads "cited case
+        # not found" (a false accusation). It is the honest could-not-check instead.
+        env = self._build(
+            "SEC registration is waived for accredited investors (17 C.F.R. §240.501)."
+        )
+        self.assertEqual(1, len(env["claims"]))
+        claim = env["claims"][0]
+        self.assertEqual([], claim["case_verdicts"])
+        self.assertIn("could_not_check_reason", claim)
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
+
     def test_envelope_shape_is_deterministic(self) -> None:
         env = self._build("Per 410 F.3d 138, the rule is XYZ.")
         self.assertEqual("deterministic-v1", env["model"])
