@@ -10,11 +10,15 @@
 --
 -- artifact_exports is a 0001 baseline table, so unlike onboarding_state (P4a) it
 -- is also a member of the _has_initial_schema_baseline fingerprint. That
--- fingerprint marks a legacy un-stamped DB as already-having-applied 0001; a DB
--- migrated past THIS migration no longer has artifact_exports, so requiring it
--- would fail v1 detection and try to re-run 0001_initial against an existing
--- schema. db.py therefore drops it from required_tables (a real legacy v1 DB
--- still matches the now-smaller required set, since it is a superset).
+-- fingerprint lets the runner mark 0001 as already-applied on an un-stamped DB
+-- (record the baseline rather than re-execute it). A DB migrated past THIS
+-- migration no longer has artifact_exports, so requiring it would make the
+-- detector never match a current DB and needlessly re-run 0001 on every
+-- un-stamped current DB. 0001 is CREATE TABLE IF NOT EXISTS, so a re-run is
+-- harmless today; but the detector's contract is mark-not-re-run, and dropping
+-- the table from required_tables also future-proofs against 0001 ever gaining a
+-- non-idempotent statement. db.py therefore drops it from required_tables; a
+-- real legacy v1 DB still matches the now-smaller required set (it is a superset).
 --
 -- quiz_log stays in the schema: it is also a baseline fingerprint member but
 -- belongs to the still-live quiz feature (routes/study.py); it drops with that
