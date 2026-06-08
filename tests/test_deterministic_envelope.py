@@ -8,7 +8,10 @@ corpus answers via MockTransport, so no real network call is made).
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
+import time
 import unittest
 from unittest import mock
 
@@ -49,6 +52,19 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertEqual(1, len(env["claims"]))
         self.assertIn("could_not_check_reason", env["claims"][0])
         self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+    def test_law_citation_is_not_treated_as_a_missing_case(self) -> None:
+        # A regulation/statute cite (C.F.R., U.S.C., an EU Directive) is not a case.
+        # Case-existence must NOT run on it, or a real regulation reads "cited case
+        # not found" (a false accusation). It is the honest could-not-check instead.
+        env = self._build(
+            "SEC registration is waived for accredited investors (17 C.F.R. §240.501)."
+        )
+        self.assertEqual(1, len(env["claims"]))
+        claim = env["claims"][0]
+        self.assertEqual([], claim["case_verdicts"])
+        self.assertIn("could_not_check_reason", claim)
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
 
     def test_envelope_shape_is_deterministic(self) -> None:
         env = self._build("Per 410 F.3d 138, the rule is XYZ.")
@@ -367,6 +383,124 @@ class GroundingVerdictTests(unittest.TestCase):
         card = _claim_dict_to_verdict(claim, 0)
         self.assertEqual("unsupported", card.verdict)
         self.assertIn("could not be located", (card.unsupported_reason or "").lower())
+
+
+class TokenGuardRegressionTests(unittest.TestCase):
+    """The offline litigator path must verify a real cite with NO CourtListener
+    token set: the egress token gates only the live-network path, and the demo
+    injects an offline MockTransport. Regression for the bug where every launch
+    path except serve-cachet.py (which sets a sentinel token) read every cite as
+    could-not-check. The pre-existing _build helpers all set the token, which is
+    exactly why this class clears it instead.
+    """
+
+    def test_real_cite_verifies_with_no_token(self) -> None:
+        cleared = {k: v for k, v in os.environ.items() if k != "COURTLISTENER_API_TOKEN"}
+        with mock.patch.dict(os.environ, cleared, clear=True):
+            self.assertNotIn("COURTLISTENER_API_TOKEN", os.environ)
+            env = build_deterministic_envelope(
+                "Brown v. Board of Education, 347 U.S. 483 (1954).",
+                client=local_caselaw_client(),
+            )
+        self.assertTrue(_verdicts(env["claims"][0])[0]["exists"])
+        self.assertEqual("verified", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+    def test_fabricated_cite_still_caught_with_no_token(self) -> None:
+        cleared = {k: v for k, v in os.environ.items() if k != "COURTLISTENER_API_TOKEN"}
+        with mock.patch.dict(os.environ, cleared, clear=True):
+            env = build_deterministic_envelope(
+                "Smith v. Jones, 999 U.S. 999 (2020).", client=local_caselaw_client()
+            )
+        self.assertFalse(_verdicts(env["claims"][0])[0]["exists"])
+        self.assertEqual("unsupported", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+
+class LazyEmbedderRegressionTests(unittest.TestCase):
+    """contract_mode must not eagerly load the embedder. A litigator-only draft on
+    a box with no cached embedding weights must still verify its cites instead of
+    crashing the whole request; a contract sentence degrades to an honest
+    could-not-check rather than raising.
+    """
+
+    def _conn_with_ready_doc(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE documents (id TEXT, status TEXT)")
+        conn.execute("INSERT INTO documents VALUES ('d1', 'ready')")
+        conn.execute("CREATE TABLE nodes (doc_id TEXT, verbatim_text TEXT, reading_order INTEGER)")
+        conn.commit()
+        return conn
+
+    def test_litigator_cite_verifies_when_embedder_unavailable(self) -> None:
+        conn = self._conn_with_ready_doc()
+        with (
+            mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False),
+            mock.patch(
+                "services.legal.deterministic_envelope.offline_embedder",
+                side_effect=RuntimeError("offline weights not cached"),
+            ),
+        ):
+            env = build_deterministic_envelope(
+                "Brown v. Board of Education, 347 U.S. 483 (1954).",
+                conn=conn,
+                client=local_caselaw_client(),
+            )
+        # The litigator branch never needs the embedder, so a cold cache cannot
+        # crash it; the cite still verifies.
+        self.assertTrue(_verdicts(env["claims"][0])[0]["exists"])
+
+    def test_contract_sentence_degrades_when_embedder_unavailable(self) -> None:
+        conn = self._conn_with_ready_doc()
+        with (
+            mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False),
+            mock.patch(
+                "services.legal.deterministic_envelope.offline_embedder",
+                side_effect=RuntimeError("offline weights not cached"),
+            ),
+        ):
+            env = build_deterministic_envelope(
+                "The annual fee is $500,000 per year.", conn=conn, client=local_caselaw_client()
+            )
+        claim = env["claims"][0]
+        self.assertIn("could_not_check_reason", claim)
+        self.assertIn("unavailable", claim["could_not_check_reason"].lower())
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
+
+
+class ReporterCiteSplitRegressionTests(unittest.TestCase):
+    """A spaced-reporter cite ("100 F. Supp. 2d 200 (S.D.N.Y. 2000)") must stay one
+    claim with its cite detected, not shatter across sentences (which defeats
+    case-existence + quote grounding)."""
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_spaced_reporter_cite_stays_one_claim(self) -> None:
+        env = self._build(
+            "The rule is in Smith v. Jones, 100 F. Supp. 2d 200 (S.D.N.Y. 2000), and binds here."
+        )
+        self.assertEqual(1, len(env["claims"]))
+        self.assertTrue(env["claims"][0]["case_verdicts"])
+
+
+class QuotePanelRegressionTests(unittest.TestCase):
+    """The brief-level quote panel must confirm a verbatim quote from a bundled
+    opinion. Regression: deterministic verdicts carried no opinion_text, so the
+    panel read could-not-check even though the same-sentence check confirmed it.
+    The opinion text must never cross the wire."""
+
+    def test_verbatim_bundled_opinion_quote_reads_verbatim(self) -> None:
+        draft = (
+            'The Court held that "Separate educational facilities are inherently '
+            'unequal." Brown v. Board of Education, 347 U.S. 483 (1954).'
+        )
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            env = build_deterministic_envelope(draft, client=local_caselaw_client())
+        result = verify_service._verify_result_from_envelope(draft, env, time.perf_counter())
+        payload = verify_service.verify_result_to_payload(result)
+        self.assertEqual(1, len(payload["quote_results"]))
+        self.assertEqual("verbatim", payload["quote_results"][0]["status"])
+        self.assertNotIn("opinion_text", json.dumps(payload))
 
 
 if __name__ == "__main__":

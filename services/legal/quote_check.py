@@ -43,7 +43,13 @@ from services.retrieval.validators import normalize_for_verbatim, strip_footnote
 # then splitting it on edit marks is correct, whereas under-capturing (stopping
 # at an inner quote) was the PR4 v1 cry-wolf bug. A span with no closing mate is
 # never matched (extraction is conservative: skip what we cannot parse).
-_QUOTED_SPAN = re.compile(r"“([^”]*)”|\"(.*)\"")
+# DOTALL so a block quote that wraps across line breaks is still captured (the
+# `.` then spans newlines); the negative lookahead stops the greedy straight-quote
+# arm at a PARAGRAPH break (a blank line) so it never swallows the whole document
+# between the first and last quote mark. The curly arm is a negated class, so it
+# already crossed newlines and is unaffected. Greedy-to-last within a paragraph is
+# preserved (the deliberate PR4 design: over-capture then split on edit marks).
+_QUOTED_SPAN = re.compile(r"“([^”]*)”|\"((?:(?!\n[ \t]*\n).)*)\"", re.DOTALL)
 
 # Author's declared edits inside a quote, which are NOT matched against source:
 #   - any bracketed interpolation: [T]he caps, [the defendant] insertion,

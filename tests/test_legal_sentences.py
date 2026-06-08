@@ -23,6 +23,25 @@ class SplitSentencesTests(unittest.TestCase):
         self.assertEqual([], split_sentences(""))
         self.assertEqual([], split_sentences("   "))
 
+    def test_spaced_reporter_cite_and_parenthetical_stay_whole(self) -> None:
+        # Spaced reporters ("F. Supp. 2d", "So. 3d", "B.R.") and their trailing
+        # "(court year)" parenthetical carry internal periods the abbreviation list
+        # does not cover; the citation-span guard must keep each whole.
+        for draft in (
+            "The rule is in Smith v. Jones, 100 F. Supp. 2d 200 (S.D.N.Y. 2000), and binds here.",
+            "See Doe v. Roe, 123 So. 3d 456 (Fla. 2013).",
+            "In re Acme, 500 B.R. 100 (Bankr. D. Del. 2014), is on point.",
+        ):
+            self.assertEqual([draft], split_sentences(draft), draft)
+
+    def test_plain_prose_ending_in_so_still_splits(self) -> None:
+        # The fix must not over-merge ordinary prose: "so." is a sentence end, not a
+        # Southern Reporter, when there is no citation span around it.
+        self.assertEqual(
+            ["I think so.", "The next point is separate."],
+            split_sentences("I think so. The next point is separate."),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

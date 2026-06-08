@@ -89,6 +89,25 @@ def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:
     ]
 
 
+def _attach_bundled_opinion_text(case_verdicts: list[dict]) -> None:
+    """Attach the bundled opinion text to each resolved verdict (deterministic path).
+
+    Holding-match is OFF here, so serialize_case_verdict leaves ``opinion_text``
+    unset (None). The brief-level draft-quote panel reads ``opinion_text`` off the
+    serialized verdict (services.verify._opinion_sources_from_case_verdict) to
+    ground a quoted span, so without this a verbatim quote from a bundled opinion
+    (e.g. Brown) reads could-not-check at the panel even though the same-sentence
+    check confirmed it. Offline: local_opinion_text reads the in-process corpus, no
+    network. It is stripped before the SSE wire by services.verify._strip_opinion_text.
+    """
+    for batch in case_verdicts:
+        for v in batch.get("verdicts", []):
+            if v.get("exists") and not v.get("opinion_text"):
+                text = local_opinion_text(v.get("citation"))
+                if text:
+                    v["opinion_text"] = text
+
+
 def _quoted_subphrases(run: str) -> list[str]:
     """The distinct quoted phrases inside a run, in case the span regex merged them.
 
@@ -489,13 +508,24 @@ def build_deterministic_envelope(
     contract_mode = conn is not None and bool(doc_ids)
     # Offline by construction extends to retrieval. The contract path embeds the
     # draft to find clauses; with no injected embedder the retrieval layer would
-    # otherwise build a network-capable default_embedder(). Acquire the
-    # offline-enforced embedder here, driven by the path actually running, not by
-    # CACHET_DETERMINISTIC_VERIFY being exported (the verify surface defaults
-    # deterministic on with that env unset). The litigator-only path needs no
-    # embedder, so it is left untouched.
-    if contract_mode and embedder is None:
-        embedder = offline_embedder()
+    # otherwise build a network-capable default_embedder(), so we use the
+    # offline-enforced one. Acquired LAZILY, on the first sentence that actually
+    # needs it: a litigator-only draft (every sentence a case cite or anchor-free)
+    # then never loads the weights and can never crash on a cold fastembed cache.
+    # If the weights are missing, the contract sentence degrades to an honest
+    # could-not-check below, never a dead request and never a silent pass.
+    embedder_tried = embedder is not None
+
+    def _ensure_embedder() -> Embedder | None:
+        nonlocal embedder, embedder_tried
+        if not embedder_tried:
+            embedder_tried = True
+            try:
+                embedder = offline_embedder()
+            except RuntimeError:
+                embedder = None
+        return embedder
+
     # Defined-term detection keys off the source contract's own definitions: built
     # once here (offline) and passed to every sentence's extraction. None on the
     # litigator-only path, leaving that path unchanged.
@@ -510,7 +540,12 @@ def build_deterministic_envelope(
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence, alias_table=alias_table)
-        if any(a.type == "citation" for a in anchors):
+        # Case-existence applies only to CASE citations. A law/regulation cite
+        # (C.F.R., U.S.C., an EU Directive) is a citation anchor for grounding, but
+        # it is not a case: routing it here would report a real regulation as
+        # "cited case not found" (a false accusation). It instead flows to the
+        # contract / could-not-check path, checked via its other anchors.
+        if any(r.kind == "case" for r in find_citations(sentence)):
             verdicts = verify_claims_for_cases(
                 [sentence], client=cl_client, enable_holding_match=False
             )
@@ -519,30 +554,55 @@ def build_deterministic_envelope(
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
             _annotate_litigator_verdicts(sentence, serialized)
+            # Holding-match is off, so the serialized verdicts carry no opinion text;
+            # attach the bundled text so the brief-level quote panel can ground a
+            # quoted span against the cited opinion (stripped before the SSE wire).
+            _attach_bundled_opinion_text(serialized)
             opinions_by_sentence[i] = _opinions_from_verdicts(serialized)
             claims.append({"text": sentence, "citations": [], "case_verdicts": serialized})
         elif contract_mode and anchors:
-            claims.append(
-                _contract_claim(
-                    conn,
-                    sentence,
-                    doc_ids,
-                    embedder,
-                    anchors=anchors,
-                    source_parties=source_parties,
-                    source_sections=source_sections,
+            emb = _ensure_embedder()
+            if emb is None:
+                # The offline embedding weights are not cached on this machine, so the
+                # clause retrieval cannot run. Degrade THIS sentence to an honest
+                # could-not-check rather than killing the whole request: a litigator
+                # cite in the same draft still verifies, and the operator sees a clear,
+                # actionable reason instead of a dead stream.
+                claims.append(
+                    {
+                        "text": sentence,
+                        "citations": [],
+                        "case_verdicts": [],
+                        "could_not_check_reason": (
+                            "The contract source index is unavailable on this machine "
+                            "(the offline embedding model is not cached), so this "
+                            "statement could not be checked against a clause."
+                        ),
+                    }
                 )
-            )
+            else:
+                claims.append(
+                    _contract_claim(
+                        conn,
+                        sentence,
+                        doc_ids,
+                        emb,
+                        anchors=anchors,
+                        source_parties=source_parties,
+                        source_sections=source_sections,
+                    )
+                )
         else:
             # No citation to check, and either no anchor or nothing to check a
             # non-citation anchor against. The honest "could not check": never a
             # silent pass, never an accusatory "unsupported".
             reason = (
-                "No verifiable anchor (citation, quotation, amount, or date) was found, "
-                "so this statement was not independently checked."
+                "Nothing in this statement is independently checkable: it carries no "
+                "citation, quotation, amount, date, or defined term to verify against a "
+                "source. Read it yourself to confirm."
                 if not anchors
-                else "This statement carries a checkable value but no source was provided "
-                "to check it against."
+                else "This statement carries a checkable value, but no source was loaded "
+                "to check it against. Load the source it relies on, then verify again."
             )
             claim = {
                 "text": sentence,
@@ -556,9 +616,11 @@ def build_deterministic_envelope(
             # changes the verdict (the claim stays could-not-check / unknown); it only
             # attaches assessed-tier provenance for the assistive surface (invariant 1).
             if contract_mode and conn is not None and doc_ids and t1_permitted():
-                assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, embedder)
-                if assessment is not None:
-                    claim["t1_assessment"] = assessment
+                emb = _ensure_embedder()
+                if emb is not None:
+                    assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, emb)
+                    if assessment is not None:
+                        claim["t1_assessment"] = assessment
             claims.append(claim)
 
     # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
