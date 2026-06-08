@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 
+from .citations_eyecite import find_citations
+
 _ABBREVIATIONS = {
     "u.s",
     "u.s.c",
@@ -65,9 +67,48 @@ def split_sentences(text: str) -> list[str]:
     text = text.strip()
     if not text:
         return []
+
+    # Never split inside a citation. A reporter cite ("100 F. Supp. 2d 200",
+    # "123 So. 3d 456", "500 B.R. 100") and a statute cite ("17 C.F.R. 240.501")
+    # carry internal periods the abbreviation list alone does not cover; a split
+    # there shatters the cite across sentences and defeats case-existence and quote
+    # grounding. eyecite gives the exact span, so any boundary whose punctuation
+    # falls inside a detected citation is suppressed. Plain prose ("I think so.")
+    # has no citation span, so its boundaries are unaffected.
+    def _with_trailing_parenthetical(end: int) -> int:
+        # eyecite's span stops at the reporter number; a cite is usually followed by
+        # a "(court year)" parenthetical whose own abbreviations ("S.D.N.Y.", "Fla.",
+        # "Bankr. D. Del.") would split. Absorb one immediately-following balanced
+        # parenthetical so the whole citation unit stays in one sentence. Safe on an
+        # unbalanced or absent paren (returns the original end).
+        i = end
+        while i < len(text) and text[i] in " \t":
+            i += 1
+        if i >= len(text) or text[i] != "(":
+            return end
+        depth = 0
+        while i < len(text):
+            if text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    return i + 1
+            i += 1
+        return end
+
+    cite_spans = [
+        (ref.start, _with_trailing_parenthetical(ref.end)) for ref in find_citations(text)
+    ]
+
+    def _inside_citation(pos: int) -> bool:
+        return any(s <= pos < e for s, e in cite_spans)
+
     sentences: list[str] = []
     start = 0
     for m in _BOUNDARY.finditer(text):
+        if _inside_citation(m.start()):
+            continue
         punct_end = m.start() + len(m.group(0)) - len(m.group(1))
         segment = text[start:punct_end]
         last_token = re.split(r"[\s(]+", segment.strip())[-1].rstrip(".!?")

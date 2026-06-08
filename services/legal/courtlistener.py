@@ -306,10 +306,14 @@ def lookup_citations_in_text(
     connection pool yet).
 
     The function pre-checks the token and text-length cap before any
-    network I/O so the no-token case is cheap (no socket open).
+    network I/O so the no-token case is cheap (no socket open). The token
+    guard applies only to the live path: an injected `client` (the offline
+    local-caselaw MockTransport, or a test stub) owns its transport and
+    needs no egress credential, so requiring one there would reject the
+    offline corpus that needs no auth.
     """
     token = _api_token()
-    if not token:
+    if client is None and not token:
         return CourtListenerResult(
             ok=False,
             hits=(),
@@ -503,8 +507,10 @@ def fetch_opinion_text(
     the holding-match step surfaces "Holding check unavailable"
     instead of silently treating the cite as verified.
     """
+    # Egress credential gate: live path only. An injected client (offline
+    # MockTransport / test stub) owns its transport and needs no token.
     token = _api_token()
-    if not token:
+    if client is None and not token:
         return OpinionTextResult(
             ok=False,
             text="",

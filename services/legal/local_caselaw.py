@@ -87,6 +87,12 @@ def _lookup_response(text: str, corpus: dict[str, LocalCase]) -> list[dict]:
     """Build a CourtListener-shaped citation-lookup response from the corpus."""
     out: list[dict] = []
     for ref in find_citations(text):
+        # Case-existence applies only to case citations. A statute/regulation
+        # (C.F.R., U.S.C., an EU Directive) is not a case; never emit a not-found
+        # verdict for one (it would read as a fabricated-case accusation on a real
+        # regulation). Such cites are skipped here and handled as other anchors.
+        if ref.kind != "case":
+            continue
         cite = ref.matched_text
         # Key the corpus on eyecite's normalized form so the official reporter
         # spacing ("347 U. S. 483") and a trailing pincite/year still resolve;
