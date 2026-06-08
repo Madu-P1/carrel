@@ -132,7 +132,11 @@ const indexCssPath = resolve(distDir, "index.css");
 // disposition logic): ~124.5 KB gz live. Route-splitting /verify at click time
 // stays the lean-entry option, deferred per the file:// Suspense constraint
 // (see CLAUDE.md).
-const ENTRY_JS_GZIP_BUDGET = 125 * 1024;
+// Bumped 125 -> 128 KB for the C1 "open in source" overlay (SourcePassageOverlay:
+// the in-place cited-passage viewer with the honest three-state highlight) on the
+// verify surface. Live: ~125.4 KB gz. The prior 125 KB budget left near-zero
+// headroom, so this restores a small margin rather than just clearing the trip.
+const ENTRY_JS_GZIP_BUDGET = 128 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
