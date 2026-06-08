@@ -65,7 +65,7 @@ back toward a research workspace." Resolution: inspection that ESCALATES on dema
    study import; honest highlight only.
 3. (Done in this note) reclassify `reader_nodes` KEEP in the extraction plan/memory.
 
-## Built 2026-06-08 — as an OVERLAY, not a `/source` route
+## Built 2026-06-08, as an OVERLAY (not a `/source` route)
 
 Shipped on `feat/cachet-source-overlay` (PR #158). The route approach above was
 dropped during the build for a concrete reason: `VerifyView` holds its result in
