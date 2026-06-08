@@ -20,6 +20,34 @@ function locationLabel(kind: EvidenceResolution["location_kind"]): string {
   return kind === "bbox" || kind === "text_offset" ? "Exact span" : "Approximate passage";
 }
 
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Locate the validated quote inside the source passage, returning the run split
+ * from the ORIGINAL passage (not a lowercased copy). Matching case-insensitively
+ * on the original via a RegExp keeps `index` and the matched length aligned to
+ * the real characters, so the ink-underlined run is always an exact substring of
+ * the passage. A lowercased indexOf plus a length slice can misalign when a
+ * prefix character's lowercase form changes length (e.g. Turkish İ), which would
+ * underline text that is not the validated quote.
+ */
+function locateRun(
+  passage: string,
+  quote: string
+): { before: string; run: string; after: string } | null {
+  if (!quote || !passage) return null;
+  const match = passage.match(new RegExp(escapeRegExp(quote), "i"));
+  if (!match || match.index === undefined) return null;
+  return {
+    before: passage.slice(0, match.index),
+    run: match[0],
+    after: passage.slice(match.index + match[0].length)
+  };
+}
+
 /**
  * The cited passage in its surrounding clause, opened over the record. An
  * overlay, not a route: VerifyView holds its result in local state and the
@@ -85,8 +113,7 @@ function SourcePassageOverlay({
 
   const passage = (node?.verbatim_text ?? "").trim();
   const heading = (node?.heading_path ?? "").trim();
-  const runIndex = quote && passage ? passage.toLowerCase().indexOf(quote.toLowerCase()) : -1;
-  const located = runIndex >= 0;
+  const match = locateRun(passage, quote);
 
   return (
     <div className={styles.sourceScrim} role="presentation" onClick={onClose}>
@@ -126,14 +153,12 @@ function SourcePassageOverlay({
             </p>
             {quote ? <blockquote className={styles.sourceQuote}>“{quote}”</blockquote> : null}
           </div>
-        ) : located ? (
+        ) : match ? (
           <div className={styles.sourcePanelBody}>
             <p className={styles.sourcePassage}>
-              {passage.slice(0, runIndex)}
-              <mark className={styles.sourceRun}>
-                {passage.slice(runIndex, runIndex + quote.length)}
-              </mark>
-              {passage.slice(runIndex + quote.length)}
+              {match.before}
+              <mark className={styles.sourceRun}>{match.run}</mark>
+              {match.after}
             </p>
           </div>
         ) : (

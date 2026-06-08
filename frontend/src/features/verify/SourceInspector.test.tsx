@@ -105,6 +105,26 @@ describe("SourcePassageOverlay (open in source)", () => {
     ).toBeNull();
   });
 
+  it("highlights the exact source run even after a unicode-folding prefix", async () => {
+    mockResolve.mockResolvedValue(resolution());
+    // "İ".toLowerCase() is two code units (i + combining dot), so a lowercased
+    // indexOf plus a length slice would misalign and underline the wrong run.
+    // The run must map to the original passage and equal the validated quote.
+    const passage = `İ ${QUOTE} thereafter.`;
+    mockFetchNode.mockResolvedValue(readerNode(passage));
+
+    const card = cardWithCitation();
+    render(<SourceInspectorBody card={card} disposition={DISPOSITION} />);
+    fireEvent.click(await screen.findByText("Open in source"));
+
+    const mark = await waitFor(() => {
+      const el = document.querySelector("mark");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(mark.textContent).toBe(QUOTE);
+  });
+
   it("shows the passage with an honest note when the quote is not located", async () => {
     mockResolve.mockResolvedValue(resolution());
     mockFetchNode.mockResolvedValue(readerNode("A wholly different clause with no matching run."));

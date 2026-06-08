@@ -64,3 +64,23 @@ back toward a research workspace." Resolution: inspection that ESCALATES on dema
 2. `SourceView` reuses `reader_nodes` + `useNodeDeepLink` + `PdfViewer`; strip every
    study import; honest highlight only.
 3. (Done in this note) reclassify `reader_nodes` KEEP in the extraction plan/memory.
+
+## Built 2026-06-08 — as an OVERLAY, not a `/source` route
+
+Shipped on `feat/cachet-source-overlay` (PR #158). The route approach above was
+dropped during the build for a concrete reason: `VerifyView` holds its result in
+`useState`, and the Cachet shell (`CachetApp`) unmounts a view on every nav (no
+router; it switches on the `currentRoute` signal). A `/source` route swap would
+therefore destroy an unsaved live verification on the way back. So the inspection
+is an in-place **overlay** opened from `SourceInspector` (which already holds the
+doc id, node id, and validated quote), not a navigation. The overlay fetches the
+typed node via the kept `reader.fetchNode` (`/api/reader/node/{id}`) and shows the
+cited passage in its surrounding clause.
+
+Text-first, not a PDF render: the inline `SourceInspector` already shows the
+resolved span, the in-house wedge's contracts are markdown/text, and reusing
+`reader_nodes` text avoids the `PdfViewer`/`pdfjs`/reader-state coupling. The
+PDF-page render with a highlight stays a deferred enhancement for PDF sources,
+not part of this slice. Honest 3-state highlight (validated run ink-underlined on
+an exact case-insensitive match of the original passage; visible "could not
+locate" otherwise; honest fallback when the node is unavailable); no generation.
