@@ -1,10 +1,11 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
-import { navigateTo } from "@/app/shell/useAppShell";
 import { Spinner } from "@/design-system";
 import {
   evidence,
+  reader,
   type EvidenceResolution,
+  type ReaderNodeResponse,
   type VerifyClaimVerdict
 } from "@/services/api/endpoints";
 
@@ -20,6 +21,135 @@ function locationLabel(kind: EvidenceResolution["location_kind"]): string {
 }
 
 /**
+ * The cited passage in its surrounding clause, opened over the record. An
+ * overlay, not a route: VerifyView holds its result in local state and the
+ * Cachet shell unmounts a view on navigation, so routing away to a reader would
+ * discard an unsaved verification. The record stays mounted beneath the scrim.
+ *
+ * Honest highlight: the validated quote is ink-underlined only on an exact
+ * (case-insensitive) substring match of the source passage. If it cannot be
+ * located the passage is shown plain with a visible note, never a fabricated
+ * highlight. If the typed node is unavailable the panel says so and falls back
+ * to the cited quote. No generation.
+ */
+function SourcePassageOverlay({
+  nodeId,
+  quote,
+  documentName,
+  locator,
+  onClose
+}: {
+  nodeId: string;
+  quote: string;
+  documentName: string;
+  locator: string;
+  onClose: () => void;
+}) {
+  const [node, setNode] = useState<ReaderNodeResponse | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    setStatus("loading");
+    setNode(null);
+    const id = Number(nodeId);
+    if (!Number.isFinite(id) || id <= 0) {
+      setStatus("error");
+      return;
+    }
+    void reader
+      .fetchNode(id)
+      .then((data) => {
+        if (active) {
+          setNode(data);
+          setStatus("ok");
+        }
+      })
+      .catch(() => {
+        if (active) setStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [nodeId]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const passage = (node?.verbatim_text ?? "").trim();
+  const heading = (node?.heading_path ?? "").trim();
+  const runIndex = quote && passage ? passage.toLowerCase().indexOf(quote.toLowerCase()) : -1;
+  const located = runIndex >= 0;
+
+  return (
+    <div className={styles.sourceScrim} role="presentation" onClick={onClose}>
+      <div
+        className={styles.sourcePanel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Cited passage in ${documentName}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className={styles.sourcePanelHead}>
+          <div className={styles.sourcePanelLoc}>
+            <span className={styles.sourcePanelDoc}>{documentName}</span>
+            <span className={styles.sourcePanelMeta}>{heading || locator}</span>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            className={styles.inspectorClose}
+            onClick={onClose}
+            aria-label="Close source passage"
+          >
+            Close
+          </button>
+        </header>
+        {status === "loading" ? (
+          <div className={styles.sourcePanelBody}>
+            <div className={styles.sourceLoading}>
+              <Spinner size={16} />
+              <span>Opening the cited passage…</span>
+            </div>
+          </div>
+        ) : status === "error" ? (
+          <div className={styles.sourcePanelBody}>
+            <p className={styles.sourceMuted}>
+              This source passage is not available to open in place. The cited text:
+            </p>
+            {quote ? <blockquote className={styles.sourceQuote}>“{quote}”</blockquote> : null}
+          </div>
+        ) : located ? (
+          <div className={styles.sourcePanelBody}>
+            <p className={styles.sourcePassage}>
+              {passage.slice(0, runIndex)}
+              <mark className={styles.sourceRun}>
+                {passage.slice(runIndex, runIndex + quote.length)}
+              </mark>
+              {passage.slice(runIndex + quote.length)}
+            </p>
+          </div>
+        ) : (
+          <div className={styles.sourcePanelBody}>
+            <p className={styles.sourcePassage}>{passage}</p>
+            <p className={styles.sourceMuted}>
+              Could not locate the exact cited run in this passage.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * One cited corpus source, resolved to its exact span. Deliberately renders
  * no confidence score: on the verify surface a verdict is a finding, not a
  * percentage. Falls back to the stored snippet if the live resolve fails so
@@ -31,6 +161,7 @@ function CitationSource({ citation }: { citation: Citation }) {
   const fallbackQuote = (citation.snippet ?? citation.content ?? "").trim();
   const [resolved, setResolved] = useState<EvidenceResolution | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,10 +187,7 @@ function CitationSource({ citation }: { citation: Citation }) {
   const pageNum = resolved?.page_num ?? citation.page_num ?? null;
   const section = resolved?.section ?? citation.section ?? null;
   const quote = (resolved?.quote_text ?? fallbackQuote).trim();
-
-  const openInReader = () => {
-    navigateTo(`/reader/${encodeURIComponent(docId)}?node=${encodeURIComponent(nodeId)}`);
-  };
+  const locator = `${pageNum ? `p. ${pageNum}` : "page unknown"}${section ? ` · ${section}` : ""}`;
 
   return (
     <div className={styles.sourceItem}>
@@ -89,11 +217,24 @@ function CitationSource({ citation }: { citation: Citation }) {
           <span />
         )}
         {nodeId ? (
-          <button type="button" className={styles.sourceOpen} onClick={openInReader}>
-            Open in reader
+          <button
+            type="button"
+            className={styles.sourceOpen}
+            onClick={() => setSourceOpen(true)}
+          >
+            Open in source
           </button>
         ) : null}
       </div>
+      {sourceOpen ? (
+        <SourcePassageOverlay
+          nodeId={nodeId}
+          quote={quote}
+          documentName={documentName}
+          locator={locator}
+          onClose={() => setSourceOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
