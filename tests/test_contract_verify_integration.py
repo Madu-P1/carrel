@@ -165,7 +165,10 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual("unknown", card.verdict)
         self.assertIn("not independently checked", card.unsupported_reason or "")
 
-    def test_anchor_free_claim_is_could_not_check(self) -> None:
+    def test_anchor_free_claim_is_untreated(self) -> None:
+        # Even in contract mode, a sentence with no checkable anchor (no money / date /
+        # party / section / defined term) is UNTREATED: no card, no could-not-check
+        # reason. It renders as plain draft text. (With T1 dark, no promotion.)
         env = build_deterministic_envelope(
             "The vendor is solely responsible for all defects.",
             conn=self._conn,
@@ -174,7 +177,11 @@ class ContractPathIntegrationTests(unittest.TestCase):
         )
         self.assertEqual([], env["unsupported_spans"])
         self.assertEqual(1, len(env["claims"]))
-        self.assertIn("could_not_check_reason", env["claims"][0])
+        claim = env["claims"][0]
+        self.assertTrue(claim.get("untreated"))
+        self.assertNotIn("could_not_check_reason", claim)
+        result = verify_service._verify_result_from_envelope(claim["text"], env, 0.0)
+        self.assertEqual((), result.claim_verdicts)
 
     def test_source_alias_table_reads_definitions_from_nodes(self) -> None:
         # PR-1: build_alias_table is now reached in production (was dead code). The

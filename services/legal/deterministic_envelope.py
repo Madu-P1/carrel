@@ -6,9 +6,10 @@ the unit selection is deterministic (T0): the draft is split into
 sentences, each sentence carrying a citation anchor is checked for
 case-existence (offline against the bundled corpus, answered in-process
 with no network unless a caller explicitly injects an online client),
-holding-match stays OFF, and
-anchor-free sentences route to ``unsupported_spans`` instead of being
-silently dropped.
+holding-match stays OFF, a sentence with a checkable anchor but no source to
+check it against becomes a neutral could-not-check claim, and a sentence with
+no checkable anchor at all is marked ``untreated`` (no card, renders as plain
+draft text) rather than being silently dropped or screaming could-not-check.
 
 ``services.verify.verify_draft`` swaps ``grounded_tutor_envelope`` for
 this builder on the deterministic path. The Cachet ``/api/verify`` route
@@ -55,6 +56,15 @@ _DETERMINISTIC_MODEL = "deterministic-v1"
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
 # context, never as a clause-checked verdict).
 _CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
+
+# The could-not-check reason attached when T1's recall tier promotes an anchor-free
+# sentence out of untreated (an assessment ran, so a check effectively happened).
+# A constant because the promotion path and the could-not-check card text must stay
+# identical. See docs/notes/2026-06-08-untreated-vs-could-not-check.md.
+_ANCHOR_FREE_REASON = (
+    "No verifiable anchor (citation, quotation, amount, or date) was found, "
+    "so this statement was not independently checked."
+)
 
 
 def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
@@ -481,7 +491,10 @@ def build_deterministic_envelope(
     Litigator path: each citation-bearing sentence becomes a claim with its
     case-existence verdicts attached. Contract path (when ``conn`` + ``doc_ids``
     are given): each other anchor-bearing sentence is checked against the
-    retrieved contract clause. Anchor-free sentences go to ``unsupported_spans``.
+    retrieved contract clause. A sentence with a checkable anchor but no source
+    to check it against is a could-not-check claim; a sentence with no checkable
+    anchor at all is marked ``untreated`` (the caller emits no card for it, so it
+    renders as plain draft text).
     """
     # Offline by construction: case-existence is answered from the bundled corpus
     # via an in-process MockTransport, never the network. Going online is an
@@ -592,36 +605,55 @@ def build_deterministic_envelope(
                         source_sections=source_sections,
                     )
                 )
-        else:
-            # No citation to check, and either no anchor or nothing to check a
-            # non-citation anchor against. The honest "could not check": never a
-            # silent pass, never an accusatory "unsupported".
-            reason = (
-                "Nothing in this statement is independently checkable: it carries no "
-                "citation, quotation, amount, date, or defined term to verify against a "
-                "source. Read it yourself to confirm."
-                if not anchors
-                else "This statement carries a checkable value, but no source was loaded "
-                "to check it against. Load the source it relies on, then verify again."
-            )
+        elif not anchors:
+            # UNTREATED: no checkable anchor of any kind (no citation, quotation,
+            # amount, date, duration, party, section, or defined term). There is
+            # nothing to check, so this is not a finding: the claim carries an
+            # ``untreated`` marker, never becomes a card or a tray entry, and renders
+            # as plain draft text. "Nothing to check here" is not a verdict, so it must
+            # never read as could-not-check. This is the bulk of clean prose; surfacing
+            # it as a per-sentence could-not-verify card was the "everything needs
+            # review" alert fatigue. See
+            # docs/notes/2026-06-08-untreated-vs-could-not-check.md.
             claim = {
                 "text": sentence,
                 "citations": [],
                 "case_verdicts": [],
-                "could_not_check_reason": reason,
+                "untreated": True,
             }
             # ADR-0012 T1 recall tier, DARK behind t1_permitted() (False on main: no
-            # gate-pass artifact exists). When permitted in contract mode, a local model
-            # may assess this anchor-free claim against the source clauses. It never
-            # changes the verdict (the claim stays could-not-check / unknown); it only
-            # attaches assessed-tier provenance for the assistive surface (invariant 1).
+            # gate-pass artifact exists). When the gate is honestly open and a local
+            # model returns an above-threshold assessment, the sentence is PROMOTED out
+            # of untreated into an assessed could-not-check card (coverage by assessment
+            # surfaces for the lawyer's review); the verdict stays unknown and the
+            # assessment only rides as assistive provenance (invariant 1). With T1 dark
+            # this never fires and the sentence stays untreated, byte-identical to
+            # flag-off.
             if contract_mode and conn is not None and doc_ids and t1_permitted():
                 emb = _ensure_embedder()
                 if emb is not None:
                     assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, emb)
                     if assessment is not None:
+                        del claim["untreated"]
+                        claim["could_not_check_reason"] = _ANCHOR_FREE_REASON
                         claim["t1_assessment"] = assessment
             claims.append(claim)
+        else:
+            # COULD-NOT-CHECK: the sentence carries a checkable value (e.g. a money or
+            # date anchor in a litigator-only draft with no contract loaded) but no
+            # source was provided to check it against. A check was warranted and could
+            # not complete, so it stays a neutral could-not-check card, never untreated.
+            claims.append(
+                {
+                    "text": sentence,
+                    "citations": [],
+                    "case_verdicts": [],
+                    "could_not_check_reason": (
+                        "This statement carries a checkable value but no source was "
+                        "provided to check it against."
+                    ),
+                }
+            )
 
     # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
     # only against the cases cited in its OWN sentence. Proximity is not attribution:

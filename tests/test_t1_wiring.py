@@ -251,11 +251,13 @@ class SiteAEnvelopeTests(unittest.TestCase):
         )
 
     def test_dark_by_default_no_assessment(self) -> None:
-        # No env opt-in and no gate-pass artifact: the anchor-free claim stays a plain
-        # could-not-check, with no assessed-tier provenance.
+        # No env opt-in and no gate-pass artifact: the anchor-free claim stays UNTREATED
+        # (no card, no assessed-tier provenance). T1 only promotes it to an assessed
+        # could-not-check card when the gate is honestly open.
         env = self._build()
         claim = env["claims"][0]
-        self.assertIn("could_not_check_reason", claim)
+        self.assertTrue(claim.get("untreated"))
+        self.assertNotIn("could_not_check_reason", claim)
         self.assertNotIn("t1_assessment", claim)
 
     def test_permitted_attaches_assessment_without_changing_the_verdict(self) -> None:
@@ -296,7 +298,8 @@ class SiteAEnvelopeTests(unittest.TestCase):
             ),
         ):
             env = self._build()
-        # argmax is support but under the 70 threshold -> stays in the tray, no assessment.
+        # argmax is support but under the 70 threshold -> stays untreated (no card),
+        # no assessment.
         self.assertNotIn("t1_assessment", env["claims"][0])
 
 
