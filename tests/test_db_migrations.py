@@ -114,6 +114,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (22, "0022_srs_cards_doc_id.sql"),
                 (23, "0023_note_folders.sql"),
                 (24, "0024_briefs.sql"),
+                (25, "0025_document_vaults.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -141,6 +142,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         # Phase 2 — global Notes page: folder organization for notes.
         self.assertIn("note_folders", tables)
         self.assertIn("folder_id", notes_columns)
+        # Vault upgrade — the empty-vault registry from 0025.
+        self.assertIn("document_vaults", tables)
         if db.sqlite_vec_runtime_supported():
             self.assertIn("chunks_vec", tables)
             self.assertIn("node_embeddings", tables)
@@ -157,14 +160,14 @@ class DatabaseMigrationTests(unittest.TestCase):
                     "total"
                 ]
 
-        # +12 for 0008_anchors, 0009_calendar_and_planning,
+        # +13 for 0008_anchors, 0009_calendar_and_planning,
         # 0010_jobs_onboarding, 0011_usage_events,
         # 0012_calendar_feed_secret_refs, 0014_calendar_local_feed_kind,
         # 0016_nodes_typed, 0017_srs_cards_kind,
         # 0018_srs_cards_kind_drop_check_and_card_pairs,
-        # 0022_srs_cards_doc_id, 0023_note_folders, and 0024_briefs. All
-        # unconditional, no runtime gate like sqlite-vec.
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 12
+        # 0022_srs_cards_doc_id, 0023_note_folders, 0024_briefs, and
+        # 0025_document_vaults. All unconditional, no runtime gate like sqlite-vec.
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 13
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -205,6 +208,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0022_srs_cards_doc_id.sql",
                 "0023_note_folders.sql",
                 "0024_briefs.sql",
+                "0025_document_vaults.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

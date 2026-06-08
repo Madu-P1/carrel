@@ -2,29 +2,30 @@ import { useEffect, useState } from "preact/hooks";
 
 import { ErrorBoundary, ToastHost } from "@/design-system";
 import { appShell, navigateTo, pathnameFromRoute } from "@/app/shell/useAppShell";
-import { VerifyView } from "@/features/verify/VerifyView";
+import { VerifyResults } from "@/features/verify/VerifyResults";
+import { useVerify } from "@/features/verify/useVerify";
+import verifyStyles from "@/features/verify/VerifyView.module.css";
 import { ShelfView } from "@/features/shelf/ShelfView";
 
 import { CommandPalette } from "./CommandPalette";
 import { buildCommands } from "./commands";
 import { CachetRail } from "./CachetRail";
 import { LecternView } from "./LecternView";
-import { SourcesView } from "./SourcesView";
+import { VaultView } from "./VaultView";
 import { SettingsView } from "./SettingsView";
-import { liveDraft } from "./liveDraft";
-import { takePendingDraft } from "./pendingDraft";
-import { clearSource, loadedSource, refreshSources, setActiveRecord, sourceDocs } from "./source";
 import styles from "./cachet.module.css";
 
 /**
  * The Cachet shell. A quiet frame around a single document under examination:
  * a thin left rail and a canvas that fills the rest. It reuses the existing
  * appShell.currentRoute signal as its nav (no router registered, so navigateTo
- * falls back to setCurrentRoute), which makes the Shelf -> Verify open work for
- * free and works identically under http (Vite dev) and file:// (bundled .app).
+ * falls back to setCurrentRoute), which makes the Shelf -> open-brief flow work
+ * for free and works identically under http (Vite dev) and file:// (bundled .app).
  *
- * Cachet is NOT Carrel with a Verify tab. This shell hosts only the verification
- * surfaces (Verify, Shelf, Sources, Settings); the Carrel features are excluded.
+ * Cachet is NOT Carrel with a Verify tab. The lectern (the landing) IS the verify
+ * surface: you paste, attach a record, and the verdict unfolds in place. The only
+ * other verify route is the saved-brief reader (`/verify?brief=<id>`), opened from
+ * the Shelf.
  */
 
 function briefFromRoute(route: string): string | null {
@@ -36,73 +37,24 @@ function briefFromRoute(route: string): string | null {
 }
 
 /**
- * Verify station. Seeds the draft from a lectern hand-off (consumed once) or the
- * shared live draft (`liveDraft`), and writes every edit back so leaving and
- * returning to Verify keeps the draft. The live draft is shared with the lectern,
- * so a paste on the home page survives navigation too. A reopened brief (briefId
- * set) hydrates from the saved brief instead and is never persisted to the live
- * draft.
+ * Saved-brief reader. Opening a brief from the Shelf re-hydrates the stored
+ * verdict with NO re-verify and shows it read-only: the document (with its margin
+ * annotations) and the verdict live inside the shared `VerifyResults`, so this is
+ * a thin frame around it. The draft is not editable here; to re-check, start from
+ * the lectern.
  */
-function VerifyStation({ briefId }: { briefId: string | null }) {
-  const [seed] = useState(() => (briefId ? null : takePendingDraft()));
-  const docs = sourceDocs.value;
-  const active = loadedSource.value;
-
-  // The deterministic quote check needs the doc id of the record to check
-  // against. Load the record list so the picker is populated even when the user
-  // came straight to Verify, and let them choose which record is active here so
-  // the check never silently runs with no source.
-  useEffect(() => {
-    void refreshSources();
-    // A lectern hand-off persists immediately, so navigating away before typing
-    // does not lose it.
-    if (seed) liveDraft.value = seed;
-  }, [seed]);
-
+function BriefReader({ briefId }: { briefId: string }) {
+  const engine = useVerify({ briefId });
+  const draft = engine.hydratedDraft ?? engine.response?.draft_text ?? "";
   return (
-    <>
-      <div className={styles.recordBar}>
-        <span className={styles.recordBarLabel}>Checking against</span>
-        <select
-          className={styles.recordBarSelect}
-          value={active?.docId ?? ""}
-          onChange={(e) => {
-            const id = (e.target as HTMLSelectElement).value;
-            const doc = (docs ?? []).find((d) => d.id === id);
-            if (doc) setActiveRecord(doc);
-            else clearSource();
-          }}
-        >
-          <option value="">No record loaded — choose one</option>
-          {(docs ?? []).map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.filename}
-            </option>
-          ))}
-        </select>
-        {active ? null : (
-          <span className={styles.recordBarHint}>Add a record in Sources, then pick it here.</span>
-        )}
+    <section className={styles.reader}>
+      <button type="button" className={styles.readerBack} onClick={() => navigateTo("/shelf")}>
+        ← Back to the Shelf
+      </button>
+      <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
+        <VerifyResults engine={engine} draft={draft} />
       </div>
-      {/* A refusal's "give Cachet what it needs" action routes to Sources, where the
-          user loads the record the draft relies on. The shared verify surface stays
-          host-agnostic; the record picker above lives in the Cachet shell. */}
-      <VerifyView
-        key={briefId ?? "live"}
-        briefId={briefId}
-        initialDraft={briefId ? seed : (seed ?? liveDraft.value)}
-        // Auto-run only on a genuine lectern hand-off (a fresh pending draft was
-        // consumed), never on a plain return to /verify. Without this guard, the
-        // persisted live draft would make the station re-verify on every visit.
-        autoRun={!briefId && seed !== null}
-        onDraftChange={briefId ? undefined : (v) => (liveDraft.value = v)}
-        onResolve={() => navigateTo("/sources")}
-        headerTitle="Check the AI's read of your contract."
-        headerSubtitle="Paste what an assistant told you about the document. Cachet checks every quoted clause against the record you loaded, on this device."
-        samplePlaceholder="The agreement caps the supplier’s total liability at “£250,000” and renews automatically for successive 12-month terms unless either party gives 90 days’ written notice."
-        docIds={active?.docId ? [active.docId] : undefined}
-      />
-    </>
+    </section>
   );
 }
 
@@ -110,18 +62,21 @@ function renderRoute(route: string) {
   const path = pathnameFromRoute(route);
 
   if (path.startsWith("/verify")) {
-    return <VerifyStation briefId={briefFromRoute(route)} />;
+    // A saved brief opens read-only; bare /verify (no brief) is the live surface,
+    // which is the lectern.
+    const briefId = briefFromRoute(route);
+    return briefId ? <BriefReader briefId={briefId} /> : <LecternView />;
   }
   if (path.startsWith("/shelf")) {
     return <ShelfView />;
   }
-  if (path.startsWith("/sources")) {
-    return <SourcesView />;
+  if (path.startsWith("/vault")) {
+    return <VaultView />;
   }
   if (path.startsWith("/settings")) {
     return <SettingsView />;
   }
-  // The lectern is the landing.
+  // The lectern is the landing and the live verify surface.
   return <LecternView />;
 }
 

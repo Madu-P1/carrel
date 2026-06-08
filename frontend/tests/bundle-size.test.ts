@@ -132,7 +132,13 @@ const indexCssPath = resolve(distDir, "index.css");
 // disposition logic): ~124.5 KB gz live. Route-splitting /verify at click time
 // stays the lean-entry option, deferred per the file:// Suspense constraint
 // (see CLAUDE.md).
-const ENTRY_JS_GZIP_BUDGET = 125 * 1024;
+// Bumped 125 -> 126 KB for the Cachet Vault manager UI (grid + detail two-mode
+// layout, the solid VaultMark folder, and the grid-aware drag-to-move with its
+// destination-naming confirm): ~125.1 KB gz live. CachetApp is statically imported
+// from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
+// the Cachet shell out of the entry is the lean follow-up, deferred per the same
+// file:// Suspense constraint.
+const ENTRY_JS_GZIP_BUDGET = 126 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

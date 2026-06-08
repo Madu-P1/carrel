@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import db
 from services import stale_tracker
 from services.extraction_pipeline import IngestedAsset
-from services.ingestion.persistence import delete_chunk_vectors
+from services.ingestion.persistence import delete_chunk_vectors, node_embeddings_table_exists
 from services.ingestion import normalize_subject_name, summarize_document
 from services.ingestion.text_utils import clean_learning_text
 
@@ -688,6 +688,15 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
     ).fetchone()
     if not document_row:
         return False
+    # Concept-graph cascade: a document's concepts and everything bound to them.
+    # (Empty for a Cachet-ingested record, which carries no tutor concepts.)
+    # Deliberately scoped: this sweeps the concept's own leaves; the deeper Carrel
+    # junction/log tables keyed off questions/cards/notes (quiz_log, review_events,
+    # flashcard_evidence, quiz_evidence, note_evidence, card_pairs, mastery_states,
+    # dialogue_sessions) are a pre-existing study-app cascade gap, never populated by
+    # a Cachet record, and are left out here rather than risk a Carrel regression.
+    # Session/goal/artifact rows are NOT document-scoped and must never be deleted on
+    # a document delete.
     concept_ids = [concept["id"] for concept in collect_document_concepts(conn, doc_id)]
     if concept_ids:
         placeholders = ",".join("?" * len(concept_ids))
@@ -695,13 +704,39 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
         conn.execute(f"DELETE FROM srs_cards WHERE concept_id IN ({placeholders})", concept_ids)
         conn.execute(f"DELETE FROM notes WHERE concept_id IN ({placeholders})", concept_ids)
         conn.execute(f"DELETE FROM study_events WHERE concept_id IN ({placeholders})", concept_ids)
+        conn.execute(f"DELETE FROM claims WHERE concept_id IN ({placeholders})", concept_ids)
+        conn.execute(
+            f"DELETE FROM concept_examples WHERE concept_id IN ({placeholders})", concept_ids
+        )
+        conn.execute(
+            f"DELETE FROM misconceptions WHERE concept_id IN ({placeholders})", concept_ids
+        )
         conn.execute(
             f"DELETE FROM concept_edges WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
             concept_ids * 2,
         )
         conn.execute(f"DELETE FROM concepts WHERE id IN ({placeholders})", concept_ids)
+    # Document-bound rows NOT reached through a concept. PRAGMA foreign_keys is off
+    # on these connections (db.py sets WAL/busy_timeout/synchronous only), so the
+    # schema's ON DELETE CASCADE never fires; every child is removed by hand,
+    # children before the parent, all inside the single transaction committed below.
     conn.execute("DELETE FROM notes WHERE doc_id = ?", (doc_id,))
     conn.execute("DELETE FROM study_events WHERE doc_id = ?", (doc_id,))
+    conn.execute("DELETE FROM srs_cards WHERE doc_id = ?", (doc_id,))
+    conn.execute("DELETE FROM concept_edges WHERE doc_id = ?", (doc_id,))
+    conn.execute("DELETE FROM evidence_references WHERE source_id = ?", (doc_id,))
+    conn.execute("DELETE FROM stale_dependencies WHERE source_id = ?", (doc_id,))
+    conn.execute("DELETE FROM anchors WHERE document_id = ?", (doc_id,))
+    # Typed nodes (the verification retrieval path): drop their vec0 embeddings
+    # first (no trigger maintains node_embeddings), then the nodes; the
+    # nodes_fts_delete trigger keeps the node_fts index in sync.
+    if node_embeddings_table_exists(conn):
+        conn.execute(
+            "DELETE FROM node_embeddings WHERE node_id IN (SELECT id FROM nodes WHERE doc_id = ?)",
+            (doc_id,),
+        )
+    conn.execute("DELETE FROM nodes WHERE doc_id = ?", (doc_id,))
+    # Chunks and their vec0 vectors; chunks_fts is trigger-maintained.
     chunk_rowids = [
         int(row["rowid"])
         for row in conn.execute(
@@ -711,6 +746,14 @@ def delete_document_record(conn: sqlite3.Connection, doc_id: str) -> bool:
     ]
     delete_chunk_vectors(conn, chunk_rowids)
     conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+    # A document can be the duplicate_of target of others; clear the dangling pointer
+    # so no row points at an id that is about to disappear.
+    conn.execute("UPDATE documents SET duplicate_of = NULL WHERE duplicate_of = ?", (doc_id,))
+    # These two carry a doc pointer the schema marks ON DELETE SET NULL, but FK
+    # enforcement is off, so null them by hand to honor that intent (otherwise a
+    # planning suggestion or ingestion job keeps a pointer to a deleted record).
+    conn.execute("UPDATE study_suggestions SET doc_id = NULL WHERE doc_id = ?", (doc_id,))
+    conn.execute("UPDATE ingestion_jobs SET document_id = NULL WHERE document_id = ?", (doc_id,))
     conn.execute("DELETE FROM app_settings WHERE key = ?", (_selector_cache_key(doc_id),))
     deleted = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,)).rowcount
     conn.commit()
@@ -732,6 +775,87 @@ def fetch_subject_groups(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
         """
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_vault_names(conn: sqlite3.Connection) -> List[str]:
+    """Every vault the UI should show: the distinct subject_names documents are
+    filed under, plus the empty-vault registry. A vault appears whether it was
+    created empty or implied by a filed record.
+
+    Vault identity is case-insensitive ('General' and 'general' are one vault), so
+    the list is deduped on lowercased name. The registry spelling wins over a filed
+    subject's, so the canonical folder name is what shows."""
+    registry = [
+        row["name"]
+        for row in conn.execute("SELECT name FROM document_vaults").fetchall()
+        if row["name"]
+    ]
+    filed = [
+        row["name"]
+        for row in conn.execute(
+            "SELECT DISTINCT subject_name AS name FROM documents WHERE subject_name IS NOT NULL"
+        ).fetchall()
+        if row["name"]
+    ]
+    by_lower: Dict[str, str] = {}
+    for name in registry:  # registry first: its spelling is canonical
+        by_lower.setdefault(name.lower(), name)
+    for name in filed:
+        by_lower.setdefault(name.lower(), name)
+    return sorted(by_lower.values(), key=str.lower)
+
+
+def _existing_vault_spelling(conn: sqlite3.Connection, normalized: str) -> Optional[str]:
+    """The spelling already in use for this name, compared case-insensitively, so a
+    case-variant resolves to the existing vault instead of forking a duplicate. The
+    registry spelling is preferred over a filed subject's. None if the name is new."""
+    row = conn.execute(
+        "SELECT name FROM document_vaults WHERE name = ? COLLATE NOCASE LIMIT 1",
+        (normalized,),
+    ).fetchone()
+    if row:
+        return row["name"]
+    row = conn.execute(
+        "SELECT subject_name FROM documents "
+        "WHERE subject_name IS NOT NULL AND subject_name = ? COLLATE NOCASE LIMIT 1",
+        (normalized,),
+    ).fetchone()
+    return row["subject_name"] if row else None
+
+
+def create_vault(conn: sqlite3.Connection, name: str) -> str:
+    """Register a (possibly empty) vault so it persists before its first record.
+    Idempotent and case-insensitive: registering an existing name (in any casing)
+    is a no-op that returns the existing spelling. Returns the canonical name.
+    Raises ValueError on a blank name (rather than silently defaulting it to
+    'General', which would create a vault the user did not name)."""
+    if not name or not name.strip():
+        raise ValueError("A vault needs a name.")
+    normalized = normalize_subject_name(name)
+    canonical = _existing_vault_spelling(conn, normalized) or normalized
+    conn.execute("INSERT OR IGNORE INTO document_vaults (name) VALUES (?)", (canonical,))
+    conn.commit()
+    return canonical
+
+
+def delete_vault(conn: sqlite3.Connection, name: str) -> bool:
+    """Forget an EMPTY vault. Refuses (returns False) if any record is still filed
+    under it, so deleting a vault never silently moves or destroys records. The
+    caller surfaces the refusal; the records are moved or deleted first."""
+    # Guard the RAW name: normalize_subject_name defaults a blank to 'General', so
+    # checking the normalized value would let an all-whitespace name silently
+    # target the General vault. Refuse a blank name outright.
+    if not name or not name.strip():
+        return False
+    normalized = normalize_subject_name(name)
+    in_use = conn.execute(
+        "SELECT 1 FROM documents WHERE subject_name = ? LIMIT 1", (normalized,)
+    ).fetchone()
+    if in_use:
+        return False
+    conn.execute("DELETE FROM document_vaults WHERE name = ?", (normalized,))
+    conn.commit()
+    return True
 
 
 def list_subject_summaries(conn: sqlite3.Connection) -> List[Dict[str, Any]]:

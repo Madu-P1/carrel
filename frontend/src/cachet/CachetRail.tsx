@@ -51,7 +51,7 @@ const SETTINGS_ICON = (
 const MAIN_ITEMS: RailItem[] = [
   { key: "verify", label: "Verify", path: "/", icon: VERIFY_ICON },
   { key: "shelf", label: "Shelf", path: "/shelf", icon: SHELF_ICON },
-  { key: "sources", label: "Sources", path: "/sources", icon: SOURCES_ICON }
+  { key: "vault", label: "Vault", path: "/vault", icon: SOURCES_ICON }
 ];
 
 const SETTINGS_ITEM: RailItem = {

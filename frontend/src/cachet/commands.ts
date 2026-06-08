@@ -54,7 +54,7 @@ export function buildCommands(path: string, close: () => void): Command[] {
     { id: "new", title: "New verification", hint: "Lectern", keywords: "paste draft start home", run: go("/") },
     { id: "go-verify", title: "Go to Verify", keywords: "draft examine", run: go("/verify") },
     { id: "go-shelf", title: "Open the Shelf", hint: "Sealed briefs", keywords: "saved record history", run: go("/shelf") },
-    { id: "go-sources", title: "Open Sources", keywords: "record material opinions", run: go("/sources") },
+    { id: "go-vault", title: "Open the Vault", keywords: "record material vault folder sources", run: go("/vault") },
     { id: "go-settings", title: "Open Settings", keywords: "key preferences", run: go("/settings") }
   );
 

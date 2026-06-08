@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { holdingClass, tierBadgeClass } from "./VerifyView";
+import { holdingClass, tierBadgeClass } from "./VerifyResults";
 import styles from "./VerifyView.module.css";
 
 // PR1 locks the disposition TIER (claimDisposition.test.ts) AND the tier/holding

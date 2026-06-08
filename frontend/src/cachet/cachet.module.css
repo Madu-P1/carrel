@@ -36,6 +36,27 @@
   --accent: var(--ink-1);
   --accent-pressed: #0f0c0a;
 
+  /* Make the shared design-system primitives (Dialog, Button) wear the Cachet
+     register instead of the study-app theme. These must be REDECLARED here, not
+     left to the --accent rebind above: --shadow-focus is computed once at :root
+     with the theme's teal accent already baked in, so it inherits green into
+     this scope unless re-declared. Without this block a confirm dialog shows a
+     green focus ring and a generic-red button, both brand violations (no green;
+     oxblood is the only danger accent). */
+  --shadow-focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink-1);
+  --color-danger: var(--flag);
+  /* The success toast (move/delete confirmations) colors its border + icon from
+     --state-ok, which is green at :root and is NOT covered by the --color-accent
+     rebind above. Neutralize it (and the alias --color-success) to ink so success
+     toasts stay green-free. Cachet has no green; the only accent is oxblood. */
+  --state-ok: var(--ink-1);
+  --color-success: var(--ink-1);
+  --glass-bg-strong: var(--sheet);
+  --glass-bg: var(--sheet);
+  --glass-border-strong: var(--hair);
+  --glass-border: var(--hair-soft);
+  --color-bg-base: var(--paper);
+
   /* Cold display override (cascades into verify/shelf within Cachet). */
   --font-serif: "Libre Caslon Display", "Charter", Georgia, "Times New Roman", serif;
   /* Body reading serif, matched to the verify/shelf body stack. */
@@ -145,7 +166,14 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  /* The verdict's ExaminationDrawer is position:absolute and parks off-screen
+     right (translateX(100%)) when closed. Without a positioned, x-clipped
+     ancestor it would double the document width and add a horizontal scrollbar
+     on the hero surface. Make the canvas its containing block and clip the
+     off-screen state; the drawer still slides in over the canvas when opened. */
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ---------- lectern (the landing title page) ---------- */
@@ -162,6 +190,11 @@
 .lecternMark {
   color: var(--ink-1);
   margin-bottom: 28px;
+  /* Condenses when a verdict is present (see .lectern[data-active]); settle, not snap. */
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    margin-bottom 0.2s ease;
 }
 
 .wordmark {
@@ -172,6 +205,7 @@
   letter-spacing: 0.005em;
   color: var(--ink-1);
   margin: 0;
+  transition: font-size 0.2s ease;
 }
 
 .tagline {
@@ -306,13 +340,6 @@
   color: var(--ink-2);
   margin: 14px 0 0;
   max-width: 56ch;
-}
-
-.plainNote {
-  font-family: var(--font-serif-body);
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--ink-3);
 }
 
 .settingsList {
@@ -459,60 +486,6 @@
   }
 }
 
-/* Sources: the loaded-record dropzone + loaded state. Paper/ink, on-brand. */
-.sourceLoaded {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3, 12px);
-  margin: var(--space-4, 16px) 0;
-  padding: var(--space-3, 12px) var(--space-4, 16px);
-  border: 1px solid var(--hair);
-  border-radius: var(--radius-2, 6px);
-  background: var(--paper-2);
-}
-.sourceDot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ink-1);
-}
-.sourceMeta {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.sourceName {
-  overflow: hidden;
-  font-family: var(--font-serif-body);
-  font-size: 15px;
-  color: var(--ink-1);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sourceHint {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.sourceRemove {
-  flex: none;
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--ink-3);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.sourceRemove:hover {
-  color: var(--ink-1);
-}
 .dropzone {
   display: flex;
   align-items: center;
@@ -656,33 +629,7 @@
   font-family: var(--font-serif-body);
 }
 
-/* ---------- Sources library: add-with-project + grouped records ---------- */
-
-/* The add-a-record card: pick the project to file into, then drop/choose a file. */
-.sourceAdd {
-  margin: var(--space-5, 20px) 0 var(--space-7, 28px);
-}
-.sourceAddRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3, 12px);
-  margin-bottom: var(--space-3, 12px);
-  flex-wrap: wrap;
-}
-.sourceProjectField {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.sourceProjectLabel {
-  font-family: var(--font-serif-body);
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.sourceProjectSelect,
-.sourceProjectInput,
+/* ---------- the record library + per-record actions ---------- */
 .sourceMoveSelect {
   font-family: var(--font-serif-body);
   font-size: 14px;
@@ -696,23 +643,11 @@
     border-color 0.14s ease,
     background 0.14s ease;
 }
-.sourceProjectSelect:hover,
-.sourceProjectInput:focus,
 .sourceMoveSelect:hover {
   border-color: var(--ink-3);
   outline: none;
 }
-.sourceProjectInput {
-  cursor: text;
-  min-width: 12rem;
-}
 
-/* The library list, grouped by project. */
-.sourceLibrary {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5, 20px);
-}
 .sourceLibraryNote {
   margin: 0;
   padding: var(--space-5, 20px) 0;
@@ -720,31 +655,323 @@
   font-size: 14.5px;
   color: var(--ink-3);
 }
-.sourceGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.sourceGroupHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3, 12px);
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--hair-soft);
-}
-.sourceGroupName {
-  font-family: var(--font-serif);
-  font-size: 18px;
-  color: var(--ink-1);
-  letter-spacing: 0.005em;
-}
 .sourceGroupCount {
   font-family: var(--font-serif-body);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-3);
+}
+
+/* ---------- vault management: folder-first create, empty state, delete ---------- */
+.vaultCreateForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.vaultCreateInput {
+  flex: 1 1 16rem;
+  min-width: 0;
+  max-width: 22rem;
+  font-family: var(--font-serif-body);
+  font-size: 15px;
+  color: var(--ink-1);
+  background: var(--sheet);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+.vaultCreateInput:focus-visible {
+  outline: none;
+  border-color: var(--ink-1);
+}
+.vaultCreateGo {
+  flex: none;
+  appearance: none;
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--paper);
+  background: var(--ink-1);
+  border: 1px solid var(--ink-1);
+  border-radius: 2px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.vaultCreateGo:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.vaultCreateCancel {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: none;
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.vaultCreateCancel:hover {
+  color: var(--ink-1);
+}
+.vaultEmpty {
+  margin: 8px 0 0;
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-3);
+}
+
+/* The vault's emblem (VaultMark): the solid oxblood folder. A quiet identity mark
+   beside each vault name, and the hero of an empty vault's state where its
+   solidity reads at size. */
+/* The one oxblood gesture: a solid folder emblem beside the page title. */
+.vaultTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.vaultTitleMark {
+  flex: none;
+  display: block;
+  filter: drop-shadow(0 3px 5px rgba(40, 12, 18, 0.2));
+}
+
+/* ---------- action cards (create vault / add a record) ---------- */
+.vaultActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.vaultActionCard {
+  position: relative;
+  flex: 1 1 280px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  text-align: left;
+  appearance: none;
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  background: var(--paper-2);
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.vaultActionCard:hover {
+  border-color: var(--ink-3);
+  background: var(--sheet);
+  box-shadow: 0 6px 18px -14px rgba(28, 24, 20, 0.4);
+}
+.vaultActionCard[data-busy="true"] {
+  cursor: progress;
+}
+.vaultActionIcon {
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 9px;
+  background: var(--sheet);
+  border: 1px solid var(--hair-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vaultActionGlyph {
+  color: var(--ink-2);
+}
+.vaultActionGlyph svg {
+  width: 26px;
+  height: 26px;
+}
+.vaultActionText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.vaultActionTitle {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--ink-1);
+}
+.vaultActionDesc {
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+/* ---------- search ---------- */
+.vaultFilter {
+  margin: 6px 0 22px;
+}
+.vaultSearch {
+  width: 300px;
+  max-width: 100%;
+  padding: 9px 16px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--sheet);
+  color: var(--ink-1);
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+}
+.vaultSearch:focus-visible {
+  outline: none;
+  border-color: var(--ink-1);
+}
+
+/* ---------- the vault grid ---------- */
+.vaultGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  gap: 24px 22px;
+}
+.vaultCard {
+  display: flex;
+  flex-direction: column;
+}
+.vaultCardThumb {
+  appearance: none;
+  height: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--paper-2);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.vaultCardThumb:hover {
+  border-color: var(--ink-3);
+  background: var(--sheet);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -20px rgba(28, 24, 20, 0.45);
+}
+.vaultCardThumb:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+}
+.vaultCardMark {
+  display: block;
+  filter: drop-shadow(0 5px 9px rgba(28, 24, 20, 0.22));
+}
+.vaultCardMeta {
+  padding: 13px 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vaultCardName {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vaultCardDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.vaultCardCount {
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.vaultCardDelete {
+  align-self: flex-start;
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 5px 4px 0;
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.vaultCardDelete:hover {
+  color: var(--flag);
+}
+
+/* ---------- a single opened vault (its records) ---------- */
+.vaultBack {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  margin-bottom: 16px;
+  font-family: var(--font-serif-body);
+  font-size: 14px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.vaultBack:hover {
+  color: var(--ink-1);
+}
+.vaultDetailHead {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding-bottom: 18px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--hair);
+}
+.vaultDetailMark {
+  flex: none;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(28, 24, 20, 0.2));
+}
+.vaultDetailName {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 26px;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vaultDetail .dropzone {
+  margin-bottom: 18px;
+}
+.vaultDetail .sourceList {
+  margin-top: 6px;
+}
+.vaultDelete {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: none;
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.vaultDelete:hover {
+  color: var(--flag);
 }
 .sourceList {
   list-style: none;
@@ -760,12 +987,20 @@
   padding: 12px 14px;
   border: 1px solid transparent;
   border-radius: var(--radius-2, 6px);
+  cursor: grab;
   transition:
     background 0.14s ease,
-    border-color 0.14s ease;
+    border-color 0.14s ease,
+    opacity 0.14s ease;
 }
 .sourceRow:hover {
   background: var(--paper-2);
+}
+/* The record being dragged: dimmed and lifted off, so the moving one is obvious
+   while the drop rail below lights up. */
+.sourceRow[data-dragging="true"] {
+  cursor: grabbing;
+  opacity: 0.45;
 }
 .sourceRow[data-active="true"] {
   background: var(--paper-2);
@@ -850,6 +1085,32 @@
   text-transform: uppercase;
   color: var(--ink-2);
 }
+
+/* Delete: the quiet danger affordance on a record row. Recedes to ink-3 at rest,
+   turns oxblood (the one reserved accent) on hover/focus, so it never competes
+   with "Use as record" until the user reaches for it. The irreversible cascade
+   is confirmed in a dialog, never on this click. */
+.sourceDelete {
+  flex: none;
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 6px 4px;
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.sourceDelete:hover {
+  color: var(--flag);
+}
+.sourceDelete:focus-visible {
+  outline: 2px solid var(--flag);
+  outline-offset: 2px;
+  color: var(--flag);
+}
 .sourceClearActive {
   align-self: flex-start;
   appearance: none;
@@ -866,6 +1127,88 @@
 }
 .sourceClearActive:hover {
   color: var(--ink-1);
+}
+
+/* The drop rail: the visible "Move to" spine of the other vaults. At rest it is a
+   quiet hint with the destination folders; while a record is being dragged it
+   wakes up and each folder becomes a drop target. The actual move never happens
+   here, only on the destination-naming confirm the drop opens. */
+.moveRail {
+  margin-top: var(--space-4, 16px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--hair-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  transition: opacity 0.14s ease;
+}
+.moveRail:not([data-dragging="true"]) {
+  opacity: 0.7;
+}
+.moveRailLabel {
+  font-family: var(--font-serif-body);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.moveRailChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+.moveChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--paper-2);
+  font-family: var(--font-serif-body);
+  font-size: 13px;
+  color: var(--ink-2);
+  /* dashed while dragging signals "a place to drop", solid at rest */
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease,
+    transform 0.12s ease;
+}
+.moveRail[data-dragging="true"] .moveChip {
+  border-style: dashed;
+  border-color: var(--ink-3);
+}
+.moveChip[data-over="true"] {
+  border-style: solid;
+  border-color: var(--ink-1);
+  background: var(--ink-1);
+  color: var(--paper);
+  transform: translateY(-1px);
+}
+/* The chip is the only drop target; its children must not fire dragenter/leave,
+   or the highlight flickers as the cursor crosses the folder mark and the name. */
+.moveChip > * {
+  pointer-events: none;
+}
+.moveChipMark {
+  flex: none;
+}
+.moveChipName {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The active-record note inside the move confirm: a calm aside in the dialog body,
+   never alarm (oxblood stays reserved for refusal and delete). */
+.moveActiveNote {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
 }
 .srOnly {
   position: absolute;
@@ -887,45 +1230,98 @@
   max-width: 56rem;
 }
 
-/* The verify record picker: which loaded record the deterministic check runs
-   against. Sits above the verify sheet, aligned to its 920px measure. */
-.recordBar {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3, 12px);
-  width: 100%;
-  max-width: 920px;
-  margin: 0 auto;
-  padding: 20px 40px 0;
-}
-.recordBarLabel {
-  font-family: var(--font-serif-body);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.recordBarSelect {
+/* The lectern's "pick a loaded record" control: choose an already-ingested
+   record to check against without leaving for Sources. Sits in the lectern's
+   source line beside the upload affordance; same paper/ink language. */
+.lecternRecordSelect {
   font-family: var(--font-serif-body);
   font-size: 14px;
   color: var(--ink-1);
   background: var(--sheet);
   border: 1px solid var(--hair);
-  border-radius: 4px;
-  padding: 6px 12px;
-  max-width: 30rem;
+  border-radius: 999px;
+  padding: 8px 16px;
+  max-width: 100%;
   cursor: pointer;
   transition:
     border-color 0.14s ease,
     background 0.14s ease;
 }
-.recordBarSelect:hover {
+.lecternRecordSelect:hover {
   border-color: var(--ink-3);
 }
-.recordBarHint {
-  font-family: var(--font-serif-body);
-  font-size: 12.5px;
+
+/* The verdict, unfolded in place below the sheet (and reused in the saved-brief
+   reader). Carries the verifyScope token set, so it reads as a paper exhibit on
+   the lectern's desk: a quiet card, padded like the verify root, that holds the
+   shared VerifyResults. Once present, the lectern stops centring (see [data-active]). */
+.lecternVerdict {
+  width: min(816px, 92vw);
+  margin: 40px auto 0;
+  text-align: left;
+  padding: var(--space-6, 32px);
+  border-radius: 6px;
+}
+
+/* When a verdict is in flight or shown, the title page yields to its own result:
+   it stops centring and scrolls from the top, and the hero condenses to a compact
+   header so the sheet and the verdict, not the wordmark, carry the weight. */
+.lectern[data-active="true"] {
+  justify-content: flex-start;
+  padding-top: 4vh;
+}
+
+.lectern[data-active="true"] .lecternMark {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 10px;
+}
+
+.lectern[data-active="true"] .wordmark {
+  font-size: 32px;
+}
+
+/* The cold-open promise has done its job once there is a verdict on the page;
+   the verdict's own scope note carries the honest framing from here. */
+.lectern[data-active="true"] .tagline {
+  display: none;
+}
+
+.lectern[data-active="true"] .sheet {
+  margin-top: 22px;
+}
+
+.lectern[data-active="true"] .lecternMeta {
+  margin-top: 18px;
+}
+
+/* ---------- saved-brief reader (opened from the Shelf) ---------- */
+.reader {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.readerBack {
+  appearance: none;
+  border: none;
+  background: none;
+  margin-bottom: 18px;
+  padding: 4px 0;
   color: var(--ink-3);
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.readerBack:hover {
+  color: var(--ink-1);
+}
+.reader .lecternVerdict {
+  margin-top: 0;
+  width: 100%;
 }

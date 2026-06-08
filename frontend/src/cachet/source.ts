@@ -14,12 +14,15 @@
  */
 import { signal } from "@preact/signals";
 
-import { documents as documentsApi } from "@/services/api/endpoints";
+import { documents as documentsApi, vaults as vaultsApi } from "@/services/api/endpoints";
 import type { DocumentUploadResponse } from "@/services/api/endpoints";
 import { uploadWithProgress } from "@/services/upload/withProgress";
 
-/** The default project a record is filed into when the user does not pick one. */
-export const DEFAULT_PROJECT = "Sources";
+/** The default vault a record is filed into when the user does not pick one.
+ *  Matches the engine's schema default subject_name ('General'). The folder
+ *  concept reads as "vault" in the UI; the identifier stays `project` (mapping to
+ *  subject_name) until the vault-management redesign renames the internals. */
+export const DEFAULT_PROJECT = "General";
 
 export interface LoadedSource {
   docId: string;
@@ -78,14 +81,33 @@ export const sourceDocs = signal<SourceDoc[] | null>(null);
 /** Non-blocking load error for the records list (the dropzone still works). */
 export const sourcesError = signal<string | null>(null);
 
-/** Distinct project names across loaded records, plus the default. Derived (not a
- *  second endpoint) so the picker is always consistent with what is actually filed. */
+/** Every vault (folder) the backend knows about: the union of the subjects records
+ *  are filed under and the empty-vault registry. `null` until first loaded. This is
+ *  what lets an empty, just-created vault show before it holds any record. */
+export const vaultNames = signal<string[] | null>(null);
+
+/** Distinct vault names: the registry (so empty vaults show), the subjects records
+ *  are filed under, and the default. Merged so a picker is consistent whether a
+ *  vault was created empty or implied by a filed record. */
 export function knownProjects(): string[] {
-  const set = new Set<string>([DEFAULT_PROJECT]);
-  for (const d of sourceDocs.value ?? []) {
-    if (d.project) set.add(d.project);
+  // Vault identity is case-insensitive: "General" and "general" are one vault, not
+  // two. The first spelling seen wins, in priority order: the registry (the
+  // canonical folder name), then the default, then the subjects records are filed
+  // under. So a folder created as "General" keeps that spelling even if a record
+  // was filed under "general".
+  const byLower = new Map<string, string>();
+  const add = (name: string) => {
+    const key = name.toLowerCase();
+    if (!byLower.has(key)) byLower.set(key, name);
+  };
+  for (const name of vaultNames.value ?? []) {
+    if (name) add(name);
   }
-  return [...set].sort((a, b) => a.localeCompare(b));
+  add(DEFAULT_PROJECT);
+  for (const d of sourceDocs.value ?? []) {
+    if (d.project) add(d.project);
+  }
+  return [...byLower.values()].sort((a, b) => a.localeCompare(b));
 }
 
 /** Load the full list of ingested records from the engine. Errors surface in
@@ -106,6 +128,33 @@ export async function refreshSources(): Promise<void> {
     sourcesError.value = e instanceof Error ? e.message : "Your records could not be loaded.";
     if (sourceDocs.value === null) sourceDocs.value = [];
   }
+}
+
+/** Load the vault list (registry + filed subjects) so empty vaults show. Errors are
+ *  non-fatal: the records list still derives its own vaults, so a failed vault fetch
+ *  just hides the empty ones rather than breaking the page. */
+export async function refreshVaults(): Promise<void> {
+  try {
+    const { vaults } = await vaultsApi.list();
+    vaultNames.value = vaults;
+  } catch {
+    if (vaultNames.value === null) vaultNames.value = [];
+  }
+}
+
+/** Create a (possibly empty) vault, then resync the list from the response. Throws
+ *  on failure (e.g. a blank name); the caller surfaces it. */
+export async function createVault(name: string): Promise<void> {
+  const { vaults } = await vaultsApi.create(name);
+  vaultNames.value = vaults;
+}
+
+/** Forget an empty vault. The backend refuses (409) if any record is still filed
+ *  under it, so this throws rather than silently moving records; the caller surfaces
+ *  the message. Resyncs both the vault list and the records on success. */
+export async function deleteVault(name: string): Promise<void> {
+  await vaultsApi.remove(name);
+  await Promise.all([refreshVaults(), refreshSources()]);
 }
 
 /** Upload a file as a record, filed into `project`, and ingest it. Resolves once the
@@ -158,4 +207,17 @@ export function setActiveRecord(doc: SourceDoc): void {
  *  Does not delete the record from the library. */
 export function clearSource(): void {
   loadedSource.value = null;
+}
+
+/** Permanently delete a record from the library and everything Cachet ingested
+ *  from it (chunks, nodes, anchors, embeddings). Irreversible. If the deleted
+ *  record was the active one, the next verify is left with nothing to check
+ *  against (the lectern's refusal CTA then guides the user back here). Refreshes
+ *  the list so the row disappears. Throws on failure; the caller surfaces it. */
+export async function deleteDocument(docId: string): Promise<void> {
+  await documentsApi.delete(docId);
+  if (loadedSource.value?.docId === docId) {
+    loadedSource.value = null;
+  }
+  await refreshSources();
 }
