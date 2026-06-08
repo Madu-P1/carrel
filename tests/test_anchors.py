@@ -46,6 +46,32 @@ class MoneyAnchorTests(unittest.TestCase):
             100_000_000, _first("one million dollars ($1,000,000)", "money").canonical_value
         )
 
+    def test_word_form_money_without_numeral(self) -> None:
+        # An AI summary that paraphrases "$1,000,000" as "one million dollars" drops
+        # the numeral; the spelled-out form must still anchor to cents so the
+        # parametric-contradiction catch can fire instead of an honest could-not-check.
+        cases = {
+            "the cap is one million dollars": 100_000_000,
+            "a fee of a million dollars": 100_000_000,
+            "five hundred thousand dollars": 50_000_000,
+            "ten thousand dollars": 1_000_000,
+            "two billion dollars": 200_000_000_000,
+        }
+        for text, cents in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(cents, _first(text, "money").canonical_value)
+
+    def test_word_form_with_numeral_counts_the_figure_once(self) -> None:
+        # "one million dollars ($1,000,000)" is a single figure: the spelled-out form
+        # defers to the numeral via a lookahead so the amount is not double-counted.
+        self.assertEqual(1, len(_of("one million dollars ($1,000,000)", "money")))
+
+    def test_compound_word_number_is_could_not_check_not_a_wrong_value(self) -> None:
+        # "twenty-five million" is outside the bounded grammar. It must yield NO money
+        # anchor (an honest could-not-check), never a wrong $5,000,000 from matching
+        # "five" inside "twenty-five".
+        self.assertEqual([], _of("twenty-five million dollars", "money"))
+
     def test_adjective_scale_word_does_not_over_scale(self) -> None:
         # "$5 Million-dollar deal" is $5, not $5,000,000 ("Million" is an adjective).
         self.assertEqual(500, _first("a $5 Million-dollar deal", "money").canonical_value)

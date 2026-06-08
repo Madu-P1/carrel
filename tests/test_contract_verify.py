@@ -16,6 +16,25 @@ class ParametricContradictionTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("money", v.anchor_type)
 
+    def test_word_form_money_mismatch_is_a_contradiction(self) -> None:
+        # The AI summary drops the numeral ("one million dollars"); the executed
+        # contract carries the digit ($500,000). The spelled-out claim must still be
+        # caught as a contradiction, not slip to an honest could-not-check.
+        v = verify_claim_against_clause(
+            "The liability cap is one million dollars.",
+            "in no event shall the aggregate liability exceed $500,000",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("money", v.anchor_type)
+
+    def test_word_form_money_match_is_present(self) -> None:
+        # The same spelled-out amount agreeing with the contract numeral is a match.
+        v = verify_claim_against_clause(
+            "The liability cap is one million dollars.",
+            "liability is capped at $1,000,000 in the aggregate",
+        )
+        self.assertEqual("present", v.disposition)
+
     def test_duration_mismatch_is_a_contradiction(self) -> None:
         v = verify_claim_against_clause(
             "Confidentiality survives termination for 5 years.",
