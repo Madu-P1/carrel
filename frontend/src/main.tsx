@@ -87,6 +87,10 @@ if (import.meta.env.VITE_CACHET_ONLY === "true") {
   // study chrome. Default off, so an unset flag leaves the study app unchanged.
   document.documentElement.classList.remove("theme-dark");
   document.documentElement.classList.add("theme-light");
+  // The tab title is "Einstein" in index.html (the study app's legacy name).
+  // Cachet is its own product, so name the window for it. Cachet build only;
+  // the study app keeps its title.
+  document.title = "Cachet";
   render(<CachetApp />, root);
 } else {
   initializeTheme();
