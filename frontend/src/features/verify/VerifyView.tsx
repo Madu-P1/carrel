@@ -296,37 +296,63 @@ interface VerifySummaryProps {
   dispositions: ClaimDisposition[];
 }
 
-function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
+interface VerdictSummaryHeadline {
+  text: string;
+  /** True only when a deterministic flag (citation_not_found / claim_unsupported)
+   * is present, so the headline wears the oxblood alarm. could_not_check (an honest
+   * refusal) and proposition_unsupported / assessed (assistive judgments) are NOT
+   * alarms: a draft of only those reads the neutral "could not be verified" line.
+   * Folding could_not_check into the alarm made a single unanchored-but-correct
+   * sentence read as a five-alarm "needs review", which is the bug this fixes. */
+  problem: boolean;
+}
+
+export function verdictSummaryHeadline(dispositions: ClaimDisposition[]): VerdictSummaryHeadline {
   const total = dispositions.length;
   const count = (kind: ClaimDisposition["kind"]) =>
     dispositions.filter((d) => d.kind === kind).length;
-  const citationNotFound = count("citation_not_found");
-  const propositionUnsupported = count("proposition_unsupported");
-  const claimUnsupported = count("claim_unsupported");
-  const couldNotCheck = count("could_not_check");
-  const supported = count("supported");
-  const needsReview = citationNotFound + propositionUnsupported + claimUnsupported + couldNotCheck;
+  const flagged = count("citation_not_found") + count("claim_unsupported");
+  const notVerified =
+    count("proposition_unsupported") + count("could_not_check") + count("assessed");
+  if (flagged > 0) {
+    return { text: `${flagged} of ${total} statements need your review.`, problem: true };
+  }
+  if (notVerified > 0) {
+    return {
+      text: `${notVerified} of ${total} statements could not be verified against your sources.`,
+      problem: false
+    };
+  }
+  return {
+    text: `All ${total} statements are supported by the sources you provided.`,
+    problem: false
+  };
+}
+
+function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
+  const count = (kind: ClaimDisposition["kind"]) =>
+    dispositions.filter((d) => d.kind === kind).length;
+  const headline = verdictSummaryHeadline(dispositions);
 
   // Counts only, problems first. No pass-rate, no percentage: a verdict is a
   // finding, not a score.
   const stats: Array<{ label: string; value: number }> = [
-    { label: "Citations not found", value: citationNotFound },
-    { label: "Source does not support", value: propositionUnsupported },
-    { label: "Unsupported", value: claimUnsupported },
-    { label: "Could not verify", value: couldNotCheck },
-    { label: "Supported", value: supported }
+    { label: "Citations not found", value: count("citation_not_found") },
+    { label: "Source does not support", value: count("proposition_unsupported") },
+    { label: "Unsupported", value: count("claim_unsupported") },
+    { label: "Could not verify", value: count("could_not_check") },
+    { label: "Supported", value: count("supported") }
   ].filter((s) => s.value > 0);
 
   return (
     <div className={styles.summary} role="status" aria-live="polite">
       <p
-        className={[styles.summaryHeadline, needsReview > 0 ? styles.summaryHeadlineProblem : ""].join(
-          " "
-        )}
+        className={[
+          styles.summaryHeadline,
+          headline.problem ? styles.summaryHeadlineProblem : ""
+        ].join(" ")}
       >
-        {needsReview > 0
-          ? `${needsReview} of ${total} statements need your review.`
-          : `All ${total} statements are supported by the sources you provided.`}
+        {headline.text}
       </p>
       <div className={styles.summaryRow}>
         {stats.map((s) => (
