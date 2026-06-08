@@ -56,6 +56,26 @@ _MONEY = re.compile(
     re.IGNORECASE,
 )
 
+# Word-form money with no numeral ("one million dollars", "five hundred thousand
+# dollars", "a billion dollars"). Bounded on purpose: a single leading number word
+# (one..twenty, or "a"), an optional "hundred", and a scale word. An AI summary that
+# paraphrases "$1,000,000" as "one million dollars" drops the numeral the digit
+# _MONEY detector needs; without this the claim carries no money anchor and the
+# parametric-contradiction catch cannot fire. The trailing negative lookahead
+# defers to the digit form in the "one million dollars ($1,000,000)" convention so
+# the figure is counted once. Compound numbers ("twenty-five million", "one and a
+# half million") and bare hundreds ("five hundred dollars") are out of scope and
+# stay an honest could-not-check, never a wrong value: the (?<![\w-]) guard stops
+# "five" matching inside "twenty-five".
+_MONEY_WORD = re.compile(
+    r"(?<![\w-])(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+    r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|a)\s+"
+    r"(?:(?P<hundred>hundred)\s+)?"
+    r"(?P<scale>thousand|million|billion)\s+(?:dollars|USD)\b"
+    r"(?!\s*\(?\s*\$)",
+    re.IGNORECASE,
+)
+
 # Matches "5 years", "five (5) years", "30 calendar days". The digit may be bare
 # or in the legal "word (digit)" convention; an optional spelled-out number word
 # is captured for display (restricted to number words so it cannot grab "of").
@@ -130,6 +150,29 @@ _MONEY_SCALE = {
     "b": 1_000_000_000,
 }
 _DURATION_DAYS = {"year": 365, "month": 30, "week": 7, "day": 1}
+_MONEY_WORD_UNITS = {
+    "a": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
 
 
 def _money_cents(text: str) -> int | None:
@@ -144,6 +187,15 @@ def _money_cents(text: str) -> int | None:
     if scale:
         amount *= _MONEY_SCALE[scale.lower()]
     return round(amount * 100)
+
+
+def _money_word_cents(unit: str, hundred: str | None, scale: str) -> int:
+    """Canonical integer cents for a spelled-out money span (no numeral)."""
+    amount = _MONEY_WORD_UNITS[unit.lower()]
+    if hundred:
+        amount *= 100
+    amount *= _MONEY_SCALE[scale.lower()]
+    return amount * 100
 
 
 def _duration_days(num: int, unit: str) -> int:
@@ -223,6 +275,9 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         anchors.append(Anchor("quote", text, start, end))
     for m in _MONEY.finditer(span):
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), _money_cents(m.group(0))))
+    for m in _MONEY_WORD.finditer(span):
+        cents = _money_word_cents(m.group("unit"), m.group("hundred"), m.group("scale"))
+        anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents))
     for m in _DURATION.finditer(span):
         num = int(m.group("paren") or m.group("num"))
         anchors.append(
