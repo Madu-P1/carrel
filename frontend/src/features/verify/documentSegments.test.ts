@@ -72,6 +72,32 @@ describe("segmentDraft — verbatim preservation", () => {
   });
 });
 
+describe("untreated prose contributes no card", () => {
+  // The untreated / could-not-check split (engine side: services/legal/
+  // deterministic_envelope.py + services/verify.py). The backend emits NO card for
+  // an anchor-free sentence, so the only cards reaching the frontend are the treated
+  // ones. The renderer must show every cardless sentence as plain draft text and
+  // never synthesize a claim span for it.
+  it("a draft with a card for only one sentence leaves the rest as plain text", () => {
+    // Only the middle sentence has a card; the two anchor-free sentences around it
+    // are untreated (no card emitted by the backend).
+    const segs = segmentDraft(DRAFT, [card(1, { start: 20, end: 40 })]);
+    expect(claimSegs(segs)).toHaveLength(1);
+    expect(claimSegs(segs)[0].text).toContain("Beta");
+    const textRuns = segs
+      .filter((s) => s.kind === "text")
+      .map((s) => s.text)
+      .join("");
+    expect(textRuns).toContain("Alpha holds firmly.");
+    expect(textRuns).toContain("Gamma concurs fully.");
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT); // no loss
+  });
+
+  it("a pure-prose draft (no cards at all) is a single plain-text document", () => {
+    expect(segmentDraft(DRAFT, [])).toEqual([{ kind: "text", text: DRAFT }]);
+  });
+});
+
 describe("placedSpans — only placed, valid ranges become spans", () => {
   it("unplaced claims contribute no span", () => {
     const segs = segmentDraft(DRAFT, [card(0, { placed: false })]);

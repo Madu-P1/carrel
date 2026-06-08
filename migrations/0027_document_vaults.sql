@@ -1,4 +1,4 @@
--- 0025_document_vaults.sql
+-- 0027_document_vaults.sql
 --
 -- Persist a "vault" (a document folder) even when it holds no documents.
 --

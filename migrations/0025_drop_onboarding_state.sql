@@ -1,0 +1,29 @@
+-- 0025_drop_onboarding_state.sql
+--
+-- P4a of the Cachet strangle (ADR-0011): the first schema-drop slice.
+--
+-- Drops onboarding_state, a key-value flags table (demo-library seed status)
+-- added in 0010 for the onboarding feature whose entire backend was deleted in
+-- P3 slice 1 (#139, "delete dashboard/onboarding/exports backend"). It carries
+-- no live SQL anywhere (services / routes / ai / db.py / main.py), no inbound
+-- foreign key, and no test reference, so the drop is collateral-free. The data
+-- is local demo-seed flags only.
+--
+-- Deliberately ONE table: this establishes the drop pattern on the safest
+-- possible candidate. The other deleted-feature tables drop in P4b with their
+-- entanglements handled together:
+--   * artifact_exports  (exports feature, deleted) is a 0001 baseline member of
+--                        the _has_initial_schema_baseline fingerprint and is
+--                        cleared by tests/test_learning_os.py::clear_seed_data;
+--                        both must be updated alongside its drop.
+--   * quiz_log          carries zero live SQL but belongs to the quiz feature
+--                        (routes/study.py), which is still alive; it drops when
+--                        that feature is strangled, not before.
+--
+-- Operational note: the schema is migrations-sourced and never ALTERed at
+-- startup. Snapshot the DB (the existing SQLite .backup path) before applying on
+-- any database whose data matters; a dropped table is not recoverable from the
+-- schema. onboarding_state is not in the legacy baseline fingerprint (it post-
+-- dates 0001), so no db.py change is required.
+
+DROP TABLE IF EXISTS onboarding_state;

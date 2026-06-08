@@ -30,15 +30,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # - CARREL_LOCAL_API_TOKEN: a fixed token we also inject into the served HTML so
 #   the browser's mutating calls (POST /api/verify) carry it.
 # - CACHET_DETERMINISTIC_VERIFY=1: belt-and-suspenders. /api/verify already
-#   defaults to the deterministic, no-LLM, offline engine; this pins it so a
-#   stray env can never flip the demo onto the cloud path mid-presentation.
+#   defaults to the deterministic, no-LLM, offline engine; this HARD-PINS it
+#   (assignment, not setdefault) so a stray CACHET_DETERMINISTIC_VERIFY=0 in a
+#   dotfile can never flip the privacy demo onto the off-device cloud path while
+#   the banner still says "offline". The promise must hold unconditionally.
 os.environ.setdefault("CARREL_LOCAL_API_TOKEN", "cachet-demo-token")
-os.environ.setdefault("CACHET_DETERMINISTIC_VERIFY", "1")
-# Sentinel CourtListener token so the litigator case-existence guard passes. The
-# deterministic path injects the bundled local-caselaw MockTransport (offline);
-# this token never leaves the device. Without it, case-existence returns "could
-# not run" and every cite reads could-not-check. See services/legal/local_caselaw.py.
+os.environ["CACHET_DETERMINISTIC_VERIFY"] = "1"
+# Sentinel CourtListener token. The deterministic path injects the bundled
+# local-caselaw MockTransport (offline) and the case-existence guard now bypasses
+# the token whenever a client is injected (courtlistener.py), so this is no longer
+# load-bearing for the offline demo; kept as defence-in-depth and for the
+# opt-out LLM path. This token never leaves the device.
 os.environ.setdefault("COURTLISTENER_API_TOKEN", "local")
+# Fast ingest: the deterministic quote/cite catch reads full document text, not
+# vectors, so skip per-chunk embedding on upload. Cuts a huge contract from
+# ~8.7 min to ~2s (ce74049d0). Cachet-ingested docs have no vectors (FTS +
+# deterministic catch still work; vectors are backfillable); Carrel keeps true.
+os.environ.setdefault("EMBED_ON_INGEST", "false")
 
 import uvicorn
 from fastapi import Response

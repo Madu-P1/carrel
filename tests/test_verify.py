@@ -212,6 +212,60 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
             self.assertIsNone(card[key])
 
 
+class CaseVerdictDerivationTests(unittest.TestCase):
+    """Direct coverage for `_verdict_from_case_verdicts` and the LLM-path
+    parser-divergence claim that previously produced a false accusation.
+    """
+
+    def test_existing_case_is_verified(self) -> None:
+        batch = {"ok": True, "verdicts": [{"citation": "576 U.S. 644", "exists": True}]}
+        self.assertEqual("verified", verify_service._verdict_from_case_verdicts((batch,)))
+
+    def test_missing_case_is_unsupported(self) -> None:
+        batch = {"ok": True, "verdicts": [{"citation": "123 Foo 456", "exists": False}]}
+        self.assertEqual("unsupported", verify_service._verdict_from_case_verdicts((batch,)))
+
+    def test_failed_batch_is_unknown(self) -> None:
+        batch = {"ok": False, "verdicts": []}
+        self.assertEqual("unknown", verify_service._verdict_from_case_verdicts((batch,)))
+
+    def test_ok_batch_with_zero_verdicts_is_unknown_not_unsupported(self) -> None:
+        # Parser divergence: eyecite recognized a cite the live CourtListener
+        # parser did not, so the batch ran ok but examined no case. That is a
+        # could-not-check, never the accusatory "a cited case does not exist."
+        batch = {
+            "claim_index": 0,
+            "ok": True,
+            "verdicts": [],
+            "error_code": None,
+            "error_message": None,
+        }
+        self.assertEqual("unknown", verify_service._verdict_from_case_verdicts((batch,)))
+
+    def test_llm_path_parser_divergence_claim_reads_unknown(self) -> None:
+        # End-to-end through the per-claim mapper on the LLM tutor path (no
+        # could_not_check_reason set): a scanned cite with an empty-ok batch must
+        # not read "unsupported" with a null reason -- that is a false accusation.
+        card = verify_service._claim_dict_to_verdict(
+            {
+                "text": "Per Smith v. Jones, 123 Foo 456.",
+                "citations": [],
+                "case_verdicts": [
+                    {
+                        "claim_index": 0,
+                        "ok": True,
+                        "verdicts": [],
+                        "error_code": None,
+                        "error_message": None,
+                    }
+                ],
+            },
+            0,
+        )
+        self.assertEqual("unknown", card.verdict)
+        self.assertIsNone(card.unsupported_reason)
+
+
 class VerifyRouteSmokeTests(unittest.TestCase):
     """Carrel V2 Stage 1: confirms the /api/verify route is registered,
     forwards to verify_draft, and serializes the result the same way

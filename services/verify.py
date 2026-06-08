@@ -134,11 +134,12 @@ def _verify_framed_question(draft: str) -> str:
 
 def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
     """Litigator: derive the top-line verdict from case-existence results."""
-    any_missing = any_failed = any_exists = False
+    any_missing = any_failed = any_exists = examined = False
     for cv in case_verdicts:
         if not cv.get("ok", True):
             any_failed = True
         for case in cv.get("verdicts") or []:
+            examined = True
             if case.get("caption_mismatch"):
                 any_missing = True  # resolves by number, but not the case named
             elif case.get("exists"):
@@ -151,7 +152,12 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
         return "unknown"  # verification could not run
     if any_exists:
         return "verified"
-    return "unsupported"
+    if examined:
+        return "unsupported"  # cases were checked, none resolved
+    # An ok batch that yielded zero inner verdicts: CourtListener ran but had
+    # nothing to check (e.g. eyecite recognized a cite the live parser did not).
+    # That is a could-not-check, never the accusatory "a cited case does not exist."
+    return "unknown"
 
 
 def _verdict_from_contract(contract_verdict: Dict[str, Any]) -> VerifyVerdict:
@@ -464,21 +470,38 @@ def _verify_result_from_envelope(
     placement_by_index = {p.claim_index: placement_to_dict(p) for p in placements}
 
     verdicts: List[VerifyClaimVerdict] = []
+    treated_indices: set[int] = set()
     for index, claim_dict in enumerate(claims):
         if not isinstance(claim_dict, dict):
             continue
+        if claim_dict.get("untreated"):
+            # Anchor-free prose: nothing checkable, so it is not a finding. It never
+            # becomes a claim card or a tray entry; it renders as plain draft text
+            # (the untreated / could-not-check split). Any placement the aligner
+            # computed for it is simply unused.
+            continue
+        treated_indices.add(index)
         verdicts.append(
             _claim_dict_to_verdict(claim_dict, index, placement=placement_by_index.get(index))
         )
 
-    base_index = len(verdicts)
+    # Span cards start after the highest claim_index actually emitted. Deriving the
+    # base from the max (not len) keeps a span index from colliding with an emitted
+    # claim card when untreated/non-dict claims left gaps in the enumerate sequence.
+    base_index = max((v.claim_index for v in verdicts), default=-1) + 1
     for offset, span in enumerate(unsupported_spans):
         if not span:
             continue
         verdicts.append(_unsupported_span_to_verdict(str(span), base_index + offset))
 
     if not verdicts:
-        verdicts.append(_engine_failure_verdict(cleaned, engine_error))
+        # Zero cards is a SUCCESSFUL outcome when the engine produced only untreated
+        # (anchor-free) claims: a clean prose draft renders as plain text, not a wall
+        # of cards and not a lone engine-failure card. Reserve the engine-failure card
+        # for a genuine failure: the engine errored, or produced no claims at all
+        # (empty retrieval / provider error on the LLM path).
+        if engine_error is not None or not claims:
+            verdicts.append(_engine_failure_verdict(cleaned, engine_error))
 
     verified = sum(1 for v in verdicts if v.verdict == "verified")
     unsupported = sum(1 for v in verdicts if v.verdict == "unsupported")
@@ -515,7 +538,9 @@ def _verify_result_from_envelope(
         error=engine_error,
         provider=str(envelope.get("provider") or ""),
         quote_results=quote_results,
-        unplaced=tuple(unplaced_local),
+        # Only reference claims that actually became cards; an untreated claim has no
+        # card, so it must never appear in the unplaced tray.
+        unplaced=tuple(i for i in unplaced_local if i in treated_indices),
     )
 
 
@@ -787,8 +812,12 @@ def verify_draft_stream(
             for index, claim_dict in enumerate(engine_claims):
                 if not isinstance(claim_dict, dict):
                     continue
+                if claim_dict.get("untreated"):
+                    # Untreated prose is never a card (the LLM path never emits it, but
+                    # the invariant holds uniformly across both card-building loops).
+                    continue
                 cards.append(_claim_dict_to_verdict(claim_dict, index))
-            base_index = len(cards)
+            base_index = max((c.claim_index for c in cards), default=-1) + 1
             for offset, span in enumerate(spans):
                 if not span:
                     continue

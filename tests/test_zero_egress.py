@@ -330,9 +330,12 @@ class ContractZeroEgressTests(unittest.TestCase):
                 embedder=self._embedder,
             )
         # The selector engaged but the uncached model failed loud offline: no assessment,
-        # no guess, and - proven by the ban not raising - no socket.
+        # no guess, and - proven by the ban not raising - no socket. With no assessment
+        # the anchor-free sentence is not promoted out of untreated, so it stays
+        # untreated (no card), never a could-not-check.
         claim = env["claims"][0]
-        self.assertIn("could_not_check_reason", claim)
+        self.assertTrue(claim.get("untreated"))
+        self.assertNotIn("could_not_check_reason", claim)
         self.assertNotIn("t1_assessment", claim)
 
 
