@@ -46,12 +46,63 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertTrue(_verdicts(env["claims"][0])[0]["exists"])
         self.assertEqual("Brown v. Board of Education", _verdicts(env["claims"][0])[0]["case_name"])
 
-    def test_anchor_free_sentence_is_could_not_check_not_dropped(self) -> None:
-        env = self._build("The defendant acted in good faith throughout.")
+    def test_anchor_free_sentence_is_untreated_not_a_card(self) -> None:
+        # An anchor-free sentence has nothing checkable, so it is UNTREATED: the claim
+        # carries the untreated marker (never a could-not-check reason) and produces no
+        # verdict card. "Nothing to check here" is not a finding; surfacing it as a
+        # could-not-verify card was the alert fatigue this split removes.
+        draft = "The defendant acted in good faith throughout."
+        env = self._build(draft)
         self.assertEqual([], env["unsupported_spans"])
         self.assertEqual(1, len(env["claims"]))
-        self.assertIn("could_not_check_reason", env["claims"][0])
-        self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+        claim = env["claims"][0]
+        self.assertTrue(claim.get("untreated"))
+        self.assertNotIn("could_not_check_reason", claim)
+
+    def test_pure_prose_draft_yields_zero_claim_cards(self) -> None:
+        # The headline regression: a clean prose draft must NOT produce a wall of
+        # could-not-verify cards. Every sentence is untreated, so the envelope ->
+        # VerifyResult mapping emits zero cards (a successful run, not an engine
+        # failure). The draft renders as plain text.
+        draft = (
+            "The defendant acted in good faith throughout. "
+            "The parties cooperated at every stage of the dispute."
+        )
+        env = self._build(draft)
+        self.assertTrue(all(c.get("untreated") for c in env["claims"]))
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        self.assertEqual((), result.claim_verdicts)
+        self.assertEqual(0, result.summary.total)
+        self.assertTrue(result.ok)  # zero cards is success here, not failure
+
+    def test_real_cite_plus_prose_yields_one_card_for_the_cite_only(self) -> None:
+        # A mixed draft: the cited sentence becomes a card; the anchor-free prose
+        # sentence beside it is untreated and contributes no card.
+        draft = (
+            "Segregation was rejected in 347 U.S. 483. "
+            "The court reasoned carefully about the meaning of equality."
+        )
+        env = self._build(draft)
+        self.assertEqual(2, len(env["claims"]))
+        self.assertNotIn("untreated", env["claims"][0])  # the cite
+        self.assertTrue(env["claims"][1].get("untreated"))  # the prose
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        self.assertEqual(1, len(result.claim_verdicts))
+        self.assertEqual("verified", result.claim_verdicts[0].verdict)
+
+    def test_anchor_without_a_source_stays_a_could_not_check_card(self) -> None:
+        # A sentence with a checkable value (a money anchor) but no contract loaded to
+        # check it against: a check was warranted and could not complete, so it stays a
+        # could-not-check card, never untreated. This is the half of the split that
+        # MUST keep its card.
+        env = self._build("The aggregate liability cap is $5,000,000.")
+        self.assertEqual(1, len(env["claims"]))
+        claim = env["claims"][0]
+        self.assertNotIn("untreated", claim)
+        self.assertIn("could_not_check_reason", claim)
+        self.assertIn("no source", claim["could_not_check_reason"].lower())
+        card = _claim_dict_to_verdict(claim, 0)
+        self.assertEqual("unknown", card.verdict)
 
     def test_law_citation_is_not_treated_as_a_missing_case(self) -> None:
         # A regulation/statute cite (C.F.R., U.S.C., an EU Directive) is not a case.

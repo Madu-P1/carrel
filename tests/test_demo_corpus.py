@@ -3,7 +3,7 @@
 Runs the real deterministic engine over the pre-vetted corpus in demo/ and
 asserts the catch genuinely fires: a fabricated cite is not found, a real cite
 exists, a money contradiction fires, a matching term reads present, and an
-anchor-free claim lands in the honest could-not-check tray.
+anchor-free claim is untreated (no card; it reads as plain draft text).
 """
 
 from __future__ import annotations
@@ -162,9 +162,14 @@ class ContractCorpusTests(unittest.TestCase):
         claim = self._verdict_for("term of the agreement")
         self.assertEqual("present", claim["contract_verdict"]["disposition"])
 
-    def test_best_efforts_claim_is_could_not_check(self) -> None:
+    def test_best_efforts_claim_is_untreated(self) -> None:
+        # "The vendor must use best efforts to protect confidential information." carries
+        # no checkable anchor (the source's defined term is "Confidential Information",
+        # capitalized; the lowercase prose does not match the case-sensitive detector),
+        # so it is untreated: no card, no could-not-check reason. It reads as plain text.
         claim = self._verdict_for("best efforts")
-        self.assertIn("could_not_check_reason", claim)
+        self.assertTrue(claim.get("untreated"))
+        self.assertNotIn("could_not_check_reason", claim)
 
 
 if __name__ == "__main__":

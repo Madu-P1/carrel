@@ -415,15 +415,6 @@
   line-height: 1.4;
 }
 
-.emptyState {
-  padding: var(--space-6);
-  border-radius: var(--radius-2);
-  border: 1px dashed var(--hairline);
-  background: var(--surface-1);
-  text-align: center;
-  color: var(--text-tertiary);
-}
-
 .errorBanner {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-2);

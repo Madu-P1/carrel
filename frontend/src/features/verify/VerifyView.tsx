@@ -742,7 +742,13 @@ export function VerifyView({
             </div>
           ) : null}
 
-          {items.length > 0 && response ? (
+          {response ? (
+            // Render the draft as the document either way. With claim cards it shows
+            // their inline marks and margin notes; with none (a clean prose draft where
+            // every sentence is untreated) it shows the draft as plain text, no marks,
+            // no tray, and no summary above. Untreated prose is not a finding, so it is
+            // never a card and never a "could not verify" message; it just reads back as
+            // the draft. A genuine engine failure still surfaces its single card here.
             <WorkspaceMargin
               draftText={response.draft_text ?? draft}
               cards={cards}
@@ -750,11 +756,6 @@ export function VerifyView({
               examined={selected}
               onExamine={(idx) => setSelected(selected === idx ? null : idx)}
             />
-          ) : response ? (
-            <div className={styles.emptyState}>
-              No statements came back from the engine. Load the sources this draft relies on, then
-              verify again.
-            </div>
           ) : null}
         </>
       )}
