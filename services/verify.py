@@ -134,11 +134,12 @@ def _verify_framed_question(draft: str) -> str:
 
 def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
     """Litigator: derive the top-line verdict from case-existence results."""
-    any_missing = any_failed = any_exists = False
+    any_missing = any_failed = any_exists = examined = False
     for cv in case_verdicts:
         if not cv.get("ok", True):
             any_failed = True
         for case in cv.get("verdicts") or []:
+            examined = True
             if case.get("caption_mismatch"):
                 any_missing = True  # resolves by number, but not the case named
             elif case.get("exists"):
@@ -151,7 +152,12 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
         return "unknown"  # verification could not run
     if any_exists:
         return "verified"
-    return "unsupported"
+    if examined:
+        return "unsupported"  # cases were checked, none resolved
+    # An ok batch that yielded zero inner verdicts: CourtListener ran but had
+    # nothing to check (e.g. eyecite recognized a cite the live parser did not).
+    # That is a could-not-check, never the accusatory "a cited case does not exist."
+    return "unknown"
 
 
 def _verdict_from_contract(contract_verdict: Dict[str, Any]) -> VerifyVerdict:
