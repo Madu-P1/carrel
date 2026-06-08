@@ -77,7 +77,6 @@ class LearningOSBackendTests(unittest.TestCase):
                 "note_evidence",
                 "quiz_evidence",
                 "flashcard_evidence",
-                "artifact_exports",
                 "artifact_evidence",
                 "artifacts",
                 "review_events",
