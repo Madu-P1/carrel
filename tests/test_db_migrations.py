@@ -115,6 +115,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 (23, "0023_note_folders.sql"),
                 (24, "0024_briefs.sql"),
                 (25, "0025_drop_onboarding_state.sql"),
+                (26, "0026_drop_artifact_exports.sql"),
             ]
         )
         self.assertEqual(expected_rows, [(row["version"], row["name"]) for row in migration_rows])
@@ -164,9 +165,9 @@ class DatabaseMigrationTests(unittest.TestCase):
         # 0016_nodes_typed, 0017_srs_cards_kind,
         # 0018_srs_cards_kind_drop_check_and_card_pairs,
         # 0022_srs_cards_doc_id, 0023_note_folders, 0024_briefs, and
-        # 0025_drop_onboarding_state. All unconditional, no runtime gate
-        # like sqlite-vec.
-        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 13
+        # 0025_drop_onboarding_state, 0026_drop_artifact_exports. All
+        # unconditional, no runtime gate like sqlite-vec.
+        expected_total = (7 if db.sqlite_vec_runtime_supported() else 6) + 14
         self.assertEqual(expected_total, total)
 
     def test_legacy_database_is_marked_without_reexecuting_migrations(self) -> None:
@@ -208,6 +209,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "0023_note_folders.sql",
                 "0024_briefs.sql",
                 "0025_drop_onboarding_state.sql",
+                "0026_drop_artifact_exports.sql",
             ]
         )
         self.assertEqual(len(expected_names), len(rows))

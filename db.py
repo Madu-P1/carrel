@@ -272,7 +272,6 @@ def _has_initial_schema_baseline(conn: sqlite3.Connection) -> bool:
         "review_events",
         "artifacts",
         "artifact_evidence",
-        "artifact_exports",
         "flashcard_evidence",
         "quiz_evidence",
         "note_evidence",

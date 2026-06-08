@@ -1,0 +1,27 @@
+-- 0026_drop_artifact_exports.sql
+--
+-- P4b of the Cachet strangle (ADR-0011): drop artifact_exports, the per-export
+-- record table for the exports feature whose backend was deleted in P3 slice 1
+-- (#139, "delete dashboard/onboarding/exports backend"). It carries no live SQL
+-- (the only references were the legacy-baseline fingerprint in db.py and the
+-- clear_seed_data helper in tests/test_learning_os.py, both updated alongside
+-- this drop) and no inbound foreign key. Its parent table `artifacts` is KEPT
+-- (still used by the evidence / stale-tracker path); only the exports child dies.
+--
+-- artifact_exports is a 0001 baseline table, so unlike onboarding_state (P4a) it
+-- is also a member of the _has_initial_schema_baseline fingerprint. That
+-- fingerprint marks a legacy un-stamped DB as already-having-applied 0001; a DB
+-- migrated past THIS migration no longer has artifact_exports, so requiring it
+-- would fail v1 detection and try to re-run 0001_initial against an existing
+-- schema. db.py therefore drops it from required_tables (a real legacy v1 DB
+-- still matches the now-smaller required set, since it is a superset).
+--
+-- quiz_log stays in the schema: it is also a baseline fingerprint member but
+-- belongs to the still-live quiz feature (routes/study.py); it drops with that
+-- feature's strangle slice, not here.
+--
+-- Operational note: the schema is migrations-sourced and never ALTERed at
+-- startup. Snapshot the DB before applying on data that matters; a dropped table
+-- is not recoverable from the schema.
+
+DROP TABLE IF EXISTS artifact_exports;
