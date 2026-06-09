@@ -18,7 +18,7 @@ from unittest import mock
 from services import verify as verify_service
 from services.legal.anchors import extract_anchors
 from services.legal.deterministic_envelope import _grounding_verdict, build_deterministic_envelope
-from services.legal.local_caselaw import local_caselaw_client
+from services.legal.local_caselaw import CorpusManifest, local_caselaw_client
 from services.verify import (
     _claim_dict_to_verdict,
     _verdict_from_case_verdicts,
@@ -375,6 +375,132 @@ class CaptionMismatchTests(unittest.TestCase):
         self.assertFalse(verdict.get("caption_unconfirmed"))
         card = _claim_dict_to_verdict(env["claims"][0], 0)
         self.assertEqual("verified", card.verdict)
+
+
+class CorpusManifestTests(unittest.TestCase):
+    """D13: bounded_corpus comes from the corpus's own manifest, not a constant.
+
+    Only a corpus whose operator attests scope="complete" may let a citation
+    miss read "no such case" (the flagship catch); a demo or unattested corpus
+    folds every miss to the honest could-not-check, and the copy names the
+    denominator (scope, size, snapshot date) so a lawyer knows what was
+    actually checked.
+    """
+
+    def _build_default(self, draft: str) -> dict:
+        # No client injected: the engine builds the demo client itself, so the
+        # DEMO_MANIFEST travels with it (the production default path).
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft)
+
+    def test_demo_manifest_rides_the_default_path(self) -> None:
+        env = self._build_default("As held in 999 U.S. 999, the rule applies.")
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["bounded_corpus"])
+        self.assertEqual("demo", v["corpus_scope"])
+        self.assertEqual(3, v["corpus_case_count"])
+        self.assertEqual("2026-06-05", v["corpus_as_of"])
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unknown", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("3-case demo corpus", reason)
+        self.assertIn("2026-06-05", reason)
+        self.assertIn("does not establish", reason)
+
+    def test_injected_client_without_manifest_stays_bounded_and_unattested(self) -> None:
+        # Conservative fold: an injected corpus that attests nothing is treated
+        # as bounded, and the copy carries no scope it cannot vouch for.
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            env = build_deterministic_envelope(
+                "As held in 999 U.S. 999, the rule applies.", client=local_caselaw_client()
+            )
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["bounded_corpus"])
+        self.assertNotIn("corpus_scope", v)
+        self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+    def test_complete_manifest_turns_a_miss_into_the_catch(self) -> None:
+        # The flagship conversion: a corpus attesting completeness lets a 404
+        # read "no such case as of <date>" (unsupported), not could-not-check.
+        manifest = CorpusManifest(scope="complete", case_count=3, as_of="2026-06-01")
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            env = build_deterministic_envelope(
+                "As held in 999 U.S. 999, the rule applies.",
+                client=local_caselaw_client(),
+                corpus_manifest=manifest,
+            )
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(v["bounded_corpus"])
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unsupported", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("not found", reason.lower())
+        self.assertIn("complete as of 2026-06-01", reason)
+
+    def test_real_cite_still_verifies_under_the_demo_manifest(self) -> None:
+        env = self._build_default(
+            "Segregation was rejected in Brown v. Board of Education, 347 U.S. 483."
+        )
+        self.assertEqual("verified", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+
+class CiteParentheticalMismatchTests(unittest.TestCase):
+    """A real number cited with a wrong year or court refuses, never verifies.
+
+    A wrong court-year parenthetical on a real reporter number is a common
+    hallucination shape (and a common typo), so the honest verdict is the
+    could-not-check refusal naming both readings, never "verified" and never
+    the fabrication accusation.
+    """
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_wrong_year_downgrades_to_could_not_check(self) -> None:
+        env = self._build(
+            "Segregation was rejected in Brown v. Board of Education, 347 U.S. 483 (1990)."
+        )
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["exists"])  # the number resolves
+        self.assertTrue(v.get("year_mismatch"))
+        self.assertEqual(1990, v.get("cited_year"))
+        self.assertEqual(1954, v.get("resolved_year"))
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unknown", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("1954", reason)
+        self.assertIn("1990", reason)
+
+    def test_correct_year_carries_no_mismatch(self) -> None:
+        env = self._build(
+            "Segregation was rejected in Brown v. Board of Education, 347 U.S. 483 (1954)."
+        )
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(v.get("year_mismatch"))
+        self.assertEqual("verified", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+    def test_wrong_court_downgrades_to_could_not_check(self) -> None:
+        env = self._build(
+            "Segregation was rejected in Brown v. Board of Education, 347 U.S. 483 (9th Cir. 1954)."
+        )
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v.get("court_mismatch"))
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unknown", card.verdict)
+        self.assertIn("court", (card.unsupported_reason or "").lower())
+
+    def test_bare_cite_without_parenthetical_is_unaffected(self) -> None:
+        env = self._build("The rule in 347 U.S. 483 controls this dispute.")
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(v.get("year_mismatch"))
+        self.assertFalse(v.get("court_mismatch"))
+
+
+class CaptionMismatchBareCiteTests(unittest.TestCase):
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
 
     def test_bare_citation_without_caption_is_not_flagged(self) -> None:
         env = self._build("The rule in 347 U.S. 483 controls this dispute.")

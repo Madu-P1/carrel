@@ -34,7 +34,12 @@ from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
 from services.legal.citations_eyecite import caption_match_state, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
-from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
+from services.legal.local_caselaw import (
+    DEMO_MANIFEST,
+    CorpusManifest,
+    local_caselaw_client,
+    local_opinion_text,
+)
 from services.legal.quote_check import (
     extract_draft_quote_spans,
     first_letter_variants,
@@ -72,7 +77,9 @@ _ANCHOR_FREE_REASON = (
 )
 
 
-def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
+def _annotate_litigator_verdicts(
+    sentence: str, case_verdicts: list[dict], manifest: CorpusManifest | None = None
+) -> None:
     """Annotate the deterministic litigator verdicts in place.
 
     - ``holding_skipped``: holding-match was deliberately off, so a null holding
@@ -86,17 +93,27 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
       case and the other does not ("Smith v. Board" on Brown's number). The
       refusal state: the verifier downgrades it to could-not-check, never to
       the mismatch flag and never to verified.
+    - ``year_mismatch`` / ``court_mismatch``: the number resolves and the caption
+      fits, but the draft's court-year parenthetical disagrees with the corpus
+      record ("347 U.S. 483 (1990)" on a 1954 case; "(9th Cir.)" on a SCOTUS
+      cite). A common hallucination shape; also a refusal, never an accusation,
+      because a wrong parenthetical on a real number is usually a draft typo.
+      Vacuous when the draft gives no parenthetical.
+    - ``bounded_corpus`` and the ``corpus_*`` fields come from the corpus
+      MANIFEST (D13), not a constant: a demo or unattested corpus folds every
+      miss to could-not-check, while a corpus attesting ``scope="complete"``
+      lets a miss read as the loud "no such case as of <as_of>".
     """
+    bounded = manifest is None or manifest.scope != "complete"
     refs = {r.matched_text: r for r in find_citations(sentence)}
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
-            # The deterministic path checks against the BOUNDED offline corpus. Mark
-            # every verdict so an absent cite reads "outside my coverage" (an honest
-            # could-not-check), never the accusatory "does not exist" that only a
-            # national lookup can honestly claim. A caption mismatch (number resolves
-            # to a different case) is an affirmative finding and still flags below.
-            v["bounded_corpus"] = True
+            v["bounded_corpus"] = bounded
+            if manifest is not None:
+                v["corpus_scope"] = manifest.scope
+                v["corpus_case_count"] = manifest.case_count
+                v["corpus_as_of"] = manifest.as_of
             if not v.get("exists") or not v.get("case_name"):
                 continue
             ref = refs.get(v.get("citation"))
@@ -107,6 +124,17 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
                 v["caption_mismatch"] = True
             elif state == "unconfirmed":
                 v["caption_unconfirmed"] = True
+            date_filed = str(v.get("date_filed") or "")
+            if ref.year is not None and len(date_filed) >= 4 and date_filed[:4].isdigit():
+                resolved_year = int(date_filed[:4])
+                if ref.year != resolved_year:
+                    v["year_mismatch"] = True
+                    v["cited_year"] = ref.year
+                    v["resolved_year"] = resolved_year
+            resolved_court = str(v.get("court") or "")
+            if ref.court and resolved_court and ref.court != resolved_court:
+                v["court_mismatch"] = True
+                v["cited_court"] = ref.court
 
 
 def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:
@@ -586,6 +614,7 @@ def build_deterministic_envelope(
     doc_ids: Sequence[str] | None = None,
     client: httpx.Client | None = None,
     embedder: Embedder | None = None,
+    corpus_manifest: CorpusManifest | None = None,
 ) -> dict:
     """Build a verify envelope for ``draft`` with no LLM.
 
@@ -605,6 +634,15 @@ def build_deterministic_envelope(
     # demo sentinel token, so without this floor the litigator path would POST the
     # brief text to courtlistener.com.
     cl_client = client if client is not None else local_caselaw_client()
+    # The corpus manifest travels with the corpus, not the engine. The default
+    # client serves DEMO_CORPUS, so it carries DEMO_MANIFEST; an injected client
+    # without a manifest stays unattested, which folds conservatively to
+    # bounded_corpus (a miss is could-not-check, never "no such case").
+    manifest = (
+        corpus_manifest
+        if corpus_manifest is not None
+        else (DEMO_MANIFEST if client is None else None)
+    )
 
     if conn is not None and not doc_ids:
         # Full-library fallback: the demo UI's stream sends no doc_ids, so scope the
@@ -668,7 +706,7 @@ def build_deterministic_envelope(
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
-            _annotate_litigator_verdicts(sentence, serialized)
+            _annotate_litigator_verdicts(sentence, serialized, manifest=manifest)
             # Holding-match is off, so the serialized verdicts carry no opinion text;
             # attach the bundled text so the brief-level quote panel can ground a
             # quoted span against the cited opinion (stripped before the SSE wire).

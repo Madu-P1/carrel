@@ -157,6 +157,13 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
                 # not be matched to the resolved case. Refuse, never bless and
                 # never accuse: this must not count as an existence confirmation.
                 any_caption_unconfirmed = True
+            elif case.get("year_mismatch") or case.get("court_mismatch"):
+                # The number resolves, but the draft's court-year parenthetical
+                # disagrees with the corpus record (a 1990 year on a 1954 case;
+                # a 9th Cir. court on a SCOTUS cite). Same refusal as an
+                # unconfirmed caption: a wrong parenthetical on a real number
+                # is usually a typo, so refuse, never bless and never accuse.
+                any_caption_unconfirmed = True
             elif case.get("exists"):
                 any_exists = True
             elif case.get("bounded_corpus"):
@@ -215,14 +222,48 @@ def _deterministic_reason(
                     "could not be matched to that case. Confirm the case name before "
                     "relying on it."
                 )
+            if case.get("year_mismatch"):
+                return (
+                    f"Citation {case.get('citation')} resolves to "
+                    f"{case.get('case_name')}, decided in {case.get('resolved_year')}, "
+                    f"but your draft dates it {case.get('cited_year')}. Confirm the "
+                    "citation's year before relying on it."
+                )
+            if case.get("court_mismatch"):
+                return (
+                    f"Citation {case.get('citation')} resolves to "
+                    f"{case.get('case_name')} in a different court than your draft's "
+                    "parenthetical names. Confirm the citation's court before "
+                    "relying on it."
+                )
             if not case.get("exists"):
                 if case.get("bounded_corpus"):
                     return (
-                        f"Citation {case.get('citation')} is outside the offline corpus checked. "
-                        "Confirm it against the full national database."
+                        f"Citation {case.get('citation')} is outside the offline corpus "
+                        f"checked{_corpus_scope_phrase(case)}. This does not establish the "
+                        "case does not exist; confirm it against the full national database."
+                    )
+                as_of = case.get("corpus_as_of")
+                if as_of:
+                    return (
+                        f"Cited case not found: {case.get('citation')}. No such case "
+                        f"appears in the citation index checked (complete as of {as_of})."
                     )
                 return f"Cited case not found: {case.get('citation')}"
     return None
+
+
+def _corpus_scope_phrase(case: Dict[str, Any]) -> str:
+    """' (a 3-case demo corpus, as of 2026-06-05)' from the verdict's manifest
+    fields, or '' when the corpus carried no manifest. Keeps the could-not-check
+    copy honest about HOW bounded the check was, so a lawyer reading the card
+    knows the denominator, not just that one exists."""
+    scope = case.get("corpus_scope")
+    count = case.get("corpus_case_count")
+    as_of = case.get("corpus_as_of")
+    if not scope or not count or not as_of:
+        return ""
+    return f" (a {count}-case {scope} corpus, as of {as_of})"
 
 
 def _claim_dict_to_verdict(

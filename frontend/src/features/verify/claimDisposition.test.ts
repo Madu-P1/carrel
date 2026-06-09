@@ -12,6 +12,9 @@ type CaseOver = Partial<{
   caption_mismatch: boolean;
   holding_skipped: boolean;
   bounded_corpus: boolean;
+  corpus_scope: string;
+  corpus_case_count: number;
+  corpus_as_of: string;
 }>;
 
 function caseItem(over: CaseOver = {}) {
@@ -79,6 +82,55 @@ describe("dispositionForClaim", () => {
     );
     expect(d.kind).toBe("could_not_check");
     expect(d.tier).toBe("refusal");
+  });
+
+  test("a bounded-corpus miss names the corpus scope and date when attested", () => {
+    // D13: the could-not-check copy must state the denominator (what corpus,
+    // how big, as of when), so "outside the corpus" reads as the bounded check
+    // it was, not as a vague refusal.
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [
+          batch([
+            caseItem({
+              status: 404,
+              exists: false,
+              bounded_corpus: true,
+              corpus_scope: "demo",
+              corpus_case_count: 3,
+              corpus_as_of: "2026-06-05"
+            })
+          ])
+        ]
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.detail).toContain("a 3-case demo corpus, as of 2026-06-05");
+  });
+
+  test("a complete-index miss states its as-of date", () => {
+    // The flagship catch against an attested-complete index carries the date
+    // that bounds the claim: "no such case as of <date>", never a bare
+    // "not found" a post-cutoff filing could falsify.
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [
+          batch([
+            caseItem({
+              status: 404,
+              exists: false,
+              corpus_scope: "complete",
+              corpus_case_count: 3,
+              corpus_as_of: "2026-06-01"
+            })
+          ])
+        ]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+    expect(d.detail).toContain("complete as of 2026-06-01");
   });
 
   test("a national absent cite (no bounded_corpus) stays citation_not_found", () => {

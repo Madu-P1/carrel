@@ -45,6 +45,24 @@ class LocalCase:
     opinion_text: str = ""
 
 
+@dataclass(frozen=True)
+class CorpusManifest:
+    """What the bundled corpus attests about itself (D13).
+
+    The deterministic envelope reads this to decide ``bounded_corpus`` per run
+    instead of hard-coding it: only a corpus whose operator attests
+    ``scope="complete"`` may let a citation miss read "no such case as of
+    <as_of>"; any other scope (or a missing manifest) folds a miss to the
+    honest could-not-check. The attestation is the operator's claim about the
+    data artifact, not something the engine can prove, which is why it is a
+    manifest the corpus carries rather than a constant in the engine.
+    """
+
+    scope: str  # "demo" | "complete"
+    case_count: int
+    as_of: str  # ISO date the corpus snapshot reflects
+
+
 # Real, pre-vetted Supreme Court cases keyed by normalized citation.
 DEMO_CORPUS: dict[str, LocalCase] = {
     "347 U.S. 483": LocalCase(
@@ -63,6 +81,11 @@ DEMO_CORPUS: dict[str, LocalCase] = {
     ),
     "410 U.S. 113": LocalCase("Roe v. Wade", "/opinion/108713/roe-v-wade/", "scotus", "1973-01-22"),
 }
+
+# The bundled corpus is a demo, and its manifest says so: a miss against it
+# must never read "citation not found". as_of is the snapshot date the cases
+# were vetted and bundled (PR #115).
+DEMO_MANIFEST = CorpusManifest(scope="demo", case_count=len(DEMO_CORPUS), as_of="2026-06-05")
 
 
 def local_opinion_text(citation: str, corpus: dict[str, LocalCase] | None = None) -> str | None:
