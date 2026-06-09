@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { briefs as briefsApi, verify as verifyApi } from "@/services/api/endpoints";
 
-import { useVerify } from "./useVerify";
+import { createVerifyStore, resetVerifyStore, useVerify } from "./useVerify";
 
 // useVerify is the verification machine both hosts (Carrel's VerifyView and
 // the Cachet lectern) trust: the streaming loop, the truncated-stream guard,
@@ -160,5 +160,57 @@ describe("useVerify — hydration (open a saved brief, no re-verify)", () => {
     await waitFor(() => expect(result.current.hydrating).toBe(false));
     expect(result.current.error).toBe("backend unreachable");
     expect(result.current.response).toBeNull();
+  });
+});
+
+describe("useVerify — external store (state survives unmount-on-nav)", () => {
+  it("a host remount with the same store keeps the verdict without re-verifying", async () => {
+    mockDraftStream.mockReturnValue(streamOf([{ type: "result", verify: RESPONSE }]));
+    const store = createVerifyStore();
+    const first = renderHook(() => useVerify({ store }));
+    await act(() => first.result.current.verify("The NDA term is three years."));
+    expect(first.result.current.response).toEqual(RESPONSE);
+
+    // The route swap unmounts the host...
+    first.unmount();
+
+    // ...and the next mount reads the same engine state back.
+    const second = renderHook(() => useVerify({ store }));
+    expect(second.result.current.response).toEqual(RESPONSE);
+    expect(second.result.current.stream.phase).toBe("done");
+    expect(mockDraftStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("instances WITHOUT a store stay isolated (Carrel hosts unchanged)", async () => {
+    mockDraftStream.mockReturnValue(streamOf([{ type: "result", verify: RESPONSE }]));
+    const a = renderHook(() => useVerify());
+    const b = renderHook(() => useVerify());
+    await act(() => a.result.current.verify("draft"));
+    expect(a.result.current.response).toEqual(RESPONSE);
+    expect(b.result.current.response).toBeNull();
+  });
+
+  it("markSealed records the live seal so a remount still hides the quiet save", async () => {
+    const store = createVerifyStore();
+    const first = renderHook(() => useVerify({ store }));
+    act(() => first.result.current.markSealed("fp-live"));
+    first.unmount();
+    const second = renderHook(() => useVerify({ store }));
+    expect(second.result.current.sealedSeed).toBe("fp-live");
+    // A fresh verify is a NEW verification: the live seal clears like any seed.
+    mockDraftStream.mockReturnValue(streamOf([{ type: "result", verify: RESPONSE }]));
+    await act(() => second.result.current.verify("an edited draft"));
+    expect(second.result.current.sealedSeed).toBeNull();
+  });
+
+  it("resetVerifyStore returns a persistent store to boot state", async () => {
+    mockDraftStream.mockReturnValue(streamOf([{ type: "result", verify: RESPONSE }]));
+    const persistent = createVerifyStore();
+    const h = renderHook(() => useVerify({ store: persistent }));
+    await act(() => h.result.current.verify("draft"));
+    expect(h.result.current.response).toEqual(RESPONSE);
+    act(() => resetVerifyStore(persistent));
+    expect(h.result.current.response).toBeNull();
+    expect(h.result.current.stream.phase).toBe("idle");
   });
 });

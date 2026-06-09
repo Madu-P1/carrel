@@ -7,6 +7,7 @@ import verifyStyles from "@/features/verify/VerifyView.module.css";
 
 import { CachetMark } from "./CachetMark";
 import { liveDraft } from "./liveDraft";
+import { lecternVerify } from "./liveVerify";
 import {
   clearSource,
   loadedSource,
@@ -46,7 +47,13 @@ export function LecternView() {
   const docs = sourceDocs.value;
   const [sourceError, setSourceError] = useState<string | null>(null);
 
-  const engine = useVerify({ docIds: source?.docId ? [source.docId] : undefined });
+  // The module-scope store makes the verdict survive the shell's
+  // unmount-on-nav, the same way liveDraft preserves the paste: glance at the
+  // Shelf mid-review and the verdict is still here on return (liveVerify.ts).
+  const engine = useVerify({
+    docIds: source?.docId ? [source.docId] : undefined,
+    store: lecternVerify
+  });
   // The verdict region replaces the centred title-page layout once a check is in
   // flight or has landed (or errored), so the page scrolls from the top instead
   // of staying vertically centred.

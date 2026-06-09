@@ -41,7 +41,8 @@ function engineWith(claimVerdicts: any[]): VerifyEngine {
     sealedSeed: null,
     certAtSeed: null,
     hydratedDraft: null,
-    verify: vi.fn()
+    verify: vi.fn(),
+    markSealed: vi.fn()
   };
 }
 
@@ -102,7 +103,8 @@ describe("VerifyResults mid-stream error (invariant #6)", () => {
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
-      verify: vi.fn()
+      verify: vi.fn(),
+    markSealed: vi.fn()
     };
   }
 
@@ -151,7 +153,8 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
-      verify: vi.fn()
+      verify: vi.fn(),
+    markSealed: vi.fn()
     };
   }
 
@@ -203,7 +206,8 @@ describe("VerifyResults streaming announcement (screen-reader honesty)", () => {
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
-      verify: vi.fn()
+      verify: vi.fn(),
+    markSealed: vi.fn()
     };
     render(<VerifyResults engine={engine} draft="" />);
     expect(

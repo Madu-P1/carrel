@@ -138,7 +138,13 @@ const indexCssPath = resolve(distDir, "index.css");
 // from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
 // the Cachet shell out of the entry is the lean follow-up, deferred per the same
 // file:// Suspense constraint.
-const ENTRY_JS_GZIP_BUDGET = 126 * 1024;
+// Bumped 126 -> 127 KB for verdict survival (audit O1): useVerify state moved
+// from useState to a signal-backed VerifyStore so the lectern's verdict —
+// settled or still streaming — survives the shell's unmount-on-nav, plus the
+// markSealed engine seam that keeps the quiet Save hidden after a seal across
+// remounts. ~126.1 KB gz live; the prior 2026-06-10 fixes had already bought
+// back their own weight via DEV-gating, so this is the first real growth.
+const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

@@ -715,6 +715,12 @@ export function VerifyResults({
           sealedFingerprint={sealedSeed}
           onSeal={() => {
             setSessionSealed(true);
+            // Record the live seal on the ENGINE too: sessionSealed is render
+            // state and dies with this component, so on a persistent-store
+            // host (the lectern) a remount would re-show the quiet Save,
+            // whose upsert silently downgrades the seal. The engine seed is
+            // what survives — and it is what a reopened exhibit reads.
+            engine.markSealed(certModel.fingerprint);
             void saveToShelf("sealed");
           }}
           onClose={() => setCertAt(null)}
