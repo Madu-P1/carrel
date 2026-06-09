@@ -89,4 +89,64 @@ describe("VerifyResults refusal CTA (onResolve)", () => {
     // fix an ambiguous citation, so the honest surface offers no Sources CTA.
     expect(screen.queryByText(CTA)).toBeNull();
   });
+
+  // The demo-fatal conflation at the summary level: with a record loaded, a
+  // could-not-check is "not found in your loaded sources," never "load the record
+  // it relies on." The "load it" CTA and the "without the record" copy must be gone.
+  it("uses honest wording when a record is loaded (not 'load the record you already loaded')", () => {
+    const onResolve = vi.fn();
+    render(
+      <VerifyResults
+        engine={engineWith([noRecordClaim])}
+        draft=""
+        recordLoaded
+        onResolve={onResolve}
+      />
+    );
+    expect(screen.queryByText(CTA)).toBeNull();
+    expect(screen.queryByText(/without the record/i)).toBeNull();
+    expect(
+      screen.getByText("1 statement could not be confirmed against your loaded sources.")
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("Open the Vault to add more"));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
+
+  // Second resolvable claim so the plural wording branches are exercised.
+  const secondNoRecordClaim = {
+    ...noRecordClaim,
+    claim_index: 1,
+    claim_text: "The parties agreed to arbitrate in London."
+  };
+
+  it("record loaded, plural: confirms against loaded sources (never 'load it')", () => {
+    render(
+      <VerifyResults
+        engine={engineWith([noRecordClaim, secondNoRecordClaim])}
+        draft=""
+        recordLoaded
+        onResolve={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByText("2 statements could not be confirmed against your loaded sources.")
+    ).toBeTruthy();
+    expect(screen.getByText("Open the Vault to add more")).toBeTruthy();
+    expect(screen.queryByText(/without the records/i)).toBeNull();
+  });
+
+  it("no record, plural: keeps the awaiting-record wording", () => {
+    render(
+      <VerifyResults
+        engine={engineWith([noRecordClaim, secondNoRecordClaim])}
+        draft=""
+        onResolve={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByText("2 statements could not be checked without the records they rely on.")
+    ).toBeTruthy();
+    expect(screen.getByText(CTA)).toBeTruthy();
+    expect(screen.queryByText(/confirmed against your loaded sources/i)).toBeNull();
+  });
 });

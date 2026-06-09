@@ -155,3 +155,57 @@ describe("SourcePassageOverlay (open in source)", () => {
     expect(document.querySelector("mark")).toBeNull();
   });
 });
+
+describe("SourceInspectorBody could-not-check (no attached source)", () => {
+  function cardNoSource(): VerifyClaimVerdict {
+    return {
+      claim_index: 0,
+      claim_text: "The balance of fees, £95,000 plus interest, was to be transferred.",
+      verdict: "unknown",
+      citations: [],
+      case_verdicts: []
+    } as unknown as VerifyClaimVerdict;
+  }
+
+  function couldNotCheck(detail: string): ClaimDisposition {
+    return {
+      kind: "could_not_check",
+      tier: "refusal",
+      label: "Could not verify",
+      detail
+    } as unknown as ClaimDisposition;
+  }
+
+  // The fatal-demo regression: a could-not-check claim with zero attached citations
+  // must NOT claim "no source was loaded" when a record IS loaded. It renders the
+  // engine's own honest reason instead, and never the "add the documents" CTA.
+  it("renders the engine reason, not a fabricated 'no source was loaded'", () => {
+    render(
+      <SourceInspectorBody
+        card={cardNoSource()}
+        disposition={couldNotCheck("no matching passage found in your loaded sources")}
+      />
+    );
+    expect(screen.getByText("no matching passage found in your loaded sources")).toBeTruthy();
+    expect(screen.queryByText(/no source was loaded/i)).toBeNull();
+    expect(screen.queryByText(/add the documents this draft relies on/i)).toBeNull();
+  });
+
+  // The genuine no-record reason is the engine's, not the UI's: still surfaced via
+  // disposition.detail, so the message tracks the engine in every branch.
+  it("surfaces the no-record reason when the engine reports one", () => {
+    render(
+      <SourceInspectorBody
+        card={cardNoSource()}
+        disposition={couldNotCheck(
+          "This statement carries a checkable value but no source was provided to check it against."
+        )}
+      />
+    );
+    expect(
+      screen.getByText(
+        "This statement carries a checkable value but no source was provided to check it against."
+      )
+    ).toBeTruthy();
+  });
+});

@@ -408,12 +408,20 @@ function QuotePanel({ quotes }: QuotePanelProps) {
 export function VerifyResults({
   engine,
   draft,
+  recordLoaded = false,
   onResolve
 }: {
   engine: VerifyEngine;
   /** The composer's current draft text. Used as the fallback document text for
    *  the margin and the save fingerprint when the response omits draft_text. */
   draft: string;
+  /** Whether a source record is loaded for this verification. The host knows it
+   *  (the Cachet lectern from its loaded `source`); VerifyResults cannot infer it
+   *  because the wire verdict carries no doc scope. It de-conflates the refusal
+   *  surface: a could-not-check with a record loaded is "not found in your loaded
+   *  sources," NOT "no record loaded, go add one." Defaults false so the existing
+   *  no-record wording holds for hosts that don't pass it. */
+  recordLoaded?: boolean;
   /** The shell's resolve-the-refusal action: when a statement could not be
    *  checked for want of the record it relies on, this routes the user to where
    *  they load it (Sources, on the Cachet lectern). When omitted (Carrel, which
@@ -571,17 +579,24 @@ export function VerifyResults({
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (
-            // The refusal made actionable: when Cachet could not check a
-            // statement for want of the record it relies on, give the one honest
-            // next move. Quiet, not a flag: the refusal is correct, not an error.
+            // The refusal made actionable, with HONEST wording in both states.
+            // recordLoaded de-conflates: with a record loaded, these statements are
+            // "not found in your loaded sources" (telling the user to load a record
+            // they already loaded is the demo-fatal lie); with none loaded, the
+            // statements genuinely await the record they rely on. Quiet, not a flag:
+            // the refusal is correct, not an error.
             <div className={styles.resolveRefusal} role="note">
               <p className={styles.resolveRefusalText}>
-                {resolvableRefusals === 1
-                  ? "1 statement could not be checked without the record it relies on."
-                  : `${resolvableRefusals} statements could not be checked without the records they rely on.`}
+                {recordLoaded
+                  ? resolvableRefusals === 1
+                    ? "1 statement could not be confirmed against your loaded sources."
+                    : `${resolvableRefusals} statements could not be confirmed against your loaded sources.`
+                  : resolvableRefusals === 1
+                    ? "1 statement could not be checked without the record it relies on."
+                    : `${resolvableRefusals} statements could not be checked without the records they rely on.`}
               </p>
               <button type="button" className={styles.resolveRefusalAction} onClick={onResolve}>
-                Open the Vault to load it
+                {recordLoaded ? "Open the Vault to add more" : "Open the Vault to load it"}
               </button>
             </div>
           ) : null}

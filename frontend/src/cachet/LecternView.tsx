@@ -178,7 +178,12 @@ export function LecternView() {
 
       {hasVerdict ? (
         <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
-          <VerifyResults engine={engine} draft={draft} onResolve={() => navigateTo("/vault")} />
+          <VerifyResults
+            engine={engine}
+            draft={draft}
+            recordLoaded={Boolean(source?.docId)}
+            onResolve={() => navigateTo("/vault")}
+          />
         </div>
       ) : null}
     </section>

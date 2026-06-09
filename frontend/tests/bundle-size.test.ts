@@ -138,7 +138,15 @@ const indexCssPath = resolve(distDir, "index.css");
 // from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
 // the Cachet shell out of the entry is the lean follow-up, deferred per the same
 // file:// Suspense constraint.
-const ENTRY_JS_GZIP_BUDGET = 126 * 1024;
+// Bumped 126 -> 127 KB for the verify-honesty copy: the Examination drawer now
+// surfaces the engine's own per-claim reason instead of a fabricated "no source
+// was loaded", and the summary refusal CTA gains a record-loaded wording branch
+// ("could not be confirmed against your loaded sources" / "Open the Vault to add
+// more"). This landed on top of cumulative verify-surface growth (the source
+// overlay #158, the untreated/could-not-check split #155) that had consumed the
+// prior ~0.9 KB headroom: ~126.0 KB gz live. The /verify click-time route-split
+// stays the lean-entry option, deferred per the file:// Suspense constraint.
+const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

@@ -330,9 +330,18 @@ export function SourceInspectorBody({
         </section>
       ) : null}
       {!hasSources ? (
+        // Surface the engine's own per-claim reason rather than asserting a
+        // session-level fact this leaf cannot see. The component knows only that
+        // THIS claim resolved to zero citations; it does NOT know whether a record
+        // is loaded. The deterministic contract path emits could_not_check with zero
+        // citations precisely when a loaded source did not contain the cited
+        // language, so a hardcoded "no source was loaded / add the documents" lies
+        // whenever a record is in fact loaded. `disposition.detail` already carries
+        // the honest, case-correct reason ("no matching passage found in your loaded
+        // sources" when loaded; "...no source was provided" when not), so render it.
         <p className={styles.sourceMuted}>
           {disposition.kind === "could_not_check"
-            ? "No source was loaded to check this statement against. Add the documents this draft relies on, then verify again."
+            ? disposition.detail || "This statement could not be confirmed against the sources checked."
             : "No source is attached to this statement."}
         </p>
       ) : null}
