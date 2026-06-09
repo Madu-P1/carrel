@@ -192,6 +192,7 @@ def _claim_dict_to_verdict(
     index: int,
     *,
     placement: Dict[str, Any] | None = None,
+    grounding_error: str | None = None,
 ) -> VerifyClaimVerdict:
     """Map one engine-returned claim dict to a verifier verdict card.
 
@@ -235,7 +236,22 @@ def _claim_dict_to_verdict(
         verdict = _verdict_from_case_verdicts(case_verdicts)
     else:
         verdict = "unsupported"
-    if verdict == "verified":
+    # C1 silent-pass guard: when the engine reported it declined to ground this run
+    # (the LLM passages-only refusal fallback, or a provider/transport error), the
+    # fallback may still have attached citations. A citation-only "verified" must
+    # never read green on a failed run. Deterministic success sets the envelope
+    # error to None, so a real contract-present or case cite keeps its verdict; only
+    # a failed-grounding run is demoted, and only to the honest could-not-check,
+    # never an accusation (INV-2).
+    demoted_for_grounding = grounding_error is not None and verdict == "verified"
+    if demoted_for_grounding:
+        verdict = "unknown"
+    if demoted_for_grounding:
+        reason = (
+            f"Verification could not run (engine error: {grounding_error}). "
+            "Load the sources this draft relies on, then verify again."
+        )
+    elif verdict == "verified":
         # A contract "present" finding stays positive but keeps its hedge detail
         # (the value appears in the named clause; that is presence, not proof of
         # truth), so the card never reads as a bare "this is true." A verified case
@@ -450,6 +466,7 @@ def _verify_result_from_envelope(
     draft_quotes = extract_draft_quotes(cleaned)
     if draft_quotes:
         source_pool = _loaded_doc_sources(claims)
+        source_pool.extend(_contract_clause_sources(claims))
         for claim_dict in claims:
             if not isinstance(claim_dict, dict):
                 continue
@@ -482,7 +499,12 @@ def _verify_result_from_envelope(
             continue
         treated_indices.add(index)
         verdicts.append(
-            _claim_dict_to_verdict(claim_dict, index, placement=placement_by_index.get(index))
+            _claim_dict_to_verdict(
+                claim_dict,
+                index,
+                placement=placement_by_index.get(index),
+                grounding_error=engine_error,
+            )
         )
 
     # Span cards start after the highest claim_index actually emitted. Deriving the
@@ -681,6 +703,28 @@ def _loaded_doc_sources(claim_cards: list[Dict[str, Any]]) -> list[SourceText]:
     out: list[SourceText] = []
     for cits in by_doc.values():
         out.extend(_join_adjacent(cits))
+    return out
+
+
+def _contract_clause_sources(claim_cards: list[Dict[str, Any]]) -> list[SourceText]:
+    """The matched contract clause for each contract claim, as a draft-quote source.
+
+    D1: the deterministic contract path sets `citations: []`, so without this the
+    brief-level quote pool is empty for contract claims and EVERY quoted span reads
+    could_not_check, contradicting a claim card that already found the quote verbatim.
+    Seeding the pool with the matched clause lets the QuotePanel confirm those quotes,
+    so the two surfaces agree. `complete=False`: a single retrieved clause is not the
+    whole loaded document, so a quote absent from it degrades to could_not_check, never
+    a false `altered` accusation (ADR-0012 invariant 2).
+    """
+    out: list[SourceText] = []
+    for card in claim_cards:
+        cv = card.get("contract_verdict")
+        if not isinstance(cv, dict):
+            continue
+        text = str(cv.get("clause_text") or "").strip()
+        if text:
+            out.append(SourceText(text=text, truncated=False, complete=False))
     return out
 
 

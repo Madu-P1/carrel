@@ -71,7 +71,7 @@ class PresentTests(unittest.TestCase):
             "liability shall not exceed $500,000 in the aggregate",
         )
         self.assertEqual("present", v.disposition)
-        self.assertIn("review the full clause", v.detail)
+        self.assertIn("review the full passage", v.detail)
 
     def test_quoted_language_present_verbatim(self) -> None:
         v = verify_claim_against_clause(

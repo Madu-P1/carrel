@@ -139,6 +139,76 @@ class ContractPathIntegrationTests(unittest.TestCase):
         verdict = self._verdict_for(env, "confidentiality term")
         self.assertEqual("present", verdict["disposition"])
 
+    def test_present_money_with_absent_quoted_holding_is_could_not_check(self) -> None:
+        # C2 (anchor-laundering guard): a sentence whose money value matches a clause
+        # ($500,000 is in Section 8) MUST NOT launder a fabricated quoted holding that
+        # is absent from that clause into a green "present". It downgrades to the honest
+        # could-not-check; it never accuses (no "altered"/"unsupported").
+        draft = (
+            "The aggregate liability shall not exceed $500,000, and the parties agreed "
+            'that "either party may terminate for convenience on thirty days notice."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "a fabricated quote must not ride a matching figure into a verified present",
+        )
+
+    def test_present_money_without_a_quote_stays_verified(self) -> None:
+        # Control (no recall regression): the same matching figure with NO quoted
+        # holding is still a clean present -> verified.
+        draft = "The aggregate liability shall not exceed $500,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("verified", card.verdict)
+
+    def test_offtopic_clause_sharing_a_value_is_could_not_check(self) -> None:
+        # C3 (relevance floor): a claim whose money value coincidentally matches an
+        # OFF-TOPIC clause (a signing bonus, not a liability cap) must read
+        # could-not-check, never a false "present". Scope retrieval to the off-topic
+        # doc so no on-topic clause exists for that value.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('offtopic-1', 'comp.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        off = [_node(0, "The signing bonus payable to the executive is $42,000.")]
+        ids = insert_typed_nodes(self._conn, "offtopic-1", off)
+        embed_and_index_nodes(self._conn, off, ids, embedder=self._embedder)
+        self._conn.commit()
+        draft = "The aggregate liability is capped at $42,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["offtopic-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "an off-topic value coincidence must not read a verified present",
+        )
+
+    def test_present_quote_agrees_between_card_and_quote_panel(self) -> None:
+        # D1 (consistency): a contract claim whose quoted language is verbatim in a
+        # clause reads verified AND the brief-level QuotePanel reads that same quote as
+        # "verbatim" (confirmed), never the contradictory "could_not_check". The card
+        # and the panel must agree.
+        draft = 'The agreement requires that "The parties shall cooperate in good faith on all matters."'
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        self.assertEqual("verified", result.claim_verdicts[0].verdict)
+        statuses = [q["status"] for q in result.quote_results]
+        self.assertIn(
+            "verbatim", statuses, "the confirmed quote must read verbatim in the QuotePanel"
+        )
+        self.assertNotIn("could_not_check", statuses)
+
     def test_contradiction_renders_as_unsupported_card(self) -> None:
         draft = "The aggregate liability is capped at $1,000,000."
         env = build_deterministic_envelope(

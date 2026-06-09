@@ -9,7 +9,7 @@ candidate clause from the executed contract, decide deterministically (T0):
   - ``present``: the claim's value or quoted language appears in the clause.
     This attests that the language appears, NEVER that the surrounding
     proposition is legally correct (a carve-out can change the meaning), so the
-    detail tells the reader to review the full clause for context.
+    detail tells the reader to review the full passage for context.
   - ``multi_value_unverifiable``: the claim and the clause each carry more than
     one value of the same type, so a deterministic check cannot align them
     one-to-one. Routed to the could-not-check tray instead of guessing: a guessed
@@ -72,7 +72,7 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     claim_anchors = extract_anchors(claim)
     clause_anchors = extract_anchors(clause)
     section = next((a.text for a in clause_anchors if a.type == "section"), None)
-    where = section or "the contract"
+    where = section or "your loaded sources"
 
     # Evaluate EVERY parametric type the claim carries, not just the first. A
     # contradiction in ANY type wins outright: a sentence with a matching amount but a
@@ -97,7 +97,7 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             if not_found_verdict is None:
                 not_found_verdict = ClauseVerdict(
                     "not_found",
-                    f"The summary states {claim_hits[0].text}, which does not appear in the contract.",
+                    f"The summary states {claim_hits[0].text}, which does not appear in your loaded sources.",
                     anchor_type,
                     claim_values,
                     (),
@@ -127,7 +127,7 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             if present_verdict is None:
                 present_verdict = ClauseVerdict(
                     "present",
-                    f"{claim_hits[0].text} appears in {where}; review the full clause for context.",
+                    f"{claim_hits[0].text} appears in {where}; review the full passage for context.",
                     anchor_type,
                     claim_values,
                     clause_values,
@@ -156,8 +156,10 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             return ClauseVerdict(
                 "present",
                 f'The quoted language "{anchor.text}" appears verbatim in {where}; '
-                "review the full clause for context.",
+                "review the full passage for context.",
                 "quote",
             )
 
-    return ClauseVerdict("not_found", "The summary's language does not appear in the contract.")
+    return ClauseVerdict(
+        "not_found", "The summary's language does not appear in your loaded sources."
+    )

@@ -127,6 +127,39 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         self.assertIn("empty_retrieval", result.claim_verdicts[0].unsupported_reason or "")
         self.assertEqual(1, result.summary.unknown)
 
+    def test_engine_error_with_citation_claims_demotes_to_unknown(self) -> None:
+        # C1 (silent-pass guard): on the LLM opt-out path the passages-only refusal
+        # fallback still attaches citations while the engine reports it declined to
+        # ground (ok=False + error). A citation-only "verified" must never read green
+        # when grounding failed; demote to the honest could-not-check, never a silent
+        # pass. Cover every error code that reaches this path, not just one.
+        for code in (
+            "weak_coverage",
+            "grounded_tutor_unavailable",
+            "grounded_tutor_disabled",
+            "claude_call_failed",
+        ):
+            with self.subTest(error=code):
+                envelope = self._envelope(
+                    claims=[
+                        {
+                            "text": "A claim the fallback attached a passage to.",
+                            "citations": [{"node_id": "c1", "snippet": "..."}],
+                            "case_verdicts": [],
+                        }
+                    ],
+                    error=code,
+                    model="",
+                )
+                result = self._call(envelope)
+                self.assertEqual(
+                    "unknown",
+                    result.claim_verdicts[0].verdict,
+                    f"a citation-only claim under engine error {code!r} must not read verified",
+                )
+                self.assertEqual(0, result.summary.verified)
+                self.assertIn(code, result.claim_verdicts[0].unsupported_reason or "")
+
     def test_mixed_claims_and_spans_aggregate_correctly(self) -> None:
         envelope = self._envelope(
             claims=[
