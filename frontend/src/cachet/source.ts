@@ -58,6 +58,24 @@ function readActiveRecord(): LoadedSource | null {
   }
 }
 
+/** True when the URL asks for the Sources visual fixture. Pure parse; the
+ *  caller must ALSO gate on import.meta.env.DEV so the fixture branch (and its
+ *  fake records) compiles out of production builds entirely. */
+export function sourcesFixtureRequested(search: string): boolean {
+  return new URLSearchParams(search).get("fixture") === "sources";
+}
+
+/** Drop the PERSISTED active record without clearing the in-memory signal.
+ *  The dev fixture uses this so its fake record never survives the fixture
+ *  page into a later real session via localStorage. */
+export function clearPersistedActiveRecord(): void {
+  try {
+    globalThis.localStorage?.removeItem(ACTIVE_RECORD_KEY);
+  } catch {
+    /* localStorage blocked — nothing was persisted anyway */
+  }
+}
+
 /** The record the next verify will be checked against, or null. Restored on load. */
 export const loadedSource = signal<LoadedSource | null>(readActiveRecord());
 loadedSource.subscribe((v) => {
