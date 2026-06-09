@@ -188,6 +188,31 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
   });
 });
 
+describe("VerifyResults command spine (cachet:command)", () => {
+  it("opens the certification exhibit on the export command", async () => {
+    render(<VerifyResults engine={engineWith([noRecordClaim])} draft="" />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "export" } }));
+    expect(await screen.findByRole("dialog", { name: "Verification certification" })).toBeTruthy();
+  });
+
+  it("opens the exhibit on the seal command but never sets the seal itself", async () => {
+    // Sealing is the human's attestation. A palette verb may carry the lawyer
+    // to the seal; it must never press it for them.
+    render(<VerifyResults engine={engineWith([noRecordClaim])} draft="" />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "seal" } }));
+    expect(await screen.findByRole("dialog", { name: "Verification certification" })).toBeTruthy();
+    const sealButton = screen.getByRole("button", { name: "Set the seal" });
+    expect((sealButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("opens nothing when there is no settled verdict to certify", () => {
+    const engine = { ...engineWith([noRecordClaim]), response: null };
+    render(<VerifyResults engine={engine} draft="" />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "export" } }));
+    expect(screen.queryByRole("dialog", { name: "Verification certification" })).toBeNull();
+  });
+});
+
 describe("VerifyResults refusal CTA (onResolve)", () => {
   it("offers the resolve action when a statement could not be checked for want of its record, and fires onResolve", () => {
     const onResolve = vi.fn();

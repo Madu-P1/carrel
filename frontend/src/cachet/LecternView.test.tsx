@@ -86,6 +86,34 @@ describe("LecternView inline verify (the unified surface)", () => {
   });
 });
 
+describe("LecternView command spine (cachet:command)", () => {
+  // The ⌘K palette dispatches cachet:command and dismisses itself. A verb that
+  // dispatches into the void looks like it worked (the palette closes) while
+  // doing nothing — on this surface a silent no-op is a trust defect.
+  it("runs the inline verify when the palette dispatches verify-draft", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: VERIFY_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
+    expect(
+      await screen.findByText("All 1 statements are supported by the sources you provided.")
+    ).toBeTruthy();
+    expect(mockDraftStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the verify command when the draft is empty (same guard as the button)", () => {
+    liveDraft.value = "   ";
+    render(<LecternView />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
+    expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+});
+
 describe("LecternView draft persistence (shared liveDraft)", () => {
   it("seeds the textarea from the persisted liveDraft on mount", () => {
     liveDraft.value = "A draft pasted earlier, before visiting the Shelf.";

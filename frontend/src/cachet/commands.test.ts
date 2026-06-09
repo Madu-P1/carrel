@@ -14,6 +14,19 @@ describe("buildCommands", () => {
     }
   });
 
+  it("the seal verb advertises no shortcut it does not implement", () => {
+    // The old hint claimed ⌘S; no handler anywhere binds it. A filing-grade
+    // tool must not decorate a command with a shortcut that does nothing.
+    const seal = buildCommands("/", close).find((c) => c.id === "seal");
+    expect(seal?.hint).toBeUndefined();
+  });
+
+  it("the seal and export verbs say they open the certification (ellipsis convention)", () => {
+    const byId = new Map(buildCommands("/", close).map((c) => [c.id, c]));
+    expect(byId.get("seal")?.title).toBe("Seal and save…");
+    expect(byId.get("export")?.title).toBe("Export certification…");
+  });
+
   it("hides the verify verbs where they cannot act", () => {
     const ids = buildCommands("/shelf", close).map((c) => c.id);
     expect(ids).not.toContain("verify-draft");

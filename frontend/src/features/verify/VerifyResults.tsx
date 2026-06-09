@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { ProvenanceBadge, Spinner, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
@@ -467,6 +467,29 @@ export function VerifyResults({
     setCertAt(null);
     setSessionSealed(false);
   }, [response]);
+
+  // SM-V7 command spine: the seal and export verbs from the ⌘K palette open
+  // the certification exhibit (this component owns it). Sealing stays the
+  // human's click inside the exhibit; a command must never set the seal
+  // itself. Only the Cachet palette dispatches this event, so Carrel hosts
+  // carry an inert listener. The ref keeps registration to one listener while
+  // reading the current response/seed.
+  const openCertRef = useRef(() => {});
+  openCertRef.current = () => {
+    if (!response) {
+      toast.error("No verdict to certify yet. Verify the draft first.");
+      return;
+    }
+    setCertAt(certAtSeed ?? new Date().toISOString());
+  };
+  useEffect(() => {
+    function onCommand(event: Event) {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === "seal" || id === "export") openCertRef.current();
+    }
+    window.addEventListener("cachet:command", onCommand);
+    return () => window.removeEventListener("cachet:command", onCommand);
+  }, []);
 
   const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
   // Compute one disposition per claim, then order flags first, the honest

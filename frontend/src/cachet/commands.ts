@@ -43,10 +43,14 @@ export function buildCommands(path: string, close: () => void): Command[] {
       emitVerifyCommand(id);
       close();
     };
+    // Seal and export OPEN the certification exhibit (the ellipsis is the
+    // dialog convention); setting the seal stays the human's click inside it.
+    // No ⌘S hint: nothing binds that shortcut, and a filing-grade tool must
+    // not advertise a key it does not implement.
     commands.push(
       { id: "verify-draft", title: "Verify the draft", hint: "⌘↵", keywords: "check run", run: verb("verify-draft") },
-      { id: "seal", title: "Seal and save", hint: "⌘S", keywords: "record certify shelf", run: verb("seal") },
-      { id: "export", title: "Export certification", keywords: "exhibit pdf", run: verb("export") }
+      { id: "seal", title: "Seal and save…", keywords: "record certify shelf", run: verb("seal") },
+      { id: "export", title: "Export certification…", keywords: "exhibit pdf", run: verb("export") }
     );
   }
 

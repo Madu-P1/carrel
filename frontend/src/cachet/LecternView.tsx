@@ -77,6 +77,21 @@ export function LecternView() {
     void engine.verify(draft);
   }
 
+  // SM-V7 command spine: the ⌘K palette dispatches `cachet:command` and
+  // dismisses itself; the lectern owns the draft, so the verify verb lands
+  // here. The ref keeps the listener registered once while always invoking the
+  // current closure (draft and engine change every render).
+  const verifyRef = useRef(verify);
+  verifyRef.current = verify;
+  useEffect(() => {
+    function onCommand(event: Event) {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === "verify-draft") verifyRef.current();
+    }
+    window.addEventListener("cachet:command", onCommand);
+    return () => window.removeEventListener("cachet:command", onCommand);
+  }, []);
+
   function onKeyDown(event: preact.JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
     // Keyboard-first: Cmd/Ctrl + Enter verifies from the sheet.
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
