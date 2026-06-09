@@ -119,6 +119,75 @@ describe("VerifyResults mid-stream error (invariant #6)", () => {
   });
 });
 
+describe("CaseVerdictLine register (the sub-line must match the claim-level honesty)", () => {
+  // The per-case sub-line renders on the LIVE streaming cards (the settled
+  // view is the Workspace/Margin layout, which carries no case sub-lines), so
+  // these tests drive a mid-stream engine whose cite_verdict has landed.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function liveEngineWithCase(caseVerdict: Record<string, unknown>): VerifyEngine {
+    const skeleton = {
+      claim_index: 0,
+      claim_text: "The court so held in Doe.",
+      verdict: "verified",
+      citations: [],
+      case_verdicts: [],
+      unsupported_reason: null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    let s = initialStreamState();
+    s = reduceStreamEvent(s, { type: "claims", claim_verdicts: [skeleton] });
+    s = reduceStreamEvent(s, {
+      type: "cite_verdict",
+      claim_index: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      case_verdict: { claim_index: 0, ok: true, verdicts: [caseVerdict] } as any
+    });
+    return {
+      response: null,
+      stream: s,
+      loading: true,
+      hydrating: false,
+      error: null,
+      sealedSeed: null,
+      certAtSeed: null,
+      hydratedDraft: null,
+      verify: vi.fn()
+    };
+  }
+
+  it("a bounded-corpus miss reads as coverage, never the accusatory 'Case not found'", () => {
+    // The claim-level disposition for this card is the honest could-not-check;
+    // the per-case sub-line beneath it must not contradict that with an
+    // oxblood "Case not found" accusation the engine never made.
+    const engine = liveEngineWithCase({
+      citation: "999 F.3d 1",
+      status: 404,
+      exists: false,
+      bounded_corpus: true
+    });
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(screen.queryByText(/Case not found/)).toBeNull();
+    expect(screen.getByText(/Outside the offline corpus checked/)).toBeTruthy();
+  });
+
+  it("a caption mismatch is named for what it is, not shown as a clean 'Case found'", () => {
+    // The citation number resolves, but to a different case than the draft
+    // names. Rendering "Case found · <the wrong case>" in the quiet ink
+    // register under a "Citation not found" claim badge is a mixed signal.
+    const engine = liveEngineWithCase({
+      citation: "100 U.S. 1",
+      status: 200,
+      exists: true,
+      case_name: "Entirely Different Co. v. Other",
+      caption_mismatch: true,
+      bounded_corpus: true
+    });
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(screen.queryByText(/·\s*Case found/)).toBeNull();
+    expect(screen.getByText(/Resolves to a different case/)).toBeTruthy();
+  });
+});
+
 describe("VerifyResults refusal CTA (onResolve)", () => {
   it("offers the resolve action when a statement could not be checked for want of its record, and fires onResolve", () => {
     const onResolve = vi.fn();

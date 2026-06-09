@@ -73,6 +73,13 @@ interface CaseLineProps {
     holding_concern?: string | null;
     holding_excerpt?: string | null;
     holding_error?: string | null;
+    // Deterministic engine only (not on the wire schema; claimDisposition reads
+    // the same fields with a cast). bounded_corpus: this verdict came from the
+    // BOUNDED offline corpus, so an absent cite is "outside my coverage", never
+    // "does not exist". caption_mismatch: the number resolved, but to a
+    // different case than the draft names.
+    bounded_corpus?: boolean;
+    caption_mismatch?: boolean;
   };
 }
 
@@ -82,20 +89,39 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
   // malformed reporter. PR3 replaces these traffic-light hues with the
   // scoped paper-and-oxblood palette; the claim-level disposition badge
   // already carries the headline verdict.
-  const colorClass = verdict.exists
-    ? styles.caseExists
-    : verdict.status === 300
+  //
+  // The sub-line must keep the claim-level register: a bounded-corpus miss is
+  // a coverage statement (muted), never the oxblood "Case not found" the
+  // engine refused to assert; a caption mismatch is the flag by name, never a
+  // quiet "Case found" naming the wrong case.
+  const captionMismatch = Boolean(verdict.caption_mismatch);
+  const boundedMiss =
+    !verdict.exists &&
+    Boolean(verdict.bounded_corpus) &&
+    (verdict.status === 404 || verdict.status === 400) &&
+    !captionMismatch;
+  const colorClass = captionMismatch
+    ? styles.caseMissing
+    : boundedMiss
       ? styles.caseAmbiguous
-      : styles.caseMissing;
-  const label = verdict.exists
-    ? "Case found"
-    : verdict.status === 300
-      ? "Ambiguous (multiple matches)"
-      : verdict.status === 404
-        ? "Case not found"
-        : verdict.status === 400
-          ? "Malformed citation"
-          : "Verification error";
+      : verdict.exists
+        ? styles.caseExists
+        : verdict.status === 300
+          ? styles.caseAmbiguous
+          : styles.caseMissing;
+  const label = captionMismatch
+    ? "Resolves to a different case"
+    : boundedMiss
+      ? "Outside the offline corpus checked"
+      : verdict.exists
+        ? "Case found"
+        : verdict.status === 300
+          ? "Ambiguous (multiple matches)"
+          : verdict.status === 404
+            ? "Case not found"
+            : verdict.status === 400
+              ? "Malformed citation"
+              : "Verification error";
   // Carrel V2 half-2: derive a holding-match sub-line state.
   type HoldingState = {
     kind: HoldingKind;
