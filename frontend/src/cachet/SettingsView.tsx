@@ -20,8 +20,10 @@ export function SettingsView() {
         <div className={styles.settingsRow}>
           <dt className={styles.settingsKey}>Model key</dt>
           <dd className={styles.settingsVal}>
-            Stored in the macOS Keychain by the app, never in the page or a file.
-            The secure entry is wired in the native shell.
+            The deterministic check needs no model key. If you opt into a model,
+            its key stays with the local engine on this machine and is never
+            entered or stored in this page. Keychain-backed entry ships with the
+            native settings.
           </dd>
         </div>
         <div className={styles.settingsRow}>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { VerifyResults } from "./VerifyResults";
@@ -185,6 +185,50 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
     render(<VerifyResults engine={engine} draft="" />);
     expect(screen.queryByText(/·\s*Case found/)).toBeNull();
     expect(screen.getByText(/Resolves to a different case/)).toBeTruthy();
+  });
+});
+
+describe("VerifyResults streaming announcement (screen-reader honesty)", () => {
+  it("announces the start of verification once, with fixed text", () => {
+    // The visual working indicator is aria-hidden by design (per-cite progress
+    // would spam a screen reader), but silence until the settled summary means
+    // a non-sighted user cannot tell a check is running at all. One status
+    // region with CONSTANT text announces the start and never re-fires.
+    const engine: VerifyEngine = {
+      response: null,
+      stream: initialStreamState(),
+      loading: true,
+      hydrating: false,
+      error: null,
+      sealedSeed: null,
+      certAtSeed: null,
+      hydratedDraft: null,
+      verify: vi.fn()
+    };
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(
+      screen.getByText("Verifying the draft against your sources.")
+    ).toBeTruthy();
+  });
+});
+
+describe("VerifyResults summary counts", () => {
+  it("an assessed claim appears in the stat row (counts always sum to the total)", () => {
+    const assessedClaim = {
+      claim_index: 0,
+      claim_text: "An anchor-free claim a local model assessed.",
+      verdict: "unknown",
+      assessed_confidence: 0.93,
+      assessed_label: "support",
+      citations: [],
+      case_verdicts: [],
+      placement: { placed: true, method: "exact", char_start: 0, char_end: 10 }
+    };
+    render(<VerifyResults engine={engineWith([assessedClaim])} draft="" />);
+    // Scoped to the summary's own status region: the margin note carries the
+    // same label, and matching it would pass vacuously.
+    const summary = screen.getByRole("status");
+    expect(within(summary).getByText("Assessed (local model)")).toBeTruthy();
   });
 });
 

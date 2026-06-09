@@ -335,6 +335,9 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
     { label: "Source does not support", value: propositionUnsupported },
     { label: "Unsupported", value: claimUnsupported },
     { label: "Could not verify", value: couldNotCheck },
+    // T1 (ADR-0012): zero until the selector ships, but listed so the stat
+    // row always sums to the total once assessed cards go live.
+    { label: "Assessed (local model)", value: count("assessed") },
     { label: "Supported", value: supported }
   ].filter((s) => s.value > 0);
 
@@ -588,6 +591,25 @@ export function VerifyResults({
               : "Reading the draft and extracting claims…"}
           </span>
         </div>
+      ) : null}
+
+      {loading ? (
+        // One announcement that the check is running: CONSTANT text for the
+        // whole stream so the live region fires exactly once, never per cite.
+        // Visually hidden (inline, not a CSS class: the entry CSS budget sits
+        // bytes from its ceiling); the settled summary announces the outcome.
+        <span
+          role="status"
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            overflow: "hidden",
+            clipPath: "inset(50%)"
+          }}
+        >
+          Verifying the draft against your sources.
+        </span>
       ) : null}
 
       {streaming && liveItems.length > 0 ? (
