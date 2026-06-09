@@ -42,6 +42,17 @@ class SplitSentencesTests(unittest.TestCase):
             split_sentences("I think so. The next point is separate."),
         )
 
+    def test_quoted_holding_keeps_its_following_citation(self) -> None:
+        # A quoted holding ("...unequal.") followed by its citation is ONE sentence,
+        # not two: the closing-quote boundary must not sever a holding from the cite
+        # that grounds it. (This is why a brief of quoted holdings without inline
+        # citations collapses into one claim; that is the accepted trade.)
+        out = split_sentences(
+            'The Court held that "Separate educational facilities are inherently '
+            'unequal." Brown v. Board of Education, 347 U.S. 483.'
+        )
+        self.assertEqual(1, len(out))
+
 
 if __name__ == "__main__":
     unittest.main()
