@@ -492,7 +492,11 @@ export function VerifyResults({
   // each not-yet-checked claim in its "Checking…" register. These are computed
   // through the SAME pure `dispositionForClaim`, but a checking card overrides
   // the badge so a claim never flashes a pass before its cite check lands.
-  const streaming = loading && !response;
+  // A stream error drops the live list at once: the skeleton cards carry the
+  // grounding verdict with no case verdicts, so holding them on screen after
+  // the failure would read half-checked claims as findings. The error banner
+  // is the only verdict an errored stream gets (refuse over accuse).
+  const streaming = loading && !response && stream.phase !== "error";
   const liveItems =
     streaming && stream.cards.length > 0
       ? stream.cards

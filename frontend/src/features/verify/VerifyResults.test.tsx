@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { VerifyResults } from "./VerifyResults";
-import { initialStreamState } from "./streamProgress";
+import { initialStreamState, reduceStreamEvent } from "./streamProgress";
 import type { VerifyEngine } from "./useVerify";
 
 // VerifyResults reaches the briefs API only on Save/Seal (not exercised here);
@@ -68,6 +68,56 @@ const ambiguousCiteClaim = {
   ],
   placement: { placed: true, method: "exact", char_start: 0, char_end: 10 }
 };
+
+describe("VerifyResults mid-stream error (invariant #6)", () => {
+  // A live stream that errored after one of two cite checks landed. The
+  // skeleton cards carry verdict "verified" with no case verdicts, so any
+  // render path that releases the unchecked card shows "Supported" for a
+  // claim whose cite check never ran.
+  function erroredStreamEngine(): VerifyEngine {
+    const skeleton = (claim_index: number) => ({
+      claim_index,
+      claim_text: `claim ${claim_index}`,
+      verdict: "verified",
+      citations: [],
+      case_verdicts: [],
+      unsupported_reason: null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+    let s = initialStreamState();
+    s = reduceStreamEvent(s, { type: "claims", claim_verdicts: [skeleton(0), skeleton(1)] });
+    s = reduceStreamEvent(s, {
+      type: "cite_verdict",
+      claim_index: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      case_verdict: { claim_index: 0, ok: true, verdicts: [] } as any
+    });
+    s = reduceStreamEvent(s, { type: "error", error: "the verification stream failed" });
+    return {
+      response: null,
+      stream: s,
+      loading: true,
+      hydrating: false,
+      error: "the verification stream failed",
+      sealedSeed: null,
+      certAtSeed: null,
+      hydratedDraft: null,
+      verify: vi.fn()
+    };
+  }
+
+  it("never renders an unchecked claim as Supported once the stream has errored", () => {
+    render(<VerifyResults engine={erroredStreamEngine()} draft="" />);
+    expect(screen.queryByText("Supported")).toBeNull();
+    expect(screen.getByText("the verification stream failed")).toBeTruthy();
+  });
+
+  it("drops the live skeleton list on error (the banner is the only verdict)", () => {
+    render(<VerifyResults engine={erroredStreamEngine()} draft="" />);
+    expect(screen.queryByText("claim 0")).toBeNull();
+    expect(screen.queryByText("claim 1")).toBeNull();
+  });
+});
 
 describe("VerifyResults refusal CTA (onResolve)", () => {
   it("offers the resolve action when a statement could not be checked for want of its record, and fires onResolve", () => {
