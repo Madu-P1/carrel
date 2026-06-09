@@ -47,6 +47,15 @@ os.environ.setdefault("COURTLISTENER_API_TOKEN", "local")
 # ~8.7 min to ~2s (ce74049d0). Cachet-ingested docs have no vectors (FTS +
 # deterministic catch still work; vectors are backfillable); Carrel keeps true.
 os.environ.setdefault("EMBED_ON_INGEST", "false")
+# Pin the embedder weights cache so the offline contract path loads the pre-cached
+# bge-small weights instead of failing "the offline embedding model is not cached".
+# Provision once online (network on) before the demo:
+#   CARREL_FASTEMBED_CACHE_DIR=~/.cache/carrel-fastembed HF_HUB_OFFLINE=0 \
+#     .venv/bin/python -c "from fastembed import TextEmbedding; \
+#       TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='$CARREL_FASTEMBED_CACHE_DIR')"
+os.environ.setdefault(
+    "CARREL_FASTEMBED_CACHE_DIR", str(Path.home() / ".cache" / "carrel-fastembed")
+)
 
 import uvicorn
 from fastapi import Response
