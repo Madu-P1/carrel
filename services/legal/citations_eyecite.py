@@ -45,6 +45,15 @@ class CitationRef:
     plaintiff: str | None = None
     defendant: str | None = None
     corrected: str | None = None
+    # The year eyecite read from the cite's court-year parenthetical ("(1954)",
+    # "(9th Cir. 1996)"), None when the draft gives none. Compared against the
+    # resolved case's date_filed so a real number cited with a wrong year does
+    # not read verified.
+    year: int | None = None
+    # eyecite's court id for the cite (courts-db ids, the same id-space
+    # CourtListener uses: "scotus", "ca9"). From the parenthetical when given,
+    # else inferred from the reporter; None when neither determines it.
+    court: str | None = None
 
 
 def find_citations(text: str) -> list[CitationRef]:
@@ -85,9 +94,20 @@ def find_citations(text: str) -> list[CitationRef]:
                 plaintiff=getattr(cite.metadata, "plaintiff", None),
                 defendant=getattr(cite.metadata, "defendant", None),
                 corrected=corrected or matched,
+                year=_coerce_year(getattr(cite.metadata, "year", None)),
+                court=getattr(cite.metadata, "court", None) or None,
             )
         )
     return refs
+
+
+def _coerce_year(value: object) -> int | None:
+    """eyecite's metadata.year as an int, or None when absent/unparseable."""
+    try:
+        year = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return year if 1000 <= year <= 9999 else None
 
 
 def has_citation(text: str) -> bool:
@@ -210,6 +230,22 @@ def _acronym_forms(case_name: str) -> set[str]:
     return forms
 
 
+_CAPS_RUN = re.compile(r"\b[A-Z][A-Z0-9]{2,}\b")
+
+
+def _caps_tokens(text: str) -> set[str]:
+    """Lowercase forms of the tokens written in ALL CAPS in the source text.
+
+    Only these earn initialism credit in :func:`caption_match_state`. An
+    initialism is written in caps ("NLRB", "SEC"); a mixed-case surname that
+    coincidentally spells one ("Fat" against "First American Title") is a party
+    name and must match exactly, never by acronym. The dotted form ("N.L.R.B.")
+    needs no credit: it tokenizes to single letters, which leaves its side
+    vacuous already.
+    """
+    return {m.group(0).lower() for m in _CAPS_RUN.finditer(text or "")}
+
+
 def caption_match_state(ref: CitationRef, case_name: str) -> str:
     """How the draft's caption relates to the resolved case: ``match`` /
     ``unconfirmed`` / ``mismatch``.
@@ -227,24 +263,28 @@ def caption_match_state(ref: CitationRef, case_name: str) -> str:
     Compatibility per token pair is :func:`_tokens_compatible` (exact for plain
     surnames, prefix/table only for marked abbreviations), plus initialism
     forms of the resolved name ("NLRB" for "National Labor Relations Board"),
-    so the stricter per-side rule does not false-flag initialism captions. A
-    side with no significant tokens ("U.S.") is vacuous, and a caption with no
-    populated side at all is a ``match``: a bare citation is never punished for
-    what it does not say.
+    so the stricter per-side rule does not false-flag initialism captions.
+    Initialism credit is restricted to tokens written in ALL CAPS in the draft
+    (:func:`_caps_tokens`): a mixed-case surname that coincidentally spells an
+    initialism ("Fat" against "First American Title") is a party name and gets
+    no credit. A side with no significant tokens ("U.S.") is vacuous, and a
+    caption with no populated side at all is a ``match``: a bare citation is
+    never punished for what it does not say.
     """
-    sides = [caption_token_info(ref.plaintiff or ""), caption_token_info(ref.defendant or "")]
-    populated = [side for side in sides if side]
+    raw_sides = [ref.plaintiff or "", ref.defendant or ""]
+    sides = [(caption_token_info(raw), _caps_tokens(raw)) for raw in raw_sides]
+    populated = [(tokens, caps) for tokens, caps in sides if tokens]
     resolved = caption_token_info(case_name)
     if not populated or not resolved:
         return "match"
     acronyms = _acronym_forms(case_name)
 
-    def _side_matches(side: list[tuple[str, bool]]) -> bool:
+    def _side_matches(side: list[tuple[str, bool]], caps: set[str]) -> bool:
         return any(
             _tokens_compatible(d, d_ab, r, r_ab) for d, d_ab in side for r, r_ab in resolved
-        ) or any(token in acronyms for token, _abbrev in side)
+        ) or any(token in acronyms and token in caps for token, _abbrev in side)
 
-    results = [_side_matches(side) for side in populated]
+    results = [_side_matches(side, caps) for side, caps in populated]
     if all(results):
         return "match"
     if any(results):

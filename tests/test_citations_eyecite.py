@@ -282,6 +282,31 @@ class CaptionMatchStateTests(unittest.TestCase):
         )
         self.assertEqual("match", state)
 
+    def test_lowercase_word_spelling_an_initialism_gets_no_credit(self) -> None:
+        # "Fat" is a surname here, coincidentally the initialism of "First
+        # American Title". Initialism credit is reserved for tokens written in
+        # ALL CAPS in the draft ("NLRB"), so this side fails and the caption is
+        # the unconfirmed refusal, not a match.
+        state = caption_match_state(
+            _ref("Fat", "Jones"), "First American Title Insurance Co. v. Jones"
+        )
+        self.assertEqual("unconfirmed", state)
+
+
+class CitationYearCourtExtractionTests(unittest.TestCase):
+    """find_citations reads the court-year parenthetical into typed fields so
+    the envelope can compare them against the corpus record (D13 follow-up)."""
+
+    def test_year_and_court_populate_from_the_parenthetical(self) -> None:
+        ref = find_citations("Smith v. Jones, 100 F.3d 200 (9th Cir. 1996).")[0]
+        self.assertEqual(1996, ref.year)
+        self.assertEqual("ca9", ref.court)
+
+    def test_year_is_none_without_a_parenthetical(self) -> None:
+        ref = find_citations("Smith v. Jones, 100 F.3d 200.")[0]
+        self.assertIsNone(ref.year)
+        self.assertIsNone(ref.court)
+
 
 if __name__ == "__main__":
     unittest.main()
