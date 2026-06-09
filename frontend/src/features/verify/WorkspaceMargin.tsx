@@ -203,10 +203,19 @@ function ClaimMark({
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
+  // The announcement must keep the visible register split: only a real flag is
+  // "flagged"; the refusal is a could-not-check, and an assistive note is a
+  // query for review. A screen reader that hears "flagged" for an honest
+  // refusal has been handed an accusation the engine never made.
+  const fuzzyNote = fuzzy && tier !== "pass" ? ", placement approximate" : "";
   const aria =
     tier === "pass"
       ? `Statement, checked and supported: ${segment.text}`
-      : `Statement flagged ${label}${fuzzy ? ", placement approximate" : ""}: ${segment.text}`;
+      : tier === "refusal"
+        ? `Statement could not be checked, ${label}${fuzzyNote}: ${segment.text}`
+        : tier === "assistive"
+          ? `Statement noted for your review, ${label}${fuzzyNote}: ${segment.text}`
+          : `Statement flagged ${label}${fuzzyNote}: ${segment.text}`;
   return (
     <span
       className={[
@@ -253,7 +262,14 @@ function MarginNote({
   onExamine: (claimIndex: number) => void;
 }) {
   const tier = noteTier(disposition.tier);
-  const trail = card.unsupported_reason && tier === "refusal" ? card.unsupported_reason : null;
+  // The wire's unsupported_reason is the refusal's audit trail, but for an
+  // unknown-verdict card the disposition detail already IS that reason
+  // (claimDisposition reads it first); suppress the trail when it would print
+  // the identical sentence twice in one note.
+  const trail =
+    card.unsupported_reason && tier === "refusal" && card.unsupported_reason !== disposition.detail
+      ? card.unsupported_reason
+      : null;
   return (
     <div
       className={styles.marginNote}

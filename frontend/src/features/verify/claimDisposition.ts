@@ -186,10 +186,14 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       c.boundedCorpus && !c.exists && !c.captionMismatch && (c.status === 404 || c.status === 400)
   );
   if (outsideCoverage) {
+    // Prefer the engine's own reason (it names the citation); the local copy is
+    // the fallback for older payloads. Keeping one sentence of record avoids
+    // the two near-identical corpus sentences drifting on either side of the wire.
     return mk(
       "could_not_check",
       "Could not verify",
-      "This citation is outside the offline corpus checked. Confirm it against the full national database."
+      reasonText(card) ??
+        "This citation is outside the offline corpus checked. Confirm it against the full national database."
     );
   }
 

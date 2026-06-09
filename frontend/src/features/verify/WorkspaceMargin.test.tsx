@@ -69,6 +69,59 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     expect(mark.getAttribute("data-tier")).toBe("pass");
   });
 
+  it("a refusal is announced as could-not-check, never as 'flagged'", () => {
+    // The screen reader is the only rendering some users get. Announcing the
+    // honest refusal as "Statement flagged" turns a could-not-check into an
+    // accusation in that rendering — the visible register split (oxblood vs
+    // composed ink) must survive the read-back.
+    const { getByRole } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unknown" })
+    ]);
+    const mark = getByRole("button", { name: /could not be checked/i });
+    expect(mark.getAttribute("data-tier")).toBe("refusal");
+    expect(mark.getAttribute("aria-label")).not.toMatch(/flagged/i);
+  });
+
+  it("an assistive note is announced for review, never as 'flagged'", () => {
+    const { getByRole } = renderMargin([
+      card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "verified",
+        case_verdicts: [
+          {
+            claim_index: 0,
+            ok: true,
+            verdicts: [{ citation: "1 U.S. 1", status: 200, exists: true, holding_match: false }]
+          }
+        ]
+      })
+    ]);
+    const mark = getByRole("button", { name: /for your review/i });
+    expect(mark.getAttribute("data-tier")).toBe("assistive");
+    expect(mark.getAttribute("aria-label")).not.toMatch(/flagged/i);
+  });
+
+  it("a margin note never repeats the same sentence as detail and trail", () => {
+    // For an unknown-verdict refusal the disposition detail IS the wire's
+    // unsupported_reason; rendering the reason again as the trail prints the
+    // identical sentence twice in one note.
+    const reason = "No source was loaded to check this statement against.";
+    const refusal = {
+      ...card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "unknown"
+      }),
+      unsupported_reason: reason
+    } as VerifyClaimVerdict;
+    const { container } = renderMargin([refusal]);
+    const occurrences = (container.textContent ?? "").split(reason).length - 1;
+    expect(occurrences).toBe(1);
+  });
+
   it("never renders a confidence percentage", () => {
     const { container } = renderMargin([
       card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "unsupported" })
