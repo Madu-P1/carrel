@@ -709,5 +709,41 @@ class VerifyStreamRouteTests(unittest.TestCase):
         self.assertNotIn("result", types)
 
 
+class DeterministicStreamCoverageTests(unittest.TestCase):
+    """Coverage honesty must reach the entrypoint the GUI actually calls.
+
+    The coverage block (statements/treated/untreated) is asserted at the
+    payload level in test_verify; the demo UI's only verify entrypoint is the
+    STREAM, so this pins the block on the stream's final result event through
+    the real deterministic branch, not a stub."""
+
+    def test_stream_result_event_carries_coverage(self) -> None:
+        import sqlite3
+
+        conn = sqlite3.connect(":memory:")
+        events: list = []
+        with mock.patch.dict(
+            os.environ,
+            {"CACHET_DETERMINISTIC_VERIFY": "1", "COURTLISTENER_API_TOKEN": "local"},
+            clear=False,
+        ):
+            os.environ.pop("CACHET_LOCAL_CASELAW", None)
+            for event in verify_service.verify_draft_stream(
+                conn,
+                # One anchor-bearing sentence (treated) + one anchor-free
+                # sentence (untreated): the counts must survive to the wire.
+                "As held in 999 U.S. 999, the rule applies. The weather was pleasant throughout.",
+                log_study_event=lambda *a, **k: None,
+                fetch_recent_events=lambda *a, **k: [],
+            ):
+                events.append(event)
+        conn.close()
+        results = [e for e in events if e.get("type") == "result"]
+        self.assertTrue(results, "stream emitted no result event")
+        verify = results[-1]["verify"]
+        self.assertEqual("deterministic", verify.get("provider"))
+        self.assertEqual({"statements": 2, "treated": 1, "untreated": 1}, verify.get("coverage"))
+
+
 if __name__ == "__main__":
     unittest.main()
