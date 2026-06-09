@@ -67,6 +67,12 @@
   /* The single grave accent: a proofreader's oxblood, flags only. */
   --verify-flag: #7a2230;
 
+  /* No green on the verify surface, even from shared primitives: Badge's
+   * success tone (ProvenanceBadge, claude provider) resolves --color-success
+   * from the global theme unless rebound here. Ink, same as the Cachet shell's
+   * neutralization (cachet.module.css). */
+  --color-success: var(--text-primary);
+
   /* A reading serif for document body (Instrument Serif stays display-only,
    * per DESIGN.md). Charter/Georgia carry legal-document gravity. */
   --font-serif-body: Charter, "Charter BT", "Iowan Old Style", Georgia, "Times New Roman", serif;

@@ -24,6 +24,17 @@ describe("verify visual mode is scoped and motion-safe", () => {
     expect(css).not.toMatch(/\banimation\s*:/);
   });
 
+  test("the scope neutralizes --color-success so no shared primitive can leak green", () => {
+    // The 2026-05-29 deviation bans traffic-light green on the verify surface,
+    // but shared primitives (Badge tone=success via ProvenanceBadge for the
+    // claude provider) resolve --color-success from the GLOBAL theme unless the
+    // scope rebinds it. The Cachet shell already neutralizes it to ink
+    // (cachet.module.css); the scope layer must do the same so Carrel's
+    // /verify route holds the no-green rule on its own.
+    const scope = css.match(/\.verifyScope\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(scope).toMatch(/--color-success:\s*var\(--text-primary\)/);
+  });
+
   test("the cracked seal caption is dimmed ink, never the reserved oxblood flag accent", () => {
     // PR2: a cracked seal is a quiet re-verify nudge, not a verification flag, so its
     // caption must use the dimmed ink register and never the --verify-flag oxblood.
