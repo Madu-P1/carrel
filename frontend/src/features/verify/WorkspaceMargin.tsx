@@ -22,9 +22,10 @@
  */
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
-import type { VerifyClaimVerdict, VerifyQuoteResult } from "@/services/api/endpoints";
+import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
 import { DISPOSITION_ORDER, dispositionForClaim, type ClaimDisposition } from "./claimDisposition";
+import { displaySafe } from "./displaySafe";
 import {
   paragraphsFromSegments,
   segmentDraft,
@@ -58,8 +59,6 @@ function noteTier(tier: ClaimDisposition["tier"]): "flag" | "query" | "refusal" 
 interface WorkspaceMarginProps {
   draftText: string;
   cards: VerifyClaimVerdict[];
-  /** quote results that could not be attributed to a placed claim (tray header). */
-  unattributedQuotes: VerifyQuoteResult[];
   /** claim_index currently open in the Examination drawer, or null. */
   examined: number | null;
   onExamine: (claimIndex: number) => void;
@@ -73,7 +72,6 @@ interface ClaimMeta {
 export function WorkspaceMargin({
   draftText,
   cards,
-  unattributedQuotes,
   examined,
   onExamine
 }: WorkspaceMarginProps) {
@@ -137,7 +135,7 @@ export function WorkspaceMargin({
   const topFor = (idx: number): number | undefined =>
     placements.find((p) => p.key === idx)?.top;
 
-  const hasTray = trayClaims.length > 0 || unattributedQuotes.length > 0;
+  const hasTray = trayClaims.length > 0;
 
   return (
     <div className={styles.canvas}>
@@ -146,7 +144,7 @@ export function WorkspaceMargin({
           <p key={pi} className={styles.docParagraph}>
             {para.map((seg, si) =>
               seg.kind === "text" ? (
-                <span key={si}>{seg.text}</span>
+                <span key={si}>{displaySafe(seg.text)}</span>
               ) : (
                 <ClaimMark
                   key={si}
@@ -181,7 +179,6 @@ export function WorkspaceMargin({
       {hasTray ? (
         <UnplacedTray
           claims={trayClaims}
-          quotes={unattributedQuotes}
           onExamine={onExamine}
         />
       ) : null}
@@ -237,7 +234,7 @@ function ClaimMark({
           : undefined
       }
     >
-      {segment.text}
+      {displaySafe(segment.text)}
     </span>
   );
 }
@@ -281,11 +278,9 @@ function MarginNote({
 
 function UnplacedTray({
   claims,
-  quotes,
   onExamine
 }: {
   claims: ClaimMeta[];
-  quotes: VerifyQuoteResult[];
   onExamine: (claimIndex: number) => void;
 }) {
   return (
@@ -295,25 +290,6 @@ function UnplacedTray({
         These statements were checked, but their exact wording could not be matched to a span in the
         draft above. Review them here.
       </p>
-      {quotes.length > 0 ? (
-        <div className={styles.trayQuotes}>
-          <h3 className={styles.trayQuotesLabel}>Quotation checks</h3>
-          {quotes.map((q) => (
-            <p
-              key={q.index}
-              className={[
-                styles.trayQuoteItem,
-                q.status === "altered" ? styles.trayQuoteAltered : styles.trayQuoteUnplaceable
-              ].join(" ")}
-            >
-              <span className={styles.trayQuoteStatus}>
-                {q.status === "altered" ? "Not found verbatim" : "Could not check"}
-              </span>
-              <span className={styles.trayQuoteText}>“{q.quote}”</span>
-            </p>
-          ))}
-        </div>
-      ) : null}
       <ul className={styles.trayList}>
         {claims.map((m) => {
           const idx = m.card.claim_index ?? 0;

@@ -874,7 +874,11 @@
   gap: var(--space-3);
   padding: var(--space-6);
   overflow: auto;
-  background: rgb(14 14 16 / 72%);
+  /* Opaque: the certification is a self-contained record. A translucent scrim
+     let underlying content (the provenance badge) bleed through behind the
+     toolbar controls; aria-modal already makes the background inert, so the
+     glimpse bought nothing and collided with the Close / Save actions. */
+  background: rgb(14 14 16);
 }
 
 .certToolbar {

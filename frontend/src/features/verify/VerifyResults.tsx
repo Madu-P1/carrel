@@ -619,7 +619,6 @@ export function VerifyResults({
             <WorkspaceMargin
               draftText={response.draft_text ?? draft}
               cards={cards}
-              unattributedQuotes={quoteResults.filter((q) => q.status !== "verbatim")}
               examined={selected}
               onExamine={(idx) => setSelected(selected === idx ? null : idx)}
             />

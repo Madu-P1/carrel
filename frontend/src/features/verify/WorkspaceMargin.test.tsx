@@ -39,15 +39,9 @@ function card(
   } as VerifyClaimVerdict;
 }
 
-function renderMargin(cards: VerifyClaimVerdict[], unattributedQuotes = []) {
+function renderMargin(cards: VerifyClaimVerdict[]) {
   return render(
-    <WorkspaceMargin
-      draftText={DRAFT}
-      cards={cards}
-      unattributedQuotes={unattributedQuotes}
-      examined={null}
-      onExamine={() => {}}
-    />
+    <WorkspaceMargin draftText={DRAFT} cards={cards} examined={null} onExamine={() => {}} />
   );
 }
 
@@ -101,6 +95,16 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     expect(getByText(/Statements not located in the draft text/i)).toBeDefined();
     // no inline claim mark in the document (it has no span)
     expect(container.querySelector('[data-claim-index="0"]')).toBeNull();
+  });
+
+  it("does not render a quotation-check block (quotes live only in QuotePanel)", () => {
+    // Quotation checks are owned by QuotePanel; the tray must not duplicate them
+    // under its draft-placement header. With an unplaced claim present (so the
+    // tray renders), there is still no "Quotation checks" sub-block here.
+    const { queryByText } = renderMargin([
+      card(0, { text: "A claim with no draft span", placed: false, verdict: "unsupported" })
+    ]);
+    expect(queryByText(/Quotation checks/i)).toBeNull();
   });
 
   it("a fuzzy placement carries the fuzzy mark modifier; exact does not", () => {

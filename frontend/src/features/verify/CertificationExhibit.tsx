@@ -345,7 +345,10 @@ export function CertificationExhibit({
         </section>
 
         <section className={styles.certSection}>
-          <h3 className={styles.certSectionLabel}>All statements checked</h3>
+          <h3 className={styles.certSectionLabel}>Complete record of all statements checked</h3>
+          <p className={styles.certMuted}>
+            The full record, including the items flagged for review above.
+          </p>
           <ol className={styles.certList}>
             {model.allItems.map((it) => (
               <li key={it.index} className={styles.certItem}>
