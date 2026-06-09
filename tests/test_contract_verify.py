@@ -4,7 +4,27 @@ from __future__ import annotations
 
 import unittest
 
-from services.legal.contract_verify import verify_claim_against_clause
+from services.legal.anchors import Anchor
+from services.legal.contract_verify import _durations_match, verify_claim_against_clause
+
+
+class DurationUnitFallbackTests(unittest.TestCase):
+    def test_unitless_anchor_falls_back_to_the_tolerant_compare(self) -> None:
+        # Pins the documented fallback in _durations_match: when an anchor's
+        # unit cannot be re-derived from its text (the detector normally
+        # guarantees a unit word), the compare falls back to the tolerant
+        # cross-unit rule, the lenient pre-existing behavior, rather than
+        # silently failing closed into a contradiction.
+        near = _durations_match(
+            Anchor("duration", "approximately 360", 0, 17, 360.0),
+            Anchor("duration", "365 days", 0, 8, 365.0),
+        )
+        far = _durations_match(
+            Anchor("duration", "approximately 300", 0, 17, 300.0),
+            Anchor("duration", "365 days", 0, 8, 365.0),
+        )
+        self.assertTrue(near)  # within 5%: the tolerant fallback accepts
+        self.assertFalse(far)  # beyond 5%: still a contradiction
 
 
 class ParametricContradictionTests(unittest.TestCase):
