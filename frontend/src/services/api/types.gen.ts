@@ -275,6 +275,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vaults
+         * @description Every vault (document folder) the UI should show, including empty ones
+         *     registered for folder-first creation. The union of the subject_names records
+         *     are filed under and the empty-vault registry.
+         */
+        get: operations["list_vaults_api_vaults_get"];
+        put?: never;
+        /**
+         * Create Vault Route
+         * @description Create a (possibly empty) vault so records can be filed into it. Returns
+         *     the full vault list so the caller resyncs in one round trip.
+         */
+        post: operations["create_vault_route_api_vaults_post"];
+        /**
+         * Delete Vault Route
+         * @description Forget an EMPTY vault. Refuses (409) if any record is still filed under it,
+         *     so deleting a vault never silently moves or destroys records. The name travels
+         *     as a query parameter, not a path segment, so a vault named after a caption that
+         *     contains a slash (e.g. 'Apex / Northwind') can still be deleted.
+         */
+        delete: operations["delete_vault_route_api_vaults_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/subjects": {
         parameters: {
             query?: never;
@@ -1968,6 +2002,11 @@ export interface components {
             /** Error Message */
             error_message?: string | null;
         };
+        /** CreateVaultRequest */
+        CreateVaultRequest: {
+            /** Name */
+            name: string;
+        };
         /** DeleteResponse */
         DeleteResponse: {
             /** Deleted */
@@ -2801,6 +2840,16 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** VaultDeleteResponse */
+        VaultDeleteResponse: {
+            /** Deleted */
+            deleted: boolean;
+        };
+        /** VaultListResponse */
+        VaultListResponse: {
+            /** Vaults */
+            vaults: string[];
+        };
         /**
          * VerifyClaimVerdictItem
          * @description One per-claim verdict the verifier UX renders.
@@ -3398,6 +3447,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vaults_api_vaults_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultListResponse"];
+                };
+            };
+        };
+    };
+    create_vault_route_api_vaults_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVaultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_vault_route_api_vaults_delete: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeleteResponse"];
                 };
             };
             /** @description Validation Error */
