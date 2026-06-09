@@ -32,10 +32,15 @@ import httpx
 
 from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
-from services.legal.citations_eyecite import caption_matches, find_citations
+from services.legal.citations_eyecite import caption_match_state, find_citations
 from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
 from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
-from services.legal.quote_check import extract_draft_quote_spans, split_runs
+from services.legal.quote_check import (
+    extract_draft_quote_spans,
+    first_letter_variants,
+    quoted_subphrases,
+    split_runs,
+)
 from services.legal.sentences import split_sentences
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
@@ -75,8 +80,12 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
       from the LLM path's "ran but could not determine".
     - ``caption_mismatch``: the number resolves but to a different case than the
       draft names (a fabricated caption on a real number). eyecite reads the
-      draft's party names; ``caption_matches`` compares them leniently so an
+      draft's party names; ``caption_match_state`` compares them per side, so an
       abbreviated real caption is never falsely flagged.
+    - ``caption_unconfirmed``: one populated caption side matches the resolved
+      case and the other does not ("Smith v. Board" on Brown's number). The
+      refusal state: the verifier downgrades it to could-not-check, never to
+      the mismatch flag and never to verified.
     """
     refs = {r.matched_text: r for r in find_citations(sentence)}
     for batch in case_verdicts:
@@ -91,8 +100,13 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
             if not v.get("exists") or not v.get("case_name"):
                 continue
             ref = refs.get(v.get("citation"))
-            if ref is not None and not caption_matches(ref, v["case_name"]):
+            if ref is None:
+                continue
+            state = caption_match_state(ref, v["case_name"])
+            if state == "mismatch":
                 v["caption_mismatch"] = True
+            elif state == "unconfirmed":
+                v["caption_unconfirmed"] = True
 
 
 def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:
@@ -122,21 +136,6 @@ def _attach_bundled_opinion_text(case_verdicts: list[dict]) -> None:
                 text = local_opinion_text(v.get("citation"))
                 if text:
                     v["opinion_text"] = text
-
-
-def _quoted_subphrases(run: str) -> list[str]:
-    """The distinct quoted phrases inside a run, in case the span regex merged them.
-
-    The quote-span extractor captures greedily from the first quote mark to the
-    last, so a sentence with two quoted phrases ('"A" failed because "B"') yields a
-    single run with the inner marks retained ('A" failed because "B'). Splitting on
-    quote marks recovers the phrases at the even positions; the odd positions are
-    the lawyer's own connecting prose, which was never quoted and must not be
-    checked. A run with no inner marks yields itself unchanged.
-    """
-    parts = re.split(r'["“”]', run)
-    phrases = [p for idx, p in enumerate(parts) if idx % 2 == 0 and p.strip()]
-    return phrases or [run]
 
 
 # C3: contract boilerplate carries no topic signal, so an overlap on these words does
@@ -182,21 +181,36 @@ _TOPIC_STOPWORDS = frozenset(
 )
 
 
-def _clause_on_topic(sentence: str, clause: str) -> bool:
-    """A parametric present is on-topic only if the claim and the matched clause share
-    a content word beyond the coincidental value.
+def _clause_on_topic(sentence: str, clause: str, *, minimum: int) -> bool:
+    """A parametric verdict is on-topic only if the claim and the matched clause
+    share at least ``minimum`` content words beyond the coincidental value.
 
     Blocks an off-topic clause that merely repeats the same number (an unrelated
-    signing bonus's $42,000 vs a liability cap's $42,000). The case-existence path
-    already gates on relevance ("mere topical relevance is not support"); the contract
-    path did not, so an off-topic value coincidence could read a false "present". The
-    safe direction is recall loss (could-not-check), never a false accusation.
+    signing bonus's $42,000 vs a liability cap's $42,000). The floor differs by
+    direction, each strictly tighter than what preceded it:
+
+      - present requires TWO shared words. One is not relevance: the contract's
+        own name ("Services Agreement") and other recurring nouns appear in
+        every clause, so a single overlap laundered off-topic values into
+        "present" (support by coincidence).
+      - parametric_contradiction requires ONE shared word (previously zero: any
+        retrieved clause could accuse). A contradiction is an affirmative
+        same-type mismatch against a retrieval-targeted clause, and the demo's
+        own gold catches (a one-line summary sentence against a long clause)
+        legitimately share exactly one topic word; requiring two would silence
+        the flagship catch. A clause sharing nothing with the claim still
+        cannot accuse.
+
+    Words fold a trailing s so a singular/plural pair counts once. The safe
+    direction on a gate miss is recall loss (could-not-check), never a false
+    verdict in either direction.
     """
 
     def content(text: str) -> set[str]:
-        return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _TOPIC_STOPWORDS}
+        words = {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _TOPIC_STOPWORDS}
+        return {w[:-1] if w.endswith("s") else w for w in words}
 
-    return bool(content(sentence) & content(clause))
+    return len(content(sentence) & content(clause)) >= minimum
 
 
 def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
@@ -218,7 +232,7 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
         return None
     for inner_text, _start, _end in spans:
         for run in split_runs(inner_text):
-            for phrase in _quoted_subphrases(run):
+            for phrase in quoted_subphrases(run):
                 phrase = phrase.strip()
                 if phrase and not _run_present_any(phrase, opinions):
                     return (
@@ -228,30 +242,11 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
     return None
 
 
-def _first_letter_variants(run: str) -> tuple[str, ...]:
-    """The run, plus the run with its first alphabetic character's case toggled.
-
-    A lawyer who embeds a quote mid-sentence routinely lowercases the source's
-    leading capital ("separate educational facilities..." from a sentence that
-    opened "Separate ...") without the bracket convention ("[s]eparate"). That is
-    a universally accepted edit, not an alteration, so the altered-quote check
-    must accept either case at the leading letter. Interior case stays strict, so
-    a substituted interior word is still caught.
-    """
-    for i, ch in enumerate(run):
-        if ch.isalpha():
-            swapped = ch.lower() if ch.isupper() else ch.upper()
-            if swapped == ch:
-                break
-            return (run, run[:i] + swapped + run[i + 1 :])
-    return (run,)
-
-
 def _run_present_any(run: str, opinions: list[str]) -> bool:
     """True if ``run`` (or its leading-letter case variant) is verbatim in any opinion."""
     return any(
         verbatim_run_present(variant, op)
-        for variant in _first_letter_variants(run)
+        for variant in first_letter_variants(run)
         for op in opinions
     )
 
@@ -467,13 +462,22 @@ def _contract_claim(
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
         if (
-            candidate.disposition == "present"
+            candidate.disposition in ("present", "parametric_contradiction")
             and candidate.anchor_type != "quote"
-            and not _clause_on_topic(sentence, node.verbatim_text)
+            and not _clause_on_topic(
+                sentence,
+                node.verbatim_text,
+                minimum=2 if candidate.disposition == "present" else 1,
+            )
         ):
-            # C3: an off-topic clause that merely shares the literal value is not
-            # support. Skip it so the sentence degrades to could-not-check instead of
-            # a false "present"; a clean on-topic clause later in the list still wins.
+            # C3: an off-topic clause that merely shares (or merely differs from)
+            # the literal value is neither support nor contradiction. Skip it so
+            # the sentence degrades to could-not-check instead of a false
+            # "present" or a false accusation; a clean on-topic clause later in
+            # the list still wins. A quote-anchored present is exempt: the
+            # verbatim quoted language IS the topical link. The present floor is
+            # two shared words; the contradiction floor is one (see
+            # _clause_on_topic for why they differ).
             continue
         if candidate.disposition in ("present", "parametric_contradiction"):
             verdict = candidate
@@ -645,8 +649,9 @@ def build_deterministic_envelope(
     )
     sentences = split_sentences(draft)
     claims: list[dict] = []
-    # Opinion text of the cases that resolved in each sentence, so the altered-quote
-    # pass can check a quote against cites in its own OR an adjacent sentence.
+    # Opinion text of the cases that resolved in each sentence. The altered-quote
+    # pass below attributes SAME-SENTENCE only; this map is keyed by sentence
+    # index for that pass.
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence, alias_table=alias_table)

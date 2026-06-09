@@ -138,7 +138,10 @@ const indexCssPath = resolve(distDir, "index.css");
 // from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
 // the Cachet shell out of the entry is the lean follow-up, deferred per the same
 // file:// Suspense constraint.
-const ENTRY_JS_GZIP_BUDGET = 126 * 1024;
+// Bumped 126 -> 127 KB for verify coverage + attestation honesty (the
+// checked-of-total coverage line in the summary and certification exhibit, and
+// the provider-conditional data-handling attestation): ~126.4 KB gz live.
+const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

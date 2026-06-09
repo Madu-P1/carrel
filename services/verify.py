@@ -109,6 +109,15 @@ class VerifyResult:
     # (the unplaced tray). Deterministic; a claim is unplaced rather than
     # mis-pinned whenever its locator is ambiguous.
     unplaced: tuple[int, ...] = ()
+    # Coverage honesty: how much of the draft the engine actually examined.
+    # Set ONLY on the deterministic path, whose claims are sentence-aligned:
+    # {"statements": total sentences, "treated": sentences with checkable
+    # material (they became cards), "untreated": sentences with no checkable
+    # anchor (no card, rendered as plain draft text)}. None on the LLM path,
+    # whose claims are model-extracted and not sentence-aligned, so a count
+    # would overstate what the engine knows. The UI and the certification
+    # render this so "checked" never silently implies "checked everything".
+    coverage: Dict[str, int] | None = None
 
 
 def _verify_framed_question(draft: str) -> str:
@@ -135,7 +144,7 @@ def _verify_framed_question(draft: str) -> str:
 def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
     """Litigator: derive the top-line verdict from case-existence results."""
     any_missing = any_failed = any_exists = examined = False
-    any_outside_coverage = False
+    any_outside_coverage = any_caption_unconfirmed = False
     for cv in case_verdicts:
         if not cv.get("ok", True):
             any_failed = True
@@ -143,6 +152,11 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
             examined = True
             if case.get("caption_mismatch"):
                 any_missing = True  # resolves by number, but not the case named
+            elif case.get("caption_unconfirmed"):
+                # The number resolves, but one side of the draft's caption could
+                # not be matched to the resolved case. Refuse, never bless and
+                # never accuse: this must not count as an existence confirmation.
+                any_caption_unconfirmed = True
             elif case.get("exists"):
                 any_exists = True
             elif case.get("bounded_corpus"):
@@ -158,6 +172,8 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
         return "unsupported"  # a cited case does not exist -- the catch
     if any_failed:
         return "unknown"  # verification could not run
+    if any_caption_unconfirmed:
+        return "unknown"  # the caption could not be confirmed -- the honest refusal
     if any_outside_coverage:
         return "unknown"  # outside the offline corpus -- the honest could-not-check
     if any_exists:
@@ -191,6 +207,13 @@ def _deterministic_reason(
                 return (
                     f"Citation {case.get('citation')} resolves to "
                     f"{case.get('case_name')}, not the case named in your draft."
+                )
+            if case.get("caption_unconfirmed"):
+                return (
+                    f"Citation {case.get('citation')} resolves to "
+                    f"{case.get('case_name')}, but part of the caption in your draft "
+                    "could not be matched to that case. Confirm the case name before "
+                    "relying on it."
                 )
             if not case.get("exists"):
                 if case.get("bounded_corpus"):
@@ -454,6 +477,7 @@ def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
         "provider": result.provider,
         "quote_results": list(result.quote_results),
         "unplaced": list(result.unplaced),
+        "coverage": dict(result.coverage) if result.coverage is not None else None,
     }
 
 
@@ -471,6 +495,22 @@ def _verify_result_from_envelope(
     unsupported_spans = envelope.get("unsupported_spans") or []
     model_name = str(envelope.get("model") or envelope.get("answer_model") or "")
     engine_error = envelope.get("error")
+
+    # Coverage honesty: the deterministic envelope emits exactly one claim per
+    # draft sentence, so its claims ARE the denominator. Count them here, before
+    # untreated claims are dropped from the card list below, or the information
+    # is gone from the wire and every downstream surface can only imply that
+    # the whole draft was checked. LLM-path claims are model-extracted, not
+    # sentence-aligned: no coverage block there (None), by design.
+    coverage: Dict[str, int] | None = None
+    if str(envelope.get("provider") or "") == "deterministic":
+        dict_claims = [c for c in claims if isinstance(c, dict)]
+        untreated_count = sum(1 for c in dict_claims if c.get("untreated"))
+        coverage = {
+            "statements": len(dict_claims),
+            "treated": len(dict_claims) - untreated_count,
+            "untreated": untreated_count,
+        }
 
     # Cachet PR4: brief-level draft-quote check. Build the source pool from the
     # envelope's serialized claims (loaded-doc chunk `content` + cited-case
@@ -578,6 +618,7 @@ def _verify_result_from_envelope(
         # Only reference claims that actually became cards; an untreated claim has no
         # card, so it must never appear in the unplaced tray.
         unplaced=tuple(i for i in unplaced_local if i in treated_indices),
+        coverage=coverage,
     )
 
 

@@ -346,6 +346,20 @@ class VerifyQuoteResultItem(BaseModel):
     status: Literal["verbatim", "altered", "could_not_check"]
 
 
+class VerifyCoverageItem(BaseModel):
+    """How much of the draft the deterministic engine examined.
+
+    statements: sentences in the draft. treated: sentences carrying checkable
+    material (each became a verdict card). untreated: sentences with no
+    checkable anchor (no card; rendered as plain draft text). Absent (None) on
+    the LLM path, whose claims are not sentence-aligned.
+    """
+
+    statements: int = 0
+    treated: int = 0
+    untreated: int = 0
+
+
 class VerifyResponse(BaseModel):
     draft_text: str
     claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
@@ -366,6 +380,10 @@ class VerifyResponse(BaseModel):
     # (the unplaced tray). A claim is unplaced rather than mis-pinned whenever
     # its locator is ambiguous.
     unplaced: List[int] = Field(default_factory=list)
+    # Coverage honesty: set on the deterministic path only (sentence-aligned),
+    # so the UI and the certification can state what was NOT checked instead of
+    # implying the whole draft was.
+    coverage: Optional[VerifyCoverageItem] = None
 
 
 class NoteUpsertRequest(BaseModel):

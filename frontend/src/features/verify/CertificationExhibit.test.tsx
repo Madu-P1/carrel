@@ -49,7 +49,8 @@ function model(fingerprint: string): CertificationModel {
         sources: ["Brief.pdf, p. 12"],
         sourceFingerprints: ["0".repeat(64)]
       }
-    ]
+    ],
+    coverage: null
   };
 }
 

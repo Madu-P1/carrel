@@ -232,6 +232,41 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         self.assertEqual(payload["draft_text"], roundtripped["draft_text"])
         self.assertEqual(1, roundtripped["summary"]["verified"])
 
+    def test_deterministic_envelope_carries_coverage_counts(self) -> None:
+        # Coverage honesty (the untreated/could-not-check split, made visible):
+        # the deterministic envelope is sentence-aligned, so the payload must
+        # say how many statements there were, how many carried checkable
+        # material, and how many were untreated. Without this the UI and the
+        # certification can only imply that everything was checked.
+        envelope = self._envelope(
+            claims=[
+                {"text": "Plain prose.", "citations": [], "case_verdicts": [], "untreated": True},
+                {"text": "More prose.", "citations": [], "case_verdicts": [], "untreated": True},
+                {
+                    "text": "The cap is $5.",
+                    "citations": [],
+                    "case_verdicts": [],
+                    "could_not_check_reason": "no source",
+                },
+            ],
+            model="deterministic-v1",
+            provider="deterministic",
+        )
+        result = self._call(envelope)
+        payload = verify_service.verify_result_to_payload(result)
+        self.assertEqual({"statements": 3, "treated": 1, "untreated": 2}, payload.get("coverage"))
+
+    def test_llm_envelope_has_no_coverage_block(self) -> None:
+        # LLM-path claims are model-extracted, not sentence-aligned, so a
+        # coverage count would overstate what the engine knows. The block is
+        # absent (None), and the UI falls back to the legacy copy.
+        envelope = self._envelope(
+            claims=[{"text": "x", "citations": [{"node_id": "c1"}], "case_verdicts": []}]
+        )
+        result = self._call(envelope)
+        payload = verify_service.verify_result_to_payload(result)
+        self.assertIsNone(payload.get("coverage"))
+
     def test_assessed_fields_default_none_on_the_wire(self) -> None:
         # T1 PR-2: the assessed_* tier fields exist on every card, default None, and
         # round-trip through the payload. Nothing sets them yet (the selector is dark).

@@ -304,8 +304,22 @@ export function CertificationExhibit({
             </div>
             <div>
               <dt>Statements checked</dt>
-              <dd className={styles.certMono}>{model.totalStatements}</dd>
+              <dd className={styles.certMono}>
+                {model.coverage
+                  ? `${model.coverage.treated} of ${model.coverage.statements}`
+                  : model.totalStatements}
+              </dd>
             </div>
+            {model.coverage && model.coverage.untreated > 0 ? (
+              <div>
+                <dt>Not independently checked</dt>
+                <dd>
+                  {model.coverage.untreated === 1
+                    ? "1 statement carried no checkable anchor (citation, quotation, amount, or date) and was not independently checked."
+                    : `${model.coverage.untreated} statements carried no checkable anchor (citation, quotation, amount, or date) and were not independently checked.`}
+                </dd>
+              </div>
+            ) : null}
             {model.provider ? (
               <div>
                 <dt>Checked by</dt>
@@ -326,8 +340,9 @@ export function CertificationExhibit({
           <h3 className={styles.certSectionLabel}>Items requiring attorney review</h3>
           {model.flagged.length === 0 ? (
             <p className={styles.certMuted}>
-              No items were flagged. Every statement was grounded in the sources provided. This
-              confirms grounding, not legal correctness.
+              {model.coverage && model.coverage.untreated > 0
+                ? "No checked statement was flagged. Statements with no checkable anchor were not independently checked. This confirms grounding, not legal correctness."
+                : "No items were flagged. Every statement was grounded in the sources provided. This confirms grounding, not legal correctness."}
             </p>
           ) : (
             <ol className={styles.certList}>

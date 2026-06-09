@@ -283,9 +283,14 @@ function VerdictCard({
 
 interface VerifySummaryProps {
   dispositions: ClaimDisposition[];
+  /** Deterministic-path coverage counts (statements/treated/untreated), or
+   *  null on the LLM path. Drives the honest scope copy: the legacy "each
+   *  statement is checked" line overclaimed for anchor-free prose, which is
+   *  examined but not independently checked. */
+  coverage?: { statements?: number; treated?: number; untreated?: number } | null;
 }
 
-function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
+function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
   const total = dispositions.length;
   const count = (kind: ClaimDisposition["kind"]) =>
     dispositions.filter((d) => d.kind === kind).length;
@@ -332,9 +337,20 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
           </span>
         ))}
       </div>
+      {coverage && (coverage.untreated ?? 0) > 0 ? (
+        <p className={styles.scopeNote}>
+          {(coverage.untreated ?? 0) === 1
+            ? "1 of "
+            : `${coverage.untreated} of `}
+          {coverage.statements ?? 0} statements carried no checkable anchor (citation, quotation,
+          amount, or date) and {(coverage.untreated ?? 0) === 1 ? "was" : "were"} not independently
+          checked; {(coverage.untreated ?? 0) === 1 ? "it renders" : "they render"} as plain text
+          below.
+        </p>
+      ) : null}
       <p className={styles.scopeNote}>
-        Each statement is checked against the sources you provide. This confirms grounding, not
-        legal correctness or strategy.
+        Each statement carrying a checkable anchor is checked against the sources you provide. This
+        confirms grounding, not legal correctness or strategy.
       </p>
     </div>
   );
@@ -567,7 +583,10 @@ export function VerifyResults({
           ) : null}
 
           {items.length > 0 ? (
-            <VerifyVerdictSummary dispositions={items.map((it) => it.disposition)} />
+            <VerifyVerdictSummary
+              dispositions={items.map((it) => it.disposition)}
+              coverage={response?.coverage ?? null}
+            />
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (

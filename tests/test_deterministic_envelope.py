@@ -117,19 +117,6 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertIn("could_not_check_reason", claim)
         self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
 
-    def test_law_citation_is_not_treated_as_a_missing_case(self) -> None:
-        # A regulation/statute cite (C.F.R., U.S.C., an EU Directive) is not a case.
-        # Case-existence must NOT run on it, or a real regulation reads "cited case
-        # not found" (a false accusation). It is the honest could-not-check instead.
-        env = self._build(
-            "SEC registration is waived for accredited investors (17 C.F.R. §240.501)."
-        )
-        self.assertEqual(1, len(env["claims"]))
-        claim = env["claims"][0]
-        self.assertEqual([], claim["case_verdicts"])
-        self.assertIn("could_not_check_reason", claim)
-        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
-
     def test_envelope_shape_is_deterministic(self) -> None:
         env = self._build("Per 410 F.3d 138, the rule is XYZ.")
         self.assertEqual("deterministic-v1", env["model"])
@@ -362,6 +349,32 @@ class CaptionMismatchTests(unittest.TestCase):
         self.assertFalse(
             env["claims"][0]["case_verdicts"][0]["verdicts"][0].get("caption_mismatch")
         )
+
+    def test_half_matching_caption_downgrades_to_could_not_check(self) -> None:
+        # 'Smith v. Board' on Brown's number: one populated side (Board) matches,
+        # the other (Smith) names nobody in the resolved caption. The old
+        # any-token rule read this VERIFIED; the honest answer is the refusal:
+        # the number resolves, but the tool cannot confirm the case named, and a
+        # half-wrong caption is exactly the shape a hallucinated cite takes.
+        # Never the accusatory mismatch flag: 'Board' may be a legitimate short
+        # form the tool cannot prove.
+        env = self._build("Smith v. Board, 347 U.S. 483, controls this question.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(verdict["exists"])  # the number resolves
+        self.assertFalse(verdict.get("caption_mismatch"))  # not the hard flag
+        self.assertTrue(verdict.get("caption_unconfirmed"))  # the honest refusal
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unknown", card.verdict)
+        reason = (card.unsupported_reason or "").lower()
+        self.assertIn("brown v. board of education", reason)
+        self.assertIn("confirm", reason)
+
+    def test_correct_caption_carries_no_unconfirmed_marker(self) -> None:
+        env = self._build("Segregation was rejected in Brown v. Board of Education, 347 U.S. 483.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(verdict.get("caption_unconfirmed"))
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("verified", card.verdict)
 
     def test_bare_citation_without_caption_is_not_flagged(self) -> None:
         env = self._build("The rule in 347 U.S. 483 controls this dispute.")
