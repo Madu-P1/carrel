@@ -145,11 +145,11 @@ describe("ShelfView", () => {
     mockList.mockRejectedValueOnce(new Error("network down"));
     render(<ShelfView />);
     expect(await screen.findByText("network down")).toBeTruthy();
-    expect(screen.getByText("Try again")).toBeTruthy();
+    expect(screen.getByText("Reload the Shelf")).toBeTruthy();
 
     // Retry re-calls the endpoint and recovers.
     mockList.mockResolvedValue({ briefs: [summary()] });
-    fireEvent.click(screen.getByText("Try again"));
+    fireEvent.click(screen.getByText("Reload the Shelf"));
     expect(await screen.findByText("Motion to Dismiss")).toBeTruthy();
   });
 

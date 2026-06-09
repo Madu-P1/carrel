@@ -500,7 +500,7 @@ export function VerifyResults({
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
-  const certModel = certAt && response ? buildCertification(response, certAt) : null;
+  const certModel = certAt && response ? buildCertification(response, certAt, draft) : null;
   // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
   // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
   const isSealed = sessionSealed || sealedSeed !== null;
