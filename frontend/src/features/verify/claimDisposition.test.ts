@@ -11,6 +11,7 @@ type CaseOver = Partial<{
   holding_error: string | null;
   caption_mismatch: boolean;
   holding_skipped: boolean;
+  bounded_corpus: boolean;
 }>;
 
 function caseItem(over: CaseOver = {}) {
@@ -63,6 +64,42 @@ describe("dispositionForClaim", () => {
 
   test("a malformed citation (400) is citation_not_found", () => {
     const d = dispositionForClaim(card({ case_verdicts: [batch([caseItem({ status: 400, exists: false })])] }));
+    expect(d.kind).toBe("citation_not_found");
+  });
+
+  test("a bounded-corpus absent cite is could_not_check, not citation_not_found", () => {
+    // #1 (Harvey): the bundled offline corpus is not the national database, so an
+    // absent cite reads "outside my coverage" (could-not-check), never the oxblood
+    // fabrication flag -- a real-but-unbundled case must not be called fake.
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [batch([caseItem({ status: 404, exists: false, bounded_corpus: true })])]
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("a national absent cite (no bounded_corpus) stays citation_not_found", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [batch([caseItem({ status: 404, exists: false })])]
+      })
+    );
+    expect(d.kind).toBe("citation_not_found");
+  });
+
+  test("a caption mismatch stays citation_not_found even in the bounded corpus", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unsupported",
+        case_verdicts: [
+          batch([caseItem({ status: 200, exists: false, caption_mismatch: true, bounded_corpus: true })])
+        ]
+      })
+    );
     expect(d.kind).toBe("citation_not_found");
   });
 

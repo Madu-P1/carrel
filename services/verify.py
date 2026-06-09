@@ -135,6 +135,7 @@ def _verify_framed_question(draft: str) -> str:
 def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
     """Litigator: derive the top-line verdict from case-existence results."""
     any_missing = any_failed = any_exists = examined = False
+    any_outside_coverage = False
     for cv in case_verdicts:
         if not cv.get("ok", True):
             any_failed = True
@@ -144,12 +145,21 @@ def _verdict_from_case_verdicts(case_verdicts: tuple) -> VerifyVerdict:
                 any_missing = True  # resolves by number, but not the case named
             elif case.get("exists"):
                 any_exists = True
+            elif case.get("bounded_corpus"):
+                # Absent from the BOUNDED offline corpus. That corpus is not the
+                # national database, so this reads "outside my coverage" (an honest
+                # could-not-check), never the accusatory "does not exist". A 404 with
+                # no bounded_corpus flag came from a national lookup and still means
+                # the case does not exist (the fabrication catch).
+                any_outside_coverage = True
             else:
                 any_missing = True
     if any_missing:
         return "unsupported"  # a cited case does not exist -- the catch
     if any_failed:
         return "unknown"  # verification could not run
+    if any_outside_coverage:
+        return "unknown"  # outside the offline corpus -- the honest could-not-check
     if any_exists:
         return "verified"
     if examined:
@@ -183,6 +193,11 @@ def _deterministic_reason(
                     f"{case.get('case_name')}, not the case named in your draft."
                 )
             if not case.get("exists"):
+                if case.get("bounded_corpus"):
+                    return (
+                        f"Citation {case.get('citation')} is outside the offline corpus checked. "
+                        "Confirm it against the full national database."
+                    )
                 return f"Cited case not found: {case.get('citation')}"
     return None
 

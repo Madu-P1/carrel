@@ -199,6 +199,76 @@ class VerdictDerivationTests(unittest.TestCase):
         cv = ({"ok": True, "verdicts": [{"exists": False, "citation": "999 U.S. 999"}]},)
         self.assertEqual("unsupported", _verdict_from_case_verdicts(cv))
 
+    def test_bounded_corpus_absent_cite_is_could_not_check(self) -> None:
+        # An absent cite from the BOUNDED offline corpus is "outside my coverage" --
+        # an honest could-not-check -- NOT "does not exist". The bundled corpus is not
+        # the national database, so calling a real-but-unbundled case fabricated is a
+        # false accusation. The national path (no bounded_corpus flag) still reads
+        # unsupported, because a 404 there genuinely means "does not exist".
+        bounded = (
+            {
+                "ok": True,
+                "verdicts": [
+                    {
+                        "exists": False,
+                        "status": 404,
+                        "citation": "999 U.S. 999",
+                        "bounded_corpus": True,
+                    }
+                ],
+            },
+        )
+        self.assertEqual("unknown", _verdict_from_case_verdicts(bounded))
+        national = (
+            {
+                "ok": True,
+                "verdicts": [{"exists": False, "status": 404, "citation": "999 U.S. 999"}],
+            },
+        )
+        self.assertEqual("unsupported", _verdict_from_case_verdicts(national))
+
+    def test_bounded_caption_mismatch_still_flags(self) -> None:
+        # A number that resolves to a DIFFERENT case than named is an affirmative
+        # mismatch, honest even offline, so it stays a hard flag (unsupported), never
+        # downgraded to could-not-check by the bounded-corpus rule.
+        cv = (
+            {
+                "ok": True,
+                "verdicts": [
+                    {
+                        "exists": False,
+                        "status": 200,
+                        "citation": "347 U.S. 483",
+                        "caption_mismatch": True,
+                        "bounded_corpus": True,
+                    }
+                ],
+            },
+        )
+        self.assertEqual("unsupported", _verdict_from_case_verdicts(cv))
+
+    def test_claim_card_bounded_absent_cite_is_could_not_check_with_coverage_reason(self) -> None:
+        claim = {
+            "text": "Per 999 U.S. 999, X.",
+            "citations": [],
+            "case_verdicts": [
+                {
+                    "ok": True,
+                    "verdicts": [
+                        {
+                            "exists": False,
+                            "status": 404,
+                            "citation": "999 U.S. 999",
+                            "bounded_corpus": True,
+                        }
+                    ],
+                }
+            ],
+        }
+        card = _claim_dict_to_verdict(claim, 0)
+        self.assertEqual("unknown", card.verdict)
+        self.assertIn("offline corpus", (card.unsupported_reason or "").lower())
+
     def test_failed_lookup_is_unknown(self) -> None:
         cv = ({"ok": False, "verdicts": []},)
         self.assertEqual("unknown", _verdict_from_case_verdicts(cv))
@@ -469,14 +539,21 @@ class TokenGuardRegressionTests(unittest.TestCase):
         self.assertTrue(_verdicts(env["claims"][0])[0]["exists"])
         self.assertEqual("verified", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
 
-    def test_fabricated_cite_still_caught_with_no_token(self) -> None:
+    def test_absent_cite_surfaced_could_not_check_with_no_token(self) -> None:
+        # Token-guard regression: the bundled mock still answers with no CourtListener
+        # token (exists=False for an absent cite). The cite is surfaced for review as
+        # the honest could-not-check ("outside the offline corpus"), NOT the accusatory
+        # "unsupported": the bounded corpus is not the national database, so it cannot
+        # honestly call a real-but-unbundled cite fabricated.
         cleared = {k: v for k, v in os.environ.items() if k != "COURTLISTENER_API_TOKEN"}
         with mock.patch.dict(os.environ, cleared, clear=True):
             env = build_deterministic_envelope(
                 "Smith v. Jones, 999 U.S. 999 (2020).", client=local_caselaw_client()
             )
         self.assertFalse(_verdicts(env["claims"][0])[0]["exists"])
-        self.assertEqual("unsupported", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+        card = _claim_dict_to_verdict(env["claims"][0], 0)
+        self.assertEqual("unknown", card.verdict)
+        self.assertIn("offline corpus", (card.unsupported_reason or "").lower())
 
 
 class LazyEmbedderRegressionTests(unittest.TestCase):

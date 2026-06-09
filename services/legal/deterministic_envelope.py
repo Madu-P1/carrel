@@ -82,6 +82,12 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
+            # The deterministic path checks against the BOUNDED offline corpus. Mark
+            # every verdict so an absent cite reads "outside my coverage" (an honest
+            # could-not-check), never the accusatory "does not exist" that only a
+            # national lookup can honestly claim. A caption mismatch (number resolves
+            # to a different case) is an affirmative finding and still flags below.
+            v["bounded_corpus"] = True
             if not v.get("exists") or not v.get("case_name"):
                 continue
             ref = refs.get(v.get("citation"))
