@@ -528,7 +528,7 @@
 }
 .sourceError {
   margin-top: var(--space-3, 12px);
-  color: #7a2230;
+  color: var(--flag, #7a2230);
   font-size: 13px;
 }
 
@@ -624,7 +624,7 @@
   color: var(--ink-1);
 }
 .lecternSourceError {
-  color: #7a2230;
+  color: var(--flag, #7a2230);
   font-size: 13px;
   font-family: var(--font-serif-body);
 }

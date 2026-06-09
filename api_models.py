@@ -200,6 +200,25 @@ class CaseVerdictItem(BaseModel):
     # unavailable" with this code instead of treating the cite as
     # supported.
     holding_error: Optional[str] = None
+    # Deterministic-engine annotations (services/legal/deterministic_envelope).
+    # Declared here because the non-stream POST /api/verify serializes through
+    # this model and Pydantic SILENTLY STRIPS undeclared keys: without these,
+    # the stream (raw json.dumps) and the non-stream response disagreed, and a
+    # non-stream consumer recomputing dispositions read an honest bounded-corpus
+    # miss (404 + bounded_corpus stripped) as the accusatory "citation not
+    # found". All additive and absent (None) on the LLM path.
+    holding_skipped: Optional[bool] = None
+    bounded_corpus: Optional[bool] = None
+    corpus_scope: Optional[str] = None
+    corpus_case_count: Optional[int] = None
+    corpus_as_of: Optional[str] = None
+    caption_mismatch: Optional[bool] = None
+    caption_unconfirmed: Optional[bool] = None
+    year_mismatch: Optional[bool] = None
+    cited_year: Optional[int] = None
+    resolved_year: Optional[int] = None
+    court_mismatch: Optional[bool] = None
+    cited_court: Optional[str] = None
 
 
 class ClaimCaseVerdictItem(BaseModel):
@@ -515,7 +534,9 @@ class DeleteResponse(BaseModel):
 
 
 class CreateVaultRequest(BaseModel):
-    name: str
+    # Bounded because the name is persisted, listed, sorted, and rendered as a
+    # folder title; an unbounded string is a local-DoS lever, not a vault name.
+    name: str = Field(min_length=1, max_length=120)
 
 
 class VaultListResponse(BaseModel):

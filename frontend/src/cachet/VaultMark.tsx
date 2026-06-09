@@ -1,3 +1,4 @@
+import { useMemo } from "preact/hooks";
 /**
  * The vault's emblem: a folder rendered as a solid object, not a flat icon.
  * Solidity comes from a light model, not decoration:
@@ -78,7 +79,10 @@ export function VaultMark({
   title?: string;
 }) {
   const p = PALETTES[tone];
-  const uid = `vault-${(markSeq += 1)}`;
+  // Stable per instance: minting a fresh id on every render rewrote the defs
+  // ids and every url(#...) reference of every card on each VaultView
+  // re-render (e.g. per search keystroke).
+  const uid = useMemo(() => `vault-${(markSeq += 1)}`, []);
   return (
     <svg
       className={className}

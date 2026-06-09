@@ -79,15 +79,18 @@ export const documents = {
 
 /** Vaults (document folders). A vault is a documents.subject_name; these endpoints
  *  let an empty vault persist (folder-first creation) and forget an empty one. */
+export type VaultListResponse = components["schemas"]["VaultListResponse"];
+export type VaultDeleteResponse = components["schemas"]["VaultDeleteResponse"];
+
 export const vaults = {
-  list: () => api<{ vaults: string[] }>("/api/vaults"),
+  list: () => api<VaultListResponse>("/api/vaults"),
   create: (name: string) =>
-    api<{ vaults: string[] }>("/api/vaults", { method: "POST", body: { name } }),
+    api<VaultListResponse>("/api/vaults", { method: "POST", body: { name } }),
   remove: (name: string) =>
     // Name travels as a query param (not a path segment) so a vault named after a
     // caption containing a slash can still be deleted; the path-param form 404s on
     // the encoded slash.
-    api<{ deleted: boolean }>(`/api/vaults?name=${encodeURIComponent(name)}`, { method: "DELETE" })
+    api<VaultDeleteResponse>(`/api/vaults?name=${encodeURIComponent(name)}`, { method: "DELETE" })
 };
 
 export interface IngestionJob {

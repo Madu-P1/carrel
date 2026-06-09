@@ -325,7 +325,6 @@ def _claim_dict_to_verdict(
     demoted_for_grounding = grounding_error is not None and verdict == "verified"
     if demoted_for_grounding:
         verdict = "unknown"
-    if demoted_for_grounding:
         reason = (
             f"Verification could not run (engine error: {grounding_error}). "
             "Load the sources this draft relies on, then verify again."

@@ -290,8 +290,32 @@ interface VerifySummaryProps {
   coverage?: { statements?: number; treated?: number; untreated?: number } | null;
 }
 
-function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
+/** The summary's register, as a pure function so tests can pin it: a FLAG is an
+ * accusation the lawyer must act on (a cited case that does not exist, or a
+ * claim the source contradicts). Could-not-check (an honest refusal),
+ * source-does-not-support, and the assistive assessed tier are NOT flags and
+ * must never turn the headline into the oxblood alarm; folding them into
+ * "needs review" was the "everything needs review" alert fatigue (main #154). */
+export function verdictSummaryRegister(dispositions: ClaimDisposition[]): {
+  flagged: number;
+  notVerified: number;
+  headline: string;
+} {
   const total = dispositions.length;
+  const count = (kind: ClaimDisposition["kind"]) =>
+    dispositions.filter((d) => d.kind === kind).length;
+  const flagged = count("citation_not_found") + count("claim_unsupported");
+  const notVerified = count("proposition_unsupported") + count("could_not_check") + count("assessed");
+  const headline =
+    flagged > 0
+      ? `${flagged} of ${total} statements need your review.`
+      : notVerified > 0
+        ? `${notVerified} of ${total} statements could not be verified against your sources.`
+        : `All ${total} statements are supported by the sources you provided.`;
+  return { flagged, notVerified, headline };
+}
+
+function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
   const count = (kind: ClaimDisposition["kind"]) =>
     dispositions.filter((d) => d.kind === kind).length;
   const citationNotFound = count("citation_not_found");
@@ -299,13 +323,7 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
   const claimUnsupported = count("claim_unsupported");
   const couldNotCheck = count("could_not_check");
   const supported = count("supported");
-  // A flag is an accusation the lawyer must act on: a cited case that does not
-  // exist, or a claim the source contradicts. Could-not-check (an honest refusal),
-  // source-does-not-support, and the assistive assessed tier are NOT flags, so they
-  // must not turn the headline into the oxblood alarm. Folding them into "needs
-  // review" was the "everything needs review" alert fatigue (mirrors main #154).
-  const flagged = citationNotFound + claimUnsupported;
-  const notVerified = propositionUnsupported + couldNotCheck + count("assessed");
+  const { flagged, headline } = verdictSummaryRegister(dispositions);
 
   // Counts only, problems first. No pass-rate, no percentage: a verdict is a
   // finding, not a score.
@@ -324,11 +342,7 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
           " "
         )}
       >
-        {flagged > 0
-          ? `${flagged} of ${total} statements need your review.`
-          : notVerified > 0
-            ? `${notVerified} of ${total} statements could not be verified against your sources.`
-            : `All ${total} statements are supported by the sources you provided.`}
+        {headline}
       </p>
       <div className={styles.summaryRow}>
         {stats.map((s) => (
@@ -400,7 +414,7 @@ function QuotePanel({ quotes }: QuotePanelProps) {
         ))}
       </ul>
       <p className={styles.scopeNote}>
-        This checks that the words shown in quotation marks appear in the cited source as written.
+        This checks that the words shown in quotation marks appear in the sources checked, as written.
         It does not assess whether an omission changes the meaning.
       </p>
     </section>

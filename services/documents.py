@@ -841,20 +841,36 @@ def create_vault(conn: sqlite3.Connection, name: str) -> str:
 def delete_vault(conn: sqlite3.Connection, name: str) -> bool:
     """Forget an EMPTY vault. Refuses (returns False) if any record is still filed
     under it, so deleting a vault never silently moves or destroys records. The
-    caller surfaces the refusal; the records are moved or deleted first."""
-    # Guard the RAW name: normalize_subject_name defaults a blank to 'General', so
-    # checking the normalized value would let an all-whitespace name silently
-    # target the General vault. Refuse a blank name outright.
+    caller surfaces the refusal; the records are moved or deleted first.
+
+    Vault identity is case-insensitive everywhere else (create resolves
+    case-variants, the list dedupes on lowercase), so both the in-use check and
+    the registry DELETE compare NOCASE: a record filed under 'general' blocks
+    deleting 'General', and deleting 'general' removes a registry row spelled
+    'General'.
+
+    The three failure shapes are distinct so the route can answer honestly
+    instead of folding them into one misleading 409:
+      - blank name -> ValueError (validation; normalize_subject_name would
+        default it to 'General' and silently target that vault)
+      - still holds records -> False (the in-use refusal)
+      - not registered and not in use -> LookupError (nothing to forget; the
+        old code reported {"deleted": true} for this no-op)"""
     if not name or not name.strip():
-        return False
+        raise ValueError("A vault needs a name.")
     normalized = normalize_subject_name(name)
     in_use = conn.execute(
-        "SELECT 1 FROM documents WHERE subject_name = ? LIMIT 1", (normalized,)
+        "SELECT 1 FROM documents WHERE subject_name = ? COLLATE NOCASE LIMIT 1",
+        (normalized,),
     ).fetchone()
     if in_use:
         return False
-    conn.execute("DELETE FROM document_vaults WHERE name = ?", (normalized,))
+    deleted = conn.execute(
+        "DELETE FROM document_vaults WHERE name = ? COLLATE NOCASE", (normalized,)
+    ).rowcount
     conn.commit()
+    if deleted == 0:
+        raise LookupError("No vault by that name.")
     return True
 
 

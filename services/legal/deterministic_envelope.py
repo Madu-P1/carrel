@@ -61,6 +61,10 @@ from services.retrieval.validators import verbatim_run_present
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
 
+# courts-db id shape ("scotus", "ca9", "nysupct.newyork"): lowercase
+# alphanumerics and dots, no spaces or slashes.
+_COURT_ID = re.compile(r"[a-z0-9.]+")
+
 # Anchor types verify_claim_against_clause actually tests against a clause. A
 # sentence carrying one of these has a proposition the contract path can confirm or
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
@@ -132,7 +136,17 @@ def _annotate_litigator_verdicts(
                     v["cited_year"] = ref.year
                     v["resolved_year"] = resolved_year
             resolved_court = str(v.get("court") or "")
-            if ref.court and resolved_court and ref.court != resolved_court:
+            # Compare courts only when BOTH sides are courts-db ids ("scotus",
+            # "ca9"). eyecite always emits ids, but a non-demo corpus may carry
+            # CourtListener's URL or display-name form; comparing across formats
+            # would flag every correct parenthetical (a blanket recall collapse),
+            # so a non-id resolved court makes the check vacuous instead.
+            if (
+                ref.court
+                and resolved_court
+                and _COURT_ID.fullmatch(resolved_court)
+                and ref.court != resolved_court
+            ):
                 v["court_mismatch"] = True
                 v["cited_court"] = ref.court
 
@@ -172,7 +186,7 @@ def _attach_bundled_opinion_text(case_verdicts: list[dict]) -> None:
 _TOPIC_STOPWORDS = frozenset(
     {
         "shall",
-        "parties",
+        "term",
         "party",
         "agreement",
         "section",
@@ -204,9 +218,13 @@ _TOPIC_STOPWORDS = frozenset(
         "each",
         "they",
         "them",
-        "shall",
     }
 )
+
+# The stopword set with the same trailing-s fold _clause_on_topic applies to
+# content words, so the filter compares folded-to-folded ("agreements" and
+# "agreement" are one stopword; "this" folds to "thi" on both sides).
+_TOPIC_STOPWORDS_FOLDED = frozenset(w[:-1] if w.endswith("s") else w for w in _TOPIC_STOPWORDS)
 
 
 def _clause_on_topic(sentence: str, clause: str, *, minimum: int) -> bool:
@@ -235,8 +253,12 @@ def _clause_on_topic(sentence: str, clause: str, *, minimum: int) -> bool:
     """
 
     def content(text: str) -> set[str]:
-        words = {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _TOPIC_STOPWORDS}
-        return {w[:-1] if w.endswith("s") else w for w in words}
+        # Fold the trailing s BEFORE the stopword filter: filtering first let
+        # plural stopword forms ("agreements", "sections") slip through and earn
+        # topic-overlap credit. Both sides fold, so a stopword like "this"
+        # ("thi" once folded) still filters correctly.
+        folded = {w[:-1] if w.endswith("s") else w for w in re.findall(r"[a-z]{4,}", text.lower())}
+        return folded - _TOPIC_STOPWORDS_FOLDED
 
     return len(content(sentence) & content(clause)) >= minimum
 

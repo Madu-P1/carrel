@@ -87,11 +87,35 @@ class DocumentVaultsTest(unittest.TestCase):
 
     def test_delete_refuses_a_blank_name_rather_than_targeting_general(self) -> None:
         # normalize_subject_name defaults a blank to 'General', so an unguarded
-        # delete of "   " would silently forget the General vault. It must refuse.
+        # delete of "   " would silently forget the General vault. It must refuse
+        # loudly (ValueError -> 400 at the route), distinct from the in-use 409.
         create_vault(self.conn, "General")
-        self.assertFalse(delete_vault(self.conn, "   "))
-        self.assertFalse(delete_vault(self.conn, ""))
+        with self.assertRaises(ValueError):
+            delete_vault(self.conn, "   ")
+        with self.assertRaises(ValueError):
+            delete_vault(self.conn, "")
         self.assertIn("General", list_vault_names(self.conn))
+
+    def test_delete_is_case_insensitive_like_the_rest_of_vault_identity(self) -> None:
+        # A record filed under a case-variant must still block the delete: the
+        # binary compare missed it, removed the registry row, and reported True
+        # past the "never forget a vault that holds records" invariant.
+        create_vault(self.conn, "Client Files")
+        self._file_doc("d3", "client files")
+        self.assertFalse(delete_vault(self.conn, "Client Files"))
+        self.assertIn("Client Files", list_vault_names(self.conn))
+
+        # And deleting an EMPTY vault by a case-variant removes the registry row
+        # instead of silently missing it while reporting success.
+        create_vault(self.conn, "Archives")
+        self.assertTrue(delete_vault(self.conn, "archives"))
+        self.assertNotIn("Archives", list_vault_names(self.conn))
+
+    def test_delete_of_an_unknown_vault_is_a_lookup_error_not_a_false_success(self) -> None:
+        # The old code reported {"deleted": true} for a name that was never
+        # registered and holds nothing; the route now answers 404.
+        with self.assertRaises(LookupError):
+            delete_vault(self.conn, "Never Existed")
 
 
 if __name__ == "__main__":

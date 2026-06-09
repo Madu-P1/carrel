@@ -34,6 +34,17 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 |---|---|---|---|
 | Cachet `SourceView` (reader recycled for verification) | Operator wants Cachet users to open a saved brief and view its sources at the exact verified span | Build a thin, study-free Cachet source viewer reusing `routes/reader_nodes.py` + `useNodeDeepLink`/`usePdfDocument`/`PdfViewer`; wire a `/source` route into `CachetApp` so `SourceInspector.openInReader()` stops dead-ending. Do NOT port `features/reader/ReaderView.tsx` (study chrome). Honest highlight only, no generation. **P3 note: `reader_nodes` is KEEP, not a delete-leaf; extract the render primitives before deleting `features/reader`.** | `docs/notes/2026-06-07-cachet-source-viewer.md` |
 
+## Active backlog (PR #163 review round, 2026-06-09)
+
+- [ ] useVerify negative-path tests: truncated stream sets the loud error (invariant #6), mid-stream error event, abort superseding, seal-seed clearing on a fresh verify. The guard logic predates the hook extraction and has never been pinned.
+- [ ] source.ts unit tests: upload missing doc_id throw + sourceUpload reset, deleteDocument clears loadedSource for the active record, refreshSources rejection path, readActiveRecord on malformed JSON.
+- [ ] Migration 0028: rebuild document_vaults with `name TEXT COLLATE NOCASE PRIMARY KEY` so case-insensitive vault identity is a schema guarantee, not a per-query convention (delete_vault already compares NOCASE; the schema still permits case-duplicate rows via raw SQL).
+- [ ] Corpus completeness attestation hardening: when the real full-index artifact ships, the manifest needs a corpus-size/hash cross-check before `scope="complete"` is honored (an operator string alone converts every unbundled cite into the loud "no such case"; flagged by adversarial review).
+- [ ] Contract contradiction precision: the 1-shared-word topic floor for parametric_contradiction is a deliberate demo-gold tradeoff; revisit with role-aligned clause matching after lawyer validation (T66). Also: claims whose content words are all <4 letters can never read "present" (recall-side, safe direction).
+- [ ] Entry-bundle split: CachetApp is statically imported into the shared entry (~0.6KB headroom under the 127KB budget); dynamic-import the Cachet shell via the documented user-gesture pattern.
+- [ ] Perf (deterministic path at scale): hoist the sentence token set out of the per-node _clause_on_topic loop; pre-normalize + dedupe the brief-level quote source pool once per request instead of per quote; memoize displaySafe segments on draftText.
+- [ ] serve-cachet demo posture: per-run random CARREL_LOCAL_API_TOKEN + Host-header allowlist (DNS rebind) — the constant demo token is a known, bounded exposure on the loopback API.
+
 ## Notes
 - Each plan name in `docs/plans/<plan>.md` when written.
 - Pre-commit kill conditions and success metrics live in the originating plan, not here.

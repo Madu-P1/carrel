@@ -232,6 +232,34 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         self.assertEqual(payload["draft_text"], roundtripped["draft_text"])
         self.assertEqual(1, roundtripped["summary"]["verified"])
 
+    def test_deterministic_verdict_annotations_survive_the_wire_model(self) -> None:
+        # The non-stream POST /api/verify serializes through VerifyResponse, and
+        # Pydantic strips undeclared keys. The deterministic annotations
+        # (bounded_corpus, the corpus manifest, the mismatch flags) must survive
+        # that model, or the stream and non-stream responses disagree and a
+        # bounded miss reads as the accusatory citation_not_found client-side.
+        import api_models
+
+        verdict = {
+            "citation": "999 U.S. 999",
+            "status": 404,
+            "exists": False,
+            "holding_skipped": True,
+            "bounded_corpus": True,
+            "corpus_scope": "demo",
+            "corpus_case_count": 3,
+            "corpus_as_of": "2026-06-05",
+            "caption_unconfirmed": True,
+            "year_mismatch": True,
+            "cited_year": 1990,
+            "resolved_year": 1954,
+            "court_mismatch": True,
+            "cited_court": "ca9",
+        }
+        kept = api_models.CaseVerdictItem.model_validate(verdict).model_dump()
+        for key, value in verdict.items():
+            self.assertEqual(value, kept.get(key), f"{key} must survive the wire model")
+
     def test_deterministic_envelope_carries_coverage_counts(self) -> None:
         # Coverage honesty (the untreated/could-not-check split, made visible):
         # the deterministic envelope is sentence-aligned, so the payload must

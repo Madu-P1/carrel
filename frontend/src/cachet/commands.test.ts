@@ -5,22 +5,24 @@ import { buildCommands, filterCommands, type Command } from "./commands";
 describe("buildCommands", () => {
   const close = () => {};
 
-  it("offers the verify verbs on the lectern and the verify route", () => {
-    for (const path of ["/", "/verify"]) {
+  it("never offers a verb with no listener (the dead verify verbs stay out)", () => {
+    // verify-draft/seal/export dispatched a CustomEvent nothing handled, so the
+    // palette offered actions that silently did nothing. They stay out until a
+    // listener exists on the verify surface.
+    for (const path of ["/", "/verify", "/shelf"]) {
       const ids = buildCommands(path, close).map((c) => c.id);
-      expect(ids).toContain("verify-draft");
-      expect(ids).toContain("seal");
-      expect(ids).toContain("export");
+      expect(ids).not.toContain("verify-draft");
+      expect(ids).not.toContain("seal");
+      expect(ids).not.toContain("export");
     }
   });
 
-  it("hides the verify verbs where they cannot act", () => {
+  it("always offers the navigation verbs", () => {
     const ids = buildCommands("/shelf", close).map((c) => c.id);
-    expect(ids).not.toContain("verify-draft");
-    expect(ids).not.toContain("seal");
-    // navigation verbs are always available
     expect(ids).toContain("go-settings");
     expect(ids).toContain("go-shelf");
+    expect(ids).toContain("go-vault");
+    expect(ids).toContain("new");
   });
 });
 

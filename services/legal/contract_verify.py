@@ -78,7 +78,7 @@ def _durations_match(claim_anchor: Anchor, clause_anchor: Anchor) -> bool:
     )
 
 
-def _values_match(anchor_type: str, claim_values: list, clause_values: list) -> bool:
+def _values_match(claim_values: list, clause_values: list) -> bool:
     # Invoked only on SINGLE-value pairs (one value per side): the caller routes any
     # multi-value type to multi_value_unverifiable, because "any matches any" cannot
     # align multiple values and would mask a contradiction (a claim's $1M cap spuriously
@@ -178,7 +178,7 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         if anchor_type == "duration":
             matched = _durations_match(claim_hits[0], clause_hits[0])
         else:
-            matched = _values_match(anchor_type, list(claim_values), list(clause_values))
+            matched = _values_match(list(claim_values), list(clause_values))
         if matched:
             if present_verdict is None:
                 present_verdict = ClauseVerdict(

@@ -497,6 +497,82 @@ class CiteParentheticalMismatchTests(unittest.TestCase):
         self.assertFalse(v.get("court_mismatch"))
 
 
+class ShortTokenCaptionTests(unittest.TestCase):
+    """A caption of dotted initials or two-letter surnames on a real number must
+    refuse (could-not-check), never read verified: tokenizing to nothing is not
+    the same as citing bare."""
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_initials_caption_on_a_real_number_downgrades_to_could_not_check(self) -> None:
+        env = self._build("M.L.B. v. S.L.J., 347 U.S. 483, controls.")
+        verdict = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(verdict["exists"])  # the number resolves
+        self.assertFalse(verdict.get("caption_mismatch"))  # never the accusation
+        self.assertTrue(verdict.get("caption_unconfirmed"))  # the refusal
+        self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+    def test_two_letter_surnames_on_a_real_number_downgrade_too(self) -> None:
+        env = self._build("Ng v. Li, 347 U.S. 483, controls.")
+        self.assertEqual("unknown", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
+
+
+class TopicGateFoldTests(unittest.TestCase):
+    """The stopword filter folds BOTH sides (regression: plural stopword forms
+    like "agreements"/"sections" escaped the singular-form set and earned
+    topic-overlap credit, weakening the off-topic value guard)."""
+
+    def test_plural_stopwords_earn_no_topic_credit(self) -> None:
+        from services.legal.deterministic_envelope import _clause_on_topic
+
+        self.assertFalse(
+            _clause_on_topic(
+                "The agreements cover the sections fully.",
+                "These agreements have sections regarding unrelated matters.",
+                minimum=2,
+            )
+        )
+
+    def test_real_topic_words_still_credit_across_singular_plural(self) -> None:
+        from services.legal.deterministic_envelope import _clause_on_topic
+
+        self.assertTrue(
+            _clause_on_topic(
+                "The liability caps for damages are aggregated.",
+                "Aggregate liability cap for damage claims.",
+                minimum=2,
+            )
+        )
+
+
+class CourtFormatGuardTests(unittest.TestCase):
+    """court_mismatch compares courts-db ids only. A corpus whose court field is
+    CourtListener's URL or display-name form must make the check vacuous, not
+    flag every correct parenthetical (a blanket recall collapse)."""
+
+    def test_non_id_resolved_court_is_vacuous_not_a_mismatch(self) -> None:
+        from services.legal.deterministic_envelope import _annotate_litigator_verdicts
+
+        batch = {
+            "verdicts": [
+                {
+                    "citation": "347 U.S. 483",
+                    "status": 200,
+                    "exists": True,
+                    "case_name": "Brown v. Board of Education",
+                    "court": "https://www.courtlistener.com/api/rest/v4/courts/scotus/",
+                    "date_filed": "1954-05-17",
+                }
+            ]
+        }
+        _annotate_litigator_verdicts(
+            "Brown v. Board of Education, 347 U.S. 483 (1954), controls.", [batch]
+        )
+        self.assertFalse(batch["verdicts"][0].get("court_mismatch"))
+
+
 class CaptionMismatchBareCiteTests(unittest.TestCase):
     def _build(self, draft: str) -> dict:
         with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):

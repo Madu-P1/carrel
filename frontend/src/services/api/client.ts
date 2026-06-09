@@ -20,6 +20,24 @@ export class ApiError extends Error {
 }
 
 /**
+ * The user-facing message for a failed API call: the FastAPI `detail` string
+ * when the response carried one (the backend writes actionable copy there,
+ * e.g. "This vault still holds records. Move or delete them first."), else the
+ * generic `API <status> <statusText>` message, else the caller's fallback.
+ * Without this, surfaces toast the raw "API 409 Conflict" and the designed
+ * copy never reaches the user.
+ */
+export function apiErrorMessage(e: unknown, fallback?: string): string | undefined {
+  if (e instanceof ApiError) {
+    const detail = (e.body as { detail?: unknown } | undefined)?.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    return e.message;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
+
+/**
  * The backend at API_BASE wasn't reachable at all — connection
  * refused, DNS failure, CORS preflight failure, or any other network-layer error
  * before a response. Distinct from ApiError because the recovery

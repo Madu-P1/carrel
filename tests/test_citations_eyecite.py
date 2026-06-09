@@ -282,6 +282,25 @@ class CaptionMatchStateTests(unittest.TestCase):
         )
         self.assertEqual("match", state)
 
+    def test_all_short_token_caption_is_unconfirmed_not_vacuous(self) -> None:
+        # Dotted initials ("M.L.B. v. S.L.J.") and two-letter surnames
+        # ("Ng v. Li") tokenize to nothing, and treating that as vacuous let ANY
+        # short-token caption on a real reporter number read verified -- the
+        # product-defining false-verified shape (initials captions are common in
+        # juvenile and anonymized cases). A caption with letters the tool cannot
+        # confirm is the refusal, never a match and never the accusation.
+        state = caption_match_state(_ref("M.L.B.", "S.L.J."), "Brown v. Board of Education")
+        self.assertEqual("unconfirmed", state)
+        state = caption_match_state(_ref("Ng", "Li"), "Brown v. Board of Education")
+        self.assertEqual("unconfirmed", state)
+
+    def test_short_token_caption_against_short_token_resolved_name_is_a_match(self) -> None:
+        # The REAL M.L.B. v. S.L.J. (519 U.S. 102): the resolved name itself
+        # yields no significant tokens, so there is nothing to compare against
+        # and a correctly cited initials case is never punished.
+        state = caption_match_state(_ref("M.L.B.", "S.L.J."), "M. L. B. v. S. L. J.")
+        self.assertEqual("match", state)
+
     def test_lowercase_word_spelling_an_initialism_gets_no_credit(self) -> None:
         # "Fat" is a surname here, coincidentally the initialism of "First
         # American Title". Initialism credit is reserved for tokens written in

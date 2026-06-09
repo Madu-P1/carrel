@@ -275,7 +275,21 @@ def caption_match_state(ref: CitationRef, case_name: str) -> str:
     sides = [(caption_token_info(raw), _caps_tokens(raw)) for raw in raw_sides]
     populated = [(tokens, caps) for tokens, caps in sides if tokens]
     resolved = caption_token_info(case_name)
-    if not populated or not resolved:
+    if not resolved:
+        # The resolved name itself yields no significant tokens (a real
+        # initials-caption case like "M. L. B. v. S. L. J."): nothing to
+        # compare against, so the draft's caption is never punished.
+        return "match"
+    if not populated:
+        # No draft side survived tokenization. A truly bare cite (no caption at
+        # all) is a match: a citation is never punished for what it does not
+        # say. But a caption whose sides carry LETTERS that all tokenized away
+        # (dotted initials "M.L.B. v. S.L.J.", two-letter surnames "Ng v. Li")
+        # is a real caption the tool cannot confirm against a resolved name
+        # that HAS tokens; treating it as vacuous let any short-token caption
+        # on a real number read verified. Refuse, never bless.
+        if any(re.search(r"[A-Za-z]", raw) for raw in raw_sides):
+            return "unconfirmed"
         return "match"
     acronyms = _acronym_forms(case_name)
 
