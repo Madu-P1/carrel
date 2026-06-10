@@ -537,5 +537,131 @@ class CitationSectionOverlapTests(unittest.TestCase):
         self.assertEqual(_texts("Governed by Section 9.2 of the deal.", "section"), ["Section 9.2"])
 
 
+class GoverningLawAnchorTests(unittest.TestCase):
+    def test_boilerplate_governed_by_laws_of_state(self) -> None:
+        # The canonical contract form: trigger verb, connective run, "laws of
+        # the State of X". canonical_value is the normalized jurisdiction key.
+        a = _first(
+            "This Agreement shall be governed by and construed in accordance "
+            "with the laws of the State of Delaware.",
+            "governing_law",
+        )
+        self.assertEqual("delaware", a.canonical_value)
+        self.assertEqual("Delaware", a.text)
+
+    def test_summary_form_governed_by_jurisdiction_law(self) -> None:
+        # The AI-summary phrasing: "governed by New York law".
+        a = _first("The agreement is governed by New York law.", "governing_law")
+        self.assertEqual("new york", a.canonical_value)
+
+    def test_jurisdiction_law_governs(self) -> None:
+        a = _first("Delaware law governs this Agreement.", "governing_law")
+        self.assertEqual("delaware", a.canonical_value)
+
+    def test_canonical_is_stable_across_forms(self) -> None:
+        long_form = _first(
+            "governed by and construed in accordance with the laws of the State of New York",
+            "governing_law",
+        )
+        short_form = _first("governed by New York law", "governing_law")
+        self.assertEqual(long_form.canonical_value, short_form.canonical_value)
+
+    def test_adjectival_english_law_means_england_and_wales(self) -> None:
+        # "English law" conventionally designates the law of England and Wales.
+        # Both surface forms must share one canonical so the contradiction check
+        # can never accuse a summary across this naming variant.
+        adjectival = _first("The deed is governed by English law.", "governing_law")
+        full = _first(
+            "This deed shall be governed by the laws of England and Wales.",
+            "governing_law",
+        )
+        self.assertEqual(adjectival.canonical_value, full.canonical_value)
+        self.assertEqual("england and wales", full.canonical_value)
+
+    def test_lebanese_law_form(self) -> None:
+        a = _first("The contract is governed by Lebanese law.", "governing_law")
+        self.assertEqual("lebanon", a.canonical_value)
+
+    def test_venue_clause_is_not_a_governing_law_anchor(self) -> None:
+        # Forum selection is not choice of law. Anchoring the venue jurisdiction
+        # would let a court reference mask or manufacture a governing-law verdict.
+        self.assertNotIn(
+            "governing_law",
+            _types("The parties consent to the exclusive jurisdiction of the courts of Delaware."),
+        )
+
+    def test_incorporation_state_is_not_a_governing_law_anchor(self) -> None:
+        self.assertNotIn("governing_law", _types("Acme Holdings is a Delaware corporation."))
+
+    def test_liable_under_is_not_a_governing_law_trigger(self) -> None:
+        # "liable under New York law" is a liability proposition, not a choice of
+        # law; only governing verbs trigger, so this yields no governing_law anchor.
+        self.assertNotIn(
+            "governing_law", _types("The Seller may be held liable under New York law.")
+        )
+
+    def test_unknown_jurisdiction_yields_no_anchor(self) -> None:
+        # Outside the closed lexicon the detector refuses: no anchor, never a
+        # guessed canonical. The sentence routes to the honest could-not-check side.
+        self.assertNotIn("governing_law", _types("governed by the laws of Atlantis"))
+
+    def test_all_caps_conspicuous_clause_anchors(self) -> None:
+        # The conspicuous-formatting convention: an all-caps governing-law
+        # clause must still anchor (the gap accepts an all-caps connective run).
+        a = _first(
+            "THIS AGREEMENT SHALL BE GOVERNED BY AND CONSTRUED IN ACCORDANCE "
+            "WITH THE LAWS OF THE STATE OF NEW YORK.",
+            "governing_law",
+        )
+        self.assertEqual("new york", a.canonical_value)
+
+    def test_intervening_object_refuses_the_anchor(self) -> None:
+        # "governed by" whose object is something else entirely, with a
+        # compliance phrase trailing in the same sentence: the mixed-case
+        # intervening noun breaks the boilerplate gap, so no governing-law value
+        # is minted from the compliance phrase.
+        for span in (
+            "The fees are governed by Section 4, and payments shall comply "
+            "with the laws of New York.",
+            "The Plan is governed by ERISA and not by the laws of Texas.",
+        ):
+            with self.subTest(span=span):
+                self.assertNotIn("governing_law", _types(span))
+
+    def test_longest_jurisdiction_name_wins(self) -> None:
+        a = _first("governed by the laws of West Virginia", "governing_law")
+        self.assertEqual("west virginia", a.canonical_value)
+
+    def test_new_jersey_does_not_collapse_to_jersey(self) -> None:
+        # "New Jersey" (US state) and "Jersey" (Channel Island) are distinct
+        # jurisdictions; longest-first alternation keeps them apart.
+        a = _first("governed by the laws of the State of New Jersey", "governing_law")
+        self.assertEqual("new jersey", a.canonical_value)
+
+    def test_offsets_are_exact(self) -> None:
+        text = "The agreement is governed by New York law."
+        a = _first(text, "governing_law")
+        self.assertEqual("New York", text[a.start : a.end])
+
+    def test_modified_adjective_refuses_not_the_wrong_jurisdiction(self) -> None:
+        # "North Korean law" is not South Korea's and "Federal Indian law" is a
+        # body of US law, not India's. The modifier guard refuses the anchor
+        # rather than mint the tail adjective's canonical (the adversarial
+        # review's blocker pair).
+        for span in (
+            "North Korean law governs the joint venture.",
+            "Federal Indian law governs all claims arising on tribal land.",
+            "The treaty is governed by West German law.",
+        ):
+            with self.subTest(span=span):
+                self.assertNotIn("governing_law", _types(span))
+
+    def test_south_korean_law_survives_the_modifier_guard(self) -> None:
+        # The multi-word lexicon form matches longest-first as its own surface,
+        # so the guard never sees "South" as a stray modifier.
+        a = _first("South Korean law governs the joint venture.", "governing_law")
+        self.assertEqual("south korea", a.canonical_value)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -60,7 +60,7 @@ _DETERMINISTIC_MODEL = "deterministic-v1"
 # sentence carrying one of these has a proposition the contract path can confirm or
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
 # context, never as a clause-checked verdict).
-_CLAUSE_CHECKABLE = frozenset({"money", "percent", "date", "duration", "quote"})
+_CLAUSE_CHECKABLE = frozenset({"money", "percent", "date", "duration", "governing_law", "quote"})
 
 # The could-not-check reason attached when T1's recall tier promotes an anchor-free
 # sentence out of untreated (an assessment ran, so a check effectively happened).
