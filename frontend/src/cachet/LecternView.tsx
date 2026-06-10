@@ -212,7 +212,16 @@ export function LecternView() {
 
       {hasVerdict ? (
         <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
-          <VerifyResults engine={engine} draft={draft} onResolve={() => navigateTo("/vault")} />
+          <VerifyResults
+            engine={engine}
+            draft={draft}
+            // The refusal CTA says "could not be checked without the records
+            // they rely on" — true only when nothing is attached. With a
+            // record loaded and consulted (a conflict refusal, a value the
+            // record lacks), pointing at the Vault would overclaim the cause,
+            // so the CTA is withheld.
+            onResolve={source ? undefined : () => navigateTo("/vault")}
+          />
         </div>
       ) : null}
     </section>

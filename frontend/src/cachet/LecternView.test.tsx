@@ -9,6 +9,7 @@ import { resetVerifyStore } from "@/features/verify/useVerify";
 import { LecternView } from "./LecternView";
 import { liveDraft } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
+import { loadedSource } from "./source";
 
 // The lectern is the verify surface: verifying runs the check in place and the
 // verdict unfolds beneath the sheet, so navigateTo must NOT fire (the operator's
@@ -33,6 +34,7 @@ const mockDraftStream = vi.mocked(verifyApi.draftStream);
 
 afterEach(() => {
   liveDraft.value = "";
+  loadedSource.value = null;
   // The lectern's engine state is module-scoped ON PURPOSE (it survives
   // unmount-on-nav); tests reset it so one test's verdict never leaks into
   // the next.
@@ -118,6 +120,63 @@ describe("LecternView command spine (cachet:command)", () => {
     render(<LecternView />);
     fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
     expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+});
+
+describe("LecternView refusal CTA honesty", () => {
+  const REFUSAL_RESPONSE = {
+    ...VERIFY_RESPONSE,
+    claim_verdicts: [
+      {
+        claim_index: 0,
+        claim_text: "The NDA term is three years.",
+        verdict: "unknown",
+        citations: [],
+        case_verdicts: [],
+        placement: { placed: true, method: "exact", char_start: 0, char_end: 28 }
+      }
+    ],
+    summary: { total: 1, verified: 0, unsupported: 0, unknown: 1 }
+  };
+
+  it("withholds the Vault CTA when a record is already attached", async () => {
+    // The CTA copy says "could not be checked without the records they rely
+    // on" — with a record loaded and consulted (a conflict refusal, a value
+    // the record lacks) that overclaims the cause, so the CTA is withheld.
+    loadedSource.value = { docId: "d-1", filename: "MSA.pdf" };
+    // The stale-record validation clears any record absent from the fetched
+    // library, so the mocked library must actually contain it.
+    vi.mocked(
+      (await import("@/services/api/endpoints")).documents.list
+    ).mockResolvedValue([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: "d-1", filename: "MSA.pdf", subject_name: "General", page_count: 3, file_type: "pdf" } as any
+    ]);
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: REFUSAL_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    await screen.findByText(/could not be verified against your sources/);
+    expect(screen.queryByText("Open the Vault to load it")).toBeNull();
+  });
+
+  it("offers the Vault CTA when nothing is attached (the honest case)", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: REFUSAL_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    await screen.findByText(/could not be verified against your sources/);
+    expect(screen.getByText("Open the Vault to load it")).toBeTruthy();
   });
 });
 
