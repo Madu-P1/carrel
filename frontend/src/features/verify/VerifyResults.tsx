@@ -494,6 +494,19 @@ export function VerifyResults({
     return () => window.removeEventListener("cachet:command", onCommand);
   }, []);
 
+  // The text the verdict actually covers vs the text on the composer right
+  // now. The verdict persists across navigation (and the composer stays
+  // editable after a check), so without this comparison an edited draft would
+  // sit directly above a confident "All N statements are supported" the
+  // engine never saw — the product's stated worst failure. Plain trimmed
+  // string equality: verify() trims before sending and the engine echoes the
+  // cleaned text back as draft_text. An EMPTIED composer is left undecided
+  // (no banner) so the brief-hydration window, where the response lands a
+  // frame before the composer seeds, cannot flash a false stale notice.
+  const checkedText = response?.draft_text ?? null;
+  const draftStale =
+    checkedText !== null && draft.trim() !== "" && draft.trim() !== checkedText.trim();
+
   const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
@@ -635,6 +648,27 @@ export function VerifyResults({
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
       ) : (
         <>
+          {draftStale ? (
+            // The stale register leads the settled verdict: every pixel below
+            // it describes the EARLIER text. Quiet note, not oxblood — the
+            // verdict is not wrong, it is outdated — with the one honest next
+            // move wired to the current draft.
+            <div className={styles.resolveRefusal} role="note" data-stale-draft="true">
+              <p className={styles.resolveRefusalText}>
+                The draft has changed since this check. The verdict below covers the earlier
+                text, not your latest edits.
+              </p>
+              <button
+                type="button"
+                className={styles.resolveRefusalAction}
+                onClick={() => void engine.verify(draft)}
+                disabled={loading}
+              >
+                Verify the draft again
+              </button>
+            </div>
+          ) : null}
+
           {response && response.provider ? (
             <div className={styles.provenanceRow}>
               <ProvenanceBadge provider={response.provider} />
@@ -713,14 +747,23 @@ export function VerifyResults({
         <CertificationExhibit
           model={certModel}
           sealedFingerprint={sealedSeed}
+          // The sheet's CURRENT text, so a seal set on text that has since
+          // been edited reads cracked on the live flow too, not only on a
+          // reopened brief. Computed only while the exhibit is open (one
+          // SHA-256 per open, not per keystroke).
+          currentFingerprint={fingerprintDraft(
+            draft.trim() !== "" ? draft.trim() : (response?.draft_text ?? "")
+          )}
           onSeal={() => {
             setSessionSealed(true);
             // Record the live seal on the ENGINE too: sessionSealed is render
             // state and dies with this component, so on a persistent-store
             // host (the lectern) a remount would re-show the quiet Save,
             // whose upsert silently downgrades the seal. The engine seed is
-            // what survives — and it is what a reopened exhibit reads.
-            engine.markSealed(certModel.fingerprint);
+            // what survives — and it is what a reopened exhibit reads. The
+            // PAIR is recorded (fingerprint + timestamp) so a reopened
+            // exhibit re-renders the original seal date, never a fresh one.
+            engine.markSealed(certModel.fingerprint, certModel.generatedAtISO);
             void saveToShelf("sealed");
           }}
           onClose={() => setCertAt(null)}

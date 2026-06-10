@@ -39,9 +39,12 @@ export interface VerifyEngine {
   loading: boolean;
   hydrating: boolean;
   error: string | null;
-  /** Stored seal fingerprint when a reopened brief was sealed; cleared on verify. */
+  /** Seal fingerprint: seeded from a reopened sealed brief, or recorded by
+   *  markSealed when the human seals live. Cleared on every fresh verify. */
   sealedSeed: string | null;
-  /** Stored certification timestamp from a reopened brief; cleared on verify. */
+  /** Certification timestamp: seeded from a reopened brief's stored cert, or
+   *  recorded by markSealed at live-seal time so a reopened exhibit re-renders
+   *  the ORIGINAL date, never a fresh one. Cleared on every fresh verify. */
   certAtSeed: string | null;
   /** The draft text of the last hydrated brief, or null on the live flow. The
    *  host seeds its composer (editable in VerifyView, read-only in the reader). */
@@ -51,8 +54,16 @@ export interface VerifyEngine {
    *  persistent-store host still hides the quiet unsealed Save after a remount.
    *  Without this, seal -> navigate away -> return would re-show Save to Shelf,
    *  whose backend upsert silently downgrades the seal (the exact path the
-   *  hide-on-sealed guard exists to forbid). */
-  markSealed: (fingerprint: string) => void;
+   *  hide-on-sealed guard exists to forbid). Records the PAIR the hydration
+   *  path seeds together: the fingerprint AND the certification timestamp, so
+   *  a reopened exhibit re-renders the original seal date rather than minting
+   *  a fresh one onto a filing-grade artifact. */
+  markSealed: (fingerprint: string, generatedAtISO: string) => void;
+  /** Abort the in-flight check, if any. The honest escape hatch: with a
+   *  persistent store a hung stream would otherwise leave loading=true across
+   *  every navigation (the remount no longer resets it), permanently disabling
+   *  Verify. Cancelling settles to the idle state: no verdict, no error. */
+  cancel: () => void;
 }
 
 /** The engine's state, as signals so it can outlive any one component. */
@@ -191,8 +202,15 @@ export function useVerify(
         store.response.value = null;
       }
     } finally {
-      if (store.abort.current === controller) store.abort.current = null;
-      store.loading.value = false;
+      // Ownership-guarded, BOTH writes: a superseded check (cancelled via
+      // resetVerifyStore, with a successor already streaming) must not clear
+      // the successor's loading flag as its own loop unwinds — that would drop
+      // the "Verifying…" chrome mid-check and reopen the loading guard to a
+      // third concurrent check writing the same store.
+      if (store.abort.current === controller) {
+        store.abort.current = null;
+        store.loading.value = false;
+      }
     }
   };
 
@@ -206,8 +224,15 @@ export function useVerify(
     certAtSeed: store.certAtSeed.value,
     hydratedDraft: store.hydratedDraft.value,
     verify,
-    markSealed: (fingerprint: string) => {
+    markSealed: (fingerprint: string, generatedAtISO: string) => {
       store.sealedSeed.value = fingerprint;
+      store.certAtSeed.value = generatedAtISO;
+    },
+    cancel: () => {
+      // The finally above owns the cleanup: abort unwinds the loop, the catch
+      // swallows the AbortError, and the ownership-guarded finally clears the
+      // slot and loading. Cancelling when idle is a no-op.
+      store.abort.current?.abort();
     }
   };
 }

@@ -193,14 +193,17 @@ describe("useVerify — external store (state survives unmount-on-nav)", () => {
   it("markSealed records the live seal so a remount still hides the quiet save", async () => {
     const store = createVerifyStore();
     const first = renderHook(() => useVerify({ store }));
-    act(() => first.result.current.markSealed("fp-live"));
+    act(() => first.result.current.markSealed("fp-live", "2026-06-09T10:00:00.000Z"));
     first.unmount();
     const second = renderHook(() => useVerify({ store }));
     expect(second.result.current.sealedSeed).toBe("fp-live");
+    // The PAIR persists: a reopened exhibit re-renders the original seal date.
+    expect(second.result.current.certAtSeed).toBe("2026-06-09T10:00:00.000Z");
     // A fresh verify is a NEW verification: the live seal clears like any seed.
     mockDraftStream.mockReturnValue(streamOf([{ type: "result", verify: RESPONSE }]));
     await act(() => second.result.current.verify("an edited draft"));
     expect(second.result.current.sealedSeed).toBeNull();
+    expect(second.result.current.certAtSeed).toBeNull();
   });
 
   it("resetVerifyStore returns a persistent store to boot state", async () => {
@@ -212,5 +215,104 @@ describe("useVerify — external store (state survives unmount-on-nav)", () => {
     act(() => resetVerifyStore(persistent));
     expect(h.result.current.response).toBeNull();
     expect(h.result.current.stream.phase).toBe("idle");
+  });
+});
+
+/** A draftStream mock that honors the abort signal the way the real streamSse
+ *  does (read() rejects with AbortError), gated on an external release. */
+function gatedAbortableStream(gate: Promise<void>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (_payload: unknown, opts?: { signal?: AbortSignal }): any =>
+    (async function* () {
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => reject(new DOMException("aborted", "AbortError"));
+        if (opts?.signal?.aborted) {
+          onAbort();
+          return;
+        }
+        opts?.signal?.addEventListener("abort", onAbort);
+        void gate.then(resolve);
+      });
+      yield { type: "result", verify: RESPONSE };
+    })();
+}
+
+describe("useVerify — cancel and supersede lifecycle (persistent store)", () => {
+  it("cancel() aborts a hung check and settles to idle: Verify is recoverable", async () => {
+    // With a persistent store, loading survives navigation by design, so a
+    // hung stream with no cancel would disable Verify until app relaunch.
+    const gate = new Promise<void>(() => {}); // never releases: the hang
+    mockDraftStream.mockImplementation(gatedAbortableStream(gate));
+    const store = createVerifyStore();
+    const h = renderHook(() => useVerify({ store }));
+    let p!: Promise<void>;
+    act(() => {
+      p = h.result.current.verify("a draft whose stream hangs");
+    });
+    await waitFor(() => expect(h.result.current.loading).toBe(true));
+    act(() => h.result.current.cancel());
+    await act(() => p);
+    expect(h.result.current.loading).toBe(false);
+    // An honest idle state: the user stopped it; no verdict, no accusation.
+    expect(h.result.current.response).toBeNull();
+    expect(h.result.current.error).toBeNull();
+  });
+
+  it("a superseded check's cleanup never clears the successor's loading", async () => {
+    // reset-then-reverify in one handler (resetVerifyStore's documented use):
+    // check A is aborted while check B starts. A's unwinding finally must not
+    // flip B's loading off — that would drop the Verifying chrome mid-check
+    // and reopen the guard to a third concurrent check on the same store.
+    const store = createVerifyStore();
+    let releaseB!: () => void;
+    const gateB = new Promise<void>((r) => (releaseB = r));
+    let call = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockDraftStream.mockImplementation(((_p: unknown, opts?: { signal?: AbortSignal }) => {
+      call += 1;
+      const gate = call === 1 ? new Promise<void>(() => {}) : gateB;
+      return gatedAbortableStream(gate)(_p, opts);
+    }) as never);
+    const h = renderHook(() => useVerify({ store }));
+    let pA!: Promise<void>;
+    let pB!: Promise<void>;
+    act(() => {
+      pA = h.result.current.verify("check A");
+    });
+    await waitFor(() => expect(h.result.current.loading).toBe(true));
+    act(() => resetVerifyStore(store)); // aborts A
+    act(() => {
+      pB = h.result.current.verify("check B");
+    });
+    await act(() => pA); // A fully unwinds while B is mid-stream
+    expect(h.result.current.loading).toBe(true); // B's chrome must survive A's cleanup
+    releaseB();
+    await act(() => pB);
+    expect(h.result.current.response).toEqual(RESPONSE);
+    expect(h.result.current.loading).toBe(false);
+  });
+
+  it("an in-flight check survives a host unmount and lands on the next mount", async () => {
+    // The 'still streaming' half of verdict survival: the rail click happens
+    // MID-check. Kills the likeliest future regression — an abort-on-unmount
+    // cleanup added to 'fix the leak' would silently kill every in-flight
+    // lectern check on navigation.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    mockDraftStream.mockImplementation(gatedAbortableStream(gate));
+    const store = createVerifyStore();
+    const first = renderHook(() => useVerify({ store }));
+    let p!: Promise<void>;
+    act(() => {
+      p = first.result.current.verify("still streaming at nav time");
+    });
+    await waitFor(() => expect(first.result.current.loading).toBe(true));
+    first.unmount(); // the rail click, mid-check
+    release();
+    await act(() => p);
+    const second = renderHook(() => useVerify({ store }));
+    expect(second.result.current.response).toEqual(RESPONSE);
+    expect(second.result.current.loading).toBe(false);
+    expect(mockDraftStream).toHaveBeenCalledTimes(1);
   });
 });

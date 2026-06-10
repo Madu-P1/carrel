@@ -42,7 +42,8 @@ function engineWith(claimVerdicts: any[]): VerifyEngine {
     certAtSeed: null,
     hydratedDraft: null,
     verify: vi.fn(),
-    markSealed: vi.fn()
+    markSealed: vi.fn(),
+    cancel: vi.fn()
   };
 }
 
@@ -104,7 +105,8 @@ describe("VerifyResults mid-stream error (invariant #6)", () => {
       certAtSeed: null,
       hydratedDraft: null,
       verify: vi.fn(),
-    markSealed: vi.fn()
+      markSealed: vi.fn(),
+      cancel: vi.fn()
     };
   }
 
@@ -154,7 +156,8 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
       certAtSeed: null,
       hydratedDraft: null,
       verify: vi.fn(),
-    markSealed: vi.fn()
+      markSealed: vi.fn(),
+      cancel: vi.fn()
     };
   }
 
@@ -207,7 +210,8 @@ describe("VerifyResults streaming announcement (screen-reader honesty)", () => {
       certAtSeed: null,
       hydratedDraft: null,
       verify: vi.fn(),
-    markSealed: vi.fn()
+      markSealed: vi.fn(),
+      cancel: vi.fn()
     };
     render(<VerifyResults engine={engine} draft="" />);
     expect(
@@ -258,6 +262,60 @@ describe("VerifyResults command spine (cachet:command)", () => {
     render(<VerifyResults engine={engine} draft="" />);
     fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "export" } }));
     expect(screen.queryByRole("dialog", { name: "Verification certification" })).toBeNull();
+  });
+});
+
+describe("VerifyResults stale-draft register", () => {
+  // The verdict persists across navigation and the composer stays editable,
+  // so an edited draft above a confident summary the engine never saw is the
+  // product's worst failure. The stale notice is the counterweight.
+  it("a draft edited after the check shows the stale notice", () => {
+    render(
+      <VerifyResults
+        engine={engineWith([noRecordClaim])}
+        draft="Entirely new text the engine never saw."
+      />
+    );
+    expect(screen.getByText(/The draft has changed since this check/)).toBeTruthy();
+  });
+
+  it("offers to verify the current draft again, wired to the CURRENT text", () => {
+    const engine = engineWith([noRecordClaim]);
+    render(<VerifyResults engine={engine} draft="Entirely new text." />);
+    fireEvent.click(screen.getByText("Verify the draft again"));
+    expect(engine.verify).toHaveBeenCalledWith("Entirely new text.");
+  });
+
+  it("no notice when the draft matches the checked text (modulo whitespace)", () => {
+    const engine = engineWith([noRecordClaim]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const checked = (engine.response as any).draft_text as string;
+    render(<VerifyResults engine={engine} draft={`${checked}\n`} />);
+    expect(screen.queryByText(/has changed since this check/)).toBeNull();
+  });
+
+  it("no notice on an empty composer (the brief-hydration seeding window)", () => {
+    render(<VerifyResults engine={engineWith([noRecordClaim])} draft="" />);
+    expect(screen.queryByText(/has changed since this check/)).toBeNull();
+  });
+});
+
+describe("VerifyResults seal records the pair on the engine", () => {
+  it("sealing calls engine.markSealed with the cert fingerprint AND its timestamp", async () => {
+    // The mutation review proved this wiring was a surviving mutant: deleting
+    // the markSealed call failed zero tests while being the only guard against
+    // the seal silently downgrading after a remount. This pins it, including
+    // the timestamp half of the pair (a reopened exhibit must re-render the
+    // ORIGINAL seal date, never mint a fresh one).
+    const engine = engineWith([noRecordClaim]);
+    render(<VerifyResults engine={engine} draft="" />);
+    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(await screen.findByRole("button", { name: "Set the seal" }));
+    expect(engine.markSealed).toHaveBeenCalledTimes(1);
+    const [fingerprint, generatedAtISO] = vi.mocked(engine.markSealed).mock.calls[0];
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(typeof generatedAtISO).toBe("string");
+    expect(generatedAtISO.length).toBeGreaterThan(0);
   });
 });
 

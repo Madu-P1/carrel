@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { navigateTo } from "@/app/shell/useAppShell";
@@ -118,6 +118,35 @@ describe("LecternView command spine (cachet:command)", () => {
     render(<LecternView />);
     fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
     expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+});
+
+describe("LecternView cancel (the hung-stream escape hatch)", () => {
+  it("offers Stop the check while verifying, and stopping re-enables Verify", async () => {
+    // With the persistent store, loading survives navigation by design, so a
+    // hung stream with no cancel affordance would disable Verify until the
+    // app relaunches (the remount no longer resets engine state).
+    mockDraftStream.mockImplementation(((
+      _payload: unknown,
+      opts?: { signal?: AbortSignal }
+    ) =>
+      (async function* () {
+        await new Promise((_, reject) => {
+          opts?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError"))
+          );
+        });
+        yield { type: "result", verify: VERIFY_RESPONSE };
+      })()) as never);
+    liveDraft.value = "A draft whose check hangs.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(await screen.findByText("Stop the check"));
+    await waitFor(() => {
+      const verifyButton = screen.getByText("Verify") as HTMLButtonElement;
+      expect(verifyButton.disabled).toBe(false);
+    });
+    expect(screen.queryByText("Stop the check")).toBeNull();
   });
 });
 

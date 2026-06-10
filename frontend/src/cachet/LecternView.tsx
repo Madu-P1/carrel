@@ -131,6 +131,18 @@ export function LecternView() {
           <span className={styles.sheetHint}>
             Reads the citations and quotes against the sources you provide
           </span>
+          {engine.loading ? (
+            // The escape hatch a persistent store makes necessary: loading
+            // survives navigation by design, so a hung stream would otherwise
+            // leave Verify disabled forever (the remount no longer resets it).
+            <button
+              type="button"
+              className={styles.lecternSourceChange}
+              onClick={() => engine.cancel()}
+            >
+              Stop the check
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.sheetGo}
