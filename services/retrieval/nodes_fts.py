@@ -34,9 +34,16 @@ class NodeHit:
 
 
 def _sanitize_query(query: str) -> str:
+    # OR-joined quoted tokens: FTS5 treats bare space-separated terms as
+    # implicit AND, which returns ZERO rows for any sentence-shaped query
+    # whose every word is not in the target (a verify claim vs its clause:
+    # "capped" vs "shall not exceed" killed the match outright). The hybrid
+    # design needs each arm to RANK candidates, so this arm must be ranked
+    # BM25 over the query vocabulary, not an all-words filter. Quoting each
+    # token keeps stray FTS syntax inert.
     cleaned = _FTS_OPERATOR_CHARS.sub(" ", query)
-    tokens = [token for token in cleaned.split() if token]
-    return " ".join(tokens)
+    tokens = dict.fromkeys(token for token in cleaned.split() if token)
+    return " OR ".join(f'"{token}"' for token in tokens)
 
 
 def search_node_fts(

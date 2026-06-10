@@ -220,7 +220,13 @@ class RetrievalFTSTests(unittest.TestCase):
 
         self.assertEqual(["chunk-a"], [hit.chunk_id for hit in hits])
 
-    def test_multi_word_query_uses_implicit_and(self) -> None:
+    def test_multi_word_query_ranks_the_all_words_chunk_first(self) -> None:
+        # OR-semantics ranked BM25 (2026-06-11): bare space-separated terms
+        # were implicit AND, which returned ZERO rows for any sentence-shaped
+        # query with one non-shared word — the recorded cause of the 0/14
+        # smoke-eval groundedness hole and a vacuous FTS arm on the contract
+        # path. The arm now RANKS: the chunk matching every query word comes
+        # first; partial matches trail for the fusion to weigh.
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             self._configure_temp_runtime(root)
@@ -237,7 +243,8 @@ class RetrievalFTSTests(unittest.TestCase):
                 conn.commit()
                 hits = search_keyword(conn, "cell division")
 
-        self.assertEqual(["chunk-a"], [hit.chunk_id for hit in hits])
+        self.assertEqual("chunk-a", hits[0].chunk_id)
+        self.assertEqual({"chunk-a", "chunk-b", "chunk-c"}, {hit.chunk_id for hit in hits})
 
     def test_reapplying_migrations_keeps_fts_triggers_stable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

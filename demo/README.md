@@ -60,6 +60,16 @@ names the clause and quotes both values, so the record stands on its own:
   ML.
 - "two (2) years" matches the contract's term: **present** in Section 12
   ("review the full clause for context").
+- "an exclusive license" vs the contract's non-exclusive Section 3 grant:
+  **contradiction** ("The summary states exclusive; Section 3 states
+  non-exclusive") — the canonical single-token summary error, pure string
+  comparison. Narration: "one word, and it reverses who else can use the
+  Software."
+- "governed by New York law" vs Section 14's Delaware choice of law:
+  **contradiction** naming both jurisdictions. The trap narrates itself:
+  Section 14 sends disputes to NEW YORK COURTS, which is exactly why an AI
+  summary flips the governing law — the engine separates venue from choice of
+  law and is not fooled.
 - "best efforts" carries no checkable anchor: the honest **could not check**, not
   a silent pass and not an accusation.
 
