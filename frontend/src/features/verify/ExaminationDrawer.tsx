@@ -136,7 +136,9 @@ export function checksFor(card: VerifyClaimVerdict): CheckRow[] {
       name: "Quotation verbatim",
       weight: "Deterministic",
       state: "unknown",
-      detail: "Draft-quote checks appear with the source below."
+      // True whether or not a source section renders below; the old wording
+      // promised content "below" that a no-source claim never shows.
+      detail: "Draft-quote checks appear alongside the source when one is attached."
     }
   ];
 }

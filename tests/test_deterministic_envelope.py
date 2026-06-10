@@ -531,7 +531,6 @@ class TopicGateFoldTests(unittest.TestCase):
             _clause_on_topic(
                 "The agreements cover the sections fully.",
                 "These agreements have sections regarding unrelated matters.",
-                minimum=2,
             )
         )
 
@@ -542,7 +541,6 @@ class TopicGateFoldTests(unittest.TestCase):
             _clause_on_topic(
                 "The liability caps for damages are aggregated.",
                 "Aggregate liability cap for damage claims.",
-                minimum=2,
             )
         )
 

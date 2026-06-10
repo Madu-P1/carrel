@@ -608,7 +608,13 @@ export function VerifyResults({
   const quoteResults = response?.quote_results ?? stream.quotes ?? [];
 
   return (
-    <div className={styles.results} data-verify-results>
+    <div
+      className={styles.results}
+      data-verify-results
+      // Drives the wide-viewport shift that keeps the record readable beside
+      // the fixed Examination drawer instead of underneath it.
+      data-exam-open={selectedItem != null ? "true" : undefined}
+    >
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
 
       {hydrating && !response ? (

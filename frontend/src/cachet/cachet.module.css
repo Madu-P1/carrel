@@ -70,6 +70,10 @@
   font-family: var(--font-serif-body);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* The shell never scrolls sideways: any child that overflows is clipped
+     rather than handing the browser a horizontal scroll range that focus or
+     rubber-banding can shift the document into (clipped-column class). */
+  overflow-x: clip;
 }
 
 /* ---------- thin left rail ---------- */

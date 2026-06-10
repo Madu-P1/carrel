@@ -5,7 +5,13 @@ from __future__ import annotations
 import unittest
 
 from services.legal.anchors import Anchor
-from services.legal.contract_verify import _durations_match, verify_claim_against_clause
+from services.legal.contract_verify import (
+    ClauseCandidate,
+    ClauseVerdict,
+    _durations_match,
+    adjudicate_clause_candidates,
+    verify_claim_against_clause,
+)
 
 
 class DurationUnitFallbackTests(unittest.TestCase):
@@ -274,6 +280,134 @@ class PercentClauseTests(unittest.TestCase):
             "Section 6. Interest accrues at 5% per annum.",
         )
         self.assertEqual("multi_value_unverifiable", v.disposition)
+
+
+class ClauseAdjudicationTests(unittest.TestCase):
+    """The cross-clause adjudication rule (topicality decision, 2026-06-10).
+
+    Pure logic, exhaustively pinned here so the safety-critical rule lives in
+    tested code, not in the envelope's retrieval loop. The rule: a
+    contradiction stands only when NO retrieved clause carries the claim's
+    value for that anchor type; a same-type present anywhere (on-topic or not)
+    makes accusing from a different clause a guess, so the engine refuses with
+    both clauses named. Off-topic presents veto accusations but never earn a
+    green (C3 unchanged).
+    """
+
+    @staticmethod
+    def _present(anchor_type="percent", where="Section 4", on_topic=True, section="Section 4"):
+        return ClauseCandidate(
+            ClauseVerdict(
+                "present",
+                f"50% appears in {where}; review the full passage for context.",
+                anchor_type,
+                ("50",),
+                ("50",),
+                claim_span="50%",
+                clause_span="50%",
+                where=where,
+            ),
+            section=section,
+            clause_text=f"{where}. The royalty equals 50% of net fees.",
+            on_topic=on_topic,
+        )
+
+    @staticmethod
+    def _contradiction(anchor_type="percent", where="Section 9", section="Section 9"):
+        return ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states 50%; {where} states 40%.",
+                anchor_type,
+                ("50",),
+                ("40",),
+                claim_span="50%",
+                clause_span="40%",
+                where=where,
+            ),
+            section=section,
+            clause_text=f"{where}. The discount equals 40% of net fees.",
+            on_topic=True,
+        )
+
+    @staticmethod
+    def _multi(section="Section 2"):
+        return ClauseCandidate(
+            ClauseVerdict(
+                "multi_value_unverifiable", "cannot be aligned", "money", ("1", "2"), ("1",)
+            ),
+            section=section,
+            clause_text="Section 2. Fees of $1 and $2.",
+            on_topic=True,
+        )
+
+    def test_same_type_conflict_refuses_with_both_clauses_named(self) -> None:
+        # The decided rule: present + contradiction for the same type across
+        # clauses is a deterministic unknown, never a guessed verdict in
+        # either direction.
+        for order in [
+            [self._present(), self._contradiction()],
+            [self._contradiction(), self._present()],
+        ]:
+            with self.subTest(first=order[0].verdict.disposition):
+                verdict, section, clause_text = adjudicate_clause_candidates(order)
+                self.assertEqual("conflicting_clauses", verdict.disposition)
+                self.assertIn("Section 4", verdict.detail)
+                self.assertIn("Section 9", verdict.detail)
+                self.assertIn("40%", verdict.detail)
+                self.assertIn("not independently checked", verdict.detail)
+
+    def test_off_topic_present_vetoes_the_accusation_but_earns_no_green(self) -> None:
+        # The claim's value is verbatim in SOME retrieved clause (off-topic):
+        # accusing from a different clause is a guess. Refuse, never accuse.
+        verdict, _, _ = adjudicate_clause_candidates(
+            [self._contradiction(), self._present(on_topic=False)]
+        )
+        self.assertEqual("conflicting_clauses", verdict.disposition)
+
+    def test_off_topic_present_alone_stays_not_found(self) -> None:
+        # C3 preserved: an off-topic value coincidence never earns a green.
+        verdict, _, _ = adjudicate_clause_candidates([self._present(on_topic=False)])
+        self.assertEqual("not_found", verdict.disposition)
+
+    def test_uncontested_contradiction_stands(self) -> None:
+        # No clause anywhere carries the claim's value: the catch is preserved,
+        # ungated by topicality (a falsified value LOWERS overlap with its true
+        # clause, so a topicality gate would suppress exactly the true catches).
+        verdict, section, _ = adjudicate_clause_candidates([self._contradiction()])
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertEqual("Section 9", section)
+
+    def test_first_uncontested_contradiction_wins_by_rank(self) -> None:
+        verdict, section, _ = adjudicate_clause_candidates(
+            [
+                self._contradiction(where="Section 9", section="Section 9"),
+                self._contradiction(where="Section 12", section="Section 12"),
+            ]
+        )
+        self.assertEqual("Section 9", section)
+
+    def test_cross_type_present_does_not_veto(self) -> None:
+        # A duration present says nothing about a percent accusation: the
+        # contradiction is uncontested for its own type and stands.
+        verdict, _, _ = adjudicate_clause_candidates(
+            [self._present(anchor_type="duration"), self._contradiction(anchor_type="percent")]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+
+    def test_on_topic_present_alone_is_present(self) -> None:
+        verdict, section, clause_text = adjudicate_clause_candidates([self._present()])
+        self.assertEqual("present", verdict.disposition)
+        self.assertEqual("Section 4", section)
+        self.assertIn("royalty", clause_text or "")
+
+    def test_present_outranks_multi_value_which_outranks_not_found(self) -> None:
+        verdict, _, _ = adjudicate_clause_candidates([self._multi(), self._present()])
+        self.assertEqual("present", verdict.disposition)
+        verdict2, _, _ = adjudicate_clause_candidates([self._multi()])
+        self.assertEqual("multi_value_unverifiable", verdict2.disposition)
+        verdict3, _, _ = adjudicate_clause_candidates([])
+        self.assertEqual("not_found", verdict3.disposition)
 
 
 if __name__ == "__main__":

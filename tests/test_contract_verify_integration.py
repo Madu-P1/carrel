@@ -134,6 +134,28 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-2", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_conflict_contract()
+
+    def _seed_conflict_contract(self) -> None:
+        # Two clauses carrying the SAME value type with different values, as
+        # its own document (the fixture-isolation lesson): the adjudication
+        # tests need both clauses retrievable for one claim, rank-independent.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-3', 'license-amended.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 4. The royalty equals 50% of net fees received each quarter.",
+            ),
+            _node(
+                1,
+                "Section 9. The marketing discount equals 40% of net fees received each quarter.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-3", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -235,6 +257,37 @@ class ContractPathIntegrationTests(unittest.TestCase):
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
 
+    def test_same_type_conflict_refuses_instead_of_accusing_or_greenlighting(self) -> None:
+        # The topicality decision, end to end: the claim's 50% is verbatim in
+        # Section 4 while Section 9 carries a different percent. Whatever the
+        # retrieval rank, the engine must neither accuse (the old
+        # first-contradiction break) nor greenlight (present-wins would mask
+        # an amended-contract conflict); it refuses with both clauses named.
+        draft = "The royalty equals 50% of net fees received each quarter."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-3"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "royalty")
+        self.assertEqual("conflicting_clauses", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("Section 4", reason)
+        self.assertIn("Section 9", reason)
+        self.assertIn("40%", reason)
+
+    def test_uncontested_contradiction_still_catches(self) -> None:
+        # No clause in contract-3 carries 99%: the falsified value stays a
+        # hard catch. The conflict rule must never soften a true contradiction.
+        draft = "The royalty equals 99% of net fees received each quarter."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-3"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "royalty")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
     def test_matching_duration_is_present(self) -> None:
         env = build_deterministic_envelope(
             "The confidentiality term lasts two (2) years.",
@@ -298,13 +351,15 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "an off-topic value coincidence must not read a verified present",
         )
 
-    def test_offtopic_clause_sharing_one_generic_word_is_could_not_check(self) -> None:
-        # C3 hardening: ONE shared content word is not topical relevance. A
-        # contract's own name ("Services Agreement") recurs in every clause, so
-        # a signing-bonus clause that shares only "Services" plus a coincidental
-        # $42,000 must not read "present" for a liability-cap claim. Two shared
-        # content words are required; the recall cost degrades to the honest
-        # could-not-check, never a false present.
+    def test_offtopic_clause_sharing_only_the_contract_name_is_could_not_check(self) -> None:
+        # C3 (stronger than the sibling off-topic test): a contract's own name
+        # ("Services Agreement") recurs in clause boilerplate across the whole
+        # document, so a signing-bonus clause that shares ONLY "Services" plus a
+        # coincidental $42,000 is not topically relevant to a liability-cap
+        # claim. The PR #166 adjudicator vetoes an off-topic present; this pins
+        # that the contract structural-name word is treated as boilerplate (a
+        # _TOPIC_STOPWORDS entry), so the value cannot launder into a verified
+        # present. The safe direction is could-not-check, never a false present.
         self._conn.execute(
             "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
             "VALUES ('offtopic-2', 'comp2.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
@@ -322,31 +377,6 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "unknown",
             card.verdict,
             "one shared generic word must not launder an off-topic value into present",
-        )
-
-    def test_offtopic_clause_cannot_ground_a_contradiction_either(self) -> None:
-        # An off-topic clause can neither support NOR contradict. Without a
-        # topic gate on contradictions, a liability claim whose value differs
-        # from an unrelated signing bonus reads parametric_contradiction: a
-        # false accusation, the malpractice direction. It must degrade to the
-        # honest could-not-check.
-        self._conn.execute(
-            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
-            "VALUES ('offtopic-3', 'comp3.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
-        )
-        off = [_node(0, "The signing bonus payable to the executive is $42,000.")]
-        ids = insert_typed_nodes(self._conn, "offtopic-3", off)
-        embed_and_index_nodes(self._conn, off, ids, embedder=self._embedder)
-        self._conn.commit()
-        draft = "The aggregate liability is capped at $42,500."
-        env = build_deterministic_envelope(
-            draft, conn=self._conn, doc_ids=["offtopic-3"], embedder=self._embedder
-        )
-        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
-        self.assertEqual(
-            "unknown",
-            card.verdict,
-            "an off-topic clause must not ground a contradiction accusation",
         )
 
     def test_on_topic_contradiction_still_fires(self) -> None:

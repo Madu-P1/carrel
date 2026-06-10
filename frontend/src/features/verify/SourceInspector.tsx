@@ -332,7 +332,13 @@ export function SourceInspectorBody({
       {!hasSources ? (
         <p className={styles.sourceMuted}>
           {disposition.kind === "could_not_check"
-            ? "No source was loaded to check this statement against. Add the documents this draft relies on, then verify again."
+            ? // State-neutral on purpose: this component cannot see whether a
+              // record is loaded in the session, only that NO source material
+              // reached this claim's check. Asserting "no source was loaded"
+              // here contradicted the lectern's record chip on screen whenever
+              // the loaded record simply lacked the material (or the pointer
+              // was stale). Say what is known, name the recovery.
+              "No source material reached this statement's check. Pick or load the record this draft relies on in the Vault, then verify again."
             : "No source is attached to this statement."}
         </p>
       ) : null}

@@ -33,7 +33,12 @@ import httpx
 from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
 from services.legal.citations_eyecite import caption_match_state, find_citations
-from services.legal.contract_verify import ClauseVerdict, verify_claim_against_clause
+from services.legal.contract_verify import (
+    ClauseCandidate,
+    ClauseVerdict,
+    adjudicate_clause_candidates,
+    verify_claim_against_clause,
+)
 from services.legal.local_caselaw import (
     DEMO_MANIFEST,
     CorpusManifest,
@@ -190,6 +195,14 @@ _TOPIC_STOPWORDS = frozenset(
         "party",
         "agreement",
         "section",
+        # Contract structural-name boilerplate: the document type ("Services
+        # Agreement") recurs in clause headers across the whole contract, so a
+        # shared "services" is not topical relevance. Without this, an off-topic
+        # signing-bonus clause that shares only the contract name laundered a
+        # coincidental value into a verified present (the demonstrated D5 gap in
+        # the binary on-topic check; "agreement" was already here).
+        "service",
+        "services",
         "clause",
         "this",
         "that",
@@ -227,29 +240,24 @@ _TOPIC_STOPWORDS = frozenset(
 _TOPIC_STOPWORDS_FOLDED = frozenset(w[:-1] if w.endswith("s") else w for w in _TOPIC_STOPWORDS)
 
 
-def _clause_on_topic(sentence: str, clause: str, *, minimum: int) -> bool:
-    """A parametric verdict is on-topic only if the claim and the matched clause
-    share at least ``minimum`` content words beyond the coincidental value.
+def _clause_on_topic(sentence: str, clause: str) -> bool:
+    """A parametric present is on-topic only if the claim and the matched clause
+    share a content word beyond the coincidental value.
 
     Blocks an off-topic clause that merely repeats the same number (an unrelated
-    signing bonus's $42,000 vs a liability cap's $42,000). The floor differs by
-    direction, each strictly tighter than what preceded it:
+    signing bonus's $42,000 vs a liability cap's $42,000). The case-existence path
+    already gates on relevance ("mere topical relevance is not support"); the contract
+    path did not, so an off-topic value coincidence could read a false "present". The
+    safe direction is recall loss (could-not-check), never a false accusation.
 
-      - present requires TWO shared words. One is not relevance: the contract's
-        own name ("Services Agreement") and other recurring nouns appear in
-        every clause, so a single overlap laundered off-topic values into
-        "present" (support by coincidence).
-      - parametric_contradiction requires ONE shared word (previously zero: any
-        retrieved clause could accuse). A contradiction is an affirmative
-        same-type mismatch against a retrieval-targeted clause, and the demo's
-        own gold catches (a one-line summary sentence against a long clause)
-        legitimately share exactly one topic word; requiring two would silence
-        the flagship catch. A clause sharing nothing with the claim still
-        cannot accuse.
+    Used by the cross-clause adjudicator (PR #166) only as a present's accusation
+    veto, not a contradiction floor: the adjudicator decides contradiction
+    topicality structurally (a contradiction stands only when no clause carries
+    the value), per docs/notes/2026-06-10-cachet-contradiction-topicality.md.
 
-    Words fold a trailing s so a singular/plural pair counts once. The safe
-    direction on a gate miss is recall loss (could-not-check), never a false
-    verdict in either direction.
+    Content words fold a trailing s so a singular/plural pair counts once, and
+    the stopword filter compares folded-to-folded so plural stopword forms
+    ("agreements", "sections") cannot slip through and earn topic credit.
     """
 
     def content(text: str) -> set[str]:
@@ -260,7 +268,7 @@ def _clause_on_topic(sentence: str, clause: str, *, minimum: int) -> bool:
         folded = {w[:-1] if w.endswith("s") else w for w in re.findall(r"[a-z]{4,}", text.lower())}
         return folded - _TOPIC_STOPWORDS_FOLDED
 
-    return len(content(sentence) & content(clause)) >= minimum
+    return bool(content(sentence) & content(clause))
 
 
 def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
@@ -502,45 +510,29 @@ def _contract_claim(
 ) -> dict:
     """Verify one summary sentence against the retrieved contract clause (T0)."""
     nodes = search_typed_hybrid(conn, sentence, doc_ids=list(doc_ids), embedder=embedder, limit=3)
-    # Retrieval is imprecise, so the matching clause may not be rank 1. Take the
-    # first retrieved clause that yields a clean verdict (present or contradiction).
-    # A multi_value_unverifiable result is a could-not-check fallback used only when no
-    # clause yields a clean verdict: we never hunt other clauses for a contradiction
-    # (clause B's $600k must not "contradict" a claim whose $500k clause A confirmed),
-    # and a clean present/contradiction always outranks a multi-value could-not-check.
-    verdict = ClauseVerdict("not_found", "no matching passage found in your loaded sources")
-    section = None
-    matched_clause: str | None = None
-    multi_value: tuple[ClauseVerdict, str | None] | None = None
+    # Retrieval is imprecise, so the matching clause may not be rank 1. Every
+    # retrieved clause is evaluated and the PURE adjudicator decides
+    # (contract_verify.adjudicate_clause_candidates, per the topicality
+    # decision in docs/notes/2026-06-10-cachet-contradiction-topicality.md):
+    # a contradiction stands only when no clause carries the claim's value for
+    # that anchor type; a same-type present anywhere makes accusing from a
+    # different clause a guess, so the engine refuses with both clauses named.
+    # The old loop broke on the FIRST present-or-contradiction in rank order,
+    # which let an off-topic clause accuse a claim whose value a later clause
+    # confirmed (the live false-accusation finding).
+    candidates: list[ClauseCandidate] = []
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
-        if (
-            candidate.disposition in ("present", "parametric_contradiction")
-            and candidate.anchor_type != "quote"
-            and not _clause_on_topic(
-                sentence,
-                node.verbatim_text,
-                minimum=2 if candidate.disposition == "present" else 1,
-            )
-        ):
-            # C3: an off-topic clause that merely shares (or merely differs from)
-            # the literal value is neither support nor contradiction. Skip it so
-            # the sentence degrades to could-not-check instead of a false
-            # "present" or a false accusation; a clean on-topic clause later in
-            # the list still wins. A quote-anchored present is exempt: the
-            # verbatim quoted language IS the topical link. The present floor is
-            # two shared words; the contradiction floor is one (see
-            # _clause_on_topic for why they differ).
-            continue
-        if candidate.disposition in ("present", "parametric_contradiction"):
-            verdict = candidate
-            section = node.heading_path
-            matched_clause = node.verbatim_text
-            break
-        if candidate.disposition == "multi_value_unverifiable" and multi_value is None:
-            multi_value = (candidate, node.heading_path)
-    if verdict.disposition == "not_found" and multi_value is not None:
-        verdict, section = multi_value
+        on_topic = True
+        if candidate.disposition == "present" and candidate.anchor_type != "quote":
+            # C3: an off-topic clause that merely shares the literal value is
+            # not support. The adjudicator never greens it, but keeps it as an
+            # accusation veto (the value IS verbatim in the contract).
+            on_topic = _clause_on_topic(sentence, node.verbatim_text)
+        candidates.append(
+            ClauseCandidate(candidate, node.heading_path, node.verbatim_text, on_topic)
+        )
+    verdict, section, matched_clause = adjudicate_clause_candidates(candidates)
     claim = {
         "text": sentence,
         "citations": [],
