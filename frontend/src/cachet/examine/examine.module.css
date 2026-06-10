@@ -1,0 +1,371 @@
+/* Document Examination overlay. Paper register throughout: the panel root
+ * carries .verifyScope from VerifyView.module.css, so the tokens here
+ * (--surface-*, --text-*, --hairline, --verify-flag) resolve to the Cachet
+ * verify palette. Edges carry the semantic load: the anchored passage wears
+ * an ink underline (the .sourceRun treatment), never a background wash. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: rgb(14 14 16 / 72%);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 96vw);
+  height: min(900px, 92vh);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-1);
+  background: var(--surface-2);
+  box-shadow: 0 24px 64px rgb(40 30 18 / 22%);
+  /* Near-zero motion on the verify surface (2026-05-29 deviation): the
+   * record arrives with a quiet fade, no travel, no spring. */
+  animation: examine-arrive var(--dur-base, 180ms) var(--ease-out, ease-out);
+}
+
+@keyframes examine-arrive {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.panelTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.panelTitle {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panelLocator {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.panelClose {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-1);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-micro, 120ms) var(--ease-out, ease-out),
+    border-color var(--dur-micro, 120ms) var(--ease-out, ease-out);
+}
+
+.panelClose:hover {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+
+.panelClose:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.panelBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* ---- shared pane states ---- */
+
+.paneMessage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: 1;
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.paneError {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.paneHint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* ---- PDF pane ---- */
+
+.pdfPane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pdfToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.pageControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pageButton {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-1);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-fast, 120ms) var(--ease-out, ease-out),
+    border-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+
+.pageButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pageButton:not(:disabled):hover {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+
+.pageButton:focus-visible,
+.anchorReturn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* role="status" wrapper for the anchor notes: announced politely to AT,
+ * visually just the note itself. */
+.anchorStatus {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pageIndicator {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  color: var(--text-tertiary);
+}
+
+.anchorNote {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* The honest no-anchor note: a finding about the display, so it may wear the
+ * flag color. The verification itself is unaffected. */
+.anchorNoteAbsent {
+  font-size: var(--text-xs);
+  color: var(--verify-flag);
+}
+
+.anchorReturn {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-1);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.pdfScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5);
+  background: var(--surface-0);
+}
+
+.pdfPageBox {
+  position: relative;
+  margin: 0 auto;
+  width: fit-content;
+  box-shadow: 0 2px 12px rgb(40 30 18 / 14%);
+}
+
+.pdfTextLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+}
+
+.pdfTextLayer :global(span),
+.pdfTextLayer :global(br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.pdfTextLayer :global(::selection) {
+  background: color-mix(in srgb, var(--text-primary) 24%, transparent);
+}
+
+/* The anchored passage: edges only, the .sourceRun register projected onto
+ * the page. A hairline ink box would fight the page's own rules; the
+ * underline reads as a proofreader's pen. */
+.anchorRect {
+  position: absolute;
+  pointer-events: none;
+  border-bottom: 2px solid var(--text-primary);
+}
+
+/* Margin tab: right-aligned into the page's own gutter, just left of the
+ * underlined run (placement computed inline from the anchor geometry), so it
+ * never covers a glyph. */
+.anchorPill {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.pageLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
+
+/* ---- DOCX / text pane ---- */
+
+.docxPane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.docxToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.docxScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5);
+  background: var(--surface-0);
+}
+
+/* docx-preview lays out page-shaped sections itself; keep them centered and
+ * let the record look like the record. Its default chrome draws a gray
+ * "desk" behind the pages; this room is paper, so the desk goes and the
+ * pages sit directly on the pane with the same lift as the PDF page box. */
+.docxHost {
+  margin: 0 auto;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.docxHost :global(.docx-wrapper) {
+  background: transparent;
+  padding: 0;
+}
+
+.docxHost :global(.docx-wrapper > section.docx) {
+  box-shadow: 0 2px 12px rgb(40 30 18 / 14%);
+  margin-bottom: var(--space-5);
+}
+
+.docxHost :global(.docx-wrapper > section.docx:last-child) {
+  margin-bottom: 0;
+}
+
+.docxHost mark[data-cachet-anchor],
+.textBody mark[data-cachet-anchor] {
+  background: transparent;
+  color: inherit;
+  border-bottom: 2px solid var(--text-primary);
+}
+
+.textBody {
+  margin: 0 auto;
+  max-width: 72ch;
+  padding: var(--space-6);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-1);
+  font-family: var(--font-serif-body, Charter, Georgia, serif);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

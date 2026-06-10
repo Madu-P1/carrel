@@ -4,6 +4,7 @@ import { Button, Dialog, showToast, toast } from "@/design-system";
 import { apiErrorMessage } from "@/services/api/client";
 
 import { VaultMark } from "./VaultMark";
+import { openExamination } from "./examine/examineStore";
 
 import {
   DEFAULT_PROJECT,
@@ -375,6 +376,19 @@ export function VaultView() {
                         ))}
                       </select>
                     </label>
+                    <button
+                      type="button"
+                      className={styles.sourceUse}
+                      onClick={() =>
+                        openExamination({
+                          docId: doc.id,
+                          filename: doc.filename,
+                          fileType: doc.fileType
+                        })
+                      }
+                    >
+                      Open the record
+                    </button>
                     {isActive ? (
                       <span className={styles.sourceActive}>Verifying against this</span>
                     ) : (

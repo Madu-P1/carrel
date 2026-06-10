@@ -156,6 +156,26 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-3", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_governing_law_contract()
+
+    def _seed_governing_law_contract(self) -> None:
+        # Its own document (fixture isolation): a standard choice-of-law clause
+        # that also selects a DIFFERENT forum, the venue-vs-governing-law trap.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-4', 'spa.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 11. This Agreement shall be governed by and construed "
+                "in accordance with the laws of the State of Delaware; the "
+                "parties submit to the exclusive jurisdiction of the courts of "
+                "New York.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-4", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -256,6 +276,33 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", verdict["disposition"])
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
+
+    def test_governing_law_only_sentence_routes_to_the_clause_check(self) -> None:
+        # The summary flips the choice of law to the VENUE state (the classic
+        # AI confusion: New York courts, Delaware law). The sentence's only
+        # anchor is governing_law, so this also pins its membership in
+        # _CLAUSE_CHECKABLE: it must reach the clause check and contradict, not
+        # fall to the grounding path's could-not-check.
+        draft = "The agreement is governed by New York law."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-4"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "governed")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertEqual("governing_law", verdict["anchor_type"])
+        self.assertIn("New York", verdict["detail"])
+        self.assertIn("Delaware", verdict["detail"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
+    def test_governing_law_match_is_present_end_to_end(self) -> None:
+        draft = "The agreement is governed by Delaware law."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-4"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "governed")
+        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("governing_law", verdict["anchor_type"])
 
     def test_same_type_conflict_refuses_instead_of_accusing_or_greenlighting(self) -> None:
         # The topicality decision, end to end: the claim's 50% is verbatim in

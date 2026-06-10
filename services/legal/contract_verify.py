@@ -28,13 +28,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from services.legal.anchors import Anchor, extract_anchors
+from services.legal.anchors import Anchor, extract_anchors, related_jurisdictions
 from services.retrieval.validators import verbatim_run_present
 
 # percent compares by exact basis-point equality through the default
 # set-intersection branch of _values_match (Decimal hashes by numeric value, so
-# "0.5%" and "50 bps" intersect); duration alone keeps a tolerance.
-_PARAMETRIC_TYPES = ("money", "percent", "date", "duration")
+# "0.5%" and "50 bps" intersect); governing_law compares normalized jurisdiction
+# keys through the same branch (lexicon normalization makes "English law" and
+# "laws of England and Wales" one key); duration alone keeps a tolerance.
+_PARAMETRIC_TYPES = ("money", "percent", "date", "duration", "governing_law")
 _DURATION_REL_TOLERANCE = 0.05
 _DURATION_UNIT = re.compile(r"\b(year|month|week|day)s?\b", re.IGNORECASE)
 
@@ -204,6 +206,30 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     clause_values,
                 )
             continue
+        if anchor_type == "governing_law" and related_jurisdictions(
+            claim_values[0], clause_values[0]
+        ):
+            # A container/member pair (UAE vs DIFC, United States vs Delaware):
+            # the values differ but one jurisdiction sits inside the other, so a
+            # flat comparison can neither confirm nor accuse. Routed to the
+            # honest could-not-check as an alignment refusal (ADR-0012
+            # invariant 2); sibling mismatches still contradict below.
+            if multi_value_verdict is None:
+                multi_value_verdict = ClauseVerdict(
+                    "multi_value_unverifiable",
+                    (
+                        f"The summary states {claim_hits[0].text} and {where} states "
+                        f"{clause_hits[0].text}: one jurisdiction contains the other, "
+                        "which a flat deterministic comparison cannot adjudicate, so "
+                        "this sentence was not independently checked."
+                    ),
+                    anchor_type,
+                    claim_values,
+                    clause_values,
+                )
+            continue
+        # Durations compare unit-aware (this branch's fix); everything else by
+        # the default value intersection.
         if anchor_type == "duration":
             matched = _durations_match(claim_hits[0], clause_hits[0])
         else:
