@@ -72,6 +72,33 @@ class MoneyAnchorTests(unittest.TestCase):
         # "five" inside "twenty-five".
         self.assertEqual([], _of("twenty-five million dollars", "money"))
 
+    def test_space_separated_compound_yields_no_anchor_not_a_wrong_value(self) -> None:
+        # The hyphen guard alone does not stop "twenty five million dollars": the
+        # detector matched the tail ("five million dollars") and minted $5,000,000
+        # out of a twenty-five-million sentence — which both false-verifies against
+        # a $5M clause and manufactures a contradiction against the correct $25M
+        # clause. A spelled-out amount the bounded grammar cannot represent must
+        # yield NO anchor, in every compound shape.
+        cases = [
+            "twenty five million dollars",
+            "one hundred twenty five million dollars",
+            "the cap is twenty five million dollars",
+            "ninety five thousand dollars",
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual([], _of(text, "money"))
+
+    def test_simple_word_forms_survive_the_compound_guard(self) -> None:
+        # Sealing the compound boundary must not regress the in-grammar forms,
+        # including when ordinary (non-number) words precede them.
+        self.assertEqual(
+            500_000_000, _first("a payment of five million dollars", "money").canonical_value
+        )
+        self.assertEqual(
+            100_000_000, _first("liability is one million dollars", "money").canonical_value
+        )
+
     def test_adjective_scale_word_does_not_over_scale(self) -> None:
         # "$5 Million-dollar deal" is $5, not $5,000,000 ("Million" is an adjective).
         self.assertEqual(500, _first("a $5 Million-dollar deal", "money").canonical_value)

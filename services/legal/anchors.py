@@ -63,16 +63,36 @@ _MONEY = re.compile(
 # _MONEY detector needs; without this the claim carries no money anchor and the
 # parametric-contradiction catch cannot fire. The trailing negative lookahead
 # defers to the digit form in the "one million dollars ($1,000,000)" convention so
-# the figure is counted once. Compound numbers ("twenty-five million", "one and a
-# half million") and bare hundreds ("five hundred dollars") are out of scope and
-# stay an honest could-not-check, never a wrong value: the (?<![\w-]) guard stops
-# "five" matching inside "twenty-five".
+# the figure is counted once. Compound numbers ("twenty-five million", "twenty
+# five million", "one and a half million") and bare hundreds ("five hundred
+# dollars") are outside the bounded grammar and must yield NO anchor, never a
+# wrong value: the (?<![\w-]) guard stops "five" matching inside "twenty-five",
+# and _NUMBER_WORD_BEFORE rejects a match whose preceding text ends with a
+# number word ("twenty five million" must not anchor as $5M). A sentence whose
+# only candidate anchor is rejected here carries no anchor at all and renders
+# UNTREATED (plain draft text, no card) per the 2026-06-08 untreated split — a
+# pinned recall gap (tests/test_anchors.py), not a hidden one.
 _MONEY_WORD = re.compile(
     r"(?<![\w-])(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
     r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|a)\s+"
     r"(?:(?P<hundred>hundred)\s+)?"
     r"(?P<scale>thousand|million|billion)\s+(?:dollars|USD)\b"
     r"(?!\s*\(?\s*\$)",
+    re.IGNORECASE,
+)
+
+# The compound rejector for _MONEY_WORD: a match is refused when the text right
+# before it ends with a number word, because then the spelled-out amount is a
+# space-separated compound the bounded grammar cannot represent and any
+# canonical we minted would be the TAIL of the real number (a manufactured
+# value in both verdict directions). Deliberately broader than
+# _MONEY_WORD_UNITS: tens words and scale words reject too ("ninety five
+# thousand", "hundred twenty five million").
+_NUMBER_WORD_BEFORE = re.compile(
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
+    r"billion)[\s-]*$",
     re.IGNORECASE,
 )
 
@@ -276,6 +296,11 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
     for m in _MONEY.finditer(span):
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), _money_cents(m.group(0))))
     for m in _MONEY_WORD.finditer(span):
+        if _NUMBER_WORD_BEFORE.search(span[: m.start()]):
+            # A space-separated compound ("twenty five million dollars"): the
+            # match is only the tail of the real number. Refuse the anchor
+            # rather than mint a wrong canonical value.
+            continue
         cents = _money_word_cents(m.group("unit"), m.group("hundred"), m.group("scale"))
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents))
     for m in _DURATION.finditer(span):
