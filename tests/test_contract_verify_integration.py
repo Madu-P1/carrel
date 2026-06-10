@@ -134,6 +134,28 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-2", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_conflict_contract()
+
+    def _seed_conflict_contract(self) -> None:
+        # Two clauses carrying the SAME value type with different values, as
+        # its own document (the fixture-isolation lesson): the adjudication
+        # tests need both clauses retrievable for one claim, rank-independent.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-3', 'license-amended.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 4. The royalty equals 50% of net fees received each quarter.",
+            ),
+            _node(
+                1,
+                "Section 9. The marketing discount equals 40% of net fees received each quarter.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-3", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -231,6 +253,37 @@ class ContractPathIntegrationTests(unittest.TestCase):
             draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
         )
         verdict = self._verdict_for(env, "99%")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
+    def test_same_type_conflict_refuses_instead_of_accusing_or_greenlighting(self) -> None:
+        # The topicality decision, end to end: the claim's 50% is verbatim in
+        # Section 4 while Section 9 carries a different percent. Whatever the
+        # retrieval rank, the engine must neither accuse (the old
+        # first-contradiction break) nor greenlight (present-wins would mask
+        # an amended-contract conflict); it refuses with both clauses named.
+        draft = "The royalty equals 50% of net fees received each quarter."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-3"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "royalty")
+        self.assertEqual("conflicting_clauses", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("Section 4", reason)
+        self.assertIn("Section 9", reason)
+        self.assertIn("40%", reason)
+
+    def test_uncontested_contradiction_still_catches(self) -> None:
+        # No clause in contract-3 carries 99%: the falsified value stays a
+        # hard catch. The conflict rule must never soften a true contradiction.
+        draft = "The royalty equals 99% of net fees received each quarter."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-3"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "royalty")
         self.assertEqual("parametric_contradiction", verdict["disposition"])
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
