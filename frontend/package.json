@@ -19,6 +19,7 @@
     "3d-force-graph": "^1.80.0",
     "@babel/runtime": "~7.26.10",
     "@preact/signals": "^2.9.0",
+    "docx-preview": "^0.3.7",
     "pdfjs-dist": "^4.10.38",
     "preact": "^10.29.1",
     "preact-iso": "^2.12.0",

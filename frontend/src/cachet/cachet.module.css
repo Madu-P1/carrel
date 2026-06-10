@@ -593,15 +593,36 @@
   border-radius: 50%;
   background: var(--ink-1);
 }
+/* The loaded record's name doubles as the way to open it: a lawyer confirms
+ * the right document is on the bench by looking at it, not by trusting the
+ * filename. Reads as text, behaves as a link. */
 .lecternSourceName {
   overflow: hidden;
   max-width: 32ch;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
   font-family: var(--font-serif-body);
   font-size: 14.5px;
   color: var(--ink-1);
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
 }
+
+.lecternSourceName:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--ink-2);
+}
+
+.lecternSourceName:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .lecternSourceTag {
   flex: none;
   font-family: var(--font-serif-body);

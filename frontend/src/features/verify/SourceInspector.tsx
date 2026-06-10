@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Spinner } from "@/design-system";
+import { examinationHostMounted, openExamination } from "@/cachet/examine/examineStore";
 import {
   evidence,
   reader,
@@ -104,11 +105,18 @@ function SourcePassageOverlay({
 
   useEffect(() => {
     closeRef.current?.focus();
+    // Capture + stopImmediatePropagation: the Examination drawer beneath also
+    // closes on Escape (bubble listener on document). Consuming the key here
+    // peels this overlay alone; a second Escape then reaches the drawer.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
   const passage = (node?.verbatim_text ?? "").trim();
@@ -241,15 +249,33 @@ function CitationSource({ citation }: { citation: Citation }) {
         ) : (
           <span />
         )}
-        {nodeId ? (
-          <button
-            type="button"
-            className={styles.sourceOpen}
-            onClick={() => setSourceOpen(true)}
-          >
-            Open in source
-          </button>
-        ) : null}
+        <span className={styles.sourceActions}>
+          {nodeId ? (
+            <button
+              type="button"
+              className={styles.sourceOpen}
+              onClick={() => setSourceOpen(true)}
+            >
+              Open in source
+            </button>
+          ) : null}
+          {examinationHostMounted.value ? (
+            <button
+              type="button"
+              className={styles.sourceOpen}
+              onClick={() =>
+                openExamination({
+                  docId,
+                  filename: documentName,
+                  page: pageNum,
+                  quote: quote || null
+                })
+              }
+            >
+              Open the document
+            </button>
+          ) : null}
+        </span>
       </div>
       {sourceOpen ? (
         <SourcePassageOverlay
