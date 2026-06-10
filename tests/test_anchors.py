@@ -605,6 +605,25 @@ class GoverningLawAnchorTests(unittest.TestCase):
         # guessed canonical. The sentence routes to the honest could-not-check side.
         self.assertNotIn("governing_law", _types("governed by the laws of Atlantis"))
 
+    def test_inverted_form_laws_shall_govern(self) -> None:
+        # The inverted boilerplate puts the trigger verb AFTER the
+        # jurisdiction: "the laws of the State of New York shall govern".
+        a = _first(
+            "The laws of the State of New York shall govern this Agreement.",
+            "governing_law",
+        )
+        self.assertEqual("new york", a.canonical_value)
+        b = _first("The laws of Delaware govern all disputes hereunder.", "governing_law")
+        self.assertEqual("delaware", b.canonical_value)
+
+    def test_inverted_form_without_govern_verb_refuses(self) -> None:
+        # "laws of X" with no governing verb on either side is a compliance
+        # mention, not a choice of law.
+        self.assertNotIn(
+            "governing_law",
+            _types("The Borrower shall comply with the laws of the State of New York."),
+        )
+
     def test_all_caps_conspicuous_clause_anchors(self) -> None:
         # The conspicuous-formatting convention: an all-caps governing-law
         # clause must still anchor (the gap accepts an all-caps connective run).

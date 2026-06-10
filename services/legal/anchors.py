@@ -551,6 +551,15 @@ _GOV_JUR_LAW = re.compile(
     rf"\bgoverned\s+by\s+(?:the\s+)?(?P<jur>{_JUR_ALT})\s+law\b",
     re.IGNORECASE,
 )
+# Form C, the inverted boilerplate: "the laws of [the State of] X shall
+# govern". The governing verb comes AFTER the jurisdiction; the bounded
+# all-lowercase gap (same case discipline as Form A) keeps an intervening
+# capitalized object from bridging to a distant "govern".
+_LAWS_OF_GOVERN = re.compile(
+    rf"\blaws?\s+of\s+(?:the\s+)?(?:(?:State|Commonwealth|Province)\s+of\s+)?"
+    rf"(?P<jur>{_JUR_ALT})\b(?-i:[\sa-z,]{{0,40}}?|[\sA-Z,]{{0,40}}?)\bgoverns?\b",
+    re.IGNORECASE,
+)
 _JUR_LAW_GOVERNS = re.compile(
     rf"\b(?P<jur>{_JUR_ALT})\s+law\s+(?:shall\s+|will\s+)?(?:governs?|appl(?:y|ies))\b",
     re.IGNORECASE,
@@ -679,7 +688,7 @@ def _governing_law_anchors(text: str) -> list[Anchor]:
     """
     anchors: list[Anchor] = []
     seen_spans: set[tuple[int, int]] = set()
-    for pattern in (_GOV_LAW_OF, _GOV_JUR_LAW, _JUR_LAW_GOVERNS):
+    for pattern in (_GOV_LAW_OF, _GOV_JUR_LAW, _JUR_LAW_GOVERNS, _LAWS_OF_GOVERN):
         for m in pattern.finditer(text):
             span = (m.start("jur"), m.end("jur"))
             if span in seen_spans:
