@@ -39,11 +39,32 @@ _DURATION_REL_TOLERANCE = 0.05
 
 @dataclass(frozen=True)
 class ClauseVerdict:
-    disposition: str  # present | parametric_contradiction | not_found
+    # present | parametric_contradiction | multi_value_unverifiable |
+    # conflicting_clauses | not_found
+    disposition: str
     detail: str
     anchor_type: str | None = None
     claim_values: tuple = ()
     clause_values: tuple = ()
+    # The matched anchor spans (claim side / clause side) and the clause's own
+    # "where" phrase, carried so the cross-clause adjudicator can compose a
+    # filing-grade conflict detail naming both clauses without string surgery.
+    # Server-internal (the contract_verdict never serializes to the wire).
+    claim_span: str | None = None
+    clause_span: str | None = None
+    where: str | None = None
+
+
+@dataclass(frozen=True)
+class ClauseCandidate:
+    """One retrieved clause's verdict, in retrieval-rank order, for the
+    cross-clause adjudicator. ``on_topic`` is the C3 relevance gate's answer
+    for present-shaped candidates (True for everything else)."""
+
+    verdict: ClauseVerdict
+    section: str | None
+    clause_text: str | None
+    on_topic: bool
 
 
 def _within_tolerance(a: float, b: float, rel: float = _DURATION_REL_TOLERANCE) -> bool:
@@ -139,6 +160,9 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     anchor_type,
                     claim_values,
                     clause_values,
+                    claim_span=claim_hits[0].text,
+                    clause_span=clause_hits[0].text,
+                    where=where,
                 )
             continue
         return ClauseVerdict(
@@ -147,6 +171,9 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             anchor_type,
             claim_values,
             clause_values,
+            claim_span=claim_hits[0].text,
+            clause_span=clause_hits[0].text,
+            where=where,
         )
     # Precedence: a single-value contradiction already returned outright above. Among the
     # rest, an honest could-not-check (a type carried multiple values we could not align)
@@ -170,4 +197,87 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
 
     return ClauseVerdict(
         "not_found", "The summary's language does not appear in your loaded sources."
+    )
+
+
+def adjudicate_clause_candidates(
+    candidates: list[ClauseCandidate],
+) -> tuple[ClauseVerdict, str | None, str | None]:
+    """Adjudicate one claim across ALL retrieved clauses (topicality decision,
+    docs/notes/2026-06-10-cachet-contradiction-topicality.md).
+
+    Returns ``(verdict, section, clause_text)`` for the claim card. The rules,
+    in precedence order:
+
+    1. A contradiction stands only when NO retrieved clause carries the claim's
+       value for that anchor type. A same-type present anywhere — on-topic or
+       not — means the value is verbatim in the contract, so accusing from a
+       different clause would be a guess: the engine REFUSES with both clauses
+       named (``conflicting_clauses``, mapped to the could-not-check card).
+       Certainty is manufactured in neither direction (ADR-0012 invariant 2);
+       present-wins was rejected because a value coincidence would paint a
+       green over an amended-contract conflict, the worst failure class.
+    2. An uncontested contradiction wins, first by retrieval rank. Topicality
+       never gates it: a falsified value LOWERS overlap with its true clause,
+       so a relevance gate would suppress exactly the true catches.
+    3. Otherwise the first ON-topic present wins (C3 unchanged: an off-topic
+       value coincidence never earns a green).
+    4. Otherwise the first multi-value refusal, then not_found.
+    """
+    presents_by_type: dict[str | None, ClauseCandidate] = {}
+    on_topic_presents: list[ClauseCandidate] = []
+    contradictions: list[ClauseCandidate] = []
+    multi_value: ClauseCandidate | None = None
+    for cand in candidates:
+        disposition = cand.verdict.disposition
+        if disposition == "present":
+            presents_by_type.setdefault(cand.verdict.anchor_type, cand)
+            if cand.on_topic or cand.verdict.anchor_type == "quote":
+                on_topic_presents.append(cand)
+        elif disposition == "parametric_contradiction":
+            contradictions.append(cand)
+        elif disposition == "multi_value_unverifiable" and multi_value is None:
+            multi_value = cand
+
+    first_conflict: tuple[ClauseCandidate, ClauseCandidate] | None = None
+    for contra in contradictions:
+        present = presents_by_type.get(contra.verdict.anchor_type)
+        if present is None:
+            return contra.verdict, contra.section, contra.clause_text
+        if first_conflict is None:
+            first_conflict = (contra, present)
+    if first_conflict is not None:
+        contra, present = first_conflict
+        where_p = present.verdict.where or "one retrieved clause"
+        where_c = contra.verdict.where or "another retrieved clause"
+        if where_p == where_c:
+            where_p, where_c = "one retrieved clause", "another retrieved clause"
+        claim_span = contra.verdict.claim_span or "this value"
+        clause_span = contra.verdict.clause_span or "a different value"
+        conflict = ClauseVerdict(
+            "conflicting_clauses",
+            (
+                f"The summary states {claim_span}; {where_p} carries that value, but "
+                f"{where_c} states {clause_span}. The retrieved clauses conflict, so this "
+                "statement was not independently checked. Review both clauses."
+            ),
+            contra.verdict.anchor_type,
+            contra.verdict.claim_values,
+            tuple(present.verdict.clause_values) + tuple(contra.verdict.clause_values),
+            claim_span=contra.verdict.claim_span,
+            clause_span=contra.verdict.clause_span,
+        )
+        # Carry the PRESENT clause's location: it is where the claim's value
+        # verifiably lives, so the quote pool and the card's section point at
+        # real matching text rather than the accusing clause.
+        return conflict, present.section, present.clause_text
+    if on_topic_presents:
+        chosen = on_topic_presents[0]
+        return chosen.verdict, chosen.section, chosen.clause_text
+    if multi_value is not None:
+        return multi_value.verdict, multi_value.section, multi_value.clause_text
+    return (
+        ClauseVerdict("not_found", "no matching passage found in your loaded sources"),
+        None,
+        None,
     )
