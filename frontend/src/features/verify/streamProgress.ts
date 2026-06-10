@@ -103,13 +103,19 @@ export function reduceStreamEvent(
  * the final result settles. Index is the claim_index, which the backend emits
  * on every card and every cite_verdict so the two align.
  *
- * Returns false once the stream is done/errored: at that point the settled
- * `result` (or the dropped-stream fallback) governs, not this transient flag.
+ * Returns false once the stream is done: at that point the settled `result`
+ * governs. On "error" an UN-checked card stays checking: the skeleton carries
+ * the grounding verdict with no case verdicts, so releasing it would render
+ * "Supported" for a claim whose cite check never ran (invariant #6). The hosts
+ * also unmount the live list on error; this is defense in depth for any render
+ * path that still holds the cards.
  */
 export function isCardChecking(state: VerifyStreamState, card: VerifyClaimVerdict): boolean {
-  if (state.phase !== "checking") return false;
+  if (state.phase !== "checking" && state.phase !== "error") return false;
   const index = card.claim_index;
-  if (typeof index !== "number") return false;
+  // Without a claim_index the card can never be matched to a cite_verdict;
+  // hold it as checking rather than release it to its skeleton disposition.
+  if (typeof index !== "number") return true;
   return !state.checked.has(index);
 }
 

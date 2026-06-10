@@ -112,7 +112,28 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-1", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_percent_contract()
         self._conn.commit()
+
+    def _seed_percent_contract(self) -> None:
+        # A separate one-clause document for the percent cases: the legacy
+        # contract-1 tests keep their exact pre-percent retrieval ranking (the
+        # top-3 clause window over near-tie hash-RRF scores shifts when any
+        # node is added), and the percent tests still run the full
+        # envelope -> retrieval -> clause-verdict path.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-2', 'license.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 9.2. The royalty equals 50% of the net fees received "
+                "in the twelve (12) months preceding each report.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-2", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -129,6 +150,91 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", verdict["disposition"])
         self.assertEqual("money", verdict["anchor_type"])
 
+    def test_percent_contradiction_survives_a_matching_duration(self) -> None:
+        # THE laundering case from the 2026-06-10 plan, end to end over real
+        # retrieval: pre-percent, the matching 12-month duration carried a green
+        # "present" over a falsified 99% cap. The percent anchor must win with a
+        # filing-grade reason quoting both rates.
+        env = build_deterministic_envelope(
+            "The royalty equals 99% of the net fees received in the preceding twelve (12) months.",
+            conn=self._conn,
+            doc_ids=["contract-2"],
+            embedder=self._embedder,
+        )
+        verdict = self._verdict_for(env, "99%")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertEqual("percent", verdict["anchor_type"])
+        self.assertIn("99%", verdict["detail"])
+        self.assertIn("50%", verdict["detail"])
+
+    def test_matching_percent_is_present(self) -> None:
+        env = build_deterministic_envelope(
+            "The royalty equals 50% of the net fees received in the preceding twelve (12) months.",
+            conn=self._conn,
+            doc_ids=["contract-2"],
+            embedder=self._embedder,
+        )
+        verdict = self._verdict_for(env, "50%")
+        self.assertEqual("present", verdict["disposition"])
+
+    def test_fabricated_section_cannot_ride_a_matching_percent(self) -> None:
+        # The review's live finding: a clause-checkable anchor used to suppress
+        # the section-absent check entirely, so a draft citing a section the
+        # contract does not contain, paired with a value that matches some
+        # clause, read VERIFIED. The fabricated section is an affirmative
+        # independent finding; it must demote the present to unsupported.
+        draft = (
+            "Under Section 99, the royalty equals 50% of the net fees received "
+            "in the preceding twelve (12) months."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("Section 99", card.unsupported_reason or "")
+
+    def test_fabricated_section_cannot_ride_a_matching_money(self) -> None:
+        # The same class pre-existed for money/date/duration; the fix covers it.
+        draft = "Under Section 99, the aggregate liability shall not exceed $500,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("Section 99", card.unsupported_reason or "")
+
+    def test_a_contradiction_keeps_its_reason_over_a_fabricated_section(self) -> None:
+        # Both findings are hard unsupported verdicts; the contradiction's
+        # both-values detail is the more actionable filing-grade reason, so it
+        # wins the reason slot.
+        draft = (
+            "Under Section 99, the royalty equals 99% of the net fees received "
+            "in the preceding twelve (12) months."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("99%", card.unsupported_reason or "")
+        self.assertIn("50%", card.unsupported_reason or "")
+
+    def test_percent_only_sentence_routes_to_the_clause_check(self) -> None:
+        # Mutant killer: percent's membership in _CLAUSE_CHECKABLE was pinned by
+        # zero tests (the other percent cases co-carry a duration anchor that
+        # satisfies the set on its own). A percent-only sentence must reach the
+        # clause check and keep the contradiction, not fall to the grounding
+        # path's could-not-check.
+        draft = "The royalty equals 99% of net fees."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "99%")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
     def test_matching_duration_is_present(self) -> None:
         env = build_deterministic_envelope(
             "The confidentiality term lasts two (2) years.",
@@ -138,6 +244,76 @@ class ContractPathIntegrationTests(unittest.TestCase):
         )
         verdict = self._verdict_for(env, "confidentiality term")
         self.assertEqual("present", verdict["disposition"])
+
+    def test_present_money_with_absent_quoted_holding_is_could_not_check(self) -> None:
+        # C2 (anchor-laundering guard): a sentence whose money value matches a clause
+        # ($500,000 is in Section 8) MUST NOT launder a fabricated quoted holding that
+        # is absent from that clause into a green "present". It downgrades to the honest
+        # could-not-check; it never accuses (no "altered"/"unsupported").
+        draft = (
+            "The aggregate liability shall not exceed $500,000, and the parties agreed "
+            'that "either party may terminate for convenience on thirty days notice."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "a fabricated quote must not ride a matching figure into a verified present",
+        )
+
+    def test_present_money_without_a_quote_stays_verified(self) -> None:
+        # Control (no recall regression): the same matching figure with NO quoted
+        # holding is still a clean present -> verified.
+        draft = "The aggregate liability shall not exceed $500,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("verified", card.verdict)
+
+    def test_offtopic_clause_sharing_a_value_is_could_not_check(self) -> None:
+        # C3 (relevance floor): a claim whose money value coincidentally matches an
+        # OFF-TOPIC clause (a signing bonus, not a liability cap) must read
+        # could-not-check, never a false "present". Scope retrieval to the off-topic
+        # doc so no on-topic clause exists for that value.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('offtopic-1', 'comp.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        off = [_node(0, "The signing bonus payable to the executive is $42,000.")]
+        ids = insert_typed_nodes(self._conn, "offtopic-1", off)
+        embed_and_index_nodes(self._conn, off, ids, embedder=self._embedder)
+        self._conn.commit()
+        draft = "The aggregate liability is capped at $42,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["offtopic-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "an off-topic value coincidence must not read a verified present",
+        )
+
+    def test_present_quote_agrees_between_card_and_quote_panel(self) -> None:
+        # D1 (consistency): a contract claim whose quoted language is verbatim in a
+        # clause reads verified AND the brief-level QuotePanel reads that same quote as
+        # "verbatim" (confirmed), never the contradictory "could_not_check". The card
+        # and the panel must agree.
+        draft = 'The agreement requires that "The parties shall cooperate in good faith on all matters."'
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        self.assertEqual("verified", result.claim_verdicts[0].verdict)
+        statuses = [q["status"] for q in result.quote_results]
+        self.assertIn(
+            "verbatim", statuses, "the confirmed quote must read verbatim in the QuotePanel"
+        )
+        self.assertNotIn("could_not_check", statuses)
 
     def test_contradiction_renders_as_unsupported_card(self) -> None:
         draft = "The aggregate liability is capped at $1,000,000."

@@ -132,11 +132,19 @@ const indexCssPath = resolve(distDir, "index.css");
 // disposition logic): ~124.5 KB gz live. Route-splitting /verify at click time
 // stays the lean-entry option, deferred per the file:// Suspense constraint
 // (see CLAUDE.md).
-// Bumped 125 -> 128 KB for the C1 "open in source" overlay (SourcePassageOverlay:
-// the in-place cited-passage viewer with the honest three-state highlight) on the
-// verify surface. Live: ~125.4 KB gz. The prior 125 KB budget left near-zero
-// headroom, so this restores a small margin rather than just clearing the trip.
-const ENTRY_JS_GZIP_BUDGET = 128 * 1024;
+// Bumped 125 -> 126 KB for the Cachet Vault manager UI (grid + detail two-mode
+// layout, the solid VaultMark folder, and the grid-aware drag-to-move with its
+// destination-naming confirm): ~125.1 KB gz live. CachetApp is statically imported
+// from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
+// the Cachet shell out of the entry is the lean follow-up, deferred per the same
+// file:// Suspense constraint.
+// Bumped 126 -> 127 KB for verdict survival (audit O1): useVerify state moved
+// from useState to a signal-backed VerifyStore so the lectern's verdict —
+// settled or still streaming — survives the shell's unmount-on-nav, plus the
+// markSealed engine seam that keeps the quiet Save hidden after a seal across
+// remounts. ~126.1 KB gz live; the prior 2026-06-10 fixes had already bought
+// back their own weight via DEV-gating, so this is the first real growth.
+const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

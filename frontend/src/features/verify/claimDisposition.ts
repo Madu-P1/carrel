@@ -100,6 +100,9 @@ interface FlatCase {
   // "not evaluated", distinct from the LLM path's "ran but could not determine".
   captionMismatch: boolean;
   holdingSkipped: boolean;
+  // Deterministic path only: this verdict came from the BOUNDED offline corpus, so an
+  // absent cite is "outside my coverage" (could-not-check), not a national "does not exist".
+  boundedCorpus: boolean;
 }
 
 function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError: boolean } {
@@ -118,7 +121,8 @@ function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError
         holdingMatch: v.holding_match ?? null,
         holdingError: v.holding_error ?? null,
         captionMismatch: Boolean((v as { caption_mismatch?: boolean }).caption_mismatch),
-        holdingSkipped: Boolean((v as { holding_skipped?: boolean }).holding_skipped)
+        holdingSkipped: Boolean((v as { holding_skipped?: boolean }).holding_skipped),
+        boundedCorpus: Boolean((v as { bounded_corpus?: boolean }).bounded_corpus)
       });
     }
   }
@@ -147,7 +151,11 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
   // loudest flag: the fabricated-citation nightmare. It outranks everything,
   // including a claim whose surrounding prose was otherwise grounded.
   const captionMismatch = cases.some((c) => c.captionMismatch);
-  const fabricated = cases.some((c) => c.status === 404 || c.status === 400) || captionMismatch;
+  // A bounded-corpus 404/400 is NOT fabricated: the offline corpus cannot tell a
+  // fabricated cite from a real-but-unbundled one, so it is handled as could-not-check
+  // below. A national 404 (no boundedCorpus flag) and any caption mismatch still flag.
+  const fabricated =
+    cases.some((c) => (c.status === 404 || c.status === 400) && !c.boundedCorpus) || captionMismatch;
   if (fabricated) {
     return mk(
       "citation_not_found",
@@ -165,6 +173,27 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       "proposition_unsupported",
       "Source does not support this",
       "The cited case is real but does not stand for this claim."
+    );
+  }
+
+  // #1 (three-state existence): a cite absent from the BOUNDED offline corpus is
+  // "outside my coverage", an honest could-not-check, never the oxblood fabrication
+  // flag. The bundled corpus is not the national database, so a real-but-unbundled
+  // case must not be called fake. A caption mismatch is already flagged above; a
+  // national 404 (no boundedCorpus flag) was treated as fabricated above.
+  const outsideCoverage = cases.some(
+    (c) =>
+      c.boundedCorpus && !c.exists && !c.captionMismatch && (c.status === 404 || c.status === 400)
+  );
+  if (outsideCoverage) {
+    // Prefer the engine's own reason (it names the citation); the local copy is
+    // the fallback for older payloads. Keeping one sentence of record avoids
+    // the two near-identical corpus sentences drifting on either side of the wire.
+    return mk(
+      "could_not_check",
+      "Could not verify",
+      reasonText(card) ??
+        "This citation is outside the offline corpus checked. Confirm it against the full national database."
     );
   }
 

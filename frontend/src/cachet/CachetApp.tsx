@@ -1,24 +1,31 @@
-import { ErrorBoundary, ToastHost } from "@/design-system";
-import { appShell, pathnameFromRoute, setCurrentRoute } from "@/app/shell/useAppShell";
-import { ShelfView } from "@/features/shelf/ShelfView";
-import { VerifyView } from "@/features/verify/VerifyView";
+import { useEffect, useState } from "preact/hooks";
 
+import { ErrorBoundary, ToastHost } from "@/design-system";
+import { appShell, navigateTo, pathnameFromRoute } from "@/app/shell/useAppShell";
+import { VerifyResults } from "@/features/verify/VerifyResults";
+import { useVerify } from "@/features/verify/useVerify";
+import verifyStyles from "@/features/verify/VerifyView.module.css";
+import { ShelfView } from "@/features/shelf/ShelfView";
+
+import { CommandPalette } from "./CommandPalette";
+import { buildCommands } from "./commands";
+import { CachetRail } from "./CachetRail";
+import { LecternView } from "./LecternView";
+import { VaultView } from "./VaultView";
+import { SettingsView } from "./SettingsView";
 import styles from "./cachet.module.css";
 
 /**
- * The standalone Cachet shell (demo skeleton).
+ * The Cachet shell. A quiet frame around a single document under examination:
+ * a thin left rail and a canvas that fills the rest. It reuses the existing
+ * appShell.currentRoute signal as its nav (no router registered, so navigateTo
+ * falls back to setCurrentRoute), which makes the Shelf -> open-brief flow work
+ * for free and works identically under http (Vite dev) and file:// (bundled .app).
  *
- * Cachet is NOT Carrel with a Verify tab: this shell hosts only the
- * verification surfaces (Verify, Shelf). It bypasses the study AppShell and its
- * sidebar entirely, and reuses the existing `appShell.currentRoute` signal as
- * its nav (no router registered, so a plain `setCurrentRoute` drives it). That
- * makes the Shelf -> Verify "open a saved record" hand-off work for free, the
- * same under http (Vite dev) and file:// (bundled app).
- *
- * Deliberately minimal: it mounts the current, on-main VerifyView/ShelfView
- * (with the current engine), so it carries no dependency on the stale
- * cachet-extraction shell. The richer shell (sources picker, command palette,
- * the host-agnostic VerifyView props) layers in additively on top of this.
+ * Cachet is NOT Carrel with a Verify tab. The lectern (the landing) IS the verify
+ * surface: you paste, attach a record, and the verdict unfolds in place. The only
+ * other verify route is the saved-brief reader (`/verify?brief=<id>`), opened from
+ * the Shelf.
  */
 
 function briefFromRoute(route: string): string | null {
@@ -29,40 +36,80 @@ function briefFromRoute(route: string): string | null {
   }
 }
 
+/**
+ * Saved-brief reader. Opening a brief from the Shelf re-hydrates the stored
+ * verdict with NO re-verify and shows it read-only: the document (with its margin
+ * annotations) and the verdict live inside the shared `VerifyResults`, so this is
+ * a thin frame around it. The draft is not editable here; to re-check, start from
+ * the lectern.
+ */
+function BriefReader({ briefId }: { briefId: string }) {
+  const engine = useVerify({ briefId });
+  const draft = engine.hydratedDraft ?? engine.response?.draft_text ?? "";
+  return (
+    <section className={styles.reader}>
+      <button type="button" className={styles.readerBack} onClick={() => navigateTo("/shelf")}>
+        ← Back to the Shelf
+      </button>
+      <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
+        <VerifyResults engine={engine} draft={draft} />
+      </div>
+    </section>
+  );
+}
+
+function renderRoute(route: string) {
+  const path = pathnameFromRoute(route);
+
+  if (path.startsWith("/verify")) {
+    // A saved brief opens read-only; bare /verify (no brief) is the live surface,
+    // which is the lectern.
+    const briefId = briefFromRoute(route);
+    return briefId ? <BriefReader briefId={briefId} /> : <LecternView />;
+  }
+  if (path.startsWith("/shelf")) {
+    return <ShelfView />;
+  }
+  if (path.startsWith("/vault")) {
+    return <VaultView />;
+  }
+  if (path.startsWith("/settings")) {
+    return <SettingsView />;
+  }
+  // The lectern is the landing and the live verify surface.
+  return <LecternView />;
+}
+
 export function CachetApp() {
   const route = appShell.currentRoute.value;
-  const onShelf = pathnameFromRoute(route).startsWith("/shelf");
-  const brief = briefFromRoute(route);
+  const path = pathnameFromRoute(route);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // SM-V7: ⌘K (or Ctrl+K) opens the command spine from anywhere in the shell.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
-    <ErrorBoundary>
-      <div className={styles.shell}>
-        <header className={styles.bar}>
-          <span className={styles.wordmark}>Cachet</span>
-          <nav className={styles.nav} aria-label="Cachet sections">
-            <button
-              type="button"
-              className={onShelf ? styles.navItem : styles.navItemActive}
-              aria-current={onShelf ? undefined : "page"}
-              onClick={() => setCurrentRoute("/verify")}
-            >
-              Verify
-            </button>
-            <button
-              type="button"
-              className={onShelf ? styles.navItemActive : styles.navItem}
-              aria-current={onShelf ? "page" : undefined}
-              onClick={() => setCurrentRoute("/shelf")}
-            >
-              Shelf
-            </button>
-          </nav>
-        </header>
-        <main className={styles.canvas}>
-          {onShelf ? <ShelfView /> : <VerifyView key={brief ?? "live"} briefId={brief} />}
-        </main>
-      </div>
+    <div className={styles.app}>
+      <CachetRail currentPath={path} />
+      <main className={styles.canvas}>
+        <ErrorBoundary resetKey={route}>{renderRoute(route)}</ErrorBoundary>
+      </main>
+      {paletteOpen ? (
+        <CommandPalette
+          commands={buildCommands(path, () => setPaletteOpen(false))}
+          onClose={() => setPaletteOpen(false)}
+        />
+      ) : null}
       <ToastHost />
-    </ErrorBoundary>
+    </div>
   );
 }

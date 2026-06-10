@@ -55,7 +55,7 @@ _DETERMINISTIC_MODEL = "deterministic-v1"
 # sentence carrying one of these has a proposition the contract path can confirm or
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
 # context, never as a clause-checked verdict).
-_CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
+_CLAUSE_CHECKABLE = frozenset({"money", "percent", "date", "duration", "quote"})
 
 # The could-not-check reason attached when T1's recall tier promotes an anchor-free
 # sentence out of untreated (an assessment ran, so a check effectively happened).
@@ -82,6 +82,12 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
+            # The deterministic path checks against the BOUNDED offline corpus. Mark
+            # every verdict so an absent cite reads "outside my coverage" (an honest
+            # could-not-check), never the accusatory "does not exist" that only a
+            # national lookup can honestly claim. A caption mismatch (number resolves
+            # to a different case) is an affirmative finding and still flags below.
+            v["bounded_corpus"] = True
             if not v.get("exists") or not v.get("case_name"):
                 continue
             ref = refs.get(v.get("citation"))
@@ -133,6 +139,66 @@ def _quoted_subphrases(run: str) -> list[str]:
     return phrases or [run]
 
 
+# C3: contract boilerplate carries no topic signal, so an overlap on these words does
+# not make an off-topic clause relevant to the claim. Words shorter than 4 letters are
+# already dropped by the extractor below.
+_TOPIC_STOPWORDS = frozenset(
+    {
+        "shall",
+        "parties",
+        "party",
+        "agreement",
+        "section",
+        "clause",
+        "this",
+        "that",
+        "with",
+        "from",
+        "their",
+        "under",
+        "hereby",
+        "herein",
+        "thereof",
+        "between",
+        "which",
+        "such",
+        "other",
+        "than",
+        "into",
+        "upon",
+        "have",
+        "been",
+        "were",
+        "will",
+        "would",
+        "there",
+        "these",
+        "those",
+        "each",
+        "they",
+        "them",
+        "shall",
+    }
+)
+
+
+def _clause_on_topic(sentence: str, clause: str) -> bool:
+    """A parametric present is on-topic only if the claim and the matched clause share
+    a content word beyond the coincidental value.
+
+    Blocks an off-topic clause that merely repeats the same number (an unrelated
+    signing bonus's $42,000 vs a liability cap's $42,000). The case-existence path
+    already gates on relevance ("mere topical relevance is not support"); the contract
+    path did not, so an off-topic value coincidence could read a false "present". The
+    safe direction is recall loss (could-not-check), never a false accusation.
+    """
+
+    def content(text: str) -> set[str]:
+        return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _TOPIC_STOPWORDS}
+
+    return bool(content(sentence) & content(clause))
+
+
 def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
     """A quoted phrase that is not verbatim in the cited opinion text we hold.
 
@@ -157,7 +223,7 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
                 if phrase and not _run_present_any(phrase, opinions):
                     return (
                         f'The quoted language "{phrase}" could not be verified against '
-                        "the available opinion text."
+                        "the source text checked."
                     )
     return None
 
@@ -337,8 +403,13 @@ def _grounding_verdict(
     The only grounding anchor that yields a deterministic *verdict* (not merely
     could-not-check context) is a section reference ABSENT from the source: a draft
     that cites a section the contract does not contain is unsupported regardless of
-    the surrounding predicate. Returns None when a clause-checkable anchor is present
-    (the clause verdict wins, ADR-0012 invariant 2).
+    the surrounding predicate. Computed regardless of clause-checkable anchors: a
+    fabricated section is an affirmative independent finding, and suppressing it
+    let "Under Section 99, the royalty equals 50%" ride a matching value into a
+    green card. Precedence with the clause verdict is decided at the mapping
+    layer (services/verify.py): a parametric contradiction keeps its both-values
+    reason; every other clause disposition yields to the fabricated-section
+    finding.
 
     Asymmetry, deliberately:
       - The POSITIVE direction (a section that exists) is NOT promoted to a verdict.
@@ -357,8 +428,6 @@ def _grounding_verdict(
     "Article VII"), in which case every draft section would read absent - so we stay
     could-not-check rather than false-accuse.
     """
-    if any(a.type in _CLAUSE_CHECKABLE for a in anchors):
-        return None
     if not source_sections:
         return None
     sections = list(dict.fromkeys(a.text for a in anchors if a.type == "section"))
@@ -394,14 +463,25 @@ def _contract_claim(
     # clause yields a clean verdict: we never hunt other clauses for a contradiction
     # (clause B's $600k must not "contradict" a claim whose $500k clause A confirmed),
     # and a clean present/contradiction always outranks a multi-value could-not-check.
-    verdict = ClauseVerdict("not_found", "no matching clause found in the contract")
+    verdict = ClauseVerdict("not_found", "no matching passage found in your loaded sources")
     section = None
+    matched_clause: str | None = None
     multi_value: tuple[ClauseVerdict, str | None] | None = None
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
+        if (
+            candidate.disposition == "present"
+            and candidate.anchor_type != "quote"
+            and not _clause_on_topic(sentence, node.verbatim_text)
+        ):
+            # C3: an off-topic clause that merely shares the literal value is not
+            # support. Skip it so the sentence degrades to could-not-check instead of
+            # a false "present"; a clean on-topic clause later in the list still wins.
+            continue
         if candidate.disposition in ("present", "parametric_contradiction"):
             verdict = candidate
             section = node.heading_path
+            matched_clause = node.verbatim_text
             break
         if candidate.disposition == "multi_value_unverifiable" and multi_value is None:
             multi_value = (candidate, node.heading_path)
@@ -418,8 +498,28 @@ def _contract_claim(
             "claim_values": list(verdict.claim_values),
             "clause_values": list(verdict.clause_values),
             "section": section,
+            # D1: the matched clause text, server-internal (the contract_verdict is
+            # not serialized to the wire). It seeds the brief-level quote pool so a
+            # quote the claim already confirmed verbatim reads "verbatim" in the
+            # QuotePanel too, instead of the two surfaces disagreeing.
+            "clause_text": matched_clause,
         },
     }
+    # C2 (anchor-laundering guard): a parametric present (money / date / duration
+    # match) must not launder a quoted holding that is absent from the matched
+    # clause. Re-check the sentence's quoted phrases against the clause that
+    # produced the present; if one is not verbatim there, surface a could-not-check
+    # reason so the verifier downgrades verified -> unknown. A present that came
+    # FROM a verbatim quote (anchor_type "quote") is already confirmed and exempt.
+    # Refuse, never accuse (ADR-0012 invariant 2).
+    if (
+        verdict.disposition == "present"
+        and verdict.anchor_type != "quote"
+        and matched_clause is not None
+    ):
+        quote_reason = _quote_unverified_reason(sentence, [matched_clause])
+        if quote_reason:
+            claim["quote_could_not_check_reason"] = quote_reason
     # Grounding overlay (defined_term + party + section). A sentence whose only
     # checkable signals are grounding anchors gets an honest could-not-check that
     # names them, never the misleading "language does not appear" and never a verdict.

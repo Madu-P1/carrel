@@ -59,6 +59,14 @@ _ABBREVIATIONS = {
 # A sentence end is [.!?] + whitespace + an opening quote/bracket? + a capital
 # or digit. We re-merge if the token before the punctuation is a known
 # abbreviation or a single-letter initial.
+#
+# NOTE: we deliberately do NOT treat a closing-quote boundary ("...unequal." Brown
+# v. Board, 347 U.S. 483.) as a split point. Doing so severs a quoted holding from
+# the citation that immediately follows it (the litigator pattern), which is worse
+# than the cost it would fix: a brief of quoted holdings WITHOUT inline citations
+# collapses into one claim. Splitting that case correctly needs citation-aware
+# lookahead (eyecite spans start at the reporter, not the party name), which is not
+# yet built. See docs/notes on the unit-of-grounding limitation.
 _BOUNDARY = re.compile(r"[.!?]+(\s+)(?=[\"'(\[]?[A-Z0-9])")
 
 

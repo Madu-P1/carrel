@@ -41,14 +41,23 @@ interface CertificationExhibitProps {
    */
   onSeal?: () => void;
   /**
-   * Cachet PR6b: a STORED seal fingerprint to initialize from when a saved
-   * brief is reopened. When it equals model.fingerprint the seal shows "sealed";
-   * when it differs (the draft changed since sealing) it shows "cracked". Omit
-   * for the live verify flow (the seal starts unsealed, set by a click). Only
-   * "unsealed"/"sealed" are ever persisted, so this is a bare fingerprint string,
-   * not a SealState; cracked is always derived here, never stored.
+   * The seal fingerprint to initialize from: a reopened saved brief's stored
+   * seal, or a LIVE seal recorded on the engine via markSealed (the lectern's
+   * persistent store carries it across remounts). When it matches the seal
+   * shows "sealed"; when the draft has since changed it shows "cracked". Omit
+   * when nothing is sealed (the seal starts unsealed, set by a click). Only
+   * "unsealed"/"sealed" are ever persisted, so this is a bare fingerprint
+   * string, not a SealState; cracked is always derived here, never stored.
    */
   sealedFingerprint?: string | null;
+  /**
+   * Fingerprint of the draft AS IT IS NOW on the host's composer, when the
+   * host can know it. The cracked register compares the seal against this, so
+   * a seal set on text that has since been edited reads cracked on the live
+   * flow too, not only on a reopened brief. Defaults to the model's own
+   * checked-text fingerprint (the pre-existing behavior).
+   */
+  currentFingerprint?: string;
 }
 
 /**
@@ -62,7 +71,8 @@ export function CertificationExhibit({
   model,
   onClose,
   onSeal,
-  sealedFingerprint: persistedSealedFingerprint
+  sealedFingerprint: persistedSealedFingerprint,
+  currentFingerprint
 }: CertificationExhibitProps) {
   const stamp = formatStamp(model.generatedAtISO);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -133,7 +143,7 @@ export function CertificationExhibit({
   const pressRef = useRef<HTMLSpanElement>(null);
   const crackPathRef = useRef<SVGPathElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const sealState = sealStateFor(sealedFingerprint, model.fingerprint);
+  const sealState = sealStateFor(sealedFingerprint, currentFingerprint ?? model.fingerprint);
   const sealAriaLabel =
     sealState === "sealed"
       ? "Certification seal, set"
@@ -345,7 +355,10 @@ export function CertificationExhibit({
         </section>
 
         <section className={styles.certSection}>
-          <h3 className={styles.certSectionLabel}>All statements checked</h3>
+          <h3 className={styles.certSectionLabel}>Complete record of all statements checked</h3>
+          <p className={styles.certMuted}>
+            The full record, including the items flagged for review above.
+          </p>
           <ol className={styles.certList}>
             {model.allItems.map((it) => (
               <li key={it.index} className={styles.certItem}>

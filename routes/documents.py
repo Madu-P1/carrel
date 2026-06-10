@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 
 import db
 from api_models import (
+    CreateVaultRequest,
     DeleteResponse,
     DocumentDetailResponse,
     DocumentListItem,
@@ -17,6 +18,8 @@ from api_models import (
     DocumentSubjectUpdateResponse,
     DocumentUploadResponse,
     TextDocumentCreateRequest,
+    VaultDeleteResponse,
+    VaultListResponse,
 )
 from app_logging import get_logger, log_event
 from services import extraction_pipeline
@@ -24,13 +27,16 @@ from services.app_state import fetch_workspace_state, log_study_event
 from services.documents import (
     cleanup_duplicate_documents,
     compute_document_source_hash,
+    create_vault,
     delete_document_record,
+    delete_vault,
     fetch_document_detail,
     fetch_documents,
     fetch_subject_groups,
     find_canonical_duplicate,
     find_duplicate_groups,
     list_subject_summaries,
+    list_vault_names,
     set_document_subject,
 )
 from services.ingestion import ingest_document_record, normalize_subject_name
@@ -263,6 +269,42 @@ async def upload_document(
         file_type=str(result.get("file_type") or ""),
     )
     return result
+
+
+@router.get("/api/vaults", response_model=VaultListResponse)
+def list_vaults() -> Dict[str, Any]:
+    """Every vault (document folder) the UI should show, including empty ones
+    registered for folder-first creation. The union of the subject_names records
+    are filed under and the empty-vault registry."""
+    with db.get_db() as conn:
+        return {"vaults": list_vault_names(conn)}
+
+
+@router.post("/api/vaults", response_model=VaultListResponse)
+def create_vault_route(payload: CreateVaultRequest) -> Dict[str, Any]:
+    """Create a (possibly empty) vault so records can be filed into it. Returns
+    the full vault list so the caller resyncs in one round trip."""
+    with db.get_db() as conn:
+        try:
+            create_vault(conn, payload.name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"vaults": list_vault_names(conn)}
+
+
+@router.delete("/api/vaults", response_model=VaultDeleteResponse)
+def delete_vault_route(name: str) -> Dict[str, bool]:
+    """Forget an EMPTY vault. Refuses (409) if any record is still filed under it,
+    so deleting a vault never silently moves or destroys records. The name travels
+    as a query parameter, not a path segment, so a vault named after a caption that
+    contains a slash (e.g. 'Apex / Northwind') can still be deleted."""
+    with db.get_db() as conn:
+        if not delete_vault(conn, name):
+            raise HTTPException(
+                status_code=409,
+                detail="This vault still holds records. Move or delete them first.",
+            )
+        return {"deleted": True}
 
 
 @router.get("/api/library/subjects")

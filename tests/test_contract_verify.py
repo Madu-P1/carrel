@@ -71,7 +71,7 @@ class PresentTests(unittest.TestCase):
             "liability shall not exceed $500,000 in the aggregate",
         )
         self.assertEqual("present", v.disposition)
-        self.assertIn("review the full clause", v.detail)
+        self.assertIn("review the full passage", v.detail)
 
     def test_quoted_language_present_verbatim(self) -> None:
         v = verify_claim_against_clause(
@@ -133,6 +133,70 @@ class MultiValueTests(unittest.TestCase):
         )
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("duration", v.anchor_type)
+
+
+class PercentClauseTests(unittest.TestCase):
+    def test_percent_contradiction(self) -> None:
+        v = verify_claim_against_clause(
+            "Liability is capped at 99% of fees paid.",
+            "Section 9.2. Liability shall not exceed 50% of fees paid.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("99%", v.detail)
+        self.assertIn("50%", v.detail)
+
+    def test_percent_contradiction_cannot_be_laundered_by_a_matching_duration(self) -> None:
+        # THE case that motivated the percent build (verified live pre-fix): the
+        # matching 12-month duration carried a green "present" over a falsified
+        # cap, because percent was not a parametric type. A contradiction in ANY
+        # carried type must win outright.
+        v = verify_claim_against_clause(
+            "Liability is capped at 99% of the fees paid in the prior 12 months.",
+            "Section 9.2. Liability shall not exceed 50% of the fees paid in the prior 12 months.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("percent", v.anchor_type)
+
+    def test_percent_present_with_hedge_detail(self) -> None:
+        v = verify_claim_against_clause(
+            "The royalty is 12.5% of net revenue.",
+            "Section 4.1. Licensee shall pay a royalty of 12.5% of net revenue.",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertIn("review the full passage", v.detail)
+
+    def test_percent_aligns_across_notations(self) -> None:
+        # "0.5%" in the summary vs "50 bps" in the clause is the same rate; the
+        # basis-point canonical makes the notations compare equal, exactly.
+        v = verify_claim_against_clause(
+            "The fee increases by 0.5% for each month of delay.",
+            "Section 3. A late charge of 50 bps accrues for each month of delay.",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_percent_not_found_is_the_honest_exit(self) -> None:
+        v = verify_claim_against_clause(
+            "An early-termination discount of 15% applies.",
+            "Section 12. Either party may terminate for convenience.",
+        )
+        self.assertEqual("not_found", v.disposition)
+
+    def test_dual_notation_of_one_rate_is_present_not_a_refusal(self) -> None:
+        # '0.5% (50 bps)' is ONE rate written twice; equal canonicals collapse
+        # before the multi-value test, so the legal dual-notation convention
+        # reads present instead of an unnecessary could-not-check.
+        v = verify_claim_against_clause(
+            "A late charge of 0.5% (50 bps) accrues monthly.",
+            "Section 3. A late charge of 0.5% accrues monthly.",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_two_percents_on_one_side_refuse_to_guess(self) -> None:
+        v = verify_claim_against_clause(
+            "Interest accrues at 5% and rises to 8% on default.",
+            "Section 6. Interest accrues at 5% per annum.",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
 
 
 if __name__ == "__main__":

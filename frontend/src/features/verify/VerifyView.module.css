@@ -18,6 +18,24 @@
   width: 100%;
 }
 
+/* The verdict column (VerifyResults). The composer lives in the host; this holds
+ * everything downstream of "the engine has something to show". Mirrors the root
+ * column gap so the pieces space the same whether hosted in VerifyView (under the
+ * composer) or in the Cachet lectern (under the sheet). No padding of its own:
+ * the host supplies the surrounding frame. */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 100%;
+}
+
+/* Collapse to nothing until the engine produces something, so an empty results
+ * column never adds a stray gap below the composer. */
+.results:empty {
+  display: none;
+}
+
 /* Scoped token overrides. Applied to the verify root so the whole surface
  * reads as a single sheet of paper on the dark desk. Chromatic energy is
  * reserved for --verify-flag; the functional --accent goes quiet ink, and
@@ -48,6 +66,12 @@
 
   /* The single grave accent: a proofreader's oxblood, flags only. */
   --verify-flag: #7a2230;
+
+  /* No green on the verify surface, even from shared primitives: Badge's
+   * success tone (ProvenanceBadge, claude provider) resolves --color-success
+   * from the global theme unless rebound here. Ink, same as the Cachet shell's
+   * neutralization (cachet.module.css). */
+  --color-success: var(--text-primary);
 
   /* A reading serif for document body (Instrument Serif stays display-only,
    * per DESIGN.md). Charter/Georgia carry legal-document gravity. */
@@ -159,6 +183,59 @@
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   line-height: 1.5;
+}
+
+/* The refusal made actionable. Quiet by design: a could-not-check is a correct
+   outcome, not an error, so this reads as a calm next step rather than a warning.
+   Only the Cachet shell passes onResolve, so Carrel never renders this. */
+.resolveRefusal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.resolveRefusalText {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.resolveRefusalAction {
+  flex: none;
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-lg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.resolveRefusalAction:hover {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.resolveRefusalAction:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .summaryStat {
@@ -803,7 +880,11 @@
   gap: var(--space-3);
   padding: var(--space-6);
   overflow: auto;
-  background: rgb(14 14 16 / 72%);
+  /* Opaque: the certification is a self-contained record. A translucent scrim
+     let underlying content (the provenance badge) bleed through behind the
+     toolbar controls; aria-modal already makes the background inert, so the
+     glimpse bought nothing and collided with the Close / Save actions. */
+  background: rgb(14 14 16);
 }
 
 .certToolbar {

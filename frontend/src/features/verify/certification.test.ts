@@ -131,6 +131,19 @@ describe("buildCertification", () => {
     expect(m.fingerprint).toBe(fingerprintDraft("the exact draft"));
   });
 
+  test("falls back to the host's draft when the response omits draft_text", () => {
+    // Without the fallback the exhibit fingerprints the EMPTY string while
+    // Save-to-Shelf fingerprints the composer draft — the same brief would
+    // carry two different fingerprints and a reopened seal would read cracked
+    // against a draft that never changed.
+    const m = buildCertification(
+      resp({ draft_text: null as unknown as string }),
+      AT,
+      "the composer draft"
+    );
+    expect(m.fingerprint).toBe(fingerprintDraft("the composer draft"));
+  });
+
   test("all-supported still produces a model with an empty flagged set", () => {
     const m = buildCertification(resp({ claim_verdicts: [supported] }), AT);
     expect(m.needsReviewCount).toBe(0);

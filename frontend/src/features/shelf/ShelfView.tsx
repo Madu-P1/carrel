@@ -114,7 +114,7 @@ export function ShelfView() {
         <Stack gap={3} align="start" className={styles.centered}>
           <Text tone="secondary">{state.message}</Text>
           <Button variant="secondary" onClick={() => void load()}>
-            Try again
+            Reload the Shelf
           </Button>
         </Stack>
       </div>

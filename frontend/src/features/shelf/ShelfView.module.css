@@ -44,6 +44,11 @@
   --glass-highlight: transparent;
   --glass-highlight-strong: transparent;
 
+  /* The canvas is flex(column), so `margin: 0 auto` alone shrinks this flex item
+     to its content width: an empty shelf collapses to a thin centered strip
+     instead of the intended column. Pin width:100% and let max-width cap it to a
+     stable 50rem paper column, centered by the auto margins. */
+  width: 100%;
   max-width: 50rem;
   margin: 0 auto;
   padding: var(--space-8, 2rem) var(--space-6, 1.5rem) var(--space-12, 3rem);

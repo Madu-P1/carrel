@@ -3,8 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { briefs as briefsApi, verify as verifyApi } from "@/services/api/endpoints";
 
-import { VerifyView, verdictSummaryHeadline } from "./VerifyView";
-import type { ClaimDisposition } from "./claimDisposition";
+import { VerifyView } from "./VerifyView";
 
 // Cachet PR6b: opening a saved brief re-hydrates the settled view from the STORED
 // response with NO re-verify. Mock the endpoints module so the open path is
@@ -191,46 +190,5 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     // Already sealed + saved: a stray "Save to Shelf" click would upsert it back
     // to unsealed, so the button must not be offered.
     expect(screen.queryByText("Save to Shelf")).toBeNull();
-  });
-});
-
-describe("verdictSummaryHeadline register (D1: could-not-check is not an alarm)", () => {
-  const disp = (kind: ClaimDisposition["kind"]): ClaimDisposition => ({
-    kind,
-    tier: "refusal",
-    label: "",
-    detail: ""
-  });
-
-  it("does NOT raise the oxblood alarm when every claim is only could_not_check", () => {
-    const h = verdictSummaryHeadline([disp("could_not_check"), disp("could_not_check")]);
-    expect(h.problem).toBe(false);
-    expect(h.text).toBe("2 of 2 statements could not be verified against your sources.");
-  });
-
-  it("raises the alarm only for true flags (citation_not_found / claim_unsupported)", () => {
-    expect(verdictSummaryHeadline([disp("citation_not_found")]).problem).toBe(true);
-    expect(verdictSummaryHeadline([disp("claim_unsupported")]).problem).toBe(true);
-  });
-
-  it("does not treat assistive judgments (proposition_unsupported) as the alarm", () => {
-    const h = verdictSummaryHeadline([disp("proposition_unsupported"), disp("supported")]);
-    expect(h.problem).toBe(false);
-  });
-
-  it("shows the affirmative line when every claim is supported", () => {
-    const h = verdictSummaryHeadline([disp("supported"), disp("supported")]);
-    expect(h.problem).toBe(false);
-    expect(h.text).toBe("All 2 statements are supported by the sources you provided.");
-  });
-
-  it("counts only the flagged set in the alarm headline when flags are present", () => {
-    const h = verdictSummaryHeadline([
-      disp("citation_not_found"),
-      disp("could_not_check"),
-      disp("supported")
-    ]);
-    expect(h.problem).toBe(true);
-    expect(h.text).toBe("1 of 3 statements need your review.");
   });
 });

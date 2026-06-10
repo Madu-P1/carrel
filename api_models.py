@@ -496,6 +496,18 @@ class DeleteResponse(BaseModel):
     deleted: bool
 
 
+class CreateVaultRequest(BaseModel):
+    name: str
+
+
+class VaultListResponse(BaseModel):
+    vaults: List[str]
+
+
+class VaultDeleteResponse(BaseModel):
+    deleted: bool
+
+
 class DocumentSubjectUpdateResponse(BaseModel):
     document: DocumentListItem
     workspace: Dict[str, Any]

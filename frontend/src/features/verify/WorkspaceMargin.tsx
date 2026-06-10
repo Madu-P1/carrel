@@ -20,11 +20,12 @@
  * Motion (ink-in choreography, claim pulse) is deferred to the operator visual
  * gate; this slice ships structure + functional transitions only.
  */
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import type { VerifyClaimVerdict, VerifyQuoteResult } from "@/services/api/endpoints";
+import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
 import { DISPOSITION_ORDER, dispositionForClaim, type ClaimDisposition } from "./claimDisposition";
+import { displaySafe } from "./displaySafe";
 import {
   paragraphsFromSegments,
   segmentDraft,
@@ -58,8 +59,6 @@ function noteTier(tier: ClaimDisposition["tier"]): "flag" | "query" | "refusal" 
 interface WorkspaceMarginProps {
   draftText: string;
   cards: VerifyClaimVerdict[];
-  /** quote results that could not be attributed to a placed claim (tray header). */
-  unattributedQuotes: VerifyQuoteResult[];
   /** claim_index currently open in the Examination drawer, or null. */
   examined: number | null;
   onExamine: (claimIndex: number) => void;
@@ -73,37 +72,50 @@ interface ClaimMeta {
 export function WorkspaceMargin({
   draftText,
   cards,
-  unattributedQuotes,
   examined,
   onExamine
 }: WorkspaceMarginProps) {
-  const metaByIndex = new Map<number, ClaimMeta>();
-  cards.forEach((card, i) => {
-    const idx = typeof card.claim_index === "number" ? card.claim_index : i;
-    metaByIndex.set(idx, { card, disposition: dispositionForClaim(card) });
-  });
+  // One memoized derivation for everything (draftText, cards) determines:
+  // dispositions, segmentation, paragraph split, rail/tray sets, and the
+  // display-safe text. This render re-runs on every selection change
+  // (`examined`), and recomputing dispositionForClaim per card three times
+  // plus sanitizing the whole document each time was the measurable hot path
+  // on long drafts.
+  const { metaByIndex, paragraphs, railClaims, trayClaims } = useMemo(() => {
+    const meta = new Map<number, ClaimMeta>();
+    cards.forEach((card, i) => {
+      const idx = typeof card.claim_index === "number" ? card.claim_index : i;
+      meta.set(idx, { card, disposition: dispositionForClaim(card) });
+    });
 
-  const segments = segmentDraft(draftText, cards);
-  const paragraphs = paragraphsFromSegments(segments);
+    const segments = segmentDraft(draftText, cards);
+    // Sanitize once here (displaySafe is 1-to-1, so spans stay aligned); the
+    // render below ships the text to the DOM untouched.
+    const safeParagraphs = paragraphsFromSegments(segments).map((para) =>
+      para.map((seg) => ({ ...seg, text: displaySafe(seg.text) }))
+    );
 
-  // Non-supported PLACED claims get a rail note. (Supported = unmarked, no note.
-  // Unplaced = no span here, lives in the tray.)
-  const placedClaimIndices = segments
-    .filter((s): s is ClaimSegment => s.kind === "claim")
-    .map((s) => s.claimIndex);
-  const railClaims = placedClaimIndices.filter((idx) => {
-    const meta = metaByIndex.get(idx);
-    return meta ? noteTier(meta.disposition.tier) !== null : false;
-  });
+    // Non-supported PLACED claims get a rail note. (Supported = unmarked, no
+    // note. Unplaced = no span here, lives in the tray.)
+    const placedClaimIndices = segments
+      .filter((s): s is ClaimSegment => s.kind === "claim")
+      .map((s) => s.claimIndex);
+    const rail = placedClaimIndices.filter((idx) => {
+      const m = meta.get(idx);
+      return m ? noteTier(m.disposition.tier) !== null : false;
+    });
 
-  // Unplaced claims (no span produced) -> the tray, worst-first.
-  const placedSet = new Set(placedClaimIndices);
-  const trayClaims = cards
-    .map((card, i) => (typeof card.claim_index === "number" ? card.claim_index : i))
-    .filter((idx) => !placedSet.has(idx))
-    .map((idx) => metaByIndex.get(idx)!)
-    .filter(Boolean)
-    .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+    // Unplaced claims (no span produced) -> the tray, worst-first.
+    const placedSet = new Set(placedClaimIndices);
+    const tray = cards
+      .map((card, i) => (typeof card.claim_index === "number" ? card.claim_index : i))
+      .filter((idx) => !placedSet.has(idx))
+      .map((idx) => meta.get(idx)!)
+      .filter(Boolean)
+      .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+
+    return { metaByIndex: meta, paragraphs: safeParagraphs, railClaims: rail, trayClaims: tray };
+  }, [draftText, cards]);
 
   // --- rail vertical pinning (measured; collision math is the pure layoutRail) ---
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -137,7 +149,7 @@ export function WorkspaceMargin({
   const topFor = (idx: number): number | undefined =>
     placements.find((p) => p.key === idx)?.top;
 
-  const hasTray = trayClaims.length > 0 || unattributedQuotes.length > 0;
+  const hasTray = trayClaims.length > 0;
 
   return (
     <div className={styles.canvas}>
@@ -181,7 +193,6 @@ export function WorkspaceMargin({
       {hasTray ? (
         <UnplacedTray
           claims={trayClaims}
-          quotes={unattributedQuotes}
           onExamine={onExamine}
         />
       ) : null}
@@ -206,10 +217,19 @@ function ClaimMark({
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
+  // The announcement must keep the visible register split: only a real flag is
+  // "flagged"; the refusal is a could-not-check, and an assistive note is a
+  // query for review. A screen reader that hears "flagged" for an honest
+  // refusal has been handed an accusation the engine never made.
+  const fuzzyNote = fuzzy && tier !== "pass" ? ", placement approximate" : "";
   const aria =
     tier === "pass"
       ? `Statement, checked and supported: ${segment.text}`
-      : `Statement flagged ${label}${fuzzy ? ", placement approximate" : ""}: ${segment.text}`;
+      : tier === "refusal"
+        ? `Statement could not be checked, ${label}${fuzzyNote}: ${segment.text}`
+        : tier === "assistive"
+          ? `Statement noted for your review, ${label}${fuzzyNote}: ${segment.text}`
+          : `Statement flagged ${label}${fuzzyNote}: ${segment.text}`;
   return (
     <span
       className={[
@@ -256,7 +276,14 @@ function MarginNote({
   onExamine: (claimIndex: number) => void;
 }) {
   const tier = noteTier(disposition.tier);
-  const trail = card.unsupported_reason && tier === "refusal" ? card.unsupported_reason : null;
+  // The wire's unsupported_reason is the refusal's audit trail, but for an
+  // unknown-verdict card the disposition detail already IS that reason
+  // (claimDisposition reads it first); suppress the trail when it would print
+  // the identical sentence twice in one note.
+  const trail =
+    card.unsupported_reason && tier === "refusal" && card.unsupported_reason !== disposition.detail
+      ? card.unsupported_reason
+      : null;
   return (
     <div
       className={styles.marginNote}
@@ -281,11 +308,9 @@ function MarginNote({
 
 function UnplacedTray({
   claims,
-  quotes,
   onExamine
 }: {
   claims: ClaimMeta[];
-  quotes: VerifyQuoteResult[];
   onExamine: (claimIndex: number) => void;
 }) {
   return (
@@ -295,25 +320,6 @@ function UnplacedTray({
         These statements were checked, but their exact wording could not be matched to a span in the
         draft above. Review them here.
       </p>
-      {quotes.length > 0 ? (
-        <div className={styles.trayQuotes}>
-          <h3 className={styles.trayQuotesLabel}>Quotation checks</h3>
-          {quotes.map((q) => (
-            <p
-              key={q.index}
-              className={[
-                styles.trayQuoteItem,
-                q.status === "altered" ? styles.trayQuoteAltered : styles.trayQuoteUnplaceable
-              ].join(" ")}
-            >
-              <span className={styles.trayQuoteStatus}>
-                {q.status === "altered" ? "Not found verbatim" : "Could not check"}
-              </span>
-              <span className={styles.trayQuoteText}>“{q.quote}”</span>
-            </p>
-          ))}
-        </div>
-      ) : null}
       <ul className={styles.trayList}>
         {claims.map((m) => {
           const idx = m.card.claim_index ?? 0;
