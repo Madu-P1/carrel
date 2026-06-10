@@ -36,10 +36,11 @@ class Anchor:
     ``start``/``end`` are character offsets into the span passed to
     :func:`extract_anchors`. ``canonical_value`` is populated only for
     parametric types: money -> integer cents, duration -> integer days,
-    date -> ISO ``YYYY-MM-DD`` string. It is ``None`` for the rest.
+    date -> ISO ``YYYY-MM-DD`` string, governing_law -> normalized
+    jurisdiction key. It is ``None`` for the rest.
     """
 
-    type: str  # citation | slip_op | quote | money | duration | date | percent | section | party | defined_term
+    type: str  # citation | slip_op | quote | money | duration | date | percent | governing_law | section | party | defined_term
     text: str
     start: int
     end: int
@@ -162,6 +163,223 @@ _DATE = re.compile(
     r"|\d{1,2}/\d{1,2}/\d{4})\b"
 )
 
+# --- Governing-law detector (canonical_value = normalized jurisdiction key). A
+# falsified choice of law is the contract path's most consequential single-token
+# error, and it is pure string equality after lexicon normalization. Precision is
+# structural on two sides: the TRIGGER side fires only on governing verbs
+# ("governed by", "construed ... laws of", "X law governs/applies"), so forum
+# selection ("courts of Delaware"), incorporation ("a Delaware corporation"), and
+# liability propositions ("liable under New York law") never anchor; the VALUE
+# side is a closed lexicon (US states + DC + the major commercial and GCC/MENA
+# jurisdictions), so an unknown jurisdiction yields NO anchor, never a guessed
+# canonical. Adjectival forms map to the jurisdiction they designate ("English
+# law" -> england and wales, the conventional referent) so the contradiction
+# check cannot accuse a summary across a naming variant. Jurisdictions outside
+# the lexicon are a documented recall gap (could-not-check, the safe direction),
+# not a hidden one. ---
+
+_US_STATES = (
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+    "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
+    "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine",
+    "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+    "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+    "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+    "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+    "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
+    "Washington", "West Virginia", "Wisconsin", "Wyoming",
+    "District of Columbia",
+)  # fmt: skip
+
+# Non-US jurisdictions and adjectival forms: surface (lowercase) -> canonical key.
+_JURISDICTION_ALIASES = {
+    "england and wales": "england and wales",
+    "england": "england and wales",
+    "english": "england and wales",
+    "scotland": "scotland",
+    "scots": "scotland",
+    "scottish": "scotland",
+    "northern ireland": "northern ireland",
+    "ireland": "ireland",
+    "irish": "ireland",
+    "france": "france",
+    "french": "france",
+    "germany": "germany",
+    "german": "germany",
+    "switzerland": "switzerland",
+    "swiss": "switzerland",
+    "netherlands": "netherlands",
+    "dutch": "netherlands",
+    "belgium": "belgium",
+    "belgian": "belgium",
+    "luxembourg": "luxembourg",
+    "spain": "spain",
+    "spanish": "spain",
+    "italy": "italy",
+    "italian": "italy",
+    "sweden": "sweden",
+    "swedish": "sweden",
+    "norway": "norway",
+    "norwegian": "norway",
+    "denmark": "denmark",
+    "danish": "denmark",
+    "finland": "finland",
+    "finnish": "finland",
+    "austria": "austria",
+    "austrian": "austria",
+    "poland": "poland",
+    "polish": "poland",
+    "portugal": "portugal",
+    "portuguese": "portugal",
+    "greece": "greece",
+    "greek": "greece",
+    "cyprus": "cyprus",
+    "malta": "malta",
+    "singapore": "singapore",
+    "hong kong": "hong kong",
+    "japan": "japan",
+    "japanese": "japan",
+    "india": "india",
+    "indian": "india",
+    "china": "china",
+    "chinese": "china",
+    "people's republic of china": "china",
+    "south korea": "south korea",
+    "south korean": "south korea",
+    "korean": "south korea",
+    "australia": "australia",
+    "australian": "australia",
+    "new south wales": "new south wales",
+    "new zealand": "new zealand",
+    "canada": "canada",
+    "canadian": "canada",
+    "ontario": "ontario",
+    "british columbia": "british columbia",
+    "quebec": "quebec",
+    "united states": "united states",
+    "united arab emirates": "united arab emirates",
+    "uae": "united arab emirates",
+    "dubai international financial centre": "difc",
+    "difc": "difc",
+    "abu dhabi global market": "adgm",
+    "adgm": "adgm",
+    "dubai": "dubai",
+    "abu dhabi": "abu dhabi",
+    "saudi arabia": "saudi arabia",
+    "saudi arabian": "saudi arabia",
+    "saudi": "saudi arabia",
+    "qatar": "qatar",
+    "qatari": "qatar",
+    "kuwait": "kuwait",
+    "kuwaiti": "kuwait",
+    "bahrain": "bahrain",
+    "bahraini": "bahrain",
+    "oman": "oman",
+    "omani": "oman",
+    "jordan": "jordan",
+    "jordanian": "jordan",
+    "egypt": "egypt",
+    "egyptian": "egypt",
+    "lebanon": "lebanon",
+    "lebanese": "lebanon",
+    "israel": "israel",
+    "israeli": "israel",
+    "turkey": "turkey",
+    "turkish": "turkey",
+    "brazil": "brazil",
+    "brazilian": "brazil",
+    "mexico": "mexico",
+    "mexican": "mexico",
+    "south africa": "south africa",
+    "south african": "south africa",
+    "cayman islands": "cayman islands",
+    "bermuda": "bermuda",
+    "british virgin islands": "british virgin islands",
+    "jersey": "jersey",
+    "guernsey": "guernsey",
+    "isle of man": "isle of man",
+}
+
+_JURISDICTION_CANON: dict[str, str] = {
+    **{state.lower(): state.lower() for state in _US_STATES},
+    **_JURISDICTION_ALIASES,
+}
+
+# Containment map: canonical key -> canonical keys of jurisdictions inside it.
+# A flat string mismatch between a container and one of its members ("UAE law"
+# vs "DIFC law", "the laws of the United States" vs "the laws of Delaware") is
+# a relationship, not a contradiction: the member's law differs from the
+# container's, but a summary naming the container may be describing the member
+# imprecisely rather than falsifying it. The contract path refuses such pairs
+# (could-not-check) instead of accusing. SIBLING mismatches (New York vs
+# Delaware, England and Wales vs Scotland, DIFC vs ADGM) stay accusable: two
+# disjoint systems named against each other is the real catch.
+_JURISDICTION_CONTAINS: dict[str, frozenset[str]] = {
+    "united states": frozenset(state.lower() for state in _US_STATES),
+    "united arab emirates": frozenset({"difc", "adgm", "dubai", "abu dhabi"}),
+    "dubai": frozenset({"difc"}),
+    "abu dhabi": frozenset({"adgm"}),
+    "china": frozenset({"hong kong"}),
+    "canada": frozenset({"ontario", "british columbia", "quebec"}),
+    "australia": frozenset({"new south wales"}),
+}
+
+
+def related_jurisdictions(a: str, b: str) -> bool:
+    """True when one canonical jurisdiction key contains the other.
+
+    Consulted by the contract path before minting a governing-law
+    contradiction; a containment pair routes to the honest could-not-check
+    instead. Unknown keys are unrelated (False).
+    """
+    return b in _JURISDICTION_CONTAINS.get(a, ()) or a in _JURISDICTION_CONTAINS.get(b, ())
+
+
+# Modifier rejector for the adjectival lexicon forms: a jurisdiction adjective
+# immediately preceded by a directional or qualifying modifier designates a
+# DIFFERENT body of law than the bare adjective ("North Korean law" is not
+# South Korea's; "Federal Indian law" is a body of US law, not India's;
+# "West German law" is historical Germany's, not the Federal Republic's).
+# The bounded grammar cannot represent those, so the anchor is refused rather
+# than minted with the wrong canonical. Multi-word lexicon entries ("South
+# Korea", "British Columbia") match longest-first as their own surface form and
+# never reach this guard with the modifier still outside the match.
+_JUR_MODIFIER_BEFORE = re.compile(
+    r"\b(?:north|south|east|west|federal|american|native|british|anglo)[\s\-]+$",
+    re.IGNORECASE,
+)
+
+# Longest-first alternation so "West Virginia" wins over "Virginia" and
+# "New Jersey" over "Jersey" (the US state vs the Channel Island).
+_JUR_ALT = "|".join(re.escape(name) for name in sorted(_JURISDICTION_CANON, key=len, reverse=True))
+
+# Form A, the contract boilerplate: a governing verb, a bounded connective run,
+# then "laws of [the] [State/Commonwealth/Province of] <JUR>". The connective
+# gap must read like boilerplate: all-lowercase or all-caps (the conspicuous
+# clause convention), commas allowed, digits and mixed-case nouns excluded. The
+# scoped (?-i:...) keeps that case discipline inside an otherwise IGNORECASE
+# pattern: "governed by and construed in accordance with the" passes, while an
+# intervening object that changes the proposition ("governed by Section 4, and
+# payments comply with the laws of New York", "governed by ERISA and ... the
+# laws of Texas") refuses the anchor rather than mint a governing-law value
+# from a compliance phrase. Bare "in accordance with the laws of X" (no
+# governing verb) deliberately does NOT trigger for the same reason.
+_GOV_LAW_OF = re.compile(
+    rf"\b(?:governed\s+by|construed)(?-i:[\sa-z,]{{0,60}}?|[\sA-Z,]{{0,60}}?)\blaws?\s+of\s+"
+    rf"(?:the\s+)?(?:(?:State|Commonwealth|Province)\s+of\s+)?(?P<jur>{_JUR_ALT})\b",
+    re.IGNORECASE,
+)
+# Form B, the summary phrasings: "governed by New York law" / "New York law
+# governs" / "Delaware law applies".
+_GOV_JUR_LAW = re.compile(
+    rf"\bgoverned\s+by\s+(?:the\s+)?(?P<jur>{_JUR_ALT})\s+law\b",
+    re.IGNORECASE,
+)
+_JUR_LAW_GOVERNS = re.compile(
+    rf"\b(?P<jur>{_JUR_ALT})\s+law\s+(?:shall\s+|will\s+)?(?:governs?|appl(?:y|ies))\b",
+    re.IGNORECASE,
+)
+
 # Percent / rate, DIGIT forms only with the unit marker in-span: "5%", "12.5
 # percent", "12 per cent", "50 bps", "50 basis points". Canonical value is
 # basis points via exact decimal arithmetic, so "0.5%" and "50 bps" compare
@@ -275,6 +493,32 @@ def _date_iso(text: str) -> str | None:
         return None
 
 
+def _governing_law_anchors(text: str) -> list[Anchor]:
+    """Governing-law anchors; text/offsets are the jurisdiction surface form.
+
+    The same choice of law stated twice in one span (e.g. matched by both the
+    long form and the summary form) dedupes by span, and downstream
+    canonical-value dedup collapses equal keys, so one stated jurisdiction is
+    always one fact.
+    """
+    anchors: list[Anchor] = []
+    seen_spans: set[tuple[int, int]] = set()
+    for pattern in (_GOV_LAW_OF, _GOV_JUR_LAW, _JUR_LAW_GOVERNS):
+        for m in pattern.finditer(text):
+            span = (m.start("jur"), m.end("jur"))
+            if span in seen_spans:
+                continue
+            if _JUR_MODIFIER_BEFORE.search(text[: span[0]]):
+                # A modified adjective ("North Korean", "Federal Indian"): the
+                # match is only the tail of the real designation. Refuse the
+                # anchor rather than mint the wrong jurisdiction.
+                continue
+            seen_spans.add(span)
+            canonical = _JURISDICTION_CANON[m.group("jur").lower()]
+            anchors.append(Anchor("governing_law", m.group("jur"), span[0], span[1], canonical))
+    return anchors
+
+
 def _party_anchors(text: str) -> list[Anchor]:
     anchors: list[Anchor] = []
     for pattern in (_PARTY_ALIAS, _PARTY_ENTITY):
@@ -381,6 +625,7 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         candidate = Anchor("section", m.group(0), m.start(), m.end())
         if not _within_citation(candidate):
             anchors.append(candidate)
+    anchors.extend(_governing_law_anchors(span))
     anchors.extend(_party_anchors(span))
     if alias_table:
         anchors.extend(_defined_term_anchors(span, alias_table))

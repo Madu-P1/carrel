@@ -332,5 +332,151 @@ class ClauseAdjudicationTests(unittest.TestCase):
         self.assertEqual("not_found", verdict3.disposition)
 
 
+class GoverningLawClauseTests(unittest.TestCase):
+    """Governing law as a parametric type: a falsified choice of law is the
+    contract path's most consequential single-token error, and it is pure
+    string equality after lexicon normalization (no arithmetic at all)."""
+
+    _BOILERPLATE_DE = (
+        "This Agreement shall be governed by and construed in accordance with "
+        "the laws of the State of Delaware, without regard to its conflict of "
+        "laws principles."
+    )
+
+    def test_governing_law_mismatch_is_a_contradiction(self) -> None:
+        v = verify_claim_against_clause(
+            "The agreement is governed by New York law.",
+            self._BOILERPLATE_DE,
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+        self.assertIn("New York", v.detail)
+        self.assertIn("Delaware", v.detail)
+
+    def test_governing_law_match_is_present_across_forms(self) -> None:
+        v = verify_claim_against_clause(
+            "The agreement is governed by Delaware law.",
+            self._BOILERPLATE_DE,
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+
+    def test_english_law_is_not_accused_against_england_and_wales(self) -> None:
+        # The classic naming variant: a summary's "English law" against the
+        # contract's "laws of England and Wales" is the SAME choice of law.
+        # Flagging it would be a false accusation, the direction the engine
+        # refuses by construction.
+        v = verify_claim_against_clause(
+            "The deed is governed by English law.",
+            "This deed shall be governed by and construed in accordance with "
+            "the laws of England and Wales.",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+
+    def test_venue_jurisdiction_cannot_mask_the_contradiction(self) -> None:
+        # The clause chooses New York law but selects Delaware courts. The venue
+        # jurisdiction must not anchor: if it did, the clause would carry two
+        # governing_law values and the multi-value refusal would swallow the
+        # real catch (summary says Delaware governs; it does not).
+        v = verify_claim_against_clause(
+            "The agreement is governed by Delaware law.",
+            "This Agreement shall be governed by the laws of the State of New "
+            "York; the parties submit to the exclusive jurisdiction of the "
+            "courts of Delaware.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+        self.assertEqual(("new york",), v.clause_values)
+
+    def test_two_governing_laws_in_one_claim_refuse_to_guess(self) -> None:
+        # A summary sentence asserting two different choices of law cannot be
+        # aligned one-to-one against a single clause deterministically.
+        v = verify_claim_against_clause(
+            "The escrow is governed by New York law and the indemnity is governed by English law.",
+            self._BOILERPLATE_DE,
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+
+    def test_container_member_pair_refuses_not_accuses(self) -> None:
+        # DIFC sits inside the UAE and Delaware inside the United States: a
+        # summary naming the container against a clause naming the member is a
+        # relationship, not a flat contradiction. The engine refuses
+        # (could-not-check) instead of accusing in either direction.
+        cases = [
+            (
+                "The agreement is governed by UAE law.",
+                "This Agreement shall be governed by the laws of the DIFC.",
+            ),
+            (
+                "The agreement is governed by United States law.",
+                "This Agreement shall be governed by the laws of the State of Delaware.",
+            ),
+        ]
+        for claim, clause in cases:
+            with self.subTest(claim=claim):
+                v = verify_claim_against_clause(claim, clause)
+                self.assertEqual("multi_value_unverifiable", v.disposition)
+                self.assertEqual("governing_law", v.anchor_type)
+                self.assertIn("contains the other", v.detail)
+
+    def test_sibling_jurisdictions_still_contradict(self) -> None:
+        # Two disjoint systems named against each other is the real catch; the
+        # containment refusal must not soften it.
+        v = verify_claim_against_clause(
+            "The agreement is governed by the laws of the DIFC.",
+            "This Agreement shall be governed by the laws of the ADGM.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_governing_law_not_found_is_the_honest_exit(self) -> None:
+        v = verify_claim_against_clause(
+            "The agreement is governed by French law.",
+            "The aggregate liability of the parties shall not exceed $500,000.",
+        )
+        self.assertEqual("not_found", v.disposition)
+        self.assertEqual("governing_law", v.anchor_type)
+
+    def test_amended_contract_conflict_refuses_with_both_clauses_named(self) -> None:
+        # An amendment changed the governing law: one retrieved clause still
+        # says New York, another says Delaware. The claim's New York is verbatim
+        # in the contract, so accusing from the Delaware clause is a guess; the
+        # adjudicator refuses and names both.
+        present = ClauseCandidate(
+            ClauseVerdict(
+                "present",
+                "New York appears in Section 12; review the full passage for context.",
+                "governing_law",
+                ("new york",),
+                ("new york",),
+                claim_span="New York",
+                clause_span="New York",
+                where="Section 12",
+            ),
+            section="Section 12",
+            clause_text="governed by the laws of the State of New York",
+            on_topic=True,
+        )
+        contradiction = ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                "The summary states New York; Section 12 (as amended) states Delaware.",
+                "governing_law",
+                ("new york",),
+                ("delaware",),
+                claim_span="New York",
+                clause_span="Delaware",
+                where="Section 12 (as amended)",
+            ),
+            section="Section 12 (as amended)",
+            clause_text="governed by the laws of the State of Delaware",
+            on_topic=True,
+        )
+        verdict, _, _ = adjudicate_clause_candidates([contradiction, present])
+        self.assertEqual("conflicting_clauses", verdict.disposition)
+        self.assertEqual("governing_law", verdict.anchor_type)
+
+
 if __name__ == "__main__":
     unittest.main()
