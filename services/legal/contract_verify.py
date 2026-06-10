@@ -30,7 +30,10 @@ from dataclasses import dataclass
 from services.legal.anchors import extract_anchors
 from services.retrieval.validators import verbatim_run_present
 
-_PARAMETRIC_TYPES = ("money", "date", "duration")
+# percent compares by exact basis-point equality through the default
+# set-intersection branch of _values_match (Decimal hashes by numeric value, so
+# "0.5%" and "50 bps" intersect); duration alone keeps a tolerance.
+_PARAMETRIC_TYPES = ("money", "percent", "date", "duration")
 _DURATION_REL_TOLERANCE = 0.05
 
 

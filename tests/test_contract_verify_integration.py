@@ -112,7 +112,28 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-1", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_percent_contract()
         self._conn.commit()
+
+    def _seed_percent_contract(self) -> None:
+        # A separate one-clause document for the percent cases: the legacy
+        # contract-1 tests keep their exact pre-percent retrieval ranking (the
+        # top-3 clause window over near-tie hash-RRF scores shifts when any
+        # node is added), and the percent tests still run the full
+        # envelope -> retrieval -> clause-verdict path.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-2', 'license.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 9.2. The royalty equals 50% of the net fees received "
+                "in the twelve (12) months preceding each report.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-2", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -128,6 +149,33 @@ class ContractPathIntegrationTests(unittest.TestCase):
         verdict = self._verdict_for(env, "liability")
         self.assertEqual("parametric_contradiction", verdict["disposition"])
         self.assertEqual("money", verdict["anchor_type"])
+
+    def test_percent_contradiction_survives_a_matching_duration(self) -> None:
+        # THE laundering case from the 2026-06-10 plan, end to end over real
+        # retrieval: pre-percent, the matching 12-month duration carried a green
+        # "present" over a falsified 99% cap. The percent anchor must win with a
+        # filing-grade reason quoting both rates.
+        env = build_deterministic_envelope(
+            "The royalty equals 99% of the net fees received in the preceding twelve (12) months.",
+            conn=self._conn,
+            doc_ids=["contract-2"],
+            embedder=self._embedder,
+        )
+        verdict = self._verdict_for(env, "99%")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertEqual("percent", verdict["anchor_type"])
+        self.assertIn("99%", verdict["detail"])
+        self.assertIn("50%", verdict["detail"])
+
+    def test_matching_percent_is_present(self) -> None:
+        env = build_deterministic_envelope(
+            "The royalty equals 50% of the net fees received in the preceding twelve (12) months.",
+            conn=self._conn,
+            doc_ids=["contract-2"],
+            embedder=self._embedder,
+        )
+        verdict = self._verdict_for(env, "50%")
+        self.assertEqual("present", verdict["disposition"])
 
     def test_matching_duration_is_present(self) -> None:
         env = build_deterministic_envelope(

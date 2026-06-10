@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 from dateutil import parser as date_parser
 
@@ -38,7 +39,7 @@ class Anchor:
     date -> ISO ``YYYY-MM-DD`` string. It is ``None`` for the rest.
     """
 
-    type: str  # citation | slip_op | quote | money | duration | date | section
+    type: str  # citation | slip_op | quote | money | duration | date | percent | section | party | defined_term
     text: str
     start: int
     end: int
@@ -160,6 +161,22 @@ _DATE = re.compile(
     r"|\d{1,2}/\d{1,2}/\d{4})\b"
 )
 
+# Percent / rate, DIGIT forms only with the unit marker in-span: "5%", "12.5
+# percent", "12 per cent", "50 bps", "50 basis points". Canonical value is
+# basis points via exact decimal arithmetic, so "0.5%" and "50 bps" compare
+# equal with no float drift and no tolerance. Refusals, each pinned by tests,
+# never a guessed value: word-form percent ("five percent" — the same
+# bounded-grammar lesson as _MONEY_WORD), range forms ("5-10%": the leading
+# lookbehind rejects a digit-dash-digit tail, so anchoring either end cannot
+# manufacture a verdict against a clause stating the other), and "percentage
+# points" (an additive quantity, not a rate; `percent\b` fails inside
+# "percentage" and `points` is required after `basis` only).
+_PERCENT = re.compile(
+    r"(?<![\w.\-–—])(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
+    r"(?P<unit>%|percent\b|per\s?cent\b|bps\b|basis\s+points?\b)",
+    re.IGNORECASE,
+)
+
 _MONEY_SCALE = {
     "thousand": 1_000,
     "k": 1_000,
@@ -221,6 +238,15 @@ def _money_word_cents(unit: str, hundred: str | None, scale: str) -> int:
 def _duration_days(num: int, unit: str) -> int:
     """Canonical day count (year=365, month=30, week=7, day=1, approximate)."""
     return num * _DURATION_DAYS[unit.lower()]
+
+
+def _percent_bps(num_text: str, unit: str) -> Decimal:
+    """Canonical basis points for a percent/rate span, exact decimal arithmetic."""
+    value = Decimal(num_text.replace(",", ""))
+    u = unit.lower()
+    if u == "bps" or u.startswith("basis"):
+        return value
+    return value * 100
 
 
 def _date_iso(text: str) -> str | None:
@@ -314,6 +340,16 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # Drop date-shaped but invalid values (2024-13-45) rather than emit
             # an anchor whose canonical_value is None (two would compare equal).
             anchors.append(Anchor("date", m.group(0), m.start(), m.end(), iso))
+    for m in _PERCENT.finditer(span):
+        anchors.append(
+            Anchor(
+                "percent",
+                m.group(0),
+                m.start(),
+                m.end(),
+                _percent_bps(m.group("num"), m.group("unit")),
+            )
+        )
     for m in _SECTION.finditer(span):
         # A "section" hit inside a citation span is that citation's own section
         # symbol (e.g. the "§ 1983" of "42 U.S.C. § 1983"), not an intra-document
