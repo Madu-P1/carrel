@@ -10,6 +10,7 @@ import { ShelfView } from "@/features/shelf/ShelfView";
 import { CommandPalette } from "./CommandPalette";
 import { buildCommands } from "./commands";
 import { CachetRail } from "./CachetRail";
+import { DocumentExamination } from "./examine/DocumentExamination";
 import { LecternView } from "./LecternView";
 import { VaultView } from "./VaultView";
 import { SettingsView } from "./SettingsView";
@@ -109,6 +110,9 @@ export function CachetApp() {
           onClose={() => setPaletteOpen(false)}
         />
       ) : null}
+      {/* Mounted at the shell level (not inside a routed view) so an open
+          record survives the unmount-on-nav route swap above. */}
+      <DocumentExamination />
       <ToastHost />
     </div>
   );

@@ -6,6 +6,7 @@ import { useVerify } from "@/features/verify/useVerify";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
 import { CachetMark } from "./CachetMark";
+import { openExamination } from "./examine/examineStore";
 import { liveDraft } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
 import {
@@ -158,7 +159,15 @@ export function LecternView() {
         {source ? (
           <p className={styles.lecternSourceLoaded}>
             <span className={styles.lecternSourceDot} aria-hidden="true" />
-            <span className={styles.lecternSourceName}>{source.filename}</span>
+            <button
+              type="button"
+              className={styles.lecternSourceName}
+              onClick={() => openExamination({ docId: source.docId, filename: source.filename })}
+              aria-label={`Open ${source.filename}`}
+              title="Open the record"
+            >
+              {source.filename}
+            </button>
             <span className={styles.lecternSourceTag}>loaded as the record</span>
             <button
               type="button"
