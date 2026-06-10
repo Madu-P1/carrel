@@ -663,5 +663,133 @@ class GoverningLawAnchorTests(unittest.TestCase):
         self.assertEqual("south korea", a.canonical_value)
 
 
+class PolarityAnchorTests(unittest.TestCase):
+    def test_exclusive_license_is_affirmative(self) -> None:
+        # The canonical carries stem AND noun class: "exclusive license" and
+        # "exclusive remedy" must never compare against each other.
+        a = _first("Licensor grants Licensee an exclusive license.", "polarity")
+        self.assertEqual("exclusive:license+", a.canonical_value)
+        self.assertEqual("exclusive", a.text)
+
+    def test_non_exclusive_license_is_negated(self) -> None:
+        # Hyphenated and solid spellings carry the same canonical.
+        for span in (
+            "Licensor grants a non-exclusive license.",
+            "Licensor grants a nonexclusive license.",
+        ):
+            with self.subTest(span=span):
+                a = _first(span, "polarity")
+                self.assertEqual("exclusive:license-", a.canonical_value)
+
+    def test_irrevocable_is_the_negated_revocable(self) -> None:
+        # The ir- pair shares a stem with revocable so a flip can contradict.
+        neg = _first("an irrevocable license to use the Software", "polarity")
+        aff = _first("a revocable license to use the Software", "polarity")
+        self.assertEqual("revocable:license-", neg.canonical_value)
+        self.assertEqual("revocable:license+", aff.canonical_value)
+
+    def test_each_adjective_in_a_run_anchors_individually(self) -> None:
+        anchors = _of(
+            "Licensor grants an exclusive, non-transferable, irrevocable license.",
+            "polarity",
+        )
+        self.assertEqual(
+            ["exclusive:license+", "transferable:license-", "revocable:license-"],
+            [a.canonical_value for a in anchors],
+        )
+
+    def test_binding_arbitration_pair(self) -> None:
+        # Different noun classes on purpose: binding arbitration and
+        # non-binding mediation are different procedures, not a flip.
+        aff = _first("Disputes are resolved by binding arbitration.", "polarity")
+        neg = _first("The parties will first attempt non-binding mediation.", "polarity")
+        self.assertEqual("binding:arbitration+", aff.canonical_value)
+        self.assertEqual("binding:mediation-", neg.canonical_value)
+
+    def test_plural_noun_folds_to_the_singular_class(self) -> None:
+        a = _first("Licensee receives exclusive rights to the Work.", "polarity")
+        self.assertEqual("exclusive:right+", a.canonical_value)
+
+    def test_scope_negators_refuse_the_anchor(self) -> None:
+        # Clause-scope negation reverses the qualifier's meaning; the bounded
+        # grammar cannot represent it, so no sign is ever minted (the
+        # adversarial review's negation-hole pair).
+        for span in (
+            "Nothing herein creates a binding obligation.",
+            "Licensor may act without granting an exclusive license to any party.",
+            "In no event shall this constitute a binding commitment.",
+            "Neither party receives an exclusive license under this Section.",
+        ):
+            with self.subTest(span=span):
+                self.assertNotIn("polarity", _types(span))
+
+    def test_negator_in_a_prior_sentence_does_not_refuse(self) -> None:
+        # The scope guard is segment-bounded: a negation BEFORE the sentence
+        # boundary cannot suppress a clean grant after it.
+        a = _first(
+            "The prior draft was not executed. Licensor grants an exclusive license.",
+            "polarity",
+        )
+        self.assertEqual("exclusive:license+", a.canonical_value)
+
+    def test_exclusive_jurisdiction_is_not_a_polarity_anchor(self) -> None:
+        # Forum language: "exclusive" there is venue, not a grant qualifier.
+        self.assertNotIn(
+            "polarity",
+            _types("The parties consent to the exclusive jurisdiction of the courts."),
+        )
+
+    def test_broken_adjective_run_refuses(self) -> None:
+        # "exclusive" modifies "distributor", not the later "license"; the
+        # closed-vocabulary run is broken, so no anchor is minted.
+        self.assertNotIn(
+            "polarity",
+            _types("The exclusive distributor shall hold a license to the marks."),
+        )
+
+    def test_negated_forms_refuse_not_flip(self) -> None:
+        # "not exclusive" is outside the bounded grammar: refusing is honest;
+        # minting either sign would be a guess.
+        for span in (
+            "The license is not an exclusive license.",
+            "There is no binding obligation under this term sheet.",
+            "This letter shall not be a binding agreement.",
+        ):
+            with self.subTest(span=span):
+                self.assertNotIn("polarity", _types(span))
+
+    def test_predicative_position_anchors(self) -> None:
+        # The common summary phrasing puts the qualifier after the copula.
+        cases = {
+            "The license granted hereunder is non-exclusive.": "exclusive:license-",
+            "This Agreement is binding.": "binding:agreement+",
+            "The deposit is refundable.": "refundable:deposit+",
+        }
+        for span, canonical in cases.items():
+            with self.subTest(span=span):
+                self.assertEqual(canonical, _first(span, "polarity").canonical_value)
+
+    def test_predicative_negation_refuses_structurally(self) -> None:
+        # The copula-adjacency requirement means a negator breaks the match;
+        # no sign is guessed for "is not exclusive" or "no longer binding".
+        for span in (
+            "The license is not exclusive.",
+            "This Agreement shall not be binding.",
+            "The offer is no longer binding.",
+        ):
+            with self.subTest(span=span):
+                self.assertNotIn("polarity", _types(span))
+
+    def test_bare_adjective_without_a_grant_noun_refuses(self) -> None:
+        # "arrangement" is not a grant noun: neither the attributive nor the
+        # predicative grammar reaches the qualifier.
+        self.assertNotIn("polarity", _types("The arrangement is binding."))
+
+    def test_offsets_cover_the_full_surface(self) -> None:
+        text = "Licensor grants a non-exclusive license."
+        a = _first(text, "polarity")
+        self.assertEqual("non-exclusive", text[a.start : a.end])
+
+
 if __name__ == "__main__":
     unittest.main()

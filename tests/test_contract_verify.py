@@ -478,5 +478,267 @@ class GoverningLawClauseTests(unittest.TestCase):
         self.assertEqual("governing_law", verdict.anchor_type)
 
 
+class PolarityClauseTests(unittest.TestCase):
+    """Polarity flips (exclusive vs non-exclusive, binding vs non-binding,
+    revocable vs irrevocable) adjudicated per stem, so a matching qualifier in
+    the same sentence can never mask a flipped one."""
+
+    def test_exclusivity_flip_is_a_contradiction(self) -> None:
+        v = verify_claim_against_clause(
+            "The agreement grants Licensee an exclusive license to the Software.",
+            "Section 3. Licensor hereby grants Licensee a non-exclusive license "
+            "to use the Software.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+        self.assertIn("exclusive", v.detail)
+        self.assertIn("non-exclusive", v.detail)
+
+    def test_matching_polarity_is_present(self) -> None:
+        v = verify_claim_against_clause(
+            "The license to the Software is non-exclusive.",
+            "Licensor grants Licensee a non-exclusive license to use the Software.",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_asymmetric_subject_matter_refuses_a_green_too(self) -> None:
+        # A bare claim against a clause that names its subject matter: WHICH
+        # license the claim means is unknowable, so confirming would be a
+        # guessed green (round-2 hardening, the asymmetry rule).
+        v = verify_claim_against_clause(
+            "The license granted is non-exclusive.",
+            "Licensor grants Licensee a non-exclusive license to use the Software.",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+
+    def test_matching_stem_does_not_mask_a_flipped_sibling(self) -> None:
+        # transferable agrees on both sides; exclusivity is flipped. Per-stem
+        # adjudication must surface the flip, not launder it through the match.
+        v = verify_claim_against_clause(
+            "Licensee receives an exclusive, non-transferable license.",
+            "Licensor grants a non-exclusive, non-transferable license.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_both_signs_of_one_stem_refuse_to_guess(self) -> None:
+        # The clause grants exclusivity for one field and not another; aligning
+        # the claim's single qualifier to either would be a guess.
+        v = verify_claim_against_clause(
+            "Licensee receives an exclusive license to the Trademarks.",
+            "Licensor grants an exclusive license to the Trademarks in the "
+            "Territory and a non-exclusive license to the Trademarks elsewhere.",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_polarity_not_found_is_the_honest_exit(self) -> None:
+        # The clause grants a license without stating exclusivity: the claim's
+        # qualifier cannot be confirmed from it, and accusing would be a guess.
+        v = verify_claim_against_clause(
+            "The agreement grants a non-exclusive license to the Software.",
+            "Licensor grants Licensee a license to use the Software.",
+        )
+        self.assertEqual("not_found", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_matching_money_does_not_mask_a_polarity_flip(self) -> None:
+        # The fee agrees; the exclusivity is flipped. A contradiction in ANY
+        # type wins outright (the percent-laundering lesson, same shape).
+        v = verify_claim_against_clause(
+            "An exclusive license is granted for a fee of $50,000.",
+            "Licensor grants a non-exclusive license for a fee of $50,000.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_exclusive_remedy_cannot_green_an_exclusive_license(self) -> None:
+        # The adversarial review's false-green blocker: "sole and exclusive
+        # remedy" shares the stem but qualifies a different noun class, so it
+        # must never confirm a claim about license exclusivity.
+        v = verify_claim_against_clause(
+            "Section 4 grants Licensee an exclusive license to exploit the Work.",
+            "The remedies set forth in this Section shall be the sole and "
+            "exclusive remedy of the parties.",
+        )
+        self.assertNotEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
+
+    def test_different_subject_matter_refuses_not_accuses(self) -> None:
+        # The adversarial review's false-accusation blocker: an exclusive
+        # Software license and a non-exclusive Documentation license can both
+        # be true. Disjoint post-noun subject matter on both sides refuses.
+        v = verify_claim_against_clause(
+            "Licensor grants an exclusive license to the Software.",
+            "Licensor grants a non-exclusive license to the Documentation.",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+        self.assertIn("subject matter", v.detail)
+
+    def test_different_subject_matter_blocks_a_false_green_too(self) -> None:
+        # Same sign, different subject matter: confirming the Software claim
+        # from the Documentation grant would be a false green.
+        v = verify_claim_against_clause(
+            "Licensor grants a non-exclusive license to the Software.",
+            "Licensor grants a non-exclusive license to the Documentation.",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+
+    def test_shared_subject_matter_still_contradicts(self) -> None:
+        # The flagship catch survives the subject-matter gate: both sides
+        # qualify the same Software license.
+        v = verify_claim_against_clause(
+            "The agreement grants an exclusive license to use the Software.",
+            "Licensor grants Licensee a non-exclusive license to use the Software during the Term.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_both_sides_bare_still_contradicts(self) -> None:
+        # Neither side states subject matter: there is exactly one license in
+        # play on the evidence, so the flip stays a catch.
+        v = verify_claim_against_clause(
+            "The license granted hereunder is exclusive.",
+            "Licensor grants Licensee a non-exclusive license.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_pre_noun_subject_matter_is_read(self) -> None:
+        # Round-2 escape 2: "the TRADEMARK license" puts the subject matter
+        # before the noun. Against a non-exclusive SOURCE-CODE license the
+        # qualifiers must refuse, not accuse; against a non-exclusive
+        # TRADEMARK license the flip is the real catch and must survive.
+        refused = verify_claim_against_clause(
+            "The trademark license is exclusive.",
+            "Licensor grants a non-exclusive license to the source code.",
+        )
+        self.assertEqual("multi_value_unverifiable", refused.disposition)
+        caught = verify_claim_against_clause(
+            "The trademark license is exclusive.",
+            "Licensor grants a non-exclusive trademark license.",
+        )
+        self.assertEqual("parametric_contradiction", caught.disposition)
+
+    def test_shared_generic_word_does_not_defeat_the_gate(self) -> None:
+        # Round-2 escape 1: "Product" is shared, but source code and user
+        # manual are different grants that can both be true. Each side carries
+        # a word the other lacks, so the pair refuses in both directions.
+        accusation = verify_claim_against_clause(
+            "Vendor grants an exclusive license to the Product source code.",
+            "Vendor grants a non-exclusive license to the Product user manual.",
+        )
+        self.assertEqual("multi_value_unverifiable", accusation.disposition)
+        green = verify_claim_against_clause(
+            "Vendor grants a non-exclusive license to the Product source code.",
+            "Vendor grants a non-exclusive license to the Product user manual.",
+        )
+        self.assertEqual("multi_value_unverifiable", green.disposition)
+
+    def test_compound_grant_noun_keys_stably(self) -> None:
+        # Round-3 note 1: "exclusive license rights" must bind to the FIRST
+        # grant noun and key the same grant as a bare "exclusive license", or
+        # a real flip lands on different keys and goes unseen.
+        v = verify_claim_against_clause(
+            "Licensee receives exclusive license rights under this Section.",
+            "Licensor grants Licensee a non-exclusive license.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("polarity:exclusive:license", v.anchor_type)
+
+    def test_sentence_subject_is_not_subject_matter(self) -> None:
+        # Round-3 note 2: the pre-noun window stops at the granting verb, so
+        # the grantor's name cannot register as subject matter and suppress a
+        # real flip through the asymmetry rule.
+        v = verify_claim_against_clause(
+            "The Company hereby grants an exclusive license.",
+            "The Vendor hereby grants a non-exclusive license.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_verbose_restatement_keeps_the_catch(self) -> None:
+        # Subset objects are the same grant said longer; the gate only refuses
+        # on mutual difference, so verbosity does not soften a flip.
+        v = verify_claim_against_clause(
+            "The agreement grants an exclusive license to use the Software.",
+            "Licensor grants Licensee a non-exclusive license to use the "
+            "Software during the Term in the Territory.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_cross_clause_same_stem_conflict_refuses(self) -> None:
+        # Two clauses disagree on the same stem (an amended grant): the engine
+        # refuses with both named rather than accusing or greenlighting.
+        present = ClauseCandidate(
+            ClauseVerdict(
+                "present",
+                "exclusive appears in Section 3; review the full passage for context.",
+                "polarity:exclusive:license",
+                ("exclusive+",),
+                ("exclusive+",),
+                claim_span="exclusive",
+                clause_span="exclusive",
+                where="Section 3",
+            ),
+            section="Section 3",
+            clause_text="an exclusive license",
+            on_topic=True,
+        )
+        contradiction = ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                "The summary states exclusive; Section 3 (as amended) states non-exclusive.",
+                "polarity:exclusive:license",
+                ("exclusive+",),
+                ("exclusive-",),
+                claim_span="exclusive",
+                clause_span="non-exclusive",
+                where="Section 3 (as amended)",
+            ),
+            section="Section 3 (as amended)",
+            clause_text="a non-exclusive license",
+            on_topic=True,
+        )
+        verdict, _, _ = adjudicate_clause_candidates([contradiction, present])
+        self.assertEqual("conflicting_clauses", verdict.disposition)
+
+    def test_cross_clause_different_stems_do_not_veto(self) -> None:
+        # A present on revocable in one clause must not veto an exclusivity
+        # contradiction from another: the stem-qualified type keeps them apart.
+        present = ClauseCandidate(
+            ClauseVerdict(
+                "present",
+                "irrevocable appears in Section 2; review the full passage for context.",
+                "polarity:revocable:license",
+                ("revocable-",),
+                ("revocable-",),
+                claim_span="irrevocable",
+                clause_span="irrevocable",
+                where="Section 2",
+            ),
+            section="Section 2",
+            clause_text="an irrevocable license",
+            on_topic=True,
+        )
+        contradiction = ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                "The summary states exclusive; Section 3 states non-exclusive.",
+                "polarity:exclusive:license",
+                ("exclusive+",),
+                ("exclusive-",),
+                claim_span="exclusive",
+                clause_span="non-exclusive",
+                where="Section 3",
+            ),
+            section="Section 3",
+            clause_text="a non-exclusive license",
+            on_topic=True,
+        )
+        verdict, _, _ = adjudicate_clause_candidates([present, contradiction])
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+
+
 if __name__ == "__main__":
     unittest.main()
