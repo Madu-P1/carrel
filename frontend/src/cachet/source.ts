@@ -142,6 +142,16 @@ export async function refreshSources(): Promise<void> {
       fileType: d.file_type ?? null,
     }));
     sourcesError.value = null;
+    // Validate the persisted active record against the library we just got.
+    // The localStorage pointer can outlive its database (a record ingested by
+    // an earlier server instance): the lectern then asserts "loaded as the
+    // record" while the engine resolves the docId to nothing and every check
+    // honestly refuses — the screen contradicts itself about session state.
+    // Clearing only on a SUCCESSFUL fetch: an offline backend proves nothing.
+    const active = loadedSource.value;
+    if (active && !rows.some((d) => d.id === active.docId)) {
+      loadedSource.value = null;
+    }
   } catch (e) {
     sourcesError.value = e instanceof Error ? e.message : "Your records could not be loaded.";
     if (sourceDocs.value === null) sourceDocs.value = [];

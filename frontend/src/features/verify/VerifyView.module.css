@@ -1608,11 +1608,17 @@
 
 /* ---- Examination drawer (the one prototype-sanctioned slide) ---- */
 .exam {
-  position: absolute;
+  /* Fixed to the VIEWPORT, not a page ancestor. The absolute version pinned
+     the drawer to whatever positioned container it landed in: its top/height
+     tracked the page (not the window), its right edge tracked the ancestor
+     (a dead band appeared beyond it at wide windows), and browsers could
+     scroll the focused Close button into view by shifting the whole column
+     (the clipped-document report, 2026-06-10). A drawer is window furniture. */
+  position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(520px, 64%);
+  width: min(520px, 88vw);
   background: var(--surface-2);
   border-left: 1px solid var(--hairline);
   box-shadow: -18px 0 40px rgb(40 30 18 / 10%);
@@ -1751,6 +1757,15 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+
+/* Wide + drawer open: shift the verdict surface left of the fixed drawer so
+   the record stays a READABLE surface beside it (the drawer is aria-modal
+   false by design), instead of silently occluding the centered column. */
+@media (min-width: 1081px) {
+  .results[data-exam-open="true"] {
+    padding-right: min(520px, 44vw);
+  }
 }
 
 /* Narrow: collapse the rail under the document, drawer full-width. */
