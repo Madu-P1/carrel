@@ -177,6 +177,64 @@ class ContractPathIntegrationTests(unittest.TestCase):
         verdict = self._verdict_for(env, "50%")
         self.assertEqual("present", verdict["disposition"])
 
+    def test_fabricated_section_cannot_ride_a_matching_percent(self) -> None:
+        # The review's live finding: a clause-checkable anchor used to suppress
+        # the section-absent check entirely, so a draft citing a section the
+        # contract does not contain, paired with a value that matches some
+        # clause, read VERIFIED. The fabricated section is an affirmative
+        # independent finding; it must demote the present to unsupported.
+        draft = (
+            "Under Section 99, the royalty equals 50% of the net fees received "
+            "in the preceding twelve (12) months."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("Section 99", card.unsupported_reason or "")
+
+    def test_fabricated_section_cannot_ride_a_matching_money(self) -> None:
+        # The same class pre-existed for money/date/duration; the fix covers it.
+        draft = "Under Section 99, the aggregate liability shall not exceed $500,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("Section 99", card.unsupported_reason or "")
+
+    def test_a_contradiction_keeps_its_reason_over_a_fabricated_section(self) -> None:
+        # Both findings are hard unsupported verdicts; the contradiction's
+        # both-values detail is the more actionable filing-grade reason, so it
+        # wins the reason slot.
+        draft = (
+            "Under Section 99, the royalty equals 99% of the net fees received "
+            "in the preceding twelve (12) months."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("99%", card.unsupported_reason or "")
+        self.assertIn("50%", card.unsupported_reason or "")
+
+    def test_percent_only_sentence_routes_to_the_clause_check(self) -> None:
+        # Mutant killer: percent's membership in _CLAUSE_CHECKABLE was pinned by
+        # zero tests (the other percent cases co-carry a duration anchor that
+        # satisfies the set on its own). A percent-only sentence must reach the
+        # clause check and keep the contradiction, not fall to the grounding
+        # path's could-not-check.
+        draft = "The royalty equals 99% of net fees."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "99%")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
     def test_matching_duration_is_present(self) -> None:
         env = build_deterministic_envelope(
             "The confidentiality term lasts two (2) years.",

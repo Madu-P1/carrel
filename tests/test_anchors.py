@@ -89,6 +89,31 @@ class MoneyAnchorTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual([], _of(text, "money"))
 
+    def test_unicode_separator_compounds_yield_no_anchor(self) -> None:
+        # The 2026-06-10 adversarial review reopened the compound seal through a
+        # character-class side door: U+2011 (Word's non-breaking hyphen, which
+        # survives PDF extraction) is neither \w nor ASCII '-', so
+        # 'twenty\u2011five million dollars' minted $5,000,000. Every separator
+        # shape must refuse, not just ASCII space and hyphen.
+        cases = [
+            "twenty\u2011five million dollars",  # non-breaking hyphen
+            "twenty\u2010five million dollars",  # unicode hyphen
+            "twenty\u2013five million dollars",  # en dash
+            "twenty.five million dollars",
+            "twenty, five million dollars",
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual([], _of(text, "money"))
+
+    def test_scale_word_compounds_yield_no_anchor(self) -> None:
+        # The rejector's scale-word arm, pinned in isolation: in
+        # 'three billion five hundred thousand dollars' the word immediately
+        # before the matched tail is 'billion', so only the scale-word list
+        # stands between this sentence and a minted $500,000.
+        self.assertEqual([], _of("three billion five hundred thousand dollars", "money"))
+        self.assertEqual([], _of("two hundred five million dollars", "money"))
+
     def test_simple_word_forms_survive_the_compound_guard(self) -> None:
         # Sealing the compound boundary must not regress the in-grammar forms,
         # including when ordinary (non-number) words precede them.
@@ -182,6 +207,41 @@ class PercentAnchorTests(unittest.TestCase):
     def test_decimal_does_not_double_anchor(self) -> None:
         # "1.5%" is one anchor; the "5%" tail must not also match.
         self.assertEqual(1, len(_of("a 1.5% royalty", "percent")))
+
+    def test_decimal_comma_refuses_not_a_tenfold_value(self) -> None:
+        # European/typo decimal commas: '12,5%' read as a thousands grouping
+        # canonicalized to 1250 percent — a tenfold-wrong value that both
+        # false-accuses a correct draft and false-verifies a wrong one. Commas
+        # are accepted only in valid 3-digit groupings; anything else refuses.
+        self.assertEqual([], _of("a royalty of 12,5% of revenue", "percent"))
+        self.assertEqual([], _of("a late charge of 0,5% per month", "percent"))
+        self.assertEqual(1250, _first("a charge of 1,250 bps", "percent").canonical_value)
+
+    def test_worded_ranges_yield_no_anchor(self) -> None:
+        # 'between 5 and 10%' left the low end unit-less, so only the top end
+        # anchored: a single point value minted from a range manufactures a
+        # verdict against a clause stating any other point of it. Every range
+        # spelling refuses; only the both-ends-marked form ('from 5% to 10%')
+        # anchors, as TWO values the multi-value refusal handles honestly.
+        cases = [
+            "a fee of 5 to 10% of revenue",
+            "between 5 and 10% of revenue",
+            "ranging from 5 to 10% of revenue",
+            "a 5 \u2013 10% band",
+            "a 5\u201210% band",  # figure dash
+            "adjusted by \u22125% overall",  # minus sign
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual([], _of(text, "percent"))
+        self.assertEqual(2, len(_of("from 5% to 10% of fees", "percent")))
+
+    def test_nested_decimal_yields_no_anchor(self) -> None:
+        # '8.5.3%' (typo/OCR/section-number collision): the dot in the
+        # lookbehind is what refuses the '5.3%' tail. Pinned in isolation —
+        # match consumption alone covers only the well-formed '1.5%' case.
+        self.assertEqual([], _of("8.5.3% of fees", "percent"))
+        self.assertEqual([], _of("clause 12.5.3% rate", "percent"))
 
     def test_offsets_are_exact(self) -> None:
         text = "a fee of 12.5% of net revenue"

@@ -135,10 +135,6 @@ class MultiValueTests(unittest.TestCase):
         self.assertEqual("duration", v.anchor_type)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PercentClauseTests(unittest.TestCase):
     def test_percent_contradiction(self) -> None:
         v = verify_claim_against_clause(
@@ -185,9 +181,23 @@ class PercentClauseTests(unittest.TestCase):
         )
         self.assertEqual("not_found", v.disposition)
 
+    def test_dual_notation_of_one_rate_is_present_not_a_refusal(self) -> None:
+        # '0.5% (50 bps)' is ONE rate written twice; equal canonicals collapse
+        # before the multi-value test, so the legal dual-notation convention
+        # reads present instead of an unnecessary could-not-check.
+        v = verify_claim_against_clause(
+            "A late charge of 0.5% (50 bps) accrues monthly.",
+            "Section 3. A late charge of 0.5% accrues monthly.",
+        )
+        self.assertEqual("present", v.disposition)
+
     def test_two_percents_on_one_side_refuse_to_guess(self) -> None:
         v = verify_claim_against_clause(
             "Interest accrues at 5% and rises to 8% on default.",
             "Section 6. Interest accrues at 5% per annum.",
         )
         self.assertEqual("multi_value_unverifiable", v.disposition)
+
+
+if __name__ == "__main__":
+    unittest.main()

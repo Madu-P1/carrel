@@ -75,7 +75,8 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     claim_anchors = extract_anchors(claim)
     clause_anchors = extract_anchors(clause)
     section = next((a.text for a in clause_anchors if a.type == "section"), None)
-    where = section or "your loaded sources"
+    # Singular on purpose: the fallback feeds "{where} states {value}" below.
+    where = section or "the loaded source"
 
     # Evaluate EVERY parametric type the claim carries, not just the first. A
     # contradiction in ANY type wins outright: a sentence with a matching amount but a
@@ -94,13 +95,17 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         clause_hits = [
             a for a in clause_anchors if a.type == anchor_type and a.canonical_value is not None
         ]
-        claim_values = tuple(a.canonical_value for a in claim_hits)
-        clause_values = tuple(a.canonical_value for a in clause_hits)
+        # Equal canonicals collapse to one fact: "0.5% (50 bps)" is a single
+        # rate written twice, not two values needing alignment. Only genuinely
+        # different values trigger the multi-value refusal below.
+        claim_values = tuple(dict.fromkeys(a.canonical_value for a in claim_hits))
+        clause_values = tuple(dict.fromkeys(a.canonical_value for a in clause_hits))
         if not clause_hits:
             if not_found_verdict is None:
                 not_found_verdict = ClauseVerdict(
                     "not_found",
-                    f"The summary states {claim_hits[0].text}, which does not appear in your loaded sources.",
+                    f"The summary states {claim_hits[0].text}, which the deterministic check "
+                    "could not locate in your loaded sources.",
                     anchor_type,
                     claim_values,
                     (),

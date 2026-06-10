@@ -74,7 +74,8 @@ _MONEY = re.compile(
 # UNTREATED (plain draft text, no card) per the 2026-06-08 untreated split — a
 # pinned recall gap (tests/test_anchors.py), not a hidden one.
 _MONEY_WORD = re.compile(
-    r"(?<![\w-])(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+    r"(?<![\w\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212])"
+    r"(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
     r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|a)\s+"
     r"(?:(?P<hundred>hundred)\s+)?"
     r"(?P<scale>thousand|million|billion)\s+(?:dollars|USD)\b"
@@ -93,7 +94,7 @@ _NUMBER_WORD_BEFORE = re.compile(
     r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
     r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
-    r"billion)[\s-]*$",
+    r"billion)[\s,.\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]*$",
     re.IGNORECASE,
 )
 
@@ -172,8 +173,26 @@ _DATE = re.compile(
 # points" (an additive quantity, not a rate; `percent\b` fails inside
 # "percentage" and `points` is required after `basis` only).
 _PERCENT = re.compile(
-    r"(?<![\w.\-–—])(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
+    # num accepts a plain digit run or VALID US thousands grouping only; a
+    # European decimal comma ("12,5%") fits neither branch and the comma in the
+    # lookbehind stops the tail ("5%") from anchoring alone, so the whole form
+    # refuses rather than canonicalize 12,5% as 1250%. The lookbehind also
+    # carries the Unicode dash family so "5\u201310%" and minus-signed rates
+    # refuse the same way the ASCII range form does.
+    r"(?<![\w.,\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212])"
+    r"(?P<num>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*"
     r"(?P<unit>%|percent\b|per\s?cent\b|bps\b|basis\s+points?\b)",
+    re.IGNORECASE,
+)
+
+# Worded/spaced range rejector for _PERCENT: a match whose preceding text ends
+# with a bare number and a range connector ("5 to ", "between 5 and ", "5 - ")
+# is the TOP END of a range. Anchoring it would manufacture a verdict against a
+# clause stating any other point of the range (the same rule the dash lookbehind
+# enforces for "5-10%"). "from 5% to 10%" is NOT rejected: both ends carry the
+# unit, two anchors emerge, and the multi-value refusal handles them honestly.
+_PERCENT_RANGE_BEFORE = re.compile(
+    r"\d\s*(?:[-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]|\b(?:to|and|or|through)\b)\s*$",
     re.IGNORECASE,
 )
 
@@ -341,6 +360,10 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # an anchor whose canonical_value is None (two would compare equal).
             anchors.append(Anchor("date", m.group(0), m.start(), m.end(), iso))
     for m in _PERCENT.finditer(span):
+        if _PERCENT_RANGE_BEFORE.search(span[: m.start()]):
+            # The top end of a worded/spaced range ("between 5 and 10%"):
+            # refuse the anchor rather than collapse a range to one endpoint.
+            continue
         anchors.append(
             Anchor(
                 "percent",
