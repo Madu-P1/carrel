@@ -84,13 +84,19 @@ describe("dispositionForClaim", () => {
     expect(d.tier).toBe("refusal");
   });
 
-  test("a bounded-corpus miss names the corpus scope and date when attested", () => {
+  test("a bounded-corpus miss renders the engine's reason (which names the corpus scope)", () => {
     // D13: the could-not-check copy must state the denominator (what corpus,
-    // how big, as of when), so "outside the corpus" reads as the bounded check
-    // it was, not as a vague refusal.
+    // how big, as of when). After the wire-DRY reconciliation, the engine owns
+    // that sentence (services/verify.py::_deterministic_reason emits the scope
+    // phrase) and the disposition renders it verbatim rather than re-deriving
+    // it frontend-side, so the two surfaces cannot drift.
     const d = dispositionForClaim(
       card({
         verdict: "unknown",
+        unsupported_reason:
+          "Citation 999 U.S. 999 is outside the offline corpus checked (a 3-case demo " +
+          "corpus, as of 2026-06-05). This does not establish the case does not exist; " +
+          "confirm it against the full national database.",
         case_verdicts: [
           batch([
             caseItem({
@@ -107,6 +113,19 @@ describe("dispositionForClaim", () => {
     );
     expect(d.kind).toBe("could_not_check");
     expect(d.detail).toContain("a 3-case demo corpus, as of 2026-06-05");
+  });
+
+  test("a bounded-corpus miss falls back to plain copy when the engine sent no reason", () => {
+    // Older payloads (no unsupported_reason): the disposition still refuses
+    // honestly, just without the scope phrase the newer engine supplies.
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        case_verdicts: [batch([caseItem({ status: 404, exists: false, bounded_corpus: true })])]
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.detail).toContain("outside the offline corpus checked");
   });
 
   test("a complete-index miss states its as-of date", () => {

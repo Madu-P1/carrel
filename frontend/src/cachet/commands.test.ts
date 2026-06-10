@@ -5,24 +5,35 @@ import { buildCommands, filterCommands, type Command } from "./commands";
 describe("buildCommands", () => {
   const close = () => {};
 
-  it("never offers a verb with no listener (the dead verify verbs stay out)", () => {
-    // verify-draft/seal/export dispatched a CustomEvent nothing handled, so the
-    // palette offered actions that silently did nothing. They stay out until a
-    // listener exists on the verify surface.
-    for (const path of ["/", "/verify", "/shelf"]) {
+  it("offers the verify verbs on the lectern and the verify route", () => {
+    for (const path of ["/", "/verify"]) {
       const ids = buildCommands(path, close).map((c) => c.id);
-      expect(ids).not.toContain("verify-draft");
-      expect(ids).not.toContain("seal");
-      expect(ids).not.toContain("export");
+      expect(ids).toContain("verify-draft");
+      expect(ids).toContain("seal");
+      expect(ids).toContain("export");
     }
   });
 
-  it("always offers the navigation verbs", () => {
+  it("the seal verb advertises no shortcut it does not implement", () => {
+    // The old hint claimed ⌘S; no handler anywhere binds it. A filing-grade
+    // tool must not decorate a command with a shortcut that does nothing.
+    const seal = buildCommands("/", close).find((c) => c.id === "seal");
+    expect(seal?.hint).toBeUndefined();
+  });
+
+  it("the seal and export verbs say they open the certification (ellipsis convention)", () => {
+    const byId = new Map(buildCommands("/", close).map((c) => [c.id, c]));
+    expect(byId.get("seal")?.title).toBe("Seal and save…");
+    expect(byId.get("export")?.title).toBe("Export certification…");
+  });
+
+  it("hides the verify verbs where they cannot act", () => {
     const ids = buildCommands("/shelf", close).map((c) => c.id);
+    expect(ids).not.toContain("verify-draft");
+    expect(ids).not.toContain("seal");
+    // navigation verbs are always available
     expect(ids).toContain("go-settings");
     expect(ids).toContain("go-shelf");
-    expect(ids).toContain("go-vault");
-    expect(ids).toContain("new");
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { ProvenanceBadge, Spinner, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
@@ -73,6 +73,13 @@ interface CaseLineProps {
     holding_concern?: string | null;
     holding_excerpt?: string | null;
     holding_error?: string | null;
+    // Deterministic engine only (not on the wire schema; claimDisposition reads
+    // the same fields with a cast). bounded_corpus: this verdict came from the
+    // BOUNDED offline corpus, so an absent cite is "outside my coverage", never
+    // "does not exist". caption_mismatch: the number resolved, but to a
+    // different case than the draft names.
+    bounded_corpus?: boolean;
+    caption_mismatch?: boolean;
   };
 }
 
@@ -82,20 +89,39 @@ function CaseVerdictLine({ verdict }: CaseLineProps) {
   // malformed reporter. PR3 replaces these traffic-light hues with the
   // scoped paper-and-oxblood palette; the claim-level disposition badge
   // already carries the headline verdict.
-  const colorClass = verdict.exists
-    ? styles.caseExists
-    : verdict.status === 300
+  //
+  // The sub-line must keep the claim-level register: a bounded-corpus miss is
+  // a coverage statement (muted), never the oxblood "Case not found" the
+  // engine refused to assert; a caption mismatch is the flag by name, never a
+  // quiet "Case found" naming the wrong case.
+  const captionMismatch = Boolean(verdict.caption_mismatch);
+  const boundedMiss =
+    !verdict.exists &&
+    Boolean(verdict.bounded_corpus) &&
+    (verdict.status === 404 || verdict.status === 400) &&
+    !captionMismatch;
+  const colorClass = captionMismatch
+    ? styles.caseMissing
+    : boundedMiss
       ? styles.caseAmbiguous
-      : styles.caseMissing;
-  const label = verdict.exists
-    ? "Case found"
-    : verdict.status === 300
-      ? "Ambiguous (multiple matches)"
-      : verdict.status === 404
-        ? "Case not found"
-        : verdict.status === 400
-          ? "Malformed citation"
-          : "Verification error";
+      : verdict.exists
+        ? styles.caseExists
+        : verdict.status === 300
+          ? styles.caseAmbiguous
+          : styles.caseMissing;
+  const label = captionMismatch
+    ? "Resolves to a different case"
+    : boundedMiss
+      ? "Outside the offline corpus checked"
+      : verdict.exists
+        ? "Case found"
+        : verdict.status === 300
+          ? "Ambiguous (multiple matches)"
+          : verdict.status === 404
+            ? "Case not found"
+            : verdict.status === 400
+              ? "Malformed citation"
+              : "Verification error";
   // Carrel V2 half-2: derive a holding-match sub-line state.
   type HoldingState = {
     kind: HoldingKind;
@@ -332,6 +358,9 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
     { label: "Source does not support", value: propositionUnsupported },
     { label: "Unsupported", value: claimUnsupported },
     { label: "Could not verify", value: couldNotCheck },
+    // T1 (ADR-0012): zero until the selector ships, but listed so the stat
+    // row always sums to the total once assessed cards go live.
+    { label: "Assessed (local model)", value: count("assessed") },
     { label: "Supported", value: supported }
   ].filter((s) => s.value > 0);
 
@@ -472,6 +501,42 @@ export function VerifyResults({
     setSessionSealed(false);
   }, [response]);
 
+  // SM-V7 command spine: the seal and export verbs from the ⌘K palette open
+  // the certification exhibit (this component owns it). Sealing stays the
+  // human's click inside the exhibit; a command must never set the seal
+  // itself. Only the Cachet palette dispatches this event, so Carrel hosts
+  // carry an inert listener. The ref keeps registration to one listener while
+  // reading the current response/seed.
+  const openCertRef = useRef(() => {});
+  openCertRef.current = () => {
+    if (!response) {
+      toast.error("No verdict to certify yet. Verify the draft first.");
+      return;
+    }
+    setCertAt(certAtSeed ?? new Date().toISOString());
+  };
+  useEffect(() => {
+    function onCommand(event: Event) {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === "seal" || id === "export") openCertRef.current();
+    }
+    window.addEventListener("cachet:command", onCommand);
+    return () => window.removeEventListener("cachet:command", onCommand);
+  }, []);
+
+  // The text the verdict actually covers vs the text on the composer right
+  // now. The verdict persists across navigation (and the composer stays
+  // editable after a check), so without this comparison an edited draft would
+  // sit directly above a confident "All N statements are supported" the
+  // engine never saw — the product's stated worst failure. Plain trimmed
+  // string equality: verify() trims before sending and the engine echoes the
+  // cleaned text back as draft_text. An EMPTIED composer is left undecided
+  // (no banner) so the brief-hydration window, where the response lands a
+  // frame before the composer seeds, cannot flash a false stale notice.
+  const checkedText = response?.draft_text ?? null;
+  const draftStale =
+    checkedText !== null && draft.trim() !== "" && draft.trim() !== checkedText.trim();
+
   const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
@@ -481,7 +546,7 @@ export function VerifyResults({
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
-  const certModel = certAt && response ? buildCertification(response, certAt) : null;
+  const certModel = certAt && response ? buildCertification(response, certAt, draft) : null;
   // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
   // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
   const isSealed = sessionSealed || sealedSeed !== null;
@@ -522,7 +587,11 @@ export function VerifyResults({
   // each not-yet-checked claim in its "Checking…" register. These are computed
   // through the SAME pure `dispositionForClaim`, but a checking card overrides
   // the badge so a claim never flashes a pass before its cite check lands.
-  const streaming = loading && !response;
+  // A stream error drops the live list at once: the skeleton cards carry the
+  // grounding verdict with no case verdicts, so holding them on screen after
+  // the failure would read half-checked claims as findings. The error banner
+  // is the only verdict an errored stream gets (refuse over accuse).
+  const streaming = loading && !response && stream.phase !== "error";
   const liveItems =
     streaming && stream.cards.length > 0
       ? stream.cards
@@ -567,6 +636,25 @@ export function VerifyResults({
         </div>
       ) : null}
 
+      {loading ? (
+        // One announcement that the check is running: CONSTANT text for the
+        // whole stream so the live region fires exactly once, never per cite.
+        // Visually hidden (inline, not a CSS class: the entry CSS budget sits
+        // bytes from its ceiling); the settled summary announces the outcome.
+        <span
+          role="status"
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            overflow: "hidden",
+            clipPath: "inset(50%)"
+          }}
+        >
+          Verifying the draft against your sources.
+        </span>
+      ) : null}
+
       {streaming && liveItems.length > 0 ? (
         <div className={styles.workspace}>
           <div className={styles.verdictList}>
@@ -590,6 +678,27 @@ export function VerifyResults({
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
       ) : (
         <>
+          {draftStale ? (
+            // The stale register leads the settled verdict: every pixel below
+            // it describes the EARLIER text. Quiet note, not oxblood — the
+            // verdict is not wrong, it is outdated — with the one honest next
+            // move wired to the current draft.
+            <div className={styles.resolveRefusal} role="note" data-stale-draft="true">
+              <p className={styles.resolveRefusalText}>
+                The draft has changed since this check. The verdict below covers the earlier
+                text, not your latest edits.
+              </p>
+              <button
+                type="button"
+                className={styles.resolveRefusalAction}
+                onClick={() => void engine.verify(draft)}
+                disabled={loading}
+              >
+                Verify the draft again
+              </button>
+            </div>
+          ) : null}
+
           {response && response.provider ? (
             <div className={styles.provenanceRow}>
               <ProvenanceBadge provider={response.provider} />
@@ -671,8 +780,23 @@ export function VerifyResults({
         <CertificationExhibit
           model={certModel}
           sealedFingerprint={sealedSeed}
+          // The sheet's CURRENT text, so a seal set on text that has since
+          // been edited reads cracked on the live flow too, not only on a
+          // reopened brief. Computed only while the exhibit is open (one
+          // SHA-256 per open, not per keystroke).
+          currentFingerprint={fingerprintDraft(
+            draft.trim() !== "" ? draft.trim() : (response?.draft_text ?? "")
+          )}
           onSeal={() => {
             setSessionSealed(true);
+            // Record the live seal on the ENGINE too: sessionSealed is render
+            // state and dies with this component, so on a persistent-store
+            // host (the lectern) a remount would re-show the quiet Save,
+            // whose upsert silently downgrades the seal. The engine seed is
+            // what survives — and it is what a reopened exhibit reads. The
+            // PAIR is recorded (fingerprint + timestamp) so a reopened
+            // exhibit re-renders the original seal date, never a fresh one.
+            engine.markSealed(certModel.fingerprint, certModel.generatedAtISO);
             void saveToShelf("sealed");
           }}
           onClose={() => setCertAt(null)}

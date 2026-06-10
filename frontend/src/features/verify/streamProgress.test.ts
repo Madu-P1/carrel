@@ -138,6 +138,31 @@ describe("isCardChecking — invariant #6 (no card reads as a pass before its ci
     expect(s.result).toBeNull();
   });
 
+  it("MID-STREAM ERROR: an un-checked card is never released to its skeleton disposition", () => {
+    // The skeleton card carries verdict "verified" with no case verdicts, so
+    // releasing it on error would render "Supported" for a claim whose cite
+    // check never ran — invariant #6's exact forbidden render.
+    const s = fold([
+      { type: "progress", phase: "extracting" },
+      { type: "claims", claim_verdicts: [card(0), card(1)] },
+      { type: "cite_verdict", claim_index: 0, case_verdict: caseVerdict(0) },
+      { type: "error", error: "courtlistener exploded" }
+    ]);
+    expect(s.phase).toBe("error");
+    expect(isCardChecking(s, card(1))).toBe(true);
+    // The card whose verdict DID land before the failure may settle.
+    expect(isCardChecking(s, card(0))).toBe(false);
+  });
+
+  it("a card with no claim_index is held as checking, never released by guesswork", () => {
+    const s = fold([
+      { type: "progress", phase: "extracting" },
+      { type: "claims", claim_verdicts: [card(0)] }
+    ]);
+    const indexless = { ...card(0), claim_index: undefined } as unknown as VerifyClaimVerdict;
+    expect(isCardChecking(s, indexless)).toBe(true);
+  });
+
   it("once done, isCardChecking is false (the settled result governs)", () => {
     const s: VerifyStreamState = {
       phase: "done",

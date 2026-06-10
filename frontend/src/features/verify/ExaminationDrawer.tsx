@@ -34,16 +34,49 @@ interface CheckRow {
  * (case-exists, quote-verbatim) read hard pass/flag; the holding-match is
  * assistive (a query, never a confident verdict color). Good-law is under-
  * claimed: shown as a candidate, not a KeyCite substitute.
+ *
+ * Register rules, the same ones claimDisposition locks at the claim level:
+ *  - judged over ALL cited cases, never cases[0]; one real case must not hide
+ *    a second missing one, and a clean first cite must not mute a later flag.
+ *  - a bounded-corpus miss is "outside my coverage" (unknown), never the flag
+ *    accusation; the offline corpus cannot tell fabricated from unbundled.
+ *  - a holding contradiction is an AI judgment and wears the query register,
+ *    never the deterministic flag.
+ *
+ * Exported for direct unit testing (ExaminationDrawer.test.tsx).
  */
-function checksFor(card: VerifyClaimVerdict): CheckRow[] {
-  const cases = (card.case_verdicts ?? []).flatMap((b) => (b?.ok ? (b.verdicts ?? []) : []));
-  const anyCase = cases[0];
-  const caseExists: CheckState = cases.length === 0 ? "unknown" : anyCase?.exists ? "pass" : "flag";
-  // Holding match: assistive. True -> query-pass-ish (we still show it as a
-  // query, never a confident tick); False -> flag; None/missing -> unknown.
-  const holding = anyCase?.holding_match;
-  const holdingState: CheckState =
-    holding === true ? "query" : holding === false ? "flag" : "unknown";
+export function checksFor(card: VerifyClaimVerdict): CheckRow[] {
+  type CaseRead = {
+    exists?: boolean;
+    status?: number;
+    holding_match?: boolean | null;
+    bounded_corpus?: boolean;
+    caption_mismatch?: boolean;
+  };
+  const cases = (card.case_verdicts ?? []).flatMap((b) =>
+    b?.ok ? ((b.verdicts ?? []) as CaseRead[]) : []
+  );
+  const anyCaptionMismatch = cases.some((c) => Boolean(c.caption_mismatch));
+  const anyNationalMiss = cases.some(
+    (c) => !c.exists && !c.bounded_corpus && (c.status === 404 || c.status === 400)
+  );
+  const anyBoundedMiss = cases.some(
+    (c) => !c.exists && Boolean(c.bounded_corpus) && (c.status === 404 || c.status === 400)
+  );
+  const allExist = cases.length > 0 && cases.every((c) => Boolean(c.exists));
+  const caseExists: CheckState =
+    cases.length === 0
+      ? "unknown"
+      : anyCaptionMismatch || anyNationalMiss
+        ? "flag"
+        : allExist
+          ? "pass"
+          : "unknown";
+  // Holding match: assistive. Any signal (support or contradiction) is a query
+  // for the lawyer's review — never a confident tick, never the oxblood flag.
+  const anyContradiction = cases.some((c) => c.holding_match === false);
+  const anySupport = cases.some((c) => c.holding_match === true);
+  const holdingState: CheckState = anyContradiction || anySupport ? "query" : "unknown";
   // "Grounded in your sources" reflects ONLY loaded-source (contract) grounding.
   // A citation claim is judged by "Cited case exists" instead, and the litigator
   // cite-check loads no sources, so deriving this from the top-line verdict would
@@ -76,21 +109,28 @@ function checksFor(card: VerifyClaimVerdict): CheckRow[] {
       state: caseExists,
       detail:
         caseExists === "pass"
-          ? "The cited case resolves to a real opinion."
+          ? cases.length > 1
+            ? "Every cited case resolves to a real opinion."
+            : "The cited case resolves to a real opinion."
           : caseExists === "flag"
-            ? "No case matching this citation was found in the record checked."
-            : "No case citation to check."
+            ? anyCaptionMismatch
+              ? "A citation resolves to a different case than the one named in the draft."
+              : "No case matching this citation was found in the record checked."
+            : cases.length === 0
+              ? "No case citation to check."
+              : anyBoundedMiss
+                ? "A citation is outside the offline corpus checked. Confirm it against the full national database."
+                : "A citation could not be checked."
     },
     {
       name: "Holding matches the claim",
       weight: "Assistive",
       state: holdingState,
-      detail:
-        holdingState === "flag"
-          ? "The cited case is real but may not stand for this claim. For your review."
-          : holdingState === "query"
-            ? "The cited opinion appears to support this. Confirm against the source."
-            : "Not assessed."
+      detail: anyContradiction
+        ? "The cited case is real but may not stand for this claim. For your review."
+        : anySupport
+          ? "The cited opinion appears to support this. Confirm against the source."
+          : "Not assessed."
     },
     {
       name: "Quotation verbatim",

@@ -69,7 +69,7 @@ _COURT_ID = re.compile(r"[a-z0-9.]+")
 # sentence carrying one of these has a proposition the contract path can confirm or
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
 # context, never as a clause-checked verdict).
-_CLAUSE_CHECKABLE = frozenset({"money", "date", "duration", "quote"})
+_CLAUSE_CHECKABLE = frozenset({"money", "percent", "date", "duration", "quote"})
 
 # The could-not-check reason attached when T1's recall tier promotes an anchor-free
 # sentence out of untreated (an assessment ran, so a check effectively happened).
@@ -448,8 +448,13 @@ def _grounding_verdict(
     The only grounding anchor that yields a deterministic *verdict* (not merely
     could-not-check context) is a section reference ABSENT from the source: a draft
     that cites a section the contract does not contain is unsupported regardless of
-    the surrounding predicate. Returns None when a clause-checkable anchor is present
-    (the clause verdict wins, ADR-0012 invariant 2).
+    the surrounding predicate. Computed regardless of clause-checkable anchors: a
+    fabricated section is an affirmative independent finding, and suppressing it
+    let "Under Section 99, the royalty equals 50%" ride a matching value into a
+    green card. Precedence with the clause verdict is decided at the mapping
+    layer (services/verify.py): a parametric contradiction keeps its both-values
+    reason; every other clause disposition yields to the fabricated-section
+    finding.
 
     Asymmetry, deliberately:
       - The POSITIVE direction (a section that exists) is NOT promoted to a verdict.
@@ -468,8 +473,6 @@ def _grounding_verdict(
     "Article VII"), in which case every draft section would read absent - so we stay
     could-not-check rather than false-accuse.
     """
-    if any(a.type in _CLAUSE_CHECKABLE for a in anchors):
-        return None
     if not source_sections:
         return None
     sections = list(dict.fromkeys(a.text for a in anchors if a.type == "section"))

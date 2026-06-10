@@ -138,9 +138,15 @@ const indexCssPath = resolve(distDir, "index.css");
 // from main.tsx, so the vault UI ships in the Carrel entry too; dynamic-importing
 // the Cachet shell out of the entry is the lean follow-up, deferred per the same
 // file:// Suspense constraint.
-// Bumped 126 -> 127 KB for verify coverage + attestation honesty (the
-// checked-of-total coverage line in the summary and certification exhibit, and
-// the provider-conditional data-handling attestation): ~126.4 KB gz live.
+// Bumped 126 -> 127 KB, two lines of cause that landed together:
+//   (origin/main) verdict survival (audit O1): useVerify state moved from
+//     useState to a signal-backed VerifyStore so the lectern's verdict survives
+//     the shell's unmount-on-nav, plus the markSealed engine seam.
+//   (this branch) verify coverage + attestation honesty: the checked-of-total
+//     coverage line in the summary and certification exhibit, and the
+//     provider-conditional data-handling attestation.
+// Both measured ~126.x KB gz alone; the merged figure is verified post-build
+// against this ceiling (bumped again below if the union exceeds it).
 const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.

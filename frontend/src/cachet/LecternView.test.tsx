@@ -1,11 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { navigateTo } from "@/app/shell/useAppShell";
 import { verify as verifyApi } from "@/services/api/endpoints";
 
+import { resetVerifyStore } from "@/features/verify/useVerify";
+
 import { LecternView } from "./LecternView";
 import { liveDraft } from "./liveDraft";
+import { lecternVerify } from "./liveVerify";
 
 // The lectern is the verify surface: verifying runs the check in place and the
 // verdict unfolds beneath the sheet, so navigateTo must NOT fire (the operator's
@@ -30,6 +33,10 @@ const mockDraftStream = vi.mocked(verifyApi.draftStream);
 
 afterEach(() => {
   liveDraft.value = "";
+  // The lectern's engine state is module-scoped ON PURPOSE (it survives
+  // unmount-on-nav); tests reset it so one test's verdict never leaks into
+  // the next.
+  resetVerifyStore(lecternVerify);
   vi.clearAllMocks();
 });
 
@@ -83,6 +90,96 @@ describe("LecternView inline verify (the unified surface)", () => {
     render(<LecternView />);
     fireEvent.click(screen.getByText("Verify"));
     expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+});
+
+describe("LecternView command spine (cachet:command)", () => {
+  // The ⌘K palette dispatches cachet:command and dismisses itself. A verb that
+  // dispatches into the void looks like it worked (the palette closes) while
+  // doing nothing — on this surface a silent no-op is a trust defect.
+  it("runs the inline verify when the palette dispatches verify-draft", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: VERIFY_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
+    expect(
+      await screen.findByText("All 1 statements are supported by the sources you provided.")
+    ).toBeTruthy();
+    expect(mockDraftStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the verify command when the draft is empty (same guard as the button)", () => {
+    liveDraft.value = "   ";
+    render(<LecternView />);
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "verify-draft" } }));
+    expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+});
+
+describe("LecternView cancel (the hung-stream escape hatch)", () => {
+  it("offers Stop the check while verifying, and stopping re-enables Verify", async () => {
+    // With the persistent store, loading survives navigation by design, so a
+    // hung stream with no cancel affordance would disable Verify until the
+    // app relaunches (the remount no longer resets engine state).
+    mockDraftStream.mockImplementation(((
+      _payload: unknown,
+      opts?: { signal?: AbortSignal }
+    ) =>
+      (async function* () {
+        await new Promise((_, reject) => {
+          opts?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError"))
+          );
+        });
+        yield { type: "result", verify: VERIFY_RESPONSE };
+      })()) as never);
+    liveDraft.value = "A draft whose check hangs.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(await screen.findByText("Stop the check"));
+    await waitFor(() => {
+      const verifyButton = screen.getByText("Verify") as HTMLButtonElement;
+      expect(verifyButton.disabled).toBe(false);
+    });
+    expect(screen.queryByText("Stop the check")).toBeNull();
+  });
+});
+
+describe("LecternView verdict persistence (the verdict survives unmount-on-nav)", () => {
+  // The shell swaps views by route, unmounting the lectern on every move. The
+  // draft already survives via the liveDraft signal; the VERDICT must survive
+  // the same way — a lawyer mid-review losing the whole verdict to one rail
+  // click (with no warning and no way back short of re-running the check) is
+  // the audit's highest-value open finding (O1).
+  it("keeps the settled verdict across unmount + remount without re-verifying", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: VERIFY_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    const first = render(<LecternView />);
+    fireEvent.click(first.getByText("Verify"));
+    expect(
+      await first.findByText("All 1 statements are supported by the sources you provided.")
+    ).toBeTruthy();
+
+    // Navigate away (the route swap unmounts the view)...
+    first.unmount();
+
+    // ...and back. The verdict is still on the lectern, and no second
+    // verification ran to put it there.
+    render(<LecternView />);
+    expect(
+      await screen.findByText("All 1 statements are supported by the sources you provided.")
+    ).toBeTruthy();
+    expect(mockDraftStream).toHaveBeenCalledTimes(1);
   });
 });
 

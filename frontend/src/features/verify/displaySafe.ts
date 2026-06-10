@@ -35,15 +35,19 @@ const NON_PRINTABLE_RANGES: ReadonlyArray<readonly [number, number]> = [
 
 const REPLACEMENT = String.fromCharCode(0xfffd);
 
-function isNonPrintable(codePoint: number): boolean {
-  return NON_PRINTABLE_RANGES.some(([lo, hi]) => codePoint >= lo && codePoint <= hi);
-}
+// One character class compiled from the ranges (which stay the single source
+// of truth). The render path calls displaySafe over the whole document, so the
+// per-character JS loop with a linear range scan was the hot path; a single
+// native-regex pass is the same 1-to-1 mapping at a fraction of the cost.
+const NON_PRINTABLE_PATTERN = new RegExp(
+  `[${NON_PRINTABLE_RANGES.map(([lo, hi]) =>
+    lo === hi
+      ? `\\u{${lo.toString(16)}}`
+      : `\\u{${lo.toString(16)}}-\\u{${hi.toString(16)}}`
+  ).join("")}]`,
+  "gu"
+);
 
 export function displaySafe(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const cp = ch.codePointAt(0);
-    out += cp != null && isNonPrintable(cp) ? REPLACEMENT : ch;
-  }
-  return out;
+  return text.replace(NON_PRINTABLE_PATTERN, REPLACEMENT);
 }

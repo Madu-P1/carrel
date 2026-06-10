@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 from dateutil import parser as date_parser
 
@@ -38,7 +39,7 @@ class Anchor:
     date -> ISO ``YYYY-MM-DD`` string. It is ``None`` for the rest.
     """
 
-    type: str  # citation | slip_op | quote | money | duration | date | section
+    type: str  # citation | slip_op | quote | money | duration | date | percent | section | party | defined_term
     text: str
     start: int
     end: int
@@ -63,16 +64,37 @@ _MONEY = re.compile(
 # _MONEY detector needs; without this the claim carries no money anchor and the
 # parametric-contradiction catch cannot fire. The trailing negative lookahead
 # defers to the digit form in the "one million dollars ($1,000,000)" convention so
-# the figure is counted once. Compound numbers ("twenty-five million", "one and a
-# half million") and bare hundreds ("five hundred dollars") are out of scope and
-# stay an honest could-not-check, never a wrong value: the (?<![\w-]) guard stops
-# "five" matching inside "twenty-five".
+# the figure is counted once. Compound numbers ("twenty-five million", "twenty
+# five million", "one and a half million") and bare hundreds ("five hundred
+# dollars") are outside the bounded grammar and must yield NO anchor, never a
+# wrong value: the (?<![\w-]) guard stops "five" matching inside "twenty-five",
+# and _NUMBER_WORD_BEFORE rejects a match whose preceding text ends with a
+# number word ("twenty five million" must not anchor as $5M). A sentence whose
+# only candidate anchor is rejected here carries no anchor at all and renders
+# UNTREATED (plain draft text, no card) per the 2026-06-08 untreated split — a
+# pinned recall gap (tests/test_anchors.py), not a hidden one.
 _MONEY_WORD = re.compile(
-    r"(?<![\w-])(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+    r"(?<![\w\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212])"
+    r"(?P<unit>one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
     r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|a)\s+"
     r"(?:(?P<hundred>hundred)\s+)?"
     r"(?P<scale>thousand|million|billion)\s+(?:dollars|USD)\b"
     r"(?!\s*\(?\s*\$)",
+    re.IGNORECASE,
+)
+
+# The compound rejector for _MONEY_WORD: a match is refused when the text right
+# before it ends with a number word, because then the spelled-out amount is a
+# space-separated compound the bounded grammar cannot represent and any
+# canonical we minted would be the TAIL of the real number (a manufactured
+# value in both verdict directions). Deliberately broader than
+# _MONEY_WORD_UNITS: tens words and scale words reject too ("ninety five
+# thousand", "hundred twenty five million").
+_NUMBER_WORD_BEFORE = re.compile(
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
+    r"billion)[\s,.\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]*$",
     re.IGNORECASE,
 )
 
@@ -140,6 +162,40 @@ _DATE = re.compile(
     r"|\d{1,2}/\d{1,2}/\d{4})\b"
 )
 
+# Percent / rate, DIGIT forms only with the unit marker in-span: "5%", "12.5
+# percent", "12 per cent", "50 bps", "50 basis points". Canonical value is
+# basis points via exact decimal arithmetic, so "0.5%" and "50 bps" compare
+# equal with no float drift and no tolerance. Refusals, each pinned by tests,
+# never a guessed value: word-form percent ("five percent" — the same
+# bounded-grammar lesson as _MONEY_WORD), range forms ("5-10%": the leading
+# lookbehind rejects a digit-dash-digit tail, so anchoring either end cannot
+# manufacture a verdict against a clause stating the other), and "percentage
+# points" (an additive quantity, not a rate; `percent\b` fails inside
+# "percentage" and `points` is required after `basis` only).
+_PERCENT = re.compile(
+    # num accepts a plain digit run or VALID US thousands grouping only; a
+    # European decimal comma ("12,5%") fits neither branch and the comma in the
+    # lookbehind stops the tail ("5%") from anchoring alone, so the whole form
+    # refuses rather than canonicalize 12,5% as 1250%. The lookbehind also
+    # carries the Unicode dash family so "5\u201310%" and minus-signed rates
+    # refuse the same way the ASCII range form does.
+    r"(?<![\w.,\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212])"
+    r"(?P<num>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*"
+    r"(?P<unit>%|percent\b|per\s?cent\b|bps\b|basis\s+points?\b)",
+    re.IGNORECASE,
+)
+
+# Worded/spaced range rejector for _PERCENT: a match whose preceding text ends
+# with a bare number and a range connector ("5 to ", "between 5 and ", "5 - ")
+# is the TOP END of a range. Anchoring it would manufacture a verdict against a
+# clause stating any other point of the range (the same rule the dash lookbehind
+# enforces for "5-10%"). "from 5% to 10%" is NOT rejected: both ends carry the
+# unit, two anchors emerge, and the multi-value refusal handles them honestly.
+_PERCENT_RANGE_BEFORE = re.compile(
+    r"\d\s*(?:[-\u2010\u2011\u2012\u2013\u2014\u2015\u2212]|\b(?:to|and|or|through)\b)\s*$",
+    re.IGNORECASE,
+)
+
 _MONEY_SCALE = {
     "thousand": 1_000,
     "k": 1_000,
@@ -201,6 +257,15 @@ def _money_word_cents(unit: str, hundred: str | None, scale: str) -> int:
 def _duration_days(num: int, unit: str) -> int:
     """Canonical day count (year=365, month=30, week=7, day=1, approximate)."""
     return num * _DURATION_DAYS[unit.lower()]
+
+
+def _percent_bps(num_text: str, unit: str) -> Decimal:
+    """Canonical basis points for a percent/rate span, exact decimal arithmetic."""
+    value = Decimal(num_text.replace(",", ""))
+    u = unit.lower()
+    if u == "bps" or u.startswith("basis"):
+        return value
+    return value * 100
 
 
 def _date_iso(text: str) -> str | None:
@@ -276,6 +341,11 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
     for m in _MONEY.finditer(span):
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), _money_cents(m.group(0))))
     for m in _MONEY_WORD.finditer(span):
+        if _NUMBER_WORD_BEFORE.search(span[: m.start()]):
+            # A space-separated compound ("twenty five million dollars"): the
+            # match is only the tail of the real number. Refuse the anchor
+            # rather than mint a wrong canonical value.
+            continue
         cents = _money_word_cents(m.group("unit"), m.group("hundred"), m.group("scale"))
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents))
     for m in _DURATION.finditer(span):
@@ -289,6 +359,20 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # Drop date-shaped but invalid values (2024-13-45) rather than emit
             # an anchor whose canonical_value is None (two would compare equal).
             anchors.append(Anchor("date", m.group(0), m.start(), m.end(), iso))
+    for m in _PERCENT.finditer(span):
+        if _PERCENT_RANGE_BEFORE.search(span[: m.start()]):
+            # The top end of a worded/spaced range ("between 5 and 10%"):
+            # refuse the anchor rather than collapse a range to one endpoint.
+            continue
+        anchors.append(
+            Anchor(
+                "percent",
+                m.group(0),
+                m.start(),
+                m.end(),
+                _percent_bps(m.group("num"), m.group("unit")),
+            )
+        )
     for m in _SECTION.finditer(span):
         # A "section" hit inside a citation span is that citation's own section
         # symbol (e.g. the "§ 1983" of "42 U.S.C. § 1983"), not an intra-document

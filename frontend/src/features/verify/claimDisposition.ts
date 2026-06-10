@@ -200,14 +200,16 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
       c.boundedCorpus && !c.exists && !c.captionMismatch && (c.status === 404 || c.status === 400)
   );
   if (outsideCoverage) {
-    const scope =
-      outsideCoverage.corpusScope && outsideCoverage.corpusCaseCount && outsideCoverage.corpusAsOf
-        ? ` (a ${outsideCoverage.corpusCaseCount}-case ${outsideCoverage.corpusScope} corpus, as of ${outsideCoverage.corpusAsOf})`
-        : "";
+    // Prefer the engine's own reason (it names the citation AND carries the
+    // D13 corpus scope phrase, e.g. "(a 3-case demo corpus, as of ...)", from
+    // _deterministic_reason). The local copy is the fallback for older
+    // payloads. Keeping one sentence of record avoids the two near-identical
+    // corpus sentences drifting on either side of the wire.
     return mk(
       "could_not_check",
       "Could not verify",
-      `This citation is outside the offline corpus checked${scope}. Confirm it against the full national database.`
+      reasonText(card) ??
+        "This citation is outside the offline corpus checked. Confirm it against the full national database."
     );
   }
 

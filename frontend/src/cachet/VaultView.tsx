@@ -7,6 +7,7 @@ import { VaultMark } from "./VaultMark";
 
 import {
   DEFAULT_PROJECT,
+  clearPersistedActiveRecord,
   clearSource,
   createVault,
   deleteDocument,
@@ -20,6 +21,7 @@ import {
   sourceUpload,
   setActiveRecord,
   sourcesError,
+  sourcesFixtureRequested,
   uploadSource,
   type SourceDoc
 } from "./source";
@@ -89,8 +91,14 @@ export function VaultView() {
   const loadError = sourcesError.value;
 
   useEffect(() => {
-    const params = new URLSearchParams(globalThis.location?.search ?? "");
-    if (params.get("fixture") === "sources") {
+    // Dev-only visual fixture. The DEV gate is load-bearing: this branch sets
+    // `loadedSource`, whose subscriber persists to localStorage, so in a
+    // production build a single ?fixture=sources visit would leave a FAKE
+    // executed contract as the active record for later real sessions — the
+    // lectern would assert "loaded as the record" about a document that does
+    // not exist. import.meta.env.DEV is statically false in the production
+    // bundle, so the fixture (and its fake filenames) is compiled out.
+    if (import.meta.env.DEV && sourcesFixtureRequested(globalThis.location?.search ?? "")) {
       sourceDocs.value = [
         {
           id: "d-msa",
@@ -109,6 +117,7 @@ export function VaultView() {
         { id: "d-nda", filename: "Mutual NDA.pdf", project: "Sources", pageCount: 6, fileType: "pdf" }
       ];
       loadedSource.value = { docId: "d-msa", filename: "Apex–Northwind MSA (executed).pdf" };
+      clearPersistedActiveRecord();
       return;
     }
     void refreshSources();

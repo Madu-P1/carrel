@@ -703,14 +703,18 @@ class GroundingVerdictTests(unittest.TestCase):
         # numbering may be in a form the detector misses, so we stay could-not-check.
         self.assertIsNone(_grounding_verdict(extract_anchors("Per Section 99, X."), frozenset()))
 
-    def test_clause_checkable_anchor_suppresses_the_verdict(self) -> None:
-        # ADR-0012 invariant 2: a parametric value wins, so a section ref riding
-        # alongside money never produces a section_absent verdict.
-        self.assertIsNone(
-            _grounding_verdict(
-                extract_anchors("Under Section 99, the cap is $5,000,000."), self._SRC
-            )
+    def test_clause_checkable_anchor_does_not_suppress_the_verdict(self) -> None:
+        # A fabricated section is an affirmative independent finding: the old
+        # suppression let "Under Section 99, the royalty equals 50%" ride a
+        # matching value into a green card (2026-06-10 adversarial review). The
+        # verdict is computed regardless; precedence with the clause verdict is
+        # the mapping layer's call (a parametric contradiction keeps its
+        # both-values reason; everything else yields to the fabricated section).
+        verdict = _grounding_verdict(
+            extract_anchors("Under Section 99, the cap is $5,000,000."), self._SRC
         )
+        self.assertIsNotNone(verdict)
+        self.assertEqual("section_absent", verdict["disposition"])
 
     def test_party_anchor_yields_no_verdict(self) -> None:
         # Party gets no verdict in either direction (positive overclaims; an unmatched

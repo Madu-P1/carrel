@@ -20,7 +20,7 @@
  * Motion (ink-in choreography, claim pulse) is deferred to the operator visual
  * gate; this slice ships structure + functional transitions only.
  */
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
@@ -75,33 +75,47 @@ export function WorkspaceMargin({
   examined,
   onExamine
 }: WorkspaceMarginProps) {
-  const metaByIndex = new Map<number, ClaimMeta>();
-  cards.forEach((card, i) => {
-    const idx = typeof card.claim_index === "number" ? card.claim_index : i;
-    metaByIndex.set(idx, { card, disposition: dispositionForClaim(card) });
-  });
+  // One memoized derivation for everything (draftText, cards) determines:
+  // dispositions, segmentation, paragraph split, rail/tray sets, and the
+  // display-safe text. This render re-runs on every selection change
+  // (`examined`), and recomputing dispositionForClaim per card three times
+  // plus sanitizing the whole document each time was the measurable hot path
+  // on long drafts.
+  const { metaByIndex, paragraphs, railClaims, trayClaims } = useMemo(() => {
+    const meta = new Map<number, ClaimMeta>();
+    cards.forEach((card, i) => {
+      const idx = typeof card.claim_index === "number" ? card.claim_index : i;
+      meta.set(idx, { card, disposition: dispositionForClaim(card) });
+    });
 
-  const segments = segmentDraft(draftText, cards);
-  const paragraphs = paragraphsFromSegments(segments);
+    const segments = segmentDraft(draftText, cards);
+    // Sanitize once here (displaySafe is 1-to-1, so spans stay aligned); the
+    // render below ships the text to the DOM untouched.
+    const safeParagraphs = paragraphsFromSegments(segments).map((para) =>
+      para.map((seg) => ({ ...seg, text: displaySafe(seg.text) }))
+    );
 
-  // Non-supported PLACED claims get a rail note. (Supported = unmarked, no note.
-  // Unplaced = no span here, lives in the tray.)
-  const placedClaimIndices = segments
-    .filter((s): s is ClaimSegment => s.kind === "claim")
-    .map((s) => s.claimIndex);
-  const railClaims = placedClaimIndices.filter((idx) => {
-    const meta = metaByIndex.get(idx);
-    return meta ? noteTier(meta.disposition.tier) !== null : false;
-  });
+    // Non-supported PLACED claims get a rail note. (Supported = unmarked, no
+    // note. Unplaced = no span here, lives in the tray.)
+    const placedClaimIndices = segments
+      .filter((s): s is ClaimSegment => s.kind === "claim")
+      .map((s) => s.claimIndex);
+    const rail = placedClaimIndices.filter((idx) => {
+      const m = meta.get(idx);
+      return m ? noteTier(m.disposition.tier) !== null : false;
+    });
 
-  // Unplaced claims (no span produced) -> the tray, worst-first.
-  const placedSet = new Set(placedClaimIndices);
-  const trayClaims = cards
-    .map((card, i) => (typeof card.claim_index === "number" ? card.claim_index : i))
-    .filter((idx) => !placedSet.has(idx))
-    .map((idx) => metaByIndex.get(idx)!)
-    .filter(Boolean)
-    .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+    // Unplaced claims (no span produced) -> the tray, worst-first.
+    const placedSet = new Set(placedClaimIndices);
+    const tray = cards
+      .map((card, i) => (typeof card.claim_index === "number" ? card.claim_index : i))
+      .filter((idx) => !placedSet.has(idx))
+      .map((idx) => meta.get(idx)!)
+      .filter(Boolean)
+      .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+
+    return { metaByIndex: meta, paragraphs: safeParagraphs, railClaims: rail, trayClaims: tray };
+  }, [draftText, cards]);
 
   // --- rail vertical pinning (measured; collision math is the pure layoutRail) ---
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -144,7 +158,7 @@ export function WorkspaceMargin({
           <p key={pi} className={styles.docParagraph}>
             {para.map((seg, si) =>
               seg.kind === "text" ? (
-                <span key={si}>{displaySafe(seg.text)}</span>
+                <span key={si}>{seg.text}</span>
               ) : (
                 <ClaimMark
                   key={si}
@@ -203,10 +217,19 @@ function ClaimMark({
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
+  // The announcement must keep the visible register split: only a real flag is
+  // "flagged"; the refusal is a could-not-check, and an assistive note is a
+  // query for review. A screen reader that hears "flagged" for an honest
+  // refusal has been handed an accusation the engine never made.
+  const fuzzyNote = fuzzy && tier !== "pass" ? ", placement approximate" : "";
   const aria =
     tier === "pass"
       ? `Statement, checked and supported: ${segment.text}`
-      : `Statement flagged ${label}${fuzzy ? ", placement approximate" : ""}: ${segment.text}`;
+      : tier === "refusal"
+        ? `Statement could not be checked, ${label}${fuzzyNote}: ${segment.text}`
+        : tier === "assistive"
+          ? `Statement noted for your review, ${label}${fuzzyNote}: ${segment.text}`
+          : `Statement flagged ${label}${fuzzyNote}: ${segment.text}`;
   return (
     <span
       className={[
@@ -234,7 +257,7 @@ function ClaimMark({
           : undefined
       }
     >
-      {displaySafe(segment.text)}
+      {segment.text}
     </span>
   );
 }
@@ -253,7 +276,14 @@ function MarginNote({
   onExamine: (claimIndex: number) => void;
 }) {
   const tier = noteTier(disposition.tier);
-  const trail = card.unsupported_reason && tier === "refusal" ? card.unsupported_reason : null;
+  // The wire's unsupported_reason is the refusal's audit trail, but for an
+  // unknown-verdict card the disposition detail already IS that reason
+  // (claimDisposition reads it first); suppress the trail when it would print
+  // the identical sentence twice in one note.
+  const trail =
+    card.unsupported_reason && tier === "refusal" && card.unsupported_reason !== disposition.detail
+      ? card.unsupported_reason
+      : null;
   return (
     <div
       className={styles.marginNote}

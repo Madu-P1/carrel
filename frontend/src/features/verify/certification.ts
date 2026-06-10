@@ -228,7 +228,13 @@ export function certificationToJson(model: CertificationModel): string {
 
 export function buildCertification(
   response: VerifyResponse,
-  generatedAtISO: string
+  generatedAtISO: string,
+  // The host composer's draft, used only when the response omits draft_text.
+  // Keeps the exhibit's fingerprint identical to the one Save-to-Shelf
+  // computes (which already falls back to the composer draft), so one brief
+  // never carries two fingerprints and a seal cannot read cracked against a
+  // draft that never changed.
+  draftFallback = ""
 ): CertificationModel {
   const cards = (response.claim_verdicts ?? []) as VerifyClaimVerdict[];
   const counts: Record<DispositionKind, number> = {
@@ -269,7 +275,7 @@ export function buildCertification(
     : null;
   return {
     generatedAtISO,
-    fingerprint: fingerprintDraft(response.draft_text ?? ""),
+    fingerprint: fingerprintDraft(response.draft_text ?? draftFallback),
     provider,
     localExecution: isLocalExecution(provider),
     attestation: attestationFor(provider),

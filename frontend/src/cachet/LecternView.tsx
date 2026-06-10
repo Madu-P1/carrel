@@ -7,6 +7,7 @@ import verifyStyles from "@/features/verify/VerifyView.module.css";
 
 import { CachetMark } from "./CachetMark";
 import { liveDraft } from "./liveDraft";
+import { lecternVerify } from "./liveVerify";
 import {
   clearSource,
   loadedSource,
@@ -46,7 +47,13 @@ export function LecternView() {
   const docs = sourceDocs.value;
   const [sourceError, setSourceError] = useState<string | null>(null);
 
-  const engine = useVerify({ docIds: source?.docId ? [source.docId] : undefined });
+  // The module-scope store makes the verdict survive the shell's
+  // unmount-on-nav, the same way liveDraft preserves the paste: glance at the
+  // Shelf mid-review and the verdict is still here on return (liveVerify.ts).
+  const engine = useVerify({
+    docIds: source?.docId ? [source.docId] : undefined,
+    store: lecternVerify
+  });
   // The verdict region replaces the centred title-page layout once a check is in
   // flight or has landed (or errored), so the page scrolls from the top instead
   // of staying vertically centred.
@@ -76,6 +83,21 @@ export function LecternView() {
     }
     void engine.verify(draft);
   }
+
+  // SM-V7 command spine: the ⌘K palette dispatches `cachet:command` and
+  // dismisses itself; the lectern owns the draft, so the verify verb lands
+  // here. The ref keeps the listener registered once while always invoking the
+  // current closure (draft and engine change every render).
+  const verifyRef = useRef(verify);
+  verifyRef.current = verify;
+  useEffect(() => {
+    function onCommand(event: Event) {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === "verify-draft") verifyRef.current();
+    }
+    window.addEventListener("cachet:command", onCommand);
+    return () => window.removeEventListener("cachet:command", onCommand);
+  }, []);
 
   function onKeyDown(event: preact.JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
     // Keyboard-first: Cmd/Ctrl + Enter verifies from the sheet.
@@ -109,6 +131,18 @@ export function LecternView() {
           <span className={styles.sheetHint}>
             Reads the citations and quotes against the sources you provide
           </span>
+          {engine.loading ? (
+            // The escape hatch a persistent store makes necessary: loading
+            // survives navigation by design, so a hung stream would otherwise
+            // leave Verify disabled forever (the remount no longer resets it).
+            <button
+              type="button"
+              className={styles.lecternSourceChange}
+              onClick={() => engine.cancel()}
+            >
+              Stop the check
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.sheetGo}

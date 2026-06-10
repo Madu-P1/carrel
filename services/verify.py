@@ -292,13 +292,21 @@ def _claim_dict_to_verdict(
     section_absent = (
         bool(section_verdict) and section_verdict.get("disposition") == "section_absent"
     )
+    # A parametric contradiction outranks the fabricated-section finding for the
+    # REASON slot only: both are hard unsupported verdicts, and the
+    # contradiction's both-values detail is the more actionable filing-grade
+    # record. Every other clause disposition (present/not_found/multi_value)
+    # yields to the fabricated section — a matching value must never ride a
+    # section the contract does not contain into a green card.
+    contract_contradiction = (
+        bool(contract_verdict) and contract_verdict.get("disposition") == "parametric_contradiction"
+    )
     if citations:
         verdict: VerifyVerdict = "verified"
-    elif section_absent:
-        # A draft sentence citing a section the source contract does not contain is
-        # unsupported regardless of its predicate. Only set on pure-section sentences
-        # (a clause-checkable anchor suppresses it upstream), so it never overrides a
-        # parametric present/contradiction.
+    elif section_absent and not contract_contradiction:
+        # A draft sentence citing a section the source contract does not contain
+        # is unsupported regardless of its predicate, whatever else the sentence
+        # carries (computed unconditionally upstream since the percent build).
         verdict = "unsupported"
     elif quote_could_not_check_reason:
         # The cite may exist, but a quoted phrase could not be verified against the
@@ -335,7 +343,7 @@ def _claim_dict_to_verdict(
         # truth), so the card never reads as a bare "this is true." A verified case
         # cite carries no such hedge, so its reason stays None.
         reason = str(contract_verdict.get("detail") or "") or None if contract_verdict else None
-    elif section_absent:
+    elif section_absent and not contract_contradiction:
         reason = str(section_verdict.get("detail") or "") or None
     elif quote_could_not_check_reason:
         reason = str(quote_could_not_check_reason)
