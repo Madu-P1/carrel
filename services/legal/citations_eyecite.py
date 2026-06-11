@@ -45,6 +45,15 @@ class CitationRef:
     plaintiff: str | None = None
     defendant: str | None = None
     corrected: str | None = None
+    # The year eyecite read from the cite's court-year parenthetical ("(1954)",
+    # "(9th Cir. 1996)"), None when the draft gives none. Compared against the
+    # resolved case's date_filed so a real number cited with a wrong year does
+    # not read verified.
+    year: int | None = None
+    # eyecite's court id for the cite (courts-db ids, the same id-space
+    # CourtListener uses: "scotus", "ca9"). From the parenthetical when given,
+    # else inferred from the reporter; None when neither determines it.
+    court: str | None = None
 
 
 def find_citations(text: str) -> list[CitationRef]:
@@ -85,9 +94,20 @@ def find_citations(text: str) -> list[CitationRef]:
                 plaintiff=getattr(cite.metadata, "plaintiff", None),
                 defendant=getattr(cite.metadata, "defendant", None),
                 corrected=corrected or matched,
+                year=_coerce_year(getattr(cite.metadata, "year", None)),
+                court=getattr(cite.metadata, "court", None) or None,
             )
         )
     return refs
+
+
+def _coerce_year(value: object) -> int | None:
+    """eyecite's metadata.year as an int, or None when absent/unparseable."""
+    try:
+        year = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return year if 1000 <= year <= 9999 else None
 
 
 def has_citation(text: str) -> bool:
@@ -190,22 +210,135 @@ def _tokens_compatible(
     return False
 
 
-def caption_matches(ref: CitationRef, case_name: str) -> bool:
-    """True if the draft's party names plausibly name the resolved case.
+def _acronym_forms(case_name: str) -> set[str]:
+    """Initialisms a draft token may legitimately use for the resolved name.
 
-    A draft caption matches if any significant draft token is
-    :func:`_tokens_compatible` with any resolved token, so an abbreviated real
-    caption ("Bd. of Educ." for "Board of Education") is never falsely flagged,
-    while a fabricated caption on a real reporter number ("Fake v. Nobody", or the
-    subtler "Boar v. Nook" / "Brownstein v. Zelman" on Brown's number) shares no
-    compatible token and IS flagged. Compatibility is exact for plain surnames and
-    only loosens (prefix/abbreviation table) for tokens explicitly marked as
-    abbreviations, because for a filing-grade tool a fabricated caption reading as
-    verified is the malpractice direction. Returns True when the draft carries no
-    caption to compare, so a bare citation is never treated as a mismatch.
+    Built from every contiguous run (length 2..6) of the resolved name's words,
+    in two variants: all words, and significant words only (connectives like
+    "of" dropped), because Bluebook initialisms sometimes keep the connective
+    letter and sometimes drop it. Pure string work, no table to maintain: "NLRB"
+    falls out of "National Labor Relations Board" without an entry.
     """
-    drafted = caption_token_info(ref.plaintiff or "") + caption_token_info(ref.defendant or "")
+    lowered = case_name.lower()
+    all_words = re.findall(r"[a-z0-9]+", lowered)
+    significant = [w for w in all_words if w not in _CAPTION_CONNECTIVES and w != "v"]
+    forms: set[str] = set()
+    for words in (all_words, significant):
+        for start in range(len(words)):
+            for end in range(start + 2, min(start + 6, len(words)) + 1):
+                forms.add("".join(w[0] for w in words[start:end]))
+    return forms
+
+
+# Dotted single-letter initials ("U.S.", "M.L.B.", "N. L. R. B."): the only
+# short-token caption shape eligible for the initialism carve-out in
+# caption_match_state.
+_DOTTED_INITIALS = re.compile(r"(?:[A-Za-z]\.[\s-]*)+")
+
+
+def _letters_of(text: str) -> str:
+    """The side's letters, lowercased and joined ("M.L.B." -> "mlb")."""
+    return "".join(re.findall(r"[A-Za-z]", text)).lower()
+
+
+_CAPS_RUN = re.compile(r"\b[A-Z][A-Z0-9]{2,}\b")
+
+
+def _caps_tokens(text: str) -> set[str]:
+    """Lowercase forms of the tokens written in ALL CAPS in the source text.
+
+    Only these earn initialism credit in :func:`caption_match_state`. An
+    initialism is written in caps ("NLRB", "SEC"); a mixed-case surname that
+    coincidentally spells one ("Fat" against "First American Title") is a party
+    name and must match exactly, never by acronym. The dotted form ("N.L.R.B.")
+    needs no credit: it tokenizes to single letters, which leaves its side
+    vacuous already.
+    """
+    return {m.group(0).lower() for m in _CAPS_RUN.finditer(text or "")}
+
+
+def caption_match_state(ref: CitationRef, case_name: str) -> str:
+    """How the draft's caption relates to the resolved case: ``match`` /
+    ``unconfirmed`` / ``mismatch``.
+
+    Per-side rule: EVERY populated caption side (plaintiff, defendant) must land
+    at least one token compatible with the resolved name. The old any-token rule
+    let "Smith v. Board" pass on Brown's number off the single generic token
+    "board"; under this rule that caption is ``unconfirmed``: one side names a
+    real party, the other names nobody in the resolved caption. Unconfirmed is
+    the refusal state, never the accusation: the odd side may be a short form
+    the tool cannot prove, so the caller downgrades to could-not-check rather
+    than flagging. ``mismatch`` (the hard flag) is unchanged from the old rule:
+    no draft token anywhere is compatible with the resolved name.
+
+    Compatibility per token pair is :func:`_tokens_compatible` (exact for plain
+    surnames, prefix/table only for marked abbreviations), plus initialism
+    forms of the resolved name ("NLRB" for "National Labor Relations Board"),
+    so the stricter per-side rule does not false-flag initialism captions.
+    Initialism credit is restricted to tokens written in ALL CAPS in the draft
+    (:func:`_caps_tokens`): a mixed-case surname that coincidentally spells an
+    initialism ("Fat" against "First American Title") is a party name and gets
+    no credit.
+
+    A side whose letters all tokenize away (sub-3-char tokens: dotted initials
+    "M.L.B.", two-letter surnames "Ng") is UNVERIFIABLE, not vacuous, unless it
+    is dotted single-letter initials that spell an initialism of the resolved
+    name ("U.S." for "United States ..."): an unverifiable side caps the result
+    at ``unconfirmed`` even when the other side matches, because "Ng v. Board"
+    on Brown's number must never out-rank "Smith v. Board" (refusal, never the
+    accusation, and never a bless). A caption with no letters at all is a
+    ``match``: a bare citation is never punished for what it does not say.
+    """
+    raw_sides = [ref.plaintiff or "", ref.defendant or ""]
+    sides = [(caption_token_info(raw), _caps_tokens(raw)) for raw in raw_sides]
+    populated = [(tokens, caps) for tokens, caps in sides if tokens]
     resolved = caption_token_info(case_name)
-    if not drafted or not resolved:
-        return True
-    return any(_tokens_compatible(d, d_ab, r, r_ab) for d, d_ab in drafted for r, r_ab in resolved)
+    if not resolved:
+        # The resolved name itself yields no significant tokens (a real
+        # initials-caption case like "M. L. B. v. S. L. J."): nothing to
+        # compare against, so the draft's caption is never punished.
+        return "match"
+    acronyms = _acronym_forms(case_name)
+    # Letter-bearing sides that tokenized to nothing. Dotted single-letter
+    # initials whose letters spell an initialism of the resolved name ("U.S."
+    # -> "us" for "United States v. Carolene Products Co.") stay vacuous; any
+    # other letter-bearing short-token side ("Ng", "M.L.B." against Brown) is
+    # unverifiable and caps the result at the refusal below.
+    unverifiable = [
+        raw
+        for raw, (tokens, _caps) in zip(raw_sides, sides)
+        if not tokens
+        and re.search(r"[A-Za-z]", raw)
+        and not (_DOTTED_INITIALS.fullmatch(raw.strip()) and _letters_of(raw) in acronyms)
+    ]
+    if not populated:
+        if unverifiable:
+            return "unconfirmed"
+        return "match"
+
+    def _side_matches(side: list[tuple[str, bool]], caps: set[str]) -> bool:
+        return any(
+            _tokens_compatible(d, d_ab, r, r_ab) for d, d_ab in side for r, r_ab in resolved
+        ) or any(token in acronyms and token in caps for token, _abbrev in side)
+
+    results = [_side_matches(side, caps) for side, caps in populated]
+    if all(results):
+        return "unconfirmed" if unverifiable else "match"
+    if any(results):
+        return "unconfirmed"
+    return "mismatch"
+
+
+def caption_matches(ref: CitationRef, case_name: str) -> bool:
+    """True unless the draft's caption is a hard mismatch for the resolved case.
+
+    Back-compat predicate over :func:`caption_match_state`: an abbreviated real
+    caption ("Bd. of Educ." for "Board of Education") is never falsely flagged,
+    while a fabricated caption on a real reporter number ("Fake v. Nobody", or
+    the subtler "Boar v. Nook" / "Brownstein v. Zelman" on Brown's number)
+    shares no compatible token and IS flagged. The intermediate ``unconfirmed``
+    state (one side matches, one does not) also returns True here; callers that
+    can render a refusal should use :func:`caption_match_state` directly and
+    downgrade unconfirmed captions to could-not-check.
+    """
+    return caption_match_state(ref, case_name) != "mismatch"

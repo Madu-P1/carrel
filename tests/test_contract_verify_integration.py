@@ -440,6 +440,44 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "an off-topic value coincidence must not read a verified present",
         )
 
+    def test_offtopic_clause_sharing_only_the_contract_name_is_could_not_check(self) -> None:
+        # C3 (stronger than the sibling off-topic test): a contract's own name
+        # ("Services Agreement") recurs in clause boilerplate across the whole
+        # document, so a signing-bonus clause that shares ONLY "Services" plus a
+        # coincidental $42,000 is not topically relevant to a liability-cap
+        # claim. The PR #166 adjudicator vetoes an off-topic present; this pins
+        # that the contract structural-name word is treated as boilerplate (a
+        # _TOPIC_STOPWORDS entry), so the value cannot launder into a verified
+        # present. The safe direction is could-not-check, never a false present.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('offtopic-2', 'comp2.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        off = [_node(0, "The signing bonus payable under this Services Agreement is $42,000.")]
+        ids = insert_typed_nodes(self._conn, "offtopic-2", off)
+        embed_and_index_nodes(self._conn, off, ids, embedder=self._embedder)
+        self._conn.commit()
+        draft = "The liability cap under the Services Agreement is $42,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["offtopic-2"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "one shared generic word must not launder an off-topic value into present",
+        )
+
+    def test_on_topic_contradiction_still_fires(self) -> None:
+        # Control: the gold contradiction (shared topic words with the clause)
+        # is unaffected by the topic gate.
+        draft = "The aggregate liability is capped at $1,000,000."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+        )
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
     def test_present_quote_agrees_between_card_and_quote_panel(self) -> None:
         # D1 (consistency): a contract claim whose quoted language is verbatim in a
         # clause reads verified AND the brief-level QuotePanel reads that same quote as

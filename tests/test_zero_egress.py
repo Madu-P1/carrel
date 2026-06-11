@@ -241,10 +241,25 @@ class ContractZeroEgressTests(unittest.TestCase):
     def test_stream_contract_close_with_empty_doc_ids_is_offline(self) -> None:
         # Demo-faithful: the UI sends NO doc_ids. The full-library fallback must scope
         # to the ingested contract so the $1,000,000-vs-$500,000 contradiction fires
-        # through the STREAM (the entrypoint the GUI calls), offline. default_embedder
-        # is patched to the in-process embedder so no fastembed weights are fetched;
-        # the socket ban proves nothing else egresses either.
+        # through the STREAM (the entrypoint the GUI calls), offline. The stream path
+        # acquires its own embedder via embeddings.offline_embedder (ed3aea1de), so
+        # THAT seam is stubbed to the in-process embedder; a reach for the old
+        # nodes_vector.default_embedder seam fails loud. Stubbing the live seam keeps
+        # this test hermetic: before, it silently depended on the dev machine's warm
+        # fastembed cache (green on a warm cache, red on a cold one) because the
+        # default_embedder patch was dead code on this path.
+        import services.retrieval.embeddings as embeddings
         import services.retrieval.nodes_vector as nodes_vector
+
+        in_process = self._embedder
+
+        def _stub_fastembed(*_args, **_kwargs):
+            return in_process
+
+        def _no_default(*_args, **_kwargs):
+            raise AssertionError(
+                "deterministic stream path fell back to the network-capable default_embedder"
+            )
 
         with (
             mock.patch.dict(
@@ -252,7 +267,9 @@ class ContractZeroEgressTests(unittest.TestCase):
                 {"CACHET_DETERMINISTIC_VERIFY": "1", "COURTLISTENER_API_TOKEN": "local"},
                 clear=False,
             ),
-            mock.patch.object(nodes_vector, "default_embedder", lambda: self._embedder),
+            mock.patch.object(embeddings, "FastembedEmbedder", _stub_fastembed),
+            mock.patch.object(embeddings, "_offline_default", None),
+            mock.patch.object(nodes_vector, "default_embedder", _no_default),
             _forbid_sockets(),
         ):
             events = list(

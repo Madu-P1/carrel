@@ -200,6 +200,25 @@ class CaseVerdictItem(BaseModel):
     # unavailable" with this code instead of treating the cite as
     # supported.
     holding_error: Optional[str] = None
+    # Deterministic-engine annotations (services/legal/deterministic_envelope).
+    # Declared here because the non-stream POST /api/verify serializes through
+    # this model and Pydantic SILENTLY STRIPS undeclared keys: without these,
+    # the stream (raw json.dumps) and the non-stream response disagreed, and a
+    # non-stream consumer recomputing dispositions read an honest bounded-corpus
+    # miss (404 + bounded_corpus stripped) as the accusatory "citation not
+    # found". All additive and absent (None) on the LLM path.
+    holding_skipped: Optional[bool] = None
+    bounded_corpus: Optional[bool] = None
+    corpus_scope: Optional[str] = None
+    corpus_case_count: Optional[int] = None
+    corpus_as_of: Optional[str] = None
+    caption_mismatch: Optional[bool] = None
+    caption_unconfirmed: Optional[bool] = None
+    year_mismatch: Optional[bool] = None
+    cited_year: Optional[int] = None
+    resolved_year: Optional[int] = None
+    court_mismatch: Optional[bool] = None
+    cited_court: Optional[str] = None
 
 
 class ClaimCaseVerdictItem(BaseModel):
@@ -346,6 +365,20 @@ class VerifyQuoteResultItem(BaseModel):
     status: Literal["verbatim", "altered", "could_not_check"]
 
 
+class VerifyCoverageItem(BaseModel):
+    """How much of the draft the deterministic engine examined.
+
+    statements: sentences in the draft. treated: sentences carrying checkable
+    material (each became a verdict card). untreated: sentences with no
+    checkable anchor (no card; rendered as plain draft text). Absent (None) on
+    the LLM path, whose claims are not sentence-aligned.
+    """
+
+    statements: int = 0
+    treated: int = 0
+    untreated: int = 0
+
+
 class VerifyResponse(BaseModel):
     draft_text: str
     claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
@@ -366,6 +399,10 @@ class VerifyResponse(BaseModel):
     # (the unplaced tray). A claim is unplaced rather than mis-pinned whenever
     # its locator is ambiguous.
     unplaced: List[int] = Field(default_factory=list)
+    # Coverage honesty: set on the deterministic path only (sentence-aligned),
+    # so the UI and the certification can state what was NOT checked instead of
+    # implying the whole draft was.
+    coverage: Optional[VerifyCoverageItem] = None
 
 
 class NoteUpsertRequest(BaseModel):
@@ -497,7 +534,9 @@ class DeleteResponse(BaseModel):
 
 
 class CreateVaultRequest(BaseModel):
-    name: str
+    # Bounded because the name is persisted, listed, sorted, and rendered as a
+    # folder title; an unbounded string is a local-DoS lever, not a vault name.
+    name: str = Field(min_length=1, max_length=120)
 
 
 class VaultListResponse(BaseModel):

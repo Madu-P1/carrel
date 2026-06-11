@@ -13,6 +13,7 @@ import unittest
 from services.legal.case_verification import _looks_like_legal_text
 from services.legal.citations_eyecite import (
     CitationRef,
+    caption_match_state,
     caption_matches,
     find_citations,
     has_citation,
@@ -216,6 +217,142 @@ class CaptionMatchTests(unittest.TestCase):
                     caption_matches(_ref(abbrev, None), full),
                     f"real abbreviation {abbrev!r} wrongly flagged against {full!r}",
                 )
+
+
+class CaptionMatchStateTests(unittest.TestCase):
+    """Per-side caption matching, three-state.
+
+    The old any-token rule passed a caption when ANY draft token was compatible
+    with ANY resolved token, so 'Smith v. Board' on Brown's number read verified
+    off the single generic token 'board'. The state machine instead requires
+    every POPULATED caption side to land at least one compatible token:
+      - every populated side matches        -> "match" (verified path unchanged)
+      - some side matches, some side fails  -> "unconfirmed" (refuse, never accuse)
+      - no side matches anything            -> "mismatch" (the existing hard flag)
+    A caption with no significant tokens on a side (initials like 'U.S.') leaves
+    that side vacuous, and a bare cite with no caption is always a match, so a
+    citation is never punished for what it does not say.
+    """
+
+    def test_half_matching_caption_is_unconfirmed_not_a_match(self) -> None:
+        state = caption_match_state(_ref("Smith", "Board"), "Brown v. Board of Education")
+        self.assertEqual("unconfirmed", state)
+
+    def test_correct_caption_is_a_match(self) -> None:
+        state = caption_match_state(
+            _ref("Brown", "Board of Education"), "Brown v. Board of Education"
+        )
+        self.assertEqual("match", state)
+
+    def test_abbreviated_caption_is_a_match(self) -> None:
+        state = caption_match_state(_ref("Brown", "Bd. of Educ."), "Brown v. Board of Education")
+        self.assertEqual("match", state)
+
+    def test_wholly_wrong_caption_is_a_mismatch(self) -> None:
+        state = caption_match_state(_ref("Loving", "Virginia"), "Brown v. Board of Education")
+        self.assertEqual("mismatch", state)
+
+    def test_bare_cite_without_caption_is_a_match(self) -> None:
+        self.assertEqual("match", caption_match_state(_ref(None, None), "Brown v. Board"))
+
+    def test_initialism_side_is_a_match(self) -> None:
+        # 'NLRB' carries no abbreviation mark and is no token prefix, but it is
+        # the initialism of the resolved plaintiff; the stricter per-side rule
+        # must not flag the most common initialism captions.
+        state = caption_match_state(
+            _ref("NLRB", "Jones & Laughlin Steel Corp."),
+            "National Labor Relations Board v. Jones & Laughlin Steel Corp.",
+        )
+        self.assertEqual("match", state)
+
+    def test_initials_only_side_is_vacuous(self) -> None:
+        # 'U.S.' yields no significant tokens, so the plaintiff side is vacuous
+        # and the defendant side decides alone.
+        state = caption_match_state(
+            _ref("U.S.", "Carolene Products Co."),
+            "United States v. Carolene Products Co.",
+        )
+        self.assertEqual("match", state)
+
+    def test_reversed_parties_stay_a_match(self) -> None:
+        # A reversed caption (cert posture) still names both real parties; each
+        # side finds its token in the resolved name, so it is not punished.
+        state = caption_match_state(
+            _ref("Board of Education", "Brown"), "Brown v. Board of Education"
+        )
+        self.assertEqual("match", state)
+
+    def test_one_unverifiable_side_caps_a_matching_caption_at_unconfirmed(self) -> None:
+        # F1 (final pre-merge review): "Ng v. Board" / "M.L.B. v. Board" on
+        # Brown's number read MATCH because the short-token side was excluded
+        # as vacuous and the other side carried "board". An unverifiable side
+        # must cap the result at the refusal: it can never out-rank
+        # "Smith v. Board" (unconfirmed), and never bless.
+        self.assertEqual(
+            "unconfirmed",
+            caption_match_state(_ref("Ng", "Board"), "Brown v. Board of Education"),
+        )
+        self.assertEqual(
+            "unconfirmed",
+            caption_match_state(_ref("M.L.B.", "Board"), "Brown v. Board of Education"),
+        )
+
+    def test_dotted_initials_matching_the_resolved_name_stay_vacuous(self) -> None:
+        # The carve-out that keeps "U.S. v. Carolene Products Co." a match:
+        # dotted single-letter initials whose letters spell an initialism of
+        # the resolved name are a legitimate short form, not an unverifiable
+        # side.
+        self.assertEqual(
+            "match",
+            caption_match_state(
+                _ref("U.S.", "Carolene Products Co."),
+                "United States v. Carolene Products Co.",
+            ),
+        )
+
+    def test_all_short_token_caption_is_unconfirmed_not_vacuous(self) -> None:
+        # Dotted initials ("M.L.B. v. S.L.J.") and two-letter surnames
+        # ("Ng v. Li") tokenize to nothing, and treating that as vacuous let ANY
+        # short-token caption on a real reporter number read verified -- the
+        # product-defining false-verified shape (initials captions are common in
+        # juvenile and anonymized cases). A caption with letters the tool cannot
+        # confirm is the refusal, never a match and never the accusation.
+        state = caption_match_state(_ref("M.L.B.", "S.L.J."), "Brown v. Board of Education")
+        self.assertEqual("unconfirmed", state)
+        state = caption_match_state(_ref("Ng", "Li"), "Brown v. Board of Education")
+        self.assertEqual("unconfirmed", state)
+
+    def test_short_token_caption_against_short_token_resolved_name_is_a_match(self) -> None:
+        # The REAL M.L.B. v. S.L.J. (519 U.S. 102): the resolved name itself
+        # yields no significant tokens, so there is nothing to compare against
+        # and a correctly cited initials case is never punished.
+        state = caption_match_state(_ref("M.L.B.", "S.L.J."), "M. L. B. v. S. L. J.")
+        self.assertEqual("match", state)
+
+    def test_lowercase_word_spelling_an_initialism_gets_no_credit(self) -> None:
+        # "Fat" is a surname here, coincidentally the initialism of "First
+        # American Title". Initialism credit is reserved for tokens written in
+        # ALL CAPS in the draft ("NLRB"), so this side fails and the caption is
+        # the unconfirmed refusal, not a match.
+        state = caption_match_state(
+            _ref("Fat", "Jones"), "First American Title Insurance Co. v. Jones"
+        )
+        self.assertEqual("unconfirmed", state)
+
+
+class CitationYearCourtExtractionTests(unittest.TestCase):
+    """find_citations reads the court-year parenthetical into typed fields so
+    the envelope can compare them against the corpus record (D13 follow-up)."""
+
+    def test_year_and_court_populate_from_the_parenthetical(self) -> None:
+        ref = find_citations("Smith v. Jones, 100 F.3d 200 (9th Cir. 1996).")[0]
+        self.assertEqual(1996, ref.year)
+        self.assertEqual("ca9", ref.court)
+
+    def test_year_is_none_without_a_parenthetical(self) -> None:
+        ref = find_citations("Smith v. Jones, 100 F.3d 200.")[0]
+        self.assertIsNone(ref.year)
+        self.assertIsNone(ref.court)
 
 
 if __name__ == "__main__":

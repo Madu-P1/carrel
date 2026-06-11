@@ -32,15 +32,25 @@ import httpx
 
 from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
-from services.legal.citations_eyecite import caption_matches, find_citations
+from services.legal.citations_eyecite import caption_match_state, find_citations
 from services.legal.contract_verify import (
     ClauseCandidate,
     ClauseVerdict,
     adjudicate_clause_candidates,
     verify_claim_against_clause,
 )
-from services.legal.local_caselaw import local_caselaw_client, local_opinion_text
-from services.legal.quote_check import extract_draft_quote_spans, split_runs
+from services.legal.local_caselaw import (
+    DEMO_MANIFEST,
+    CorpusManifest,
+    local_caselaw_client,
+    local_opinion_text,
+)
+from services.legal.quote_check import (
+    extract_draft_quote_spans,
+    first_letter_variants,
+    quoted_subphrases,
+    split_runs,
+)
 from services.legal.sentences import split_sentences
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
@@ -56,6 +66,10 @@ from services.retrieval.validators import verbatim_run_present
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
 
+# courts-db id shape ("scotus", "ca9", "nysupct.newyork"): lowercase
+# alphanumerics and dots, no spaces or slashes.
+_COURT_ID = re.compile(r"[a-z0-9.]+")
+
 # Anchor types verify_claim_against_clause actually tests against a clause. A
 # sentence carrying one of these has a proposition the contract path can confirm or
 # contradict; a defined_term alone does not (PR-1 grounds the defined term as
@@ -69,12 +83,14 @@ _CLAUSE_CHECKABLE = frozenset(
 # A constant because the promotion path and the could-not-check card text must stay
 # identical. See docs/notes/2026-06-08-untreated-vs-could-not-check.md.
 _ANCHOR_FREE_REASON = (
-    "No verifiable anchor (citation, quotation, amount, or date) was found, "
-    "so this statement was not independently checked."
+    "No verifiable anchor (such as a citation, quotation, amount, or date) was "
+    "found, so this statement was not independently checked."
 )
 
 
-def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> None:
+def _annotate_litigator_verdicts(
+    sentence: str, case_verdicts: list[dict], manifest: CorpusManifest | None = None
+) -> None:
     """Annotate the deterministic litigator verdicts in place.
 
     - ``holding_skipped``: holding-match was deliberately off, so a null holding
@@ -82,24 +98,64 @@ def _annotate_litigator_verdicts(sentence: str, case_verdicts: list[dict]) -> No
       from the LLM path's "ran but could not determine".
     - ``caption_mismatch``: the number resolves but to a different case than the
       draft names (a fabricated caption on a real number). eyecite reads the
-      draft's party names; ``caption_matches`` compares them leniently so an
+      draft's party names; ``caption_match_state`` compares them per side, so an
       abbreviated real caption is never falsely flagged.
+    - ``caption_unconfirmed``: one populated caption side matches the resolved
+      case and the other does not ("Smith v. Board" on Brown's number). The
+      refusal state: the verifier downgrades it to could-not-check, never to
+      the mismatch flag and never to verified.
+    - ``year_mismatch`` / ``court_mismatch``: the number resolves and the caption
+      fits, but the draft's court-year parenthetical disagrees with the corpus
+      record ("347 U.S. 483 (1990)" on a 1954 case; "(9th Cir.)" on a SCOTUS
+      cite). A common hallucination shape; also a refusal, never an accusation,
+      because a wrong parenthetical on a real number is usually a draft typo.
+      Vacuous when the draft gives no parenthetical.
+    - ``bounded_corpus`` and the ``corpus_*`` fields come from the corpus
+      MANIFEST (D13), not a constant: a demo or unattested corpus folds every
+      miss to could-not-check, while a corpus attesting ``scope="complete"``
+      lets a miss read as the loud "no such case as of <as_of>".
     """
+    bounded = manifest is None or manifest.scope != "complete"
     refs = {r.matched_text: r for r in find_citations(sentence)}
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
-            # The deterministic path checks against the BOUNDED offline corpus. Mark
-            # every verdict so an absent cite reads "outside my coverage" (an honest
-            # could-not-check), never the accusatory "does not exist" that only a
-            # national lookup can honestly claim. A caption mismatch (number resolves
-            # to a different case) is an affirmative finding and still flags below.
-            v["bounded_corpus"] = True
+            v["bounded_corpus"] = bounded
+            if manifest is not None:
+                v["corpus_scope"] = manifest.scope
+                v["corpus_case_count"] = manifest.case_count
+                v["corpus_as_of"] = manifest.as_of
             if not v.get("exists") or not v.get("case_name"):
                 continue
             ref = refs.get(v.get("citation"))
-            if ref is not None and not caption_matches(ref, v["case_name"]):
+            if ref is None:
+                continue
+            state = caption_match_state(ref, v["case_name"])
+            if state == "mismatch":
                 v["caption_mismatch"] = True
+            elif state == "unconfirmed":
+                v["caption_unconfirmed"] = True
+            date_filed = str(v.get("date_filed") or "")
+            if ref.year is not None and len(date_filed) >= 4 and date_filed[:4].isdigit():
+                resolved_year = int(date_filed[:4])
+                if ref.year != resolved_year:
+                    v["year_mismatch"] = True
+                    v["cited_year"] = ref.year
+                    v["resolved_year"] = resolved_year
+            resolved_court = str(v.get("court") or "")
+            # Compare courts only when BOTH sides are courts-db ids ("scotus",
+            # "ca9"). eyecite always emits ids, but a non-demo corpus may carry
+            # CourtListener's URL or display-name form; comparing across formats
+            # would flag every correct parenthetical (a blanket recall collapse),
+            # so a non-id resolved court makes the check vacuous instead.
+            if (
+                ref.court
+                and resolved_court
+                and _COURT_ID.fullmatch(resolved_court)
+                and ref.court != resolved_court
+            ):
+                v["court_mismatch"] = True
+                v["cited_court"] = ref.court
 
 
 def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:
@@ -131,31 +187,24 @@ def _attach_bundled_opinion_text(case_verdicts: list[dict]) -> None:
                     v["opinion_text"] = text
 
 
-def _quoted_subphrases(run: str) -> list[str]:
-    """The distinct quoted phrases inside a run, in case the span regex merged them.
-
-    The quote-span extractor captures greedily from the first quote mark to the
-    last, so a sentence with two quoted phrases ('"A" failed because "B"') yields a
-    single run with the inner marks retained ('A" failed because "B'). Splitting on
-    quote marks recovers the phrases at the even positions; the odd positions are
-    the lawyer's own connecting prose, which was never quoted and must not be
-    checked. A run with no inner marks yields itself unchanged.
-    """
-    parts = re.split(r'["“”]', run)
-    phrases = [p for idx, p in enumerate(parts) if idx % 2 == 0 and p.strip()]
-    return phrases or [run]
-
-
 # C3: contract boilerplate carries no topic signal, so an overlap on these words does
 # not make an off-topic clause relevant to the claim. Words shorter than 4 letters are
 # already dropped by the extractor below.
 _TOPIC_STOPWORDS = frozenset(
     {
         "shall",
-        "parties",
+        "term",
         "party",
         "agreement",
         "section",
+        # Contract structural-name boilerplate: the document type ("Services
+        # Agreement") recurs in clause headers across the whole contract, so a
+        # shared "services" is not topical relevance. Without this, an off-topic
+        # signing-bonus clause that shares only the contract name laundered a
+        # coincidental value into a verified present (the demonstrated D5 gap in
+        # the binary on-topic check; "agreement" was already here).
+        "service",
+        "services",
         "clause",
         "this",
         "that",
@@ -184,24 +233,42 @@ _TOPIC_STOPWORDS = frozenset(
         "each",
         "they",
         "them",
-        "shall",
     }
 )
 
+# The stopword set with the same trailing-s fold _clause_on_topic applies to
+# content words, so the filter compares folded-to-folded ("agreements" and
+# "agreement" are one stopword; "this" folds to "thi" on both sides).
+_TOPIC_STOPWORDS_FOLDED = frozenset(w[:-1] if w.endswith("s") else w for w in _TOPIC_STOPWORDS)
+
 
 def _clause_on_topic(sentence: str, clause: str) -> bool:
-    """A parametric present is on-topic only if the claim and the matched clause share
-    a content word beyond the coincidental value.
+    """A parametric present is on-topic only if the claim and the matched clause
+    share a content word beyond the coincidental value.
 
     Blocks an off-topic clause that merely repeats the same number (an unrelated
     signing bonus's $42,000 vs a liability cap's $42,000). The case-existence path
     already gates on relevance ("mere topical relevance is not support"); the contract
     path did not, so an off-topic value coincidence could read a false "present". The
     safe direction is recall loss (could-not-check), never a false accusation.
+
+    Used by the cross-clause adjudicator (PR #166) only as a present's accusation
+    veto, not a contradiction floor: the adjudicator decides contradiction
+    topicality structurally (a contradiction stands only when no clause carries
+    the value), per docs/notes/2026-06-10-cachet-contradiction-topicality.md.
+
+    Content words fold a trailing s so a singular/plural pair counts once, and
+    the stopword filter compares folded-to-folded so plural stopword forms
+    ("agreements", "sections") cannot slip through and earn topic credit.
     """
 
     def content(text: str) -> set[str]:
-        return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _TOPIC_STOPWORDS}
+        # Fold the trailing s BEFORE the stopword filter: filtering first let
+        # plural stopword forms ("agreements", "sections") slip through and earn
+        # topic-overlap credit. Both sides fold, so a stopword like "this"
+        # ("thi" once folded) still filters correctly.
+        folded = {w[:-1] if w.endswith("s") else w for w in re.findall(r"[a-z]{4,}", text.lower())}
+        return folded - _TOPIC_STOPWORDS_FOLDED
 
     return bool(content(sentence) & content(clause))
 
@@ -225,7 +292,7 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
         return None
     for inner_text, _start, _end in spans:
         for run in split_runs(inner_text):
-            for phrase in _quoted_subphrases(run):
+            for phrase in quoted_subphrases(run):
                 phrase = phrase.strip()
                 if phrase and not _run_present_any(phrase, opinions):
                     return (
@@ -235,30 +302,11 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
     return None
 
 
-def _first_letter_variants(run: str) -> tuple[str, ...]:
-    """The run, plus the run with its first alphabetic character's case toggled.
-
-    A lawyer who embeds a quote mid-sentence routinely lowercases the source's
-    leading capital ("separate educational facilities..." from a sentence that
-    opened "Separate ...") without the bracket convention ("[s]eparate"). That is
-    a universally accepted edit, not an alteration, so the altered-quote check
-    must accept either case at the leading letter. Interior case stays strict, so
-    a substituted interior word is still caught.
-    """
-    for i, ch in enumerate(run):
-        if ch.isalpha():
-            swapped = ch.lower() if ch.isupper() else ch.upper()
-            if swapped == ch:
-                break
-            return (run, run[:i] + swapped + run[i + 1 :])
-    return (run,)
-
-
 def _run_present_any(run: str, opinions: list[str]) -> bool:
     """True if ``run`` (or its leading-letter case variant) is verbatim in any opinion."""
     return any(
         verbatim_run_present(variant, op)
-        for variant in _first_letter_variants(run)
+        for variant in first_letter_variants(run)
         for op in opinions
     )
 
@@ -585,6 +633,7 @@ def build_deterministic_envelope(
     doc_ids: Sequence[str] | None = None,
     client: httpx.Client | None = None,
     embedder: Embedder | None = None,
+    corpus_manifest: CorpusManifest | None = None,
 ) -> dict:
     """Build a verify envelope for ``draft`` with no LLM.
 
@@ -604,6 +653,15 @@ def build_deterministic_envelope(
     # demo sentinel token, so without this floor the litigator path would POST the
     # brief text to courtlistener.com.
     cl_client = client if client is not None else local_caselaw_client()
+    # The corpus manifest travels with the corpus, not the engine. The default
+    # client serves DEMO_CORPUS, so it carries DEMO_MANIFEST; an injected client
+    # without a manifest stays unattested, which folds conservatively to
+    # bounded_corpus (a miss is could-not-check, never "no such case").
+    manifest = (
+        corpus_manifest
+        if corpus_manifest is not None
+        else (DEMO_MANIFEST if client is None else None)
+    )
 
     if conn is not None and not doc_ids:
         # Full-library fallback: the demo UI's stream sends no doc_ids, so scope the
@@ -648,8 +706,9 @@ def build_deterministic_envelope(
     )
     sentences = split_sentences(draft)
     claims: list[dict] = []
-    # Opinion text of the cases that resolved in each sentence, so the altered-quote
-    # pass can check a quote against cites in its own OR an adjacent sentence.
+    # Opinion text of the cases that resolved in each sentence. The altered-quote
+    # pass below attributes SAME-SENTENCE only; this map is keyed by sentence
+    # index for that pass.
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence, alias_table=alias_table)
@@ -666,7 +725,7 @@ def build_deterministic_envelope(
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
-            _annotate_litigator_verdicts(sentence, serialized)
+            _annotate_litigator_verdicts(sentence, serialized, manifest=manifest)
             # Holding-match is off, so the serialized verdicts carry no opinion text;
             # attach the bundled text so the brief-level quote panel can ground a
             # quoted span against the cited opinion (stripped before the SSE wire).

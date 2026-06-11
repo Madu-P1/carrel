@@ -232,6 +232,69 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         self.assertEqual(payload["draft_text"], roundtripped["draft_text"])
         self.assertEqual(1, roundtripped["summary"]["verified"])
 
+    def test_deterministic_verdict_annotations_survive_the_wire_model(self) -> None:
+        # The non-stream POST /api/verify serializes through VerifyResponse, and
+        # Pydantic strips undeclared keys. The deterministic annotations
+        # (bounded_corpus, the corpus manifest, the mismatch flags) must survive
+        # that model, or the stream and non-stream responses disagree and a
+        # bounded miss reads as the accusatory citation_not_found client-side.
+        import api_models
+
+        verdict = {
+            "citation": "999 U.S. 999",
+            "status": 404,
+            "exists": False,
+            "holding_skipped": True,
+            "bounded_corpus": True,
+            "corpus_scope": "demo",
+            "corpus_case_count": 3,
+            "corpus_as_of": "2026-06-05",
+            "caption_unconfirmed": True,
+            "year_mismatch": True,
+            "cited_year": 1990,
+            "resolved_year": 1954,
+            "court_mismatch": True,
+            "cited_court": "ca9",
+        }
+        kept = api_models.CaseVerdictItem.model_validate(verdict).model_dump()
+        for key, value in verdict.items():
+            self.assertEqual(value, kept.get(key), f"{key} must survive the wire model")
+
+    def test_deterministic_envelope_carries_coverage_counts(self) -> None:
+        # Coverage honesty (the untreated/could-not-check split, made visible):
+        # the deterministic envelope is sentence-aligned, so the payload must
+        # say how many statements there were, how many carried checkable
+        # material, and how many were untreated. Without this the UI and the
+        # certification can only imply that everything was checked.
+        envelope = self._envelope(
+            claims=[
+                {"text": "Plain prose.", "citations": [], "case_verdicts": [], "untreated": True},
+                {"text": "More prose.", "citations": [], "case_verdicts": [], "untreated": True},
+                {
+                    "text": "The cap is $5.",
+                    "citations": [],
+                    "case_verdicts": [],
+                    "could_not_check_reason": "no source",
+                },
+            ],
+            model="deterministic-v1",
+            provider="deterministic",
+        )
+        result = self._call(envelope)
+        payload = verify_service.verify_result_to_payload(result)
+        self.assertEqual({"statements": 3, "treated": 1, "untreated": 2}, payload.get("coverage"))
+
+    def test_llm_envelope_has_no_coverage_block(self) -> None:
+        # LLM-path claims are model-extracted, not sentence-aligned, so a
+        # coverage count would overstate what the engine knows. The block is
+        # absent (None), and the UI falls back to the legacy copy.
+        envelope = self._envelope(
+            claims=[{"text": "x", "citations": [{"node_id": "c1"}], "case_verdicts": []}]
+        )
+        result = self._call(envelope)
+        payload = verify_service.verify_result_to_payload(result)
+        self.assertIsNone(payload.get("coverage"))
+
     def test_assessed_fields_default_none_on_the_wire(self) -> None:
         # T1 PR-2: the assessed_* tier fields exist on every card, default None, and
         # round-trip through the payload. Nothing sets them yet (the selector is dark).

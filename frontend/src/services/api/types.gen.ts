@@ -299,7 +299,9 @@ export interface paths {
         /**
          * Delete Vault Route
          * @description Forget an EMPTY vault. Refuses (409) if any record is still filed under it,
-         *     so deleting a vault never silently moves or destroys records. The name travels
+         *     so deleting a vault never silently moves or destroys records. A blank name is
+         *     a 400 (validation), an unknown name a 404; each failure shape gets its own
+         *     honest answer instead of folding into the in-use refusal. The name travels
          *     as a query parameter, not a path segment, so a vault named after a caption that
          *     contains a slash (e.g. 'Apex / Northwind') can still be deleted.
          */
@@ -1979,6 +1981,30 @@ export interface components {
             holding_excerpt?: string | null;
             /** Holding Error */
             holding_error?: string | null;
+            /** Holding Skipped */
+            holding_skipped?: boolean | null;
+            /** Bounded Corpus */
+            bounded_corpus?: boolean | null;
+            /** Corpus Scope */
+            corpus_scope?: string | null;
+            /** Corpus Case Count */
+            corpus_case_count?: number | null;
+            /** Corpus As Of */
+            corpus_as_of?: string | null;
+            /** Caption Mismatch */
+            caption_mismatch?: boolean | null;
+            /** Caption Unconfirmed */
+            caption_unconfirmed?: boolean | null;
+            /** Year Mismatch */
+            year_mismatch?: boolean | null;
+            /** Cited Year */
+            cited_year?: number | null;
+            /** Resolved Year */
+            resolved_year?: number | null;
+            /** Court Mismatch */
+            court_mismatch?: boolean | null;
+            /** Cited Court */
+            cited_court?: string | null;
         };
         /**
          * ClaimCaseVerdictItem
@@ -2884,6 +2910,32 @@ export interface components {
             assessed_label?: string | null;
         };
         /**
+         * VerifyCoverageItem
+         * @description How much of the draft the deterministic engine examined.
+         *
+         *     statements: sentences in the draft. treated: sentences carrying checkable
+         *     material (each became a verdict card). untreated: sentences with no
+         *     checkable anchor (no card; rendered as plain draft text). Absent (None) on
+         *     the LLM path, whose claims are not sentence-aligned.
+         */
+        VerifyCoverageItem: {
+            /**
+             * Statements
+             * @default 0
+             */
+            statements: number;
+            /**
+             * Treated
+             * @default 0
+             */
+            treated: number;
+            /**
+             * Untreated
+             * @default 0
+             */
+            untreated: number;
+        };
+        /**
          * VerifyPlacementItem
          * @description Cachet PR5a: where a claim landed in the draft (claim-span alignment).
          *
@@ -2977,6 +3029,7 @@ export interface components {
             quote_results?: components["schemas"]["VerifyQuoteResultItem"][];
             /** Unplaced */
             unplaced?: number[];
+            coverage?: components["schemas"]["VerifyCoverageItem"] | null;
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {
@@ -3502,6 +3555,13 @@ export interface operations {
                     "application/json": components["schemas"]["VaultListResponse"];
                 };
             };
+            /** @description Blank vault name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3532,6 +3592,27 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["VaultDeleteResponse"];
                 };
+            };
+            /** @description Blank vault name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No vault by that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Vault still holds records */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

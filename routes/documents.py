@@ -280,7 +280,11 @@ def list_vaults() -> Dict[str, Any]:
         return {"vaults": list_vault_names(conn)}
 
 
-@router.post("/api/vaults", response_model=VaultListResponse)
+@router.post(
+    "/api/vaults",
+    response_model=VaultListResponse,
+    responses={400: {"description": "Blank vault name"}},
+)
 def create_vault_route(payload: CreateVaultRequest) -> Dict[str, Any]:
     """Create a (possibly empty) vault so records can be filed into it. Returns
     the full vault list so the caller resyncs in one round trip."""
@@ -292,14 +296,30 @@ def create_vault_route(payload: CreateVaultRequest) -> Dict[str, Any]:
         return {"vaults": list_vault_names(conn)}
 
 
-@router.delete("/api/vaults", response_model=VaultDeleteResponse)
+@router.delete(
+    "/api/vaults",
+    response_model=VaultDeleteResponse,
+    responses={
+        400: {"description": "Blank vault name"},
+        404: {"description": "No vault by that name"},
+        409: {"description": "Vault still holds records"},
+    },
+)
 def delete_vault_route(name: str) -> Dict[str, bool]:
     """Forget an EMPTY vault. Refuses (409) if any record is still filed under it,
-    so deleting a vault never silently moves or destroys records. The name travels
+    so deleting a vault never silently moves or destroys records. A blank name is
+    a 400 (validation), an unknown name a 404; each failure shape gets its own
+    honest answer instead of folding into the in-use refusal. The name travels
     as a query parameter, not a path segment, so a vault named after a caption that
     contains a slash (e.g. 'Apex / Northwind') can still be deleted."""
     with db.get_db() as conn:
-        if not delete_vault(conn, name):
+        try:
+            deleted = delete_vault(conn, name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not deleted:
             raise HTTPException(
                 status_code=409,
                 detail="This vault still holds records. Move or delete them first.",

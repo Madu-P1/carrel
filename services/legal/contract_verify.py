@@ -25,13 +25,13 @@ as a contradiction by the day-count approximation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import re
+from dataclasses import dataclass
 
 from services.legal.anchors import (
     GRANT_NOUN_WORDS,
     POLARITY_VOCAB,
+    Anchor,
     extract_anchors,
     grant_noun_pattern,
     related_jurisdictions,
@@ -48,6 +48,7 @@ from services.retrieval.validators import verbatim_run_present
 # qualifier mask a flipped sibling.
 _PARAMETRIC_TYPES = ("money", "percent", "date", "duration", "governing_law", "polarity")
 _DURATION_REL_TOLERANCE = 0.05
+_DURATION_UNIT = re.compile(r"\b(year|month|week|day)s?\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -87,16 +88,66 @@ def _within_tolerance(a: float, b: float, rel: float = _DURATION_REL_TOLERANCE) 
     return abs(a - b) / hi <= rel
 
 
-def _values_match(anchor_type: str, claim_values: list, clause_values: list) -> bool:
+def _duration_unit(text: str) -> str | None:
+    m = _DURATION_UNIT.search(text)
+    return m.group(1).lower() if m else None
+
+
+def _durations_match(claim_anchor: Anchor, clause_anchor: Anchor) -> bool:
+    """Whether two single duration anchors agree.
+
+    The 5% tolerance exists ONLY to bridge the day-count approximation across
+    units (12 months canonicalizes to 360 days, 1 year to 365; the terms are
+    the same). Within one unit there is no approximation to bridge, so the
+    compare is exact: 23 months vs 24 months is a different term, not a
+    rounding artifact, and a 360 vs 365 days basis is a real financial
+    difference. An anchor whose unit cannot be re-derived (should not happen;
+    the detector requires the unit word) falls back to the tolerant compare,
+    the lenient pre-existing behavior.
+    """
+    claim_unit = _duration_unit(claim_anchor.text)
+    clause_unit = _duration_unit(clause_anchor.text)
+    if claim_unit is not None and claim_unit == clause_unit:
+        return claim_anchor.canonical_value == clause_anchor.canonical_value
+    return _within_tolerance(
+        float(claim_anchor.canonical_value), float(clause_anchor.canonical_value)
+    )
+
+
+def _values_match(claim_values: list, clause_values: list) -> bool:
     # Invoked only on SINGLE-value pairs (one value per side): the caller routes any
     # multi-value type to multi_value_unverifiable, because "any matches any" cannot
     # align multiple values and would mask a contradiction (a claim's $1M cap spuriously
     # matching a clause's unrelated $1M line item). On a single pair the intersection
-    # test below is exact equality; duration keeps a small tolerance so equivalent terms
-    # ("12 months" vs "1 year") are not flagged as a contradiction.
-    if anchor_type == "duration":
-        return any(_within_tolerance(c, k) for c in claim_values for k in clause_values)
+    # test is exact equality. Durations are compared by the caller via
+    # `_durations_match` (unit-aware); this helper covers money and date.
     return bool(set(claim_values) & set(clause_values))
+
+
+def _normalized_anchor_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _present_detail(claim_anchor: Anchor, clause_anchor: Anchor, where: str) -> str:
+    """A literally-true detail line for a parametric present.
+
+    Three forms, because the certification record stands on its own and must
+    never assert text the clause does not contain:
+      - identical written forms: "X appears in Section 8"
+      - same value, different written form: "the summary's X matches Y in ..."
+      - tolerant cross-unit duration: "the summary's X is consistent with Y in ..."
+    """
+    if _normalized_anchor_text(claim_anchor.text) == _normalized_anchor_text(clause_anchor.text):
+        return f"{claim_anchor.text} appears in {where}; review the full passage for context."
+    if claim_anchor.canonical_value == clause_anchor.canonical_value:
+        return (
+            f"The summary's {claim_anchor.text} matches {clause_anchor.text} in {where}; "
+            "review the full passage for context."
+        )
+    return (
+        f"The summary's {claim_anchor.text} is consistent with {clause_anchor.text} in {where}; "
+        "review the full passage for context."
+    )
 
 
 # Function words, contract boilerplate, party roles, and cosmetic adjectives
@@ -287,7 +338,11 @@ def _polarity_pass(
             if present is None:
                 present = ClauseVerdict(
                     "present",
-                    f"{c_hits[0].text} appears in {where}; review the full passage for context.",
+                    # _present_detail, not a literal "appears in": the canonical
+                    # values are equal but the surfaces may differ ("non-exclusive"
+                    # vs "nonexclusive"), and a filing-grade detail must never
+                    # assert text the clause does not contain.
+                    _present_detail(c_hits[0], k_hits[0], where),
                     qualified,
                     c_vals,
                     k_vals,
@@ -408,11 +463,17 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     clause_values,
                 )
             continue
-        if _values_match(anchor_type, list(claim_values), list(clause_values)):
+        # Durations compare unit-aware (this branch's fix); everything else by
+        # the default value intersection.
+        if anchor_type == "duration":
+            matched = _durations_match(claim_hits[0], clause_hits[0])
+        else:
+            matched = _values_match(list(claim_values), list(clause_values))
+        if matched:
             if present_verdict is None:
                 present_verdict = ClauseVerdict(
                     "present",
-                    f"{claim_hits[0].text} appears in {where}; review the full passage for context.",
+                    _present_detail(claim_hits[0], clause_hits[0], where),
                     anchor_type,
                     claim_values,
                     clause_values,

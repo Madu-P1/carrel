@@ -182,6 +182,19 @@ describe("audit artifact provenance", () => {
     expect(cloud).toContain("cloud");
   });
 
+  test("a local MODEL never earns the no-egress attestation", () => {
+    // afm/ollama mean the language model ran on-device, but the grounding path
+    // those providers ride can still reach live citation lookups, so the
+    // artifact must never attest no-egress for them. Only the deterministic
+    // engine, offline by construction, makes that claim.
+    for (const provider of ["afm", "ollama"]) {
+      const text = attestationFor(provider);
+      expect(text).not.toContain("No data left this device");
+      expect(text).toContain("on this device");
+      expect(text).toContain("network");
+    }
+  });
+
   test("buildCertification records local execution + attestation from the provider", () => {
     const local = buildCertification(resp({ provider: "deterministic", claim_verdicts: [supported] }), AT);
     expect(local.localExecution).toBe(true);
@@ -205,5 +218,27 @@ describe("audit artifact provenance", () => {
     expect(parsed.localExecution).toBe(true);
     expect(parsed.attestation).toContain("No data left this device");
     expect(parsed.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("coverage counts ride the certification when the engine provides them", () => {
+    // Coverage honesty: the exhibit must be able to state the denominator
+    // (what was examined vs what carried nothing checkable), so the model
+    // carries the deterministic path's counts verbatim.
+    const m = buildCertification(
+      resp({
+        provider: "deterministic",
+        claim_verdicts: [supported],
+        coverage: { statements: 12, treated: 3, untreated: 9 }
+      }),
+      AT
+    );
+    expect(m.coverage).toEqual({ statements: 12, treated: 3, untreated: 9 });
+    const parsed = JSON.parse(certificationToJson(m));
+    expect(parsed.coverage).toEqual({ statements: 12, treated: 3, untreated: 9 });
+  });
+
+  test("coverage is null when the engine cannot count (LLM path)", () => {
+    const m = buildCertification(resp({ provider: "claude", claim_verdicts: [supported] }), AT);
+    expect(m.coverage).toBeNull();
   });
 });

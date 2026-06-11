@@ -103,6 +103,13 @@ interface FlatCase {
   // Deterministic path only: this verdict came from the BOUNDED offline corpus, so an
   // absent cite is "outside my coverage" (could-not-check), not a national "does not exist".
   boundedCorpus: boolean;
+  // The corpus's own manifest (D13), when it carried one: what scope of corpus
+  // the check ran against and the snapshot date. Lets the copy name the
+  // denominator ("a 3-case demo corpus, as of 2026-06-05") instead of a vague
+  // "offline corpus", and lets a complete-index miss state its as-of date.
+  corpusScope: string | null;
+  corpusCaseCount: number | null;
+  corpusAsOf: string | null;
 }
 
 function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError: boolean } {
@@ -122,7 +129,10 @@ function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError
         holdingError: v.holding_error ?? null,
         captionMismatch: Boolean((v as { caption_mismatch?: boolean }).caption_mismatch),
         holdingSkipped: Boolean((v as { holding_skipped?: boolean }).holding_skipped),
-        boundedCorpus: Boolean((v as { bounded_corpus?: boolean }).bounded_corpus)
+        boundedCorpus: Boolean((v as { bounded_corpus?: boolean }).bounded_corpus),
+        corpusScope: (v as { corpus_scope?: string }).corpus_scope ?? null,
+        corpusCaseCount: (v as { corpus_case_count?: number }).corpus_case_count ?? null,
+        corpusAsOf: (v as { corpus_as_of?: string }).corpus_as_of ?? null
       });
     }
   }
@@ -154,15 +164,19 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
   // A bounded-corpus 404/400 is NOT fabricated: the offline corpus cannot tell a
   // fabricated cite from a real-but-unbundled one, so it is handled as could-not-check
   // below. A national 404 (no boundedCorpus flag) and any caption mismatch still flag.
-  const fabricated =
-    cases.some((c) => (c.status === 404 || c.status === 400) && !c.boundedCorpus) || captionMismatch;
+  const nationalMiss = cases.find(
+    (c) => (c.status === 404 || c.status === 400) && !c.boundedCorpus
+  );
+  const fabricated = Boolean(nationalMiss) || captionMismatch;
   if (fabricated) {
     return mk(
       "citation_not_found",
       "Citation not found",
       captionMismatch
         ? "This citation number resolves to a different case than the one named in the draft."
-        : "No case matching this citation was found in the record checked."
+        : nationalMiss?.corpusAsOf
+          ? `No such case appears in the citation index checked (complete as of ${nationalMiss.corpusAsOf}).`
+          : "No case matching this citation was found in the record checked."
     );
   }
 
@@ -181,14 +195,16 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
   // flag. The bundled corpus is not the national database, so a real-but-unbundled
   // case must not be called fake. A caption mismatch is already flagged above; a
   // national 404 (no boundedCorpus flag) was treated as fabricated above.
-  const outsideCoverage = cases.some(
+  const outsideCoverage = cases.find(
     (c) =>
       c.boundedCorpus && !c.exists && !c.captionMismatch && (c.status === 404 || c.status === 400)
   );
   if (outsideCoverage) {
-    // Prefer the engine's own reason (it names the citation); the local copy is
-    // the fallback for older payloads. Keeping one sentence of record avoids
-    // the two near-identical corpus sentences drifting on either side of the wire.
+    // Prefer the engine's own reason (it names the citation AND carries the
+    // D13 corpus scope phrase, e.g. "(a 3-case demo corpus, as of ...)", from
+    // _deterministic_reason). The local copy is the fallback for older
+    // payloads. Keeping one sentence of record avoids the two near-identical
+    // corpus sentences drifting on either side of the wire.
     return mk(
       "could_not_check",
       "Could not verify",

@@ -19,6 +19,7 @@ See CACHET-DEMO-RUNBOOK.md for the full demo procedure.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -78,9 +79,12 @@ if not (DIST / "index.html").exists():
 # frontend JS runs. The deterministic path holds no secrets; this token only
 # authorizes the local mutating call on the loopback API.
 _RAW = (DIST / "index.html").read_text(encoding="utf-8")
+# json.dumps + the close-tag escape keep the injected value inert as HTML: a
+# token containing </script> (operator-set env) must not break out of the tag.
+_TOKEN_JS = json.dumps(TOKEN).replace("</", "<\\/")
 _INDEX_HTML = _RAW.replace(
     "</head>",
-    f"    <script>window.__CARREL_LOCAL_API_TOKEN = {TOKEN!r};</script>\n  </head>",
+    f"    <script>window.__CARREL_LOCAL_API_TOKEN = {_TOKEN_JS};</script>\n  </head>",
     1,
 )
 

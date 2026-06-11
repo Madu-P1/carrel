@@ -104,32 +104,45 @@ export function sha256OfText(text: string): string {
   return sha256Hex(new TextEncoder().encode(text));
 }
 
-// The attestation keys off the provider label. That is sound only because each
-// label is structurally tied to where it ran: "afm" (Apple on-device) and
-// "ollama" (localhost) are local models; "deterministic" is the no-LLM engine,
-// which is offline BY CONSTRUCTION (services/legal/deterministic_envelope cannot
-// egress without an explicitly injected online client; tests/test_zero_egress
-// locks this). "claude" is cloud. Anything unrecognized (""/"unknown") is treated
-// as NOT local, so the artifact never over-claims locality. If an online
-// deterministic mode is ever added, the attestation must move to an engine-emitted
-// signal rather than this label, because the label would no longer prove locality.
+// The attestation keys off the provider label. Locality of the MODEL and
+// absence of EGRESS are different claims: "afm" (Apple on-device) and "ollama"
+// (localhost) mean the language model ran locally, but the grounding path
+// those providers ride still performs live citation lookups (CourtListener)
+// when a token is configured, so the draft's claim text can leave the device
+// on those runs. Only "deterministic" earns the no-egress attestation: that
+// engine is offline BY CONSTRUCTION (services/legal/deterministic_envelope
+// cannot egress without an explicitly injected online client;
+// tests/test_zero_egress locks this). "claude" is cloud. Anything unrecognized
+// (""/"unknown") is treated as NOT local, so the artifact never over-claims.
+// If an online deterministic mode is ever added, the attestation must move to
+// an engine-emitted signal rather than this label.
 const LOCAL_PROVIDERS = new Set(["afm", "ollama", "deterministic"]);
 
-/** True when the producing provider ran on-device (no data left the machine).
- * Fail-safe: an unrecognized provider is never local, so locality is never
- * over-claimed in the filing-grade artifact. */
+/** True when the producing MODEL ran on-device. This is a model-locality
+ * claim, not a no-egress claim; see attestationFor. Fail-safe: an unrecognized
+ * provider is never local, so locality is never over-claimed in the
+ * filing-grade artifact. */
 export function isLocalExecution(provider: string): boolean {
   return LOCAL_PROVIDERS.has((provider ?? "").trim().toLowerCase());
 }
 
 /**
- * The named "no data left this device" attestation, honest about cloud vs local.
- * For a cloud provider it states plainly that the draft and sources were sent out,
- * so the artifact never implies a local guarantee it cannot make.
+ * The named data-handling attestation, honest about three different postures:
+ * the deterministic engine (no egress by construction), a local model on the
+ * grounding path (model local, citation lookups may use the network), and a
+ * cloud provider (the draft and sources were sent out). The artifact must
+ * never attest "no data left this device" on a run that could have egressed.
  */
 export function attestationFor(provider: string): string {
-  if (isLocalExecution(provider)) {
+  const normalized = (provider ?? "").trim().toLowerCase();
+  if (normalized === "deterministic") {
     return "No data left this device. All verification ran locally against the documents you loaded.";
+  }
+  if (LOCAL_PROVIDERS.has(normalized)) {
+    return (
+      `The ${normalized} language model ran on this device. Citation lookups on this ` +
+      "path may have used the network; this record does not attest that no data left the device."
+    );
   }
   const named = (provider ?? "").trim() || "a cloud model";
   return `Verification ran via ${named} in the cloud. The draft and the sources it was checked against were sent to that provider.`;
@@ -147,13 +160,22 @@ export interface CertificationItem {
   sourceFingerprints: string[];
 }
 
+export interface CertificationCoverage {
+  /** Sentences in the checked draft. */
+  statements: number;
+  /** Sentences that carried checkable material (each became a finding). */
+  treated: number;
+  /** Sentences with no checkable anchor: NOT independently checked. */
+  untreated: number;
+}
+
 export interface CertificationModel {
   generatedAtISO: string;
   fingerprint: string;
   provider: string;
-  /** Whether the producing provider ran on-device. */
+  /** Whether the producing MODEL ran on-device (not a no-egress claim). */
   localExecution: boolean;
-  /** The named "no data left this device" attestation (honest cloud vs local). */
+  /** The named data-handling attestation (honest across all three postures). */
   attestation: string;
   totalStatements: number;
   needsReviewCount: number;
@@ -161,6 +183,10 @@ export interface CertificationModel {
   /** The not-confirmed set (everything that is not "supported"), worst-first. */
   flagged: CertificationItem[];
   allItems: CertificationItem[];
+  /** Deterministic-path coverage: what the engine examined vs what carried
+   * nothing checkable. Null on the LLM path (claims not sentence-aligned),
+   * where the exhibit omits the coverage line rather than guessing. */
+  coverage: CertificationCoverage | null;
 }
 
 function sourcesFor(card: VerifyClaimVerdict): string[] {
@@ -239,6 +265,14 @@ export function buildCertification(
     .filter((it) => it.kind !== "supported")
     .sort((a, b) => DISPOSITION_ORDER[a.kind] - DISPOSITION_ORDER[b.kind]);
   const provider = response.provider ?? "";
+  const rawCoverage = response.coverage ?? null;
+  const coverage: CertificationCoverage | null = rawCoverage
+    ? {
+        statements: rawCoverage.statements ?? 0,
+        treated: rawCoverage.treated ?? 0,
+        untreated: rawCoverage.untreated ?? 0
+      }
+    : null;
   return {
     generatedAtISO,
     fingerprint: fingerprintDraft(response.draft_text ?? draftFallback),
@@ -249,6 +283,7 @@ export function buildCertification(
     needsReviewCount: flagged.length,
     counts,
     flagged,
-    allItems
+    allItems,
+    coverage
   };
 }

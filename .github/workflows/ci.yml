@@ -83,6 +83,9 @@ jobs:
             tests.test_align \
             tests.test_briefs \
             tests.test_briefs_routes \
+            tests.test_document_vaults \
+            tests.test_document_vaults_routes \
+            tests.test_document_delete_cascade \
             tests.test_t1_calibration \
             -v
 

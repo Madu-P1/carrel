@@ -309,10 +309,39 @@ function VerdictCard({
 
 interface VerifySummaryProps {
   dispositions: ClaimDisposition[];
+  /** Deterministic-path coverage counts (statements/treated/untreated), or
+   *  null on the LLM path. Drives the honest scope copy: the legacy "each
+   *  statement is checked" line overclaimed for anchor-free prose, which is
+   *  examined but not independently checked. */
+  coverage?: { statements?: number; treated?: number; untreated?: number } | null;
 }
 
-function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
+/** The summary's register, as a pure function so tests can pin it: a FLAG is an
+ * accusation the lawyer must act on (a cited case that does not exist, or a
+ * claim the source contradicts). Could-not-check (an honest refusal),
+ * source-does-not-support, and the assistive assessed tier are NOT flags and
+ * must never turn the headline into the oxblood alarm; folding them into
+ * "needs review" was the "everything needs review" alert fatigue (main #154). */
+export function verdictSummaryRegister(dispositions: ClaimDisposition[]): {
+  flagged: number;
+  notVerified: number;
+  headline: string;
+} {
   const total = dispositions.length;
+  const count = (kind: ClaimDisposition["kind"]) =>
+    dispositions.filter((d) => d.kind === kind).length;
+  const flagged = count("citation_not_found") + count("claim_unsupported");
+  const notVerified = count("proposition_unsupported") + count("could_not_check") + count("assessed");
+  const headline =
+    flagged > 0
+      ? `${flagged} of ${total} statements need your review.`
+      : notVerified > 0
+        ? `${notVerified} of ${total} statements could not be verified against your sources.`
+        : `All ${total} statements are supported by the sources you provided.`;
+  return { flagged, notVerified, headline };
+}
+
+function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
   const count = (kind: ClaimDisposition["kind"]) =>
     dispositions.filter((d) => d.kind === kind).length;
   const citationNotFound = count("citation_not_found");
@@ -320,13 +349,7 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
   const claimUnsupported = count("claim_unsupported");
   const couldNotCheck = count("could_not_check");
   const supported = count("supported");
-  // A flag is an accusation the lawyer must act on: a cited case that does not
-  // exist, or a claim the source contradicts. Could-not-check (an honest refusal),
-  // source-does-not-support, and the assistive assessed tier are NOT flags, so they
-  // must not turn the headline into the oxblood alarm. Folding them into "needs
-  // review" was the "everything needs review" alert fatigue (mirrors main #154).
-  const flagged = citationNotFound + claimUnsupported;
-  const notVerified = propositionUnsupported + couldNotCheck + count("assessed");
+  const { flagged, headline } = verdictSummaryRegister(dispositions);
 
   // Counts only, problems first. No pass-rate, no percentage: a verdict is a
   // finding, not a score.
@@ -348,11 +371,7 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
           " "
         )}
       >
-        {flagged > 0
-          ? `${flagged} of ${total} statements need your review.`
-          : notVerified > 0
-            ? `${notVerified} of ${total} statements could not be verified against your sources.`
-            : `All ${total} statements are supported by the sources you provided.`}
+        {headline}
       </p>
       <div className={styles.summaryRow}>
         {stats.map((s) => (
@@ -361,9 +380,20 @@ function VerifyVerdictSummary({ dispositions }: VerifySummaryProps) {
           </span>
         ))}
       </div>
+      {coverage && (coverage.untreated ?? 0) > 0 ? (
+        <p className={styles.scopeNote}>
+          {(coverage.untreated ?? 0) === 1
+            ? "1 of "
+            : `${coverage.untreated} of `}
+          {coverage.statements ?? 0} statements carried no checkable anchor (such as a citation,
+          quotation, amount, or date) and {(coverage.untreated ?? 0) === 1 ? "was" : "were"} not independently
+          checked; {(coverage.untreated ?? 0) === 1 ? "it renders" : "they render"} as plain text
+          below.
+        </p>
+      ) : null}
       <p className={styles.scopeNote}>
-        Each statement is checked against the sources you provide. This confirms grounding, not
-        legal correctness or strategy.
+        Each statement carrying a checkable anchor is checked against the sources you provide. This
+        confirms grounding, not legal correctness or strategy.
       </p>
     </div>
   );
@@ -413,7 +443,7 @@ function QuotePanel({ quotes }: QuotePanelProps) {
         ))}
       </ul>
       <p className={styles.scopeNote}>
-        This checks that the words shown in quotation marks appear in the cited source as written.
+        This checks that the words shown in quotation marks appear in the sources checked, as written.
         It does not assess whether an omission changes the meaning.
       </p>
     </section>
@@ -682,7 +712,10 @@ export function VerifyResults({
           ) : null}
 
           {items.length > 0 ? (
-            <VerifyVerdictSummary dispositions={items.map((it) => it.disposition)} />
+            <VerifyVerdictSummary
+              dispositions={items.map((it) => it.disposition)}
+              coverage={response?.coverage ?? null}
+            />
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (

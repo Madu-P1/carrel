@@ -147,6 +147,43 @@ def extract_draft_quote_spans(draft: str) -> list[tuple[str, int, int]]:
     return out
 
 
+def quoted_subphrases(run: str) -> list[str]:
+    """The distinct quoted phrases inside a run, in case the span regex merged them.
+
+    The quote-span extractor captures greedily from the first quote mark to the
+    last, so a paragraph with two quoted phrases ('"A" failed because "B"') yields
+    a single run with the inner marks retained ('A" failed because "B'). Splitting
+    on quote marks recovers the phrases at the even positions; the odd positions
+    are the author's own connecting prose, which was never quoted and must not be
+    checked. A run with no inner marks yields itself unchanged. Shared by the
+    sentence-level check (deterministic_envelope) and the brief-level panel so the
+    two surfaces accept the same quotes.
+    """
+    parts = re.split(r'["“”]', run)
+    phrases = [p for idx, p in enumerate(parts) if idx % 2 == 0 and p.strip()]
+    return phrases or [run]
+
+
+def first_letter_variants(run: str) -> tuple[str, ...]:
+    """The run, plus the run with its first alphabetic character's case toggled.
+
+    A lawyer who embeds a quote mid-sentence routinely lowercases the source's
+    leading capital ("separate educational facilities..." from a sentence that
+    opened "Separate ...") without the bracket convention ("[s]eparate"). That is
+    a universally accepted edit, not an alteration, so the altered-quote check
+    must accept either case at the leading letter. Interior case stays strict, so
+    a substituted interior word is still caught. Shared by the sentence-level
+    check and the brief-level panel.
+    """
+    for i, ch in enumerate(run):
+        if ch.isalpha():
+            swapped = ch.lower() if ch.isupper() else ch.upper()
+            if swapped == ch:
+                break
+            return (run, run[:i] + swapped + run[i + 1 :])
+    return (run,)
+
+
 def split_runs(quote: str) -> list[str]:
     """Split a quoted span into the verbatim runs BETWEEN the author's edits.
 
@@ -182,12 +219,18 @@ def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:
     """Check one quoted span against a pool of candidate sources.
 
     `sources` may be raw strings (treated as complete + untruncated) or
-    `SourceText` records carrying truncation/completeness. A run is satisfied if
-    it is verbatim-present in ANY source (a brief may quote across several cited
-    chunks/opinions). The quote is ``altered`` only if some run is present in NO
-    source AND no truncated-or-partial source could plausibly contain it; in the
-    latter case it degrades to ``unplaceable``. A quote the tool could not fully
-    see is never called altered.
+    `SourceText` records carrying truncation/completeness. Each run is first
+    split into its distinct quoted phrases (the greedy span regex merges two
+    quotes in one paragraph into a single run; the connecting prose between them
+    is the author's own and is never matched), and each phrase may flex the case
+    of its leading letter (the mid-sentence embedding convention). A phrase is
+    satisfied if it is verbatim-present in ANY source (a brief may quote across
+    several cited chunks/opinions). The quote is ``altered`` only if some phrase
+    is present in NO source AND no truncated-or-partial source could plausibly
+    contain it; in the latter case it degrades to ``unplaceable``. A quote the
+    tool could not fully see is never called altered. These acceptances mirror
+    the sentence-level check in deterministic_envelope exactly, so the panel and
+    the claim card can never disagree about the same quoted words.
     """
     runs = tuple(split_runs(quote))
     usable = _coerce_sources(sources)
@@ -202,17 +245,27 @@ def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:
     norm_confident = [n for n, s in zip(norm_all, usable) if s.complete and not s.truncated and n]
     has_uncertain_source = any((s.truncated or not s.complete) for s in usable)
 
+    def _phrase_present(phrase: str) -> bool:
+        for variant in first_letter_variants(phrase):
+            norm_variant = normalize_for_verbatim(variant)
+            if not norm_variant:
+                return True  # vacuous: nothing checkable in this phrase
+            if any(norm_variant in n for n in norm_all):
+                return True
+        return False
+
     for run in runs:
-        norm_run = normalize_for_verbatim(run)
-        if not norm_run:
-            continue
-        if any(norm_run in n for n in norm_all):
-            continue  # found verbatim somewhere: this run is clean
-        # Absent from every source. Only call it altered if we have a confident
-        # (complete, untruncated) source it SHOULD have appeared in and there is
-        # no uncertain source that could plausibly contain it.
-        if norm_confident and not has_uncertain_source:
-            return QuoteCheckResult(quote=quote, altered=True, unplaceable=False, runs=runs)
-        return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
+        for phrase in quoted_subphrases(run):
+            phrase = phrase.strip()
+            if not phrase or not _HAS_ALNUM.search(phrase):
+                continue
+            if _phrase_present(phrase):
+                continue  # found verbatim somewhere: this phrase is clean
+            # Absent from every source. Only call it altered if we have a
+            # confident (complete, untruncated) source it SHOULD have appeared
+            # in and there is no uncertain source that could plausibly contain it.
+            if norm_confident and not has_uncertain_source:
+                return QuoteCheckResult(quote=quote, altered=True, unplaceable=False, runs=runs)
+            return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
 
     return QuoteCheckResult(quote=quote, altered=False, unplaceable=False, runs=runs)

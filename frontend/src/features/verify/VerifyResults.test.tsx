@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { VerifyResults } from "./VerifyResults";
+import { VerifyResults, verdictSummaryRegister } from "./VerifyResults";
+import type { ClaimDisposition } from "./claimDisposition";
 import { initialStreamState, reduceStreamEvent } from "./streamProgress";
 import type { VerifyEngine } from "./useVerify";
 
@@ -338,5 +339,57 @@ describe("VerifyResults refusal CTA (onResolve)", () => {
     // The summary still reports a could-not-verify, but loading a record would not
     // fix an ambiguous citation, so the honest surface offers no Sources CTA.
     expect(screen.queryByText(CTA)).toBeNull();
+  });
+});
+
+// The summary register (D1: could-not-check is not an alarm). These five cases
+// were pinned in VerifyView.test.tsx before the headline moved into
+// VerifyResults; they live on here against the exported pure function so a
+// regression that folds honest refusals into the oxblood alarm (alert fatigue,
+// main #154) or mutes the fabrication alarm cannot pass the suite.
+describe("verdictSummaryRegister", () => {
+  const d = (kind: ClaimDisposition["kind"]): ClaimDisposition => ({
+    kind,
+    tier: kind === "supported" ? "pass" : kind === "assessed" ? "assistive" : "flag",
+    label: kind,
+    detail: ""
+  });
+
+  it("does NOT raise the alarm when every claim is only could_not_check", () => {
+    const r = verdictSummaryRegister([d("could_not_check"), d("could_not_check")]);
+    expect(r.flagged).toBe(0);
+    expect(r.headline).toBe("2 of 2 statements could not be verified against your sources.");
+  });
+
+  it("citation_not_found raises the alarm headline", () => {
+    const r = verdictSummaryRegister([d("citation_not_found"), d("supported")]);
+    expect(r.flagged).toBe(1);
+    expect(r.headline).toBe("1 of 2 statements need your review.");
+  });
+
+  it("claim_unsupported raises the alarm headline", () => {
+    const r = verdictSummaryRegister([d("claim_unsupported")]);
+    expect(r.flagged).toBe(1);
+    expect(r.headline).toBe("1 of 1 statements need your review.");
+  });
+
+  it("proposition_unsupported and assessed do not raise the alarm", () => {
+    const r = verdictSummaryRegister([d("proposition_unsupported"), d("assessed")]);
+    expect(r.flagged).toBe(0);
+    expect(r.headline).toBe("2 of 2 statements could not be verified against your sources.");
+  });
+
+  it("all supported affirms, and the alarm counts only the flagged set", () => {
+    expect(verdictSummaryRegister([d("supported"), d("supported")]).headline).toBe(
+      "All 2 statements are supported by the sources you provided."
+    );
+    const mixed = verdictSummaryRegister([
+      d("citation_not_found"),
+      d("could_not_check"),
+      d("could_not_check"),
+      d("supported")
+    ]);
+    expect(mixed.flagged).toBe(1);
+    expect(mixed.headline).toBe("1 of 4 statements need your review.");
   });
 });

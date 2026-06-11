@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Button, Dialog, showToast, toast } from "@/design-system";
+import { apiErrorMessage } from "@/services/api/client";
 
 import { VaultMark } from "./VaultMark";
 import { openExamination } from "./examine/examineStore";
@@ -169,7 +170,7 @@ export function VaultView() {
     try {
       await uploadSource(file, targetVault);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The document could not be loaded.");
+      setError(apiErrorMessage(e, "The document could not be loaded.") ?? "The document could not be loaded.");
     }
   }
 
@@ -199,14 +200,14 @@ export function VaultView() {
           label: "Undo",
           onClick: () => {
             void setDocumentProject(doc.id, from).catch((e) =>
-              toast.error("Could not undo the move", e instanceof Error ? e.message : undefined)
+              toast.error("Could not undo the move", apiErrorMessage(e))
             );
           }
         },
         durationMs: 7000
       });
     } catch (e) {
-      toast.error("Could not move the record", e instanceof Error ? e.message : undefined);
+      toast.error("Could not move the record", apiErrorMessage(e));
     } finally {
       setMoving(false);
     }
@@ -225,7 +226,7 @@ export function VaultView() {
       // on the next frame, after the dialog's own focus-restore has run.
       requestAnimationFrame(() => backRef.current?.focus());
     } catch (e) {
-      toast.error("Could not delete the record", e instanceof Error ? e.message : undefined);
+      toast.error("Could not delete the record", apiErrorMessage(e));
     } finally {
       setDeleting(false);
     }
@@ -242,7 +243,7 @@ export function VaultView() {
       setNewVaultName("");
       setCreatingVault(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The vault could not be created.");
+      setError(apiErrorMessage(e, "The vault could not be created.") ?? "The vault could not be created.");
     } finally {
       setVaultBusy(false);
     }
@@ -255,7 +256,7 @@ export function VaultView() {
       toast.success(`Deleted the ${name} vault.`);
       if (openVault === name) setOpenVault(null);
     } catch (e) {
-      toast.error("Could not delete the vault", e instanceof Error ? e.message : undefined);
+      toast.error("Could not delete the vault", apiErrorMessage(e));
     }
   }
 

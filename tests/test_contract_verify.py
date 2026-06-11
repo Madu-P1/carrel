@@ -4,12 +4,33 @@ from __future__ import annotations
 
 import unittest
 
+from services.legal.anchors import Anchor
 from services.legal.contract_verify import (
     ClauseCandidate,
     ClauseVerdict,
+    _durations_match,
     adjudicate_clause_candidates,
     verify_claim_against_clause,
 )
+
+
+class DurationUnitFallbackTests(unittest.TestCase):
+    def test_unitless_anchor_falls_back_to_the_tolerant_compare(self) -> None:
+        # Pins the documented fallback in _durations_match: when an anchor's
+        # unit cannot be re-derived from its text (the detector normally
+        # guarantees a unit word), the compare falls back to the tolerant
+        # cross-unit rule, the lenient pre-existing behavior, rather than
+        # silently failing closed into a contradiction.
+        near = _durations_match(
+            Anchor("duration", "approximately 360", 0, 17, 360.0),
+            Anchor("duration", "365 days", 0, 8, 365.0),
+        )
+        far = _durations_match(
+            Anchor("duration", "approximately 300", 0, 17, 300.0),
+            Anchor("duration", "365 days", 0, 8, 365.0),
+        )
+        self.assertTrue(near)  # within 5%: the tolerant fallback accepts
+        self.assertFalse(far)  # beyond 5%: still a contradiction
 
 
 class ParametricContradictionTests(unittest.TestCase):
@@ -57,6 +78,29 @@ class ParametricContradictionTests(unittest.TestCase):
         )
         self.assertEqual("present", v.disposition)
 
+    def test_same_unit_near_miss_duration_is_a_contradiction(self) -> None:
+        # The 5% tolerance exists ONLY to bridge the day-count approximation
+        # across units (12 months vs 1 year). Within one unit there is no
+        # approximation to bridge: 23 months and 24 months are simply different
+        # terms, and reading the near-miss as "present" both verifies a wrong
+        # value and prints a false detail ("23 months appears in ...").
+        v = verify_claim_against_clause(
+            "The non-compete lasts 23 months following termination.",
+            "Section 9.1. The employee shall not compete for a period of 24 months.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("duration", v.anchor_type)
+
+    def test_same_unit_day_count_basis_is_a_contradiction(self) -> None:
+        # 360 vs 365 days is a real financial term difference (day-count basis),
+        # 1.4% apart; the blanket tolerance read it as "present".
+        v = verify_claim_against_clause(
+            "Interest accrues on a 360 days basis.",
+            "Section 4.2. Interest shall be computed on the basis of a year of 365 days.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertEqual("duration", v.anchor_type)
+
     def test_matching_amount_does_not_mask_a_falsified_date(self) -> None:
         # Cross-type: a matching $500,000 must NOT short-circuit to "present" and
         # hide a wrong date in the same sentence. A contradiction in ANY anchor type
@@ -85,6 +129,54 @@ class PresentTests(unittest.TestCase):
         )
         self.assertEqual("present", v.disposition)
         self.assertEqual("quote", v.anchor_type)
+
+    def test_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
+        # Filing-grade detail strings must be literally true. When the matched
+        # values agree but the written forms differ, the detail says "matches",
+        # never "appears in" (the clause does not contain the summary's form).
+        v = verify_claim_against_clause(
+            "The liability cap is one million dollars.",
+            "liability is capped at $1,000,000 in the aggregate",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertNotIn("appears in", v.detail)
+        self.assertIn("matches", v.detail)
+        self.assertIn("$1,000,000", v.detail)
+
+    def test_cross_unit_tolerant_match_reads_consistent_with(self) -> None:
+        # A tolerant cross-unit duration match is an approximation, and the
+        # detail must say so: "consistent with", never "appears in" and never
+        # a bare "matches".
+        v = verify_claim_against_clause(
+            "The term is 12 months.",
+            "this Agreement shall continue for a period of 1 year",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertNotIn("appears in", v.detail)
+        self.assertIn("consistent with", v.detail)
+        self.assertIn("1 year", v.detail)
+
+    def test_polarity_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
+        # F2 (final pre-merge review): equal polarity canonicals can have
+        # different surfaces ("non-exclusive" vs "nonexclusive"); the present
+        # detail must say "matches", never that the claim's form appears in
+        # the clause. Same filing-grade rule the other parametric types pin.
+        v = verify_claim_against_clause(
+            "The license granted is non-exclusive.",
+            "Section 2.1. Licensor grants Licensee a nonexclusive license.",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertNotIn("appears in", v.detail)
+        self.assertIn("matches", v.detail)
+        self.assertIn("nonexclusive", v.detail)
+
+    def test_identical_written_value_still_reads_appears_in(self) -> None:
+        v = verify_claim_against_clause(
+            "The cap is $500,000.",
+            "liability shall not exceed $500,000 in the aggregate",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertIn("appears in", v.detail)
 
 
 class NotFoundTests(unittest.TestCase):

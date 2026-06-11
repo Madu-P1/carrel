@@ -252,5 +252,73 @@ class SplitRunsTests(unittest.TestCase):
         self.assertEqual([], split_runs("..."))
 
 
+class PanelEnvelopeParityTests(unittest.TestCase):
+    """The brief-level panel must accept what the sentence-level check accepts.
+
+    The greedy straight-quote span regex deliberately merges two quoted phrases
+    in one paragraph into a single span (the lawyer's connecting prose between
+    them retained, with the inner marks). The sentence-level check splits that
+    merged span back into its quoted phrases before matching; the panel check
+    must do the same, or two individually verbatim quotes read "Not found
+    verbatim" (the false accusation the product exists to never make). Same
+    story for a quote whose leading capital was lowercased to embed
+    mid-sentence: a universally accepted edit, accepted at the sentence level,
+    must be accepted at the panel.
+    """
+
+    def test_two_straight_quoted_spans_in_one_paragraph_read_verbatim(self) -> None:
+        draft = (
+            'The court held "the statute was unconstitutional as applied to the '
+            'petitioner" in plain terms. It added "due process requires notice and '
+            'an opportunity to be heard" as well.'
+        )
+        quotes = extract_draft_quotes(draft)
+        self.assertEqual(1, len(quotes))  # the deliberate greedy merge
+        r = check(quotes[0])
+        self.assertFalse(r.altered)
+        self.assertFalse(r.unplaceable)
+
+    def test_connecting_prose_between_merged_quotes_is_not_checked(self) -> None:
+        # The prose between the two quoted phrases is the lawyer's own and may
+        # say anything; it must never be matched against the source.
+        draft = (
+            'The court held "the statute was unconstitutional as applied to the '
+            'petitioner" which utterly disposes of the appeal. It added "due process '
+            'requires notice and an opportunity to be heard" too.'
+        )
+        quotes = extract_draft_quotes(draft)
+        self.assertEqual(1, len(quotes))
+        r = check(quotes[0])
+        self.assertFalse(r.altered)
+        self.assertFalse(r.unplaceable)
+
+    def test_leading_capital_lowercased_to_embed_reads_verbatim(self) -> None:
+        # Source sentence opens "The court held that ..."; the draft embeds it
+        # mid-sentence as "the court held that ..." without the bracket
+        # convention. Accepted at the sentence level; the panel must agree.
+        r = check("the court held that the statute was unconstitutional as applied")
+        self.assertFalse(r.altered)
+        self.assertFalse(r.unplaceable)
+
+    def test_interior_substitution_inside_a_quoted_phrase_still_flags(self) -> None:
+        # Parity must not weaken the detector: a substituted interior word in a
+        # single quoted phrase is still an alteration.
+        draft = (
+            'The court held "the statute was perfectly constitutional as applied to '
+            'the petitioner" in plain terms. It added "due process requires notice '
+            'and an opportunity to be heard" as well.'
+        )
+        quotes = extract_draft_quotes(draft)
+        self.assertEqual(1, len(quotes))
+        r = check(quotes[0])
+        self.assertTrue(r.altered)
+
+    def test_interior_case_substitution_still_flags(self) -> None:
+        # Only the LEADING letter of a phrase may flex; interior case stays
+        # strict so a rewritten interior word is caught.
+        r = check("the court held that THE STATUTE was unconstitutional as applied")
+        self.assertTrue(r.altered)
+
+
 if __name__ == "__main__":
     unittest.main()
