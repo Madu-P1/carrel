@@ -40,7 +40,7 @@ class Anchor:
     jurisdiction key. It is ``None`` for the rest.
     """
 
-    type: str  # citation | slip_op | quote | money | duration | date | percent | governing_law | section | party | defined_term
+    type: str  # citation | slip_op | quote | money | duration | date | percent | governing_law | polarity | section | party | defined_term
     text: str
     start: int
     end: int
@@ -116,6 +116,182 @@ _SECTION = re.compile(
     r"\d+(?:\.\d+)*(?:\([a-z0-9]+\))?",
     re.IGNORECASE,
 )
+
+# --- Polarity-pair detector (canonical_value = "{stem}:{noun-class}+|-"). The
+# exclusivity flip ("exclusive" summarized from a non-exclusive grant, binding
+# from non-binding, irrevocable from revocable) is the canonical single-token
+# contract-summary error, and it is pure string work: a closed set of qualifier
+# stems whose negated surface ("non-X", solid "nonX", or the ir- pair for
+# revocable) shares the stem, so a flip is same-stem/different-sign. Precision
+# is structural on three sides: the qualifier anchors ONLY when an unbroken
+# closed-vocabulary adjective run leads to a grant noun (so "exclusive
+# jurisdiction" is venue and never anchors, and "the exclusive distributor
+# shall hold a license" breaks the run and refuses); the noun requirement is a
+# lookahead, so each adjective in "an exclusive, non-transferable, irrevocable
+# license" anchors individually; and a preceding negation ("not ... binding",
+# "no binding") refuses outright, because minting either sign for a negated
+# form would be a guess. "sole", un- prefixes ("unassignable"), and bare
+# qualifiers with no grant noun are documented recall gaps, never wrong
+# values. ---
+
+# Affirmative surfaces; spelling variants normalize to one stem so a flip
+# across spellings still shares the stem.
+_POLARITY_STEM_NORMALIZE = {
+    "cancelable": "cancellable",
+    "sublicenseable": "sublicensable",
+    "sub-licensable": "sublicensable",
+}
+_POLARITY_AFFIRMATIVES = (
+    "exclusive",
+    "transferable",
+    "assignable",
+    "revocable",
+    "cancellable",
+    "cancelable",
+    "refundable",
+    "binding",
+    "sublicensable",
+    "sublicenseable",
+    "sub-licensable",
+    "waivable",
+)
+
+_POLARITY_CANON: dict[str, str] = {}
+for _surf in _POLARITY_AFFIRMATIVES:
+    _stem = _POLARITY_STEM_NORMALIZE.get(_surf, _surf)
+    _POLARITY_CANON[_surf] = f"{_stem}+"
+    _POLARITY_CANON[f"non-{_surf}"] = f"{_stem}-"
+    _POLARITY_CANON[f"non{_surf}"] = f"{_stem}-"
+_POLARITY_CANON["irrevocable"] = "revocable-"
+
+_POLARITY_TOKEN = (
+    r"(?:non-?)?(?:exclusive|transferable|assignable|revocable|cancell?able|"
+    r"refundable|binding|sub-?license?able|waivable)|irrevocable"
+)
+_GRANT_NOUN = (
+    r"licenses|license|licences|licence|rights|right|grants|grant|"
+    r"sublicenses|sublicense|obligations|obligation|offers|offer|"
+    r"agreements|agreement|warranties|warranty|commitments|commitment|"
+    r"undertakings|undertaking|deposits|deposit|fees|fee|payments|payment|"
+    r"arbitration|mediation|remedies|remedy"
+)
+# What may sit between a qualifier and its grant noun: other qualifiers and a
+# closed list of cosmetic adjectives. Anything outside it breaks the run.
+_POLARITY_GAP_WORD = (
+    rf"(?:{_POLARITY_TOKEN}|worldwide|perpetual|limited|personal|sole|global|"
+    rf"royalty-free|royalty|free|fully|paid-up|paid|up|and)"
+)
+# The optional single unknown word directly before the noun admits compound
+# noun heads ("non-exclusive TRADEMARK license", "exclusive PATENT rights")
+# without reopening the run-break guard: "the exclusive distributor shall
+# hold a license" still refuses because two unknown words ("distributor",
+# "shall") cannot bridge to the noun. The unknown word may not itself be a
+# grant noun, so "exclusive license rights" binds to "license" (the FIRST
+# grant noun) and keys the same grant as "exclusive license" — otherwise the
+# same grant would key under unstable noun classes and a real flip would land
+# on different keys (round-3 note 1).
+_POLARITY = re.compile(
+    rf"\b(?P<tok>{_POLARITY_TOKEN})\b"
+    rf"(?=(?:[,\s]+{_POLARITY_GAP_WORD}\b){{0,6}}(?:\s+(?!(?:{_GRANT_NOUN})\b)[A-Za-z][A-Za-z-]*)?"
+    rf"[,\s]+(?P<noun>{_GRANT_NOUN})\b)",
+    re.IGNORECASE,
+)
+# Predicative position: "the license granted hereunder is non-exclusive",
+# "this Agreement is binding". The copula must directly precede the qualifier,
+# which structurally refuses "is not exclusive" and "shall not be binding"
+# (the negator breaks the adjacency, and no sign is ever guessed).
+_POLARITY_PREDICATIVE = re.compile(
+    rf"\b(?P<noun>{_GRANT_NOUN})\b[^.;:]{{0,30}}?\b(?:is|are|remains?|shall\s+be|will\s+be)\s+"
+    rf"(?P<tok>{_POLARITY_TOKEN})\b",
+    re.IGNORECASE,
+)
+# Scope negation ("nothing herein creates a binding obligation", "without
+# granting an exclusive license", "in no event", "neither ... nor") reverses
+# the qualifier's meaning from anywhere earlier in the sentence segment. The
+# bounded grammar cannot represent negation scope, so ANY negator in the
+# segment before the qualifier refuses the anchor outright; the segment is
+# bounded at [.;:] so a prior sentence's negation cannot suppress a clean
+# grant after it. False refusals ("not later than 30 days, Licensor grants an
+# exclusive license") are recall loss in the safe direction.
+_POLARITY_SCOPE_NEG = re.compile(
+    r"\b(?:not|no|never|nothing|neither|nor|without|except)\b",
+    re.IGNORECASE,
+)
+
+# Plural and spelling-variant grant nouns fold to one class so a flip across
+# forms still shares a comparison key.
+_NOUN_CLASS = {
+    "licenses": "license",
+    "licences": "license",
+    "licence": "license",
+    "rights": "right",
+    "grants": "grant",
+    "sublicenses": "sublicense",
+    "obligations": "obligation",
+    "offers": "offer",
+    "agreements": "agreement",
+    "warranties": "warranty",
+    "commitments": "commitment",
+    "undertakings": "undertaking",
+    "deposits": "deposit",
+    "fees": "fee",
+    "payments": "payment",
+    "remedies": "remedy",
+}
+
+
+def _noun_class(surface: str) -> str:
+    lowered = surface.lower()
+    return _NOUN_CLASS.get(lowered, lowered)
+
+
+# Every word the polarity grammar can emit, for callers that must exclude the
+# qualifiers themselves when reading a noun's SUBJECT MATTER (a predicative
+# "license granted is non-exclusive" puts the qualifier inside the post-noun
+# window; it is vocabulary, not subject matter).
+POLARITY_VOCAB = frozenset(
+    w for key in _POLARITY_CANON for w in re.findall(r"[a-z]+", key)
+) | frozenset({"non"})
+
+
+def grant_noun_pattern(noun_class: str) -> str:
+    """Alternation of every surface form of a grant-noun class (plural and
+    spelling variants included), longest-first. Used by the contract path to
+    locate the qualified noun's subject matter in raw clause text."""
+    surfaces = [s for s, c in _NOUN_CLASS.items() if c == noun_class] + [noun_class]
+    return "|".join(re.escape(s) for s in sorted(set(surfaces), key=len, reverse=True))
+
+
+# Every grant-noun surface, for callers that must exclude the nouns themselves
+# (and their plural variants) when reading SUBJECT MATTER around a qualified
+# noun — "license", "rights", "fee" name the grant, not what it covers.
+GRANT_NOUN_WORDS = (
+    frozenset(_NOUN_CLASS)
+    | frozenset(_NOUN_CLASS.values())
+    | frozenset({"arbitration", "mediation"})
+)
+
+
+def _polarity_anchors(text: str) -> list[Anchor]:
+    anchors: list[Anchor] = []
+    seen_spans: set[tuple[int, int]] = set()
+    for pattern in (_POLARITY, _POLARITY_PREDICATIVE):
+        for m in pattern.finditer(text):
+            span = (m.start("tok"), m.end("tok"))
+            if span in seen_spans:
+                continue
+            segment_start = max(text.rfind(ch, 0, span[0]) for ch in ".;:") + 1
+            if _POLARITY_SCOPE_NEG.search(text[segment_start : span[0]]):
+                continue
+            seen_spans.add(span)
+            sign = _POLARITY_CANON[m.group("tok").lower()]
+            # canonical = "{stem}:{noun-class}{sign}": the noun class travels
+            # with the value so "exclusive license" and "exclusive remedy" can
+            # never compare against each other (the cross-noun false green).
+            canonical = f"{sign[:-1]}:{_noun_class(m.group('noun'))}{sign[-1]}"
+            anchors.append(Anchor("polarity", m.group("tok"), span[0], span[1], canonical))
+    return anchors
+
 
 # --- Party-name detector (canonical_value None). Two T0 sub-patterns. Real NER
 # for un-aliased names is T1 and off (per the design doc), so the entity branch is
@@ -375,6 +551,15 @@ _GOV_JUR_LAW = re.compile(
     rf"\bgoverned\s+by\s+(?:the\s+)?(?P<jur>{_JUR_ALT})\s+law\b",
     re.IGNORECASE,
 )
+# Form C, the inverted boilerplate: "the laws of [the State of] X shall
+# govern". The governing verb comes AFTER the jurisdiction; the bounded
+# all-lowercase gap (same case discipline as Form A) keeps an intervening
+# capitalized object from bridging to a distant "govern".
+_LAWS_OF_GOVERN = re.compile(
+    rf"\blaws?\s+of\s+(?:the\s+)?(?:(?:State|Commonwealth|Province)\s+of\s+)?"
+    rf"(?P<jur>{_JUR_ALT})\b(?-i:[\sa-z,]{{0,40}}?|[\sA-Z,]{{0,40}}?)\bgoverns?\b",
+    re.IGNORECASE,
+)
 _JUR_LAW_GOVERNS = re.compile(
     rf"\b(?P<jur>{_JUR_ALT})\s+law\s+(?:shall\s+|will\s+)?(?:governs?|appl(?:y|ies))\b",
     re.IGNORECASE,
@@ -503,7 +688,7 @@ def _governing_law_anchors(text: str) -> list[Anchor]:
     """
     anchors: list[Anchor] = []
     seen_spans: set[tuple[int, int]] = set()
-    for pattern in (_GOV_LAW_OF, _GOV_JUR_LAW, _JUR_LAW_GOVERNS):
+    for pattern in (_GOV_LAW_OF, _GOV_JUR_LAW, _JUR_LAW_GOVERNS, _LAWS_OF_GOVERN):
         for m in pattern.finditer(text):
             span = (m.start("jur"), m.end("jur"))
             if span in seen_spans:
@@ -626,6 +811,7 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         if not _within_citation(candidate):
             anchors.append(candidate)
     anchors.extend(_governing_law_anchors(span))
+    anchors.extend(_polarity_anchors(span))
     anchors.extend(_party_anchors(span))
     if alias_table:
         anchors.extend(_defined_term_anchors(span, alias_table))

@@ -176,6 +176,24 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-4", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_polarity_contract()
+
+    def _seed_polarity_contract(self) -> None:
+        # Its own document (fixture isolation): a grant clause whose qualifiers
+        # an AI summary classically flips.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-5', 'license-grant.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 2.1. Licensor hereby grants Licensee a non-exclusive, "
+                "non-transferable license to use the Software during the Term.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-5", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -303,6 +321,30 @@ class ContractPathIntegrationTests(unittest.TestCase):
         verdict = self._verdict_for(env, "governed")
         self.assertEqual("present", verdict["disposition"])
         self.assertEqual("governing_law", verdict["anchor_type"])
+
+    def test_polarity_flip_contradicts_end_to_end(self) -> None:
+        # The classic summary error: "exclusive" claimed from a non-exclusive
+        # grant. The sentence's only checkable anchor is polarity, which also
+        # pins its membership in _CLAUSE_CHECKABLE.
+        draft = "The agreement grants Licensee an exclusive license to use the Software."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-5"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "exclusive")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertEqual("polarity:exclusive:license", verdict["anchor_type"])
+        self.assertIn("non-exclusive", verdict["detail"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+
+    def test_polarity_match_is_present_end_to_end(self) -> None:
+        draft = "The agreement grants Licensee a non-exclusive license to use the Software."
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-5"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "non-exclusive")
+        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("polarity:exclusive:license", verdict["anchor_type"])
 
     def test_same_type_conflict_refuses_instead_of_accusing_or_greenlighting(self) -> None:
         # The topicality decision, end to end: the claim's 50% is verbatim in
