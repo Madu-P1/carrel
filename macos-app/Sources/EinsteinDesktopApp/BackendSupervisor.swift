@@ -186,6 +186,30 @@ final class BackendSupervisor {
         // has no .build/debug fallback and both bridges fail to launch.
         environment["CARREL_BUNDLE_MACOS"] = Bundle.main.bundleURL
             .appendingPathComponent("Contents/MacOS").path
+        if ProductMode.current == .cachet {
+            // Cachet product contract, mirroring script/serve-cachet.py.
+            // HARD-PIN the deterministic engine (assignment, not setdefault):
+            // a stray CACHET_DETERMINISTIC_VERIFY=0 inherited from the launch
+            // environment must never flip the packaged privacy product onto
+            // the off-device cloud path. The other keys are setdefault so an
+            // operator can still override them per-launch.
+            environment["CACHET_DETERMINISTIC_VERIFY"] = "1"
+            if environment["EMBED_ON_INGEST"] == nil {
+                // Fast ingest: the deterministic catch reads full text, not
+                // vectors; skipping per-chunk embedding cuts a large contract
+                // from minutes to seconds (ce74049d0).
+                environment["EMBED_ON_INGEST"] = "false"
+            }
+            if environment["COURTLISTENER_API_TOKEN"] == nil {
+                // Sentinel: the deterministic path injects the bundled
+                // local-caselaw transport; this never leaves the device.
+                environment["COURTLISTENER_API_TOKEN"] = "local"
+            }
+            if environment["CARREL_FASTEMBED_CACHE_DIR"] == nil {
+                environment["CARREL_FASTEMBED_CACHE_DIR"] = NSHomeDirectory()
+                    + "/.cache/carrel-fastembed"
+            }
+        }
         proc.environment = environment
 
         // Append all output to the same log file the bash launcher

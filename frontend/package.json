@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:macos": "tsc --noEmit && CARREL_MACOS_BUNDLE=1 vite build && node ./scripts/build-macos.mjs",
+    "build:cachet-macos": "tsc --noEmit && CARREL_MACOS_BUNDLE=1 vite build --mode cachet && CARREL_BUNDLE_TITLE=Cachet node ./scripts/build-macos.mjs",
     "launch:macos": "cd .. && ./script/build_and_run.sh",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

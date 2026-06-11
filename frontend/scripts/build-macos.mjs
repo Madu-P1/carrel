@@ -123,12 +123,18 @@ if (survivingRelativeImports.length > 0) {
   );
 }
 
+// Product title for the bundled HTML. The study app keeps its legacy
+// "Einstein" title; the Cachet bundle (build:cachet-macos) passes
+// CARREL_BUNDLE_TITLE=Cachet so the pre-boot flash never shows the wrong
+// product name. main.tsx re-asserts document.title at boot either way.
+const bundleTitle = process.env.CARREL_BUNDLE_TITLE ?? "Einstein";
+
 const bundledHtml = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Einstein</title>
+    <title>${bundleTitle}</title>
     <link rel="preconnect" href="http://127.0.0.1:8000" />
     <style>
 ${css}

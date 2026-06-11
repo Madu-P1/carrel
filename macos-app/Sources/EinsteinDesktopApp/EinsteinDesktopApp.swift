@@ -12,7 +12,7 @@ struct EinsteinDesktopApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Carrel") {
+        WindowGroup(ProductMode.current.displayName) {
             ContentView()
                 .frame(minWidth: 1100, minHeight: 720)
         }
@@ -47,15 +47,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainMenuBuilder.install()
         LaunchTelemetry.markLaunch()
         backendSupervisor.start()
-        // Start the calendar bridge AFTER the backend supervisor so the
-        // first sync attempt has a live target.
-        localCalendarBridge.start()
-        // Floating companion is independent — it lives in its own
-        // NSPanel above the Carrel window. Spawning it here keeps it
-        // present from the moment the user sees Carrel come up. Setting
-        // app activation policy to .regular before this so the panel
-        // joins the user's space correctly.
-        FloatingCompanionWindow.shared.start()
+        // The calendar bridge and the floating companion are study-app
+        // (Carrel) chrome: study-coach calendar sync and the companion
+        // cube have no place in the Cachet verification product, and
+        // booting them there would both violate the Cachet register and
+        // trigger an EventKit permission prompt Cachet never needs.
+        if ProductMode.current == .carrel {
+            // Start the calendar bridge AFTER the backend supervisor so the
+            // first sync attempt has a live target.
+            localCalendarBridge.start()
+            // Floating companion is independent — it lives in its own
+            // NSPanel above the Carrel window. Spawning it here keeps it
+            // present from the moment the user sees Carrel come up. Setting
+            // app activation policy to .regular before this so the panel
+            // joins the user's space correctly.
+            FloatingCompanionWindow.shared.start()
+        }
         appLogger.info("Application finished launching")
     }
 

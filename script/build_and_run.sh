@@ -18,25 +18,27 @@ set -euo pipefail
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 
 MODE="run"
+PRODUCT="carrel"
+# The SwiftPM product is always EinsteinDesktop; one compiled binary
+# serves both products. Per-product identity (executable name, bundle
+# id, display name, icon, Info.plist product-mode key) is applied at
+# bundle-assembly time below.
+SWIFT_PRODUCT="EinsteinDesktop"
 APP_NAME="EinsteinDesktop"
 BUNDLE_ID="com.madu.EinsteinDesktop"
+DISPLAY_NAME="Carrel"
+FRONTEND_BUILD_SCRIPT="build:macos"
 MIN_SYSTEM_VERSION="14.0"
 BACKEND_URL="http://127.0.0.1:8000/api/health"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_DIR="$ROOT_DIR/macos-app"
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
-APP_CONTENTS="$APP_BUNDLE/Contents"
-APP_MACOS="$APP_CONTENTS/MacOS"
-APP_RESOURCES="$APP_CONTENTS/Resources"
-APP_BINARY="$APP_MACOS/$APP_NAME"
-INFO_PLIST="$APP_CONTENTS/Info.plist"
 BACKEND_PIDFILE="$DIST_DIR/einstein-backend.pid"
 BACKEND_LOG="$DIST_DIR/einstein-backend.log"
 
 usage() {
-  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+  echo "usage: $0 [--cachet] [run|--debug|--logs|--telemetry|--verify]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -45,12 +47,32 @@ while [[ $# -gt 0 ]]; do
       MODE="$1"
       shift
       ;;
+    --cachet|cachet)
+      PRODUCT="cachet"
+      shift
+      ;;
     *)
       usage
       exit 2
       ;;
   esac
 done
+
+if [[ "$PRODUCT" == "cachet" ]]; then
+  APP_NAME="Cachet"
+  BUNDLE_ID="com.madu.Cachet"
+  DISPLAY_NAME="Cachet"
+  FRONTEND_BUILD_SCRIPT="build:cachet-macos"
+fi
+
+# Derived bundle paths. Computed AFTER the product override so --cachet
+# assembles dist/Cachet.app beside (never clobbering) dist/EinsteinDesktop.app.
+APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+APP_CONTENTS="$APP_BUNDLE/Contents"
+APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_BINARY="$APP_MACOS/$APP_NAME"
+INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 pick_python() {
   local candidate
@@ -115,6 +137,18 @@ ensure_backend() {
 
   ensure_local_api_token
 
+  # Cachet product contract for the dev-launched backend, mirroring both
+  # script/serve-cachet.py and BackendSupervisor.swift's cachet overlay so
+  # the backend behaves identically whichever side spawned it. The
+  # deterministic engine is hard-pinned (assignment); the rest honor an
+  # operator's explicit per-launch override.
+  if [[ "$PRODUCT" == "cachet" ]]; then
+    export CACHET_DETERMINISTIC_VERIFY=1
+    export EMBED_ON_INGEST="${EMBED_ON_INGEST:-false}"
+    export COURTLISTENER_API_TOKEN="${COURTLISTENER_API_TOKEN:-local}"
+    export CARREL_FASTEMBED_CACHE_DIR="${CARREL_FASTEMBED_CACHE_DIR:-$HOME/.cache/carrel-fastembed}"
+  fi
+
   # Kill any uvicorn process bound to our slot, not just the one named in
   # the pidfile. Two earlier failure modes prompted this:
   #   1. The pidfile was stale (last build crashed before writing it) so
@@ -135,6 +169,16 @@ ensure_backend() {
     rm -f "$BACKEND_PIDFILE"
   fi
   pkill -f "uvicorn main:app" >/dev/null 2>&1 || true
+  # The pkill pattern misses backends that run uvicorn in-process (e.g.
+  # `python script/serve-cachet.py` calls uvicorn.run, so its command
+  # line never contains "uvicorn main:app"). A stale one keeps the port,
+  # the new spawn dies on bind, and wait_for_backend then passes against
+  # the WRONG backend — observed 2026-06-11. Sweep the actual port holder.
+  local port_holder
+  port_holder="$(lsof -nP -tiTCP:8000 -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$port_holder" ]]; then
+    kill $port_holder >/dev/null 2>&1 || true
+  fi
   sleep 1
 
   local python_bin
@@ -220,12 +264,17 @@ prepare_frontend_resources() {
     esac
   fi
 
-  # Build the macOS bundle.
+  # Build the macOS bundle. $FRONTEND_BUILD_SCRIPT is build:macos for
+  # Carrel and build:cachet-macos for --cachet (same pipeline, vite
+  # --mode cachet bakes VITE_CACHET_ONLY=true into the bundle). Both
+  # write macos-app/Resources/app.new.html — that name is the WKWebView
+  # shell's internal contract, not product identity, and the staging copy
+  # is regenerated on every build so the overwrite is benign.
   case "$runner" in
-    pnpm) pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
-    corepack-pnpm) corepack pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
-    bun) ( cd "$ROOT_DIR/frontend" && bun run build:macos ) ;;
-    npm) ( cd "$ROOT_DIR/frontend" && npm run build:macos ) ;;
+    pnpm) pnpm --dir "$ROOT_DIR/frontend" "$FRONTEND_BUILD_SCRIPT" ;;
+    corepack-pnpm) corepack pnpm --dir "$ROOT_DIR/frontend" "$FRONTEND_BUILD_SCRIPT" ;;
+    bun) ( cd "$ROOT_DIR/frontend" && bun run "$FRONTEND_BUILD_SCRIPT" ) ;;
+    npm) ( cd "$ROOT_DIR/frontend" && npm run "$FRONTEND_BUILD_SCRIPT" ) ;;
   esac
 }
 
@@ -247,10 +296,10 @@ prepare_frontend_resources
 # installs fail on Command-Line-Tools-only Macs: one failing target
 # aborted the whole build under `set -e`. Core targets now build alone.
 swift build --package-path "$PROJECT_DIR" \
-  --product EinsteinDesktop \
+  --product "$SWIFT_PRODUCT" \
   --product EinsteinIngestionBridge
 BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
+BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT"
 
 # Optional: the Apple Foundation Models bridge. `xcode-select -p`
 # resolves under /Library/Developer/CommandLineTools when only the
@@ -315,10 +364,18 @@ if [[ -d "$ROOT_DIR/assets/demo-library" ]]; then
   mkdir -p "$APP_RESOURCES/demo-library"
   cp -R "$ROOT_DIR/assets/demo-library/." "$APP_RESOURCES/demo-library/"
 fi
-# Bundle the app icon when the generator produced one. Missing icon is not
-# a build failure — just an unbranded Dock tile until the asset is added.
+# Bundle the app icon. Carrel uses the generate-icon.sh pipeline output;
+# Cachet uses the committed brand .icns (the withheld-strike ring on the
+# ink squircle, built once from cachet-landing's brand assets). Missing
+# icon is not a build failure — just an unbranded Dock tile.
 ICON_PRESENT=0
-if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
+if [[ "$PRODUCT" == "cachet" ]]; then
+  CACHET_ICNS="$ROOT_DIR/cachet-landing/assets/brand/macos/AppIcon.icns"
+  if [[ -f "$CACHET_ICNS" ]]; then
+    cp "$CACHET_ICNS" "$APP_RESOURCES/AppIcon.icns"
+    ICON_PRESENT=1
+  fi
+elif [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
   cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
   ICON_PRESENT=1
 fi
@@ -332,19 +389,28 @@ if [[ $ICON_PRESENT -eq 1 ]]; then
   ICON_PLIST_ENTRY=$'  <key>CFBundleIconFile</key>\n  <string>AppIcon</string>\n  <key>CFBundleIconName</key>\n  <string>AppIcon</string>\n'
 fi
 
+PRODUCT_PLIST_ENTRY=""
+if [[ "$PRODUCT" == "cachet" ]]; then
+  # Runtime product switch read by ProductMode.swift: window title,
+  # study-chrome suppression (companion cube, calendar bridge), and the
+  # BackendSupervisor's deterministic-verify env overlay all key off it.
+  # Absent key (Carrel bundles) means Carrel; old bundles are unchanged.
+  PRODUCT_PLIST_ENTRY=$'  <key>CarrelProductMode</key>\n  <string>cachet</string>\n'
+fi
+
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Carrel</string>
+  <string>$DISPLAY_NAME</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
-${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
+${ICON_PLIST_ENTRY}${PRODUCT_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>Carrel</string>
+  <string>$DISPLAY_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
