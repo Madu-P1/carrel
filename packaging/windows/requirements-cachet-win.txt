@@ -1,0 +1,27 @@
+# Cachet on Windows - runtime dependencies for the deterministic verify path.
+# Derived from the repo's requirements.txt with three heavy packages removed
+# on purpose:
+#   docling       (typed-node ingest, flag-gated off here; ~1-2 GB of models)
+#   torch         (T1 recall tier, dark by design until calibrated)
+#   transformers  (same T1 tier)
+# The deterministic engine (quote check, eyecite citations, parametric
+# anchors, offline contract embedding) does not import any of them.
+fastapi
+uvicorn
+pydantic
+icalendar
+recurring-ical-events
+PyPDF2
+python-multipart>=0.0.27
+anthropic
+python-dotenv
+python-docx
+python-pptx
+openpyxl
+ebooklib
+beautifulsoup4
+chardet
+striprtf
+sqlite-vec~=0.1
+fastembed~=0.4
+eyecite~=2.7
