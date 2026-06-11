@@ -832,5 +832,268 @@ class PolarityClauseTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", verdict.disposition)
 
 
+class ValueCarrierVetoTests(unittest.TestCase):
+    """Rule 1 reads the clause TEXT, not the disposition label (the live Kellogg
+    false contradiction, 2026-06-11).
+
+    A draft sentence whose value was verbatim in the source read RED because the
+    carrying clause bundled a second value: its verdict was
+    multi_value_unverifiable, the old veto consulted only ``present`` verdicts,
+    and an unrelated clause's contradiction stood uncontested. These tests pin
+    the carrier veto at the adjudicator layer; the per-clause multi-value guard
+    in verify_claim_against_clause is deliberately untouched (a multi-value
+    clause still never earns a green).
+    """
+
+    CLAIM = (
+        "The heavy advertising expenses associated with the product launch will "
+        "generate operating losses of $20 million next year."
+    )
+    # The unrelated example whose lone money value accuses (the live accuser).
+    ACCUSER = (
+        "The marketing expenses associated with launching the new product will "
+        "generate operating losses of $500 million next year for the product."
+    )
+    # The verbatim-correct clause: carries the claim's $20 million, plus a second
+    # amount that makes its own verdict multi_value_unverifiable.
+    CARRIER = (
+        "The heavy advertising expenses associated with the product launch will "
+        "generate operating losses of $20 million next year, against pre-tax "
+        "income of $460 million."
+    )
+
+    def _candidates(self) -> list[ClauseCandidate]:
+        accuser_v = verify_claim_against_clause(self.CLAIM, self.ACCUSER)
+        carrier_v = verify_claim_against_clause(self.CLAIM, self.CARRIER)
+        # Preconditions that make the test exercise the CARRIER path: the old
+        # presents-only veto sees no present here and would accuse.
+        assert accuser_v.disposition == "parametric_contradiction"
+        assert carrier_v.disposition == "multi_value_unverifiable"
+        return [
+            ClauseCandidate(accuser_v, None, self.ACCUSER, True),
+            ClauseCandidate(carrier_v, None, self.CARRIER, True),
+        ]
+
+    def test_multi_value_carrier_vetoes_the_accusation(self) -> None:
+        # The Kellogg shape: the claim's value is verbatim in a retrieved clause,
+        # so accusing from a different clause is a guess. Refuse with both named;
+        # never the red contradiction, never a green.
+        verdict, _section, clause_text = adjudicate_clause_candidates(self._candidates())
+        self.assertEqual("conflicting_clauses", verdict.disposition)
+        self.assertIn("$20 million", verdict.detail)
+        self.assertIn("$500 million", verdict.detail)
+        self.assertIn("not independently checked", verdict.detail)
+        # The card points at the clause where the claim's value verifiably lives.
+        self.assertEqual(self.CARRIER, clause_text)
+
+    def test_multi_value_non_carrier_does_not_veto(self) -> None:
+        # Recall preserved: a multi-value clause WITHOUT the claim's value is no
+        # alibi, so the catch stands; the detail then names the unaligned
+        # passages so the accusing clause is not mistaken for the claim's one
+        # true counterpart (the live $360M-accused-with-$7B evidence gap).
+        claim = (
+            "Kellogg expects to earn pre-tax income of $360 million from "
+            "operations other than the new pastries next year."
+        )
+        accuser_v = verify_claim_against_clause(claim, self.ACCUSER)
+        carrier_v = verify_claim_against_clause(claim, self.CARRIER)
+        assert accuser_v.disposition == "parametric_contradiction"
+        assert carrier_v.disposition == "multi_value_unverifiable"
+        verdict, _, _ = adjudicate_clause_candidates(
+            [
+                ClauseCandidate(accuser_v, None, self.ACCUSER, True),
+                ClauseCandidate(carrier_v, None, self.CARRIER, True),
+            ]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertIn("could not align", verdict.detail)
+        self.assertIn("review them", verdict.detail)
+
+    def test_uncontested_detail_stays_verbatim_without_unaligned_passages(self) -> None:
+        # No same-type multi-value neighbors: the contradiction detail is the
+        # per-clause wording, byte-identical (no note appended).
+        accuser_v = verify_claim_against_clause(self.CLAIM, self.ACCUSER)
+        verdict, _, _ = adjudicate_clause_candidates(
+            [ClauseCandidate(accuser_v, None, self.ACCUSER, True)]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertEqual(accuser_v.detail, verdict.detail)
+
+    def test_cross_type_disposition_carrier_vetoes(self) -> None:
+        # A clause adjudicated under a DIFFERENT type (its final verdict is a
+        # duration multi-value) still carries the claim's money value in its
+        # text; the money accusation from another clause must refuse.
+        claim = "The term is 24 months and the fee is $20 million."
+        accuser = "The fee for the services is $500 million."
+        carrier = (
+            "The fee of $20 million is payable over a term of 24 months, "
+            "with an option to extend by a further 36 months."
+        )
+        accuser_v = verify_claim_against_clause(claim, accuser)
+        carrier_v = verify_claim_against_clause(claim, carrier)
+        assert accuser_v.disposition == "parametric_contradiction"
+        assert accuser_v.anchor_type == "money"
+        assert carrier_v.anchor_type != "money"
+        verdict, _, clause_text = adjudicate_clause_candidates(
+            [
+                ClauseCandidate(accuser_v, None, accuser, True),
+                ClauseCandidate(carrier_v, None, carrier, True),
+            ]
+        )
+        self.assertEqual("conflicting_clauses", verdict.disposition)
+        self.assertEqual(carrier, clause_text)
+
+    def test_governing_law_containment_refusal_is_no_alibi(self) -> None:
+        # A containment refusal (UAE vs DIFC) is not a carrier of the claim's
+        # jurisdiction, so a sibling clause's flipped choice of law still
+        # contradicts. The veto must not over-fire on governing law.
+        claim = "This Agreement is governed by the laws of the United Arab Emirates."
+        accuser = "This Agreement shall be governed by the laws of England and Wales."
+        containment = (
+            "This Agreement shall be governed by the laws of the Dubai "
+            "International Financial Centre."
+        )
+        accuser_v = verify_claim_against_clause(claim, accuser)
+        containment_v = verify_claim_against_clause(claim, containment)
+        assert accuser_v.disposition == "parametric_contradiction"
+        assert containment_v.disposition == "multi_value_unverifiable"
+        verdict, _, _ = adjudicate_clause_candidates(
+            [
+                ClauseCandidate(accuser_v, None, accuser, True),
+                ClauseCandidate(containment_v, None, containment, True),
+            ]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+
+    def test_polarity_contradiction_keeps_the_present_only_veto(self) -> None:
+        # Polarity values are noun-keyed grants adjudicated per stem; the text
+        # re-read does not apply, so a polarity flip still stands against a
+        # multi-value neighbor of any kind.
+        claim = "The license granted hereunder is exclusive."
+        accuser = "Licensor grants Licensee a non-exclusive license."
+        accuser_v = verify_claim_against_clause(claim, accuser)
+        assert accuser_v.disposition == "parametric_contradiction"
+        carrier_v = verify_claim_against_clause(self.CLAIM, self.CARRIER)
+        verdict, _, _ = adjudicate_clause_candidates(
+            [
+                ClauseCandidate(accuser_v, None, accuser, True),
+                ClauseCandidate(carrier_v, None, self.CARRIER, True),
+            ]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+
+
+class AccuserSelectionTests(unittest.TestCase):
+    """Rule 2 evidence selection: an on-topic accuser supplies the evidence
+    before an off-topic one; selection only, never suppression."""
+
+    @staticmethod
+    def _contradiction(section: str, on_topic: bool) -> ClauseCandidate:
+        return ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states 50%; {section} states 40%.",
+                "percent",
+                ("50",),
+                ("40",),
+                claim_span="50%",
+                clause_span="40%",
+                where=section,
+            ),
+            section=section,
+            clause_text=f"{section}. The discount equals 40% of net fees.",
+            on_topic=on_topic,
+        )
+
+    def test_on_topic_accuser_supplies_the_evidence(self) -> None:
+        verdict, section, _ = adjudicate_clause_candidates(
+            [
+                self._contradiction("Section 9", on_topic=False),
+                self._contradiction("Section 12", on_topic=True),
+            ]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertEqual("Section 12", section)
+
+    def test_off_topic_only_accuser_still_accuses(self) -> None:
+        # Never suppression: a falsified value lowers overlap with its true
+        # clause, so an off-topic-only accuser must keep the catch.
+        verdict, section, _ = adjudicate_clause_candidates(
+            [self._contradiction("Section 9", on_topic=False)]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertEqual("Section 9", section)
+
+    def test_rank_order_survives_within_a_topicality_band(self) -> None:
+        verdict, section, _ = adjudicate_clause_candidates(
+            [
+                self._contradiction("Section 9", on_topic=True),
+                self._contradiction("Section 12", on_topic=True),
+            ]
+        )
+        self.assertEqual("Section 9", section)
+
+    def test_topicality_never_picks_across_anchor_types(self) -> None:
+        # Cold-review catch (2026-06-11): an off-topic money accuser at rank 0
+        # must NOT be displaced by an on-topic duration accuser at rank 1. The
+        # evidence swap is same-type only; across types the standing catch is
+        # first by retrieval rank, exactly the pre-fix behavior.
+        money = ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                "The summary states $20 million; Section 2 states $90 million.",
+                "money",
+                (2000000000,),
+                (9000000000,),
+                claim_span="$20 million",
+                clause_span="$90 million",
+                where="Section 2",
+            ),
+            section="Section 2",
+            clause_text="Section 2. The fee is $90 million.",
+            on_topic=False,
+        )
+        duration = ClauseCandidate(
+            ClauseVerdict(
+                "parametric_contradiction",
+                "The summary states 24 months; Section 5 states 72 months.",
+                "duration",
+                (720,),
+                (2160,),
+                claim_span="24 months",
+                clause_span="72 months",
+                where="Section 5",
+            ),
+            section="Section 5",
+            clause_text="Section 5. The term is 72 months.",
+            on_topic=True,
+        )
+        verdict, section, _ = adjudicate_clause_candidates([money, duration])
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertEqual("money", verdict.anchor_type)
+        self.assertEqual("Section 2", section)
+
+    def test_review_note_names_the_type_in_prose_not_machine_tokens(self) -> None:
+        # Cold-review catch (2026-06-11): the unaligned-passages note renders
+        # on a lawyer-facing card, so "governing_law" must not leak raw.
+        claim = "This Agreement is governed by the laws of the United Arab Emirates."
+        accuser = "This Agreement shall be governed by the laws of England and Wales."
+        containment = (
+            "This Agreement shall be governed by the laws of the Dubai "
+            "International Financial Centre."
+        )
+        accuser_v = verify_claim_against_clause(claim, accuser)
+        containment_v = verify_claim_against_clause(claim, containment)
+        verdict, _, _ = adjudicate_clause_candidates(
+            [
+                ClauseCandidate(accuser_v, None, accuser, True),
+                ClauseCandidate(containment_v, None, containment, True),
+            ]
+        )
+        self.assertEqual("parametric_contradiction", verdict.disposition)
+        self.assertIn("governing-law values", verdict.detail)
+        self.assertNotIn("governing_law", verdict.detail)
+
+
 if __name__ == "__main__":
     unittest.main()

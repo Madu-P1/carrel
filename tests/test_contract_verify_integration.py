@@ -194,6 +194,34 @@ class ContractPathIntegrationTests(unittest.TestCase):
         ]
         ids = insert_typed_nodes(self._conn, "contract-5", nodes)
         embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._seed_multi_value_carrier_contract()
+
+    def _seed_multi_value_carrier_contract(self) -> None:
+        # Its own document (fixture isolation): the live Kellogg false-
+        # contradiction shape (2026-06-11). The clause that verbatim-supports
+        # the claim bundles a SECOND money value, so its own verdict is
+        # multi_value_unverifiable; a neighboring passage states a different
+        # lone amount. The old presents-only veto accused the verbatim-correct
+        # draft from the neighbor.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-6', 'launch-plan.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 3. The advertising expenses for the product launch "
+                "will generate operating losses of $20 million next year, "
+                "against pre-tax income of $460 million.",
+            ),
+            _node(
+                1,
+                "Section 7. The marketing expenses for the legacy product "
+                "will generate operating losses of $500 million next year.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-6", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
 
     def _verdict_for(self, env: dict, needle: str) -> dict:
         claim = next(c for c in env["claims"] if needle in c["text"])
@@ -364,6 +392,49 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertIn("Section 4", reason)
         self.assertIn("Section 9", reason)
         self.assertIn("40%", reason)
+
+    def test_verbatim_correct_claim_against_multi_value_carrier_refuses_not_accuses(self) -> None:
+        # The live Kellogg false contradiction, end to end. The claim's $20
+        # million is verbatim in Section 3, but that clause bundles a second
+        # amount (its own verdict is multi_value_unverifiable, never a green),
+        # and Section 7 states $500 million. The old presents-only veto let
+        # Section 7 accuse a verbatim-correct draft; the carrier veto must
+        # refuse with both clauses named instead. Never "unsupported", never
+        # "verified".
+        draft = (
+            "The advertising expenses for the product launch will generate "
+            "operating losses of $20 million next year."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-6"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "advertising expenses")
+        self.assertEqual("conflicting_clauses", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unknown", card.verdict)
+        reason = card.unsupported_reason or ""
+        self.assertIn("$20 million", reason)
+        self.assertIn("$500 million", reason)
+        self.assertIn("not independently checked", reason)
+
+    def test_wrong_claim_near_multi_value_clause_still_catches_with_review_note(self) -> None:
+        # Recall preserved, evidence made honest: $75 million appears nowhere
+        # in contract-6, so the contradiction stands; and because Section 3 is
+        # a same-type multi-value passage the engine could not align, the
+        # reason says so instead of presenting the accusing clause as the
+        # claim's one true counterpart.
+        draft = (
+            "The advertising expenses for the product launch will generate "
+            "operating losses of $75 million next year."
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-6"], embedder=self._embedder
+        )
+        verdict = self._verdict_for(env, "advertising expenses")
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("could not align", card.unsupported_reason or "")
 
     def test_uncontested_contradiction_still_catches(self) -> None:
         # No clause in contract-3 carries 99%: the falsified value stays a

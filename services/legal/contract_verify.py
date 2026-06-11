@@ -26,7 +26,7 @@ as a contradiction by the day-count approximation.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from services.legal.anchors import (
     GRANT_NOUN_WORDS,
@@ -73,7 +73,10 @@ class ClauseVerdict:
 class ClauseCandidate:
     """One retrieved clause's verdict, in retrieval-rank order, for the
     cross-clause adjudicator. ``on_topic`` is the C3 relevance gate's answer
-    for present-shaped candidates (True for everything else)."""
+    for present-shaped candidates and, since the accuser-selection fix, for
+    parametric contradictions too (there it only ORDERS which accuser supplies
+    the evidence, never gates whether an accusation stands). True for
+    everything else."""
 
     verdict: ClauseVerdict
     section: str | None
@@ -517,6 +520,62 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     )
 
 
+def _carried_clause_values(
+    clause_text: str | None, contra: ClauseVerdict
+) -> tuple[tuple, str | None] | None:
+    """``(clause_values, section)`` when ``clause_text`` literally carries every
+    claim value behind the contradiction ``contra``, else None.
+
+    The rule-1 veto used to consult only candidates whose FINAL disposition was
+    ``present``. That missed two carrier shapes, and the miss accused
+    verbatim-correct drafts (the live Kellogg false contradiction, 2026-06-11):
+
+      - a clause whose final verdict is ``multi_value_unverifiable`` because it
+        bundles several same-type values, one of which IS the claim's value;
+      - a clause whose final verdict belongs to a DIFFERENT anchor type (the
+        per-clause precedence keeps one disposition per clause), while its text
+        still carries the claim's value for the accused type.
+
+    So the carrier test re-reads the clause TEXT, not the verdict label. Match
+    semantics mirror ``verify_claim_against_clause``: durations compare
+    unit-aware via ``_durations_match`` (re-deriving the claim anchor from
+    ``contra.claim_span``); everything else compares canonical values exactly.
+    Polarity is excluded: its values are noun-keyed grants adjudicated per stem,
+    so the present-only veto remains its floor. Returns the clause's full value
+    tuple for the type (honest: the carrier may hold more values than the
+    claim's) plus its section anchor for the conflict wording.
+    """
+    if not clause_text or not contra.claim_values:
+        return None
+    # Polarity verdicts carry noun-keyed types ("polarity:exclusive:license"),
+    # so the exclusion matches on the prefix, not equality.
+    if contra.anchor_type is None or contra.anchor_type.startswith("polarity"):
+        return None
+    clause_anchors = extract_anchors(clause_text)
+    clause_hits = [
+        a for a in clause_anchors if a.type == contra.anchor_type and a.canonical_value is not None
+    ]
+    if not clause_hits:
+        return None
+    clause_values = tuple(dict.fromkeys(a.canonical_value for a in clause_hits))
+    section = next((a.text for a in clause_anchors if a.type == "section"), None)
+    if contra.anchor_type == "duration":
+        claim_hits = [
+            a
+            for a in extract_anchors(contra.claim_span or "")
+            if a.type == "duration" and a.canonical_value is not None
+        ]
+        if not claim_hits:
+            return None
+        carried = all(
+            any(_durations_match(claim_a, clause_a) for clause_a in clause_hits)
+            for claim_a in claim_hits
+        )
+        return (clause_values, section) if carried else None
+    carried = set(contra.claim_values) <= set(clause_values)
+    return (clause_values, section) if carried else None
+
+
 def adjudicate_clause_candidates(
     candidates: list[ClauseCandidate],
 ) -> tuple[ClauseVerdict, str | None, str | None]:
@@ -527,16 +586,25 @@ def adjudicate_clause_candidates(
     in precedence order:
 
     1. A contradiction stands only when NO retrieved clause carries the claim's
-       value for that anchor type. A same-type present anywhere — on-topic or
-       not — means the value is verbatim in the contract, so accusing from a
-       different clause would be a guess: the engine REFUSES with both clauses
-       named (``conflicting_clauses``, mapped to the could-not-check card).
-       Certainty is manufactured in neither direction (ADR-0012 invariant 2);
-       present-wins was rejected because a value coincidence would paint a
-       green over an amended-contract conflict, the worst failure class.
+       value for that anchor type. "Carries" is decided from the clause TEXT
+       (``_carried_clause_values``), not the disposition label: a same-type
+       present anywhere, OR a multi-value clause that bundles the claim's value
+       among others, OR a clause adjudicated under a different type whose text
+       still holds the value — each means the value is verbatim in the
+       contract, so accusing from a different clause would be a guess: the
+       engine REFUSES with both clauses named (``conflicting_clauses``, mapped
+       to the could-not-check card). Certainty is manufactured in neither
+       direction (ADR-0012 invariant 2); present-wins was rejected because a
+       value coincidence would paint a green over an amended-contract conflict,
+       the worst failure class.
     2. An uncontested contradiction wins, first by retrieval rank. Topicality
-       never gates it: a falsified value LOWERS overlap with its true clause,
-       so a relevance gate would suppress exactly the true catches.
+       never gates WHETHER an accusation stands, and never picks ACROSS anchor
+       types (a falsified value LOWERS overlap with its true clause, so a
+       relevance gate would suppress exactly the true catches); it only swaps
+       the evidence WITHIN the standing contradiction's own type, on-topic
+       accuser first. When same-type multi-value clauses were also retrieved,
+       the detail says so: the accusing clause may not be the claim's true
+       counterpart, and the reader should review the unaligned passages too.
     3. Otherwise the first ON-topic present wins (C3 unchanged: an off-topic
        value coincidence never earns a green).
     4. Otherwise the first multi-value refusal, then not_found.
@@ -556,16 +624,78 @@ def adjudicate_clause_candidates(
         elif disposition == "multi_value_unverifiable" and multi_value is None:
             multi_value = cand
 
-    first_conflict: tuple[ClauseCandidate, ClauseCandidate] | None = None
+    # (accusing contradiction, carrier's where-phrase, carrier section,
+    #  carrier clause text, carrier's same-type values)
+    first_conflict: tuple[ClauseCandidate, str, str | None, str | None, tuple] | None = None
     for contra in contradictions:
         present = presents_by_type.get(contra.verdict.anchor_type)
-        if present is None:
-            return contra.verdict, contra.section, contra.clause_text
+        if present is not None:
+            pair = (
+                contra,
+                present.verdict.where or "one retrieved clause",
+                present.section,
+                present.clause_text,
+                tuple(present.verdict.clause_values),
+            )
+        else:
+            pair = None
+            for cand in candidates:
+                if cand is contra:
+                    continue
+                carried = _carried_clause_values(cand.clause_text, contra.verdict)
+                if carried is not None:
+                    carried_values, carrier_where = carried
+                    pair = (
+                        contra,
+                        carrier_where or "one retrieved clause",
+                        cand.section,
+                        cand.clause_text,
+                        carried_values,
+                    )
+                    break
+            if pair is None:
+                # Uncontested for its type: the catch stands, first by rank.
+                # Evidence swap WITHIN the type only: same-type contradictions
+                # share one claim-value set, so they share the veto outcome,
+                # and an on-topic sibling is the better-named accuser. Across
+                # types rank order is untouched (topicality must never pick
+                # which catch stands).
+                if not contra.on_topic:
+                    contra = next(
+                        (
+                            c
+                            for c in contradictions
+                            if c.verdict.anchor_type == contra.verdict.anchor_type and c.on_topic
+                        ),
+                        contra,
+                    )
+                # If same-type multi-value clauses were retrieved, say so: the
+                # engine could not align their values, so the accusing clause
+                # may not be the claim's true counterpart (the live $360M case
+                # was accused with an unrelated clause's $7 billion while the
+                # true clause sat unaligned in a multi-value passage).
+                verdict = contra.verdict
+                unaligned = any(
+                    c is not contra
+                    and c.verdict.disposition == "multi_value_unverifiable"
+                    and c.verdict.anchor_type == verdict.anchor_type
+                    for c in candidates
+                )
+                if unaligned:
+                    type_noun = (verdict.anchor_type or "checked").replace("_", "-")
+                    verdict = replace(
+                        verdict,
+                        detail=(
+                            verdict.detail + f" Other retrieved passages carry further {type_noun} "
+                            "values the deterministic check could not align; review them "
+                            "before relying on the comparison."
+                        ),
+                    )
+                return verdict, contra.section, contra.clause_text
         if first_conflict is None:
-            first_conflict = (contra, present)
+            first_conflict = pair
     if first_conflict is not None:
-        contra, present = first_conflict
-        where_p = present.verdict.where or "one retrieved clause"
+        contra, where_p, section_p, clause_text_p, values_p = first_conflict
         where_c = contra.verdict.where or "another retrieved clause"
         if where_p == where_c:
             where_p, where_c = "one retrieved clause", "another retrieved clause"
@@ -580,14 +710,14 @@ def adjudicate_clause_candidates(
             ),
             contra.verdict.anchor_type,
             contra.verdict.claim_values,
-            tuple(present.verdict.clause_values) + tuple(contra.verdict.clause_values),
+            values_p + tuple(contra.verdict.clause_values),
             claim_span=contra.verdict.claim_span,
             clause_span=contra.verdict.clause_span,
         )
-        # Carry the PRESENT clause's location: it is where the claim's value
-        # verifiably lives, so the quote pool and the card's section point at
-        # real matching text rather than the accusing clause.
-        return conflict, present.section, present.clause_text
+        # Carry the value-bearing clause's location: it is where the claim's
+        # value verifiably lives, so the quote pool and the card's section
+        # point at real matching text rather than the accusing clause.
+        return conflict, section_p, clause_text_p
     if on_topic_presents:
         chosen = on_topic_presents[0]
         return chosen.verdict, chosen.section, chosen.clause_text
