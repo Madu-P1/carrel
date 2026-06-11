@@ -28,7 +28,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from services.legal.anchors import Anchor, extract_anchors, related_jurisdictions
+from services.legal.anchors import (
+    GRANT_NOUN_WORDS,
+    POLARITY_VOCAB,
+    Anchor,
+    extract_anchors,
+    grant_noun_pattern,
+    related_jurisdictions,
+)
 from services.retrieval.validators import verbatim_run_present
 
 # percent compares by exact basis-point equality through the default
@@ -36,7 +43,10 @@ from services.retrieval.validators import verbatim_run_present
 # "0.5%" and "50 bps" intersect); governing_law compares normalized jurisdiction
 # keys through the same branch (lexicon normalization makes "English law" and
 # "laws of England and Wales" one key); duration alone keeps a tolerance.
-_PARAMETRIC_TYPES = ("money", "percent", "date", "duration", "governing_law")
+# polarity is adjudicated PER STEM (a dedicated pass), because its values are
+# heterogeneous across stems and a whole-type comparison would let a matching
+# qualifier mask a flipped sibling.
+_PARAMETRIC_TYPES = ("money", "percent", "date", "duration", "governing_law", "polarity")
 _DURATION_REL_TOLERANCE = 0.05
 _DURATION_UNIT = re.compile(r"\b(year|month|week|day)s?\b", re.IGNORECASE)
 
@@ -140,6 +150,217 @@ def _present_detail(claim_anchor: Anchor, clause_anchor: Anchor, where: str) -> 
     )
 
 
+# Function words, contract boilerplate, party roles, and cosmetic adjectives
+# excluded when comparing the subject matter around a qualified grant noun
+# ("license to use the SOFTWARE", "the TRADEMARK license"). Grant-noun and
+# polarity vocabulary are excluded separately below.
+_OBJECT_STOPWORDS = frozenset(
+    {
+        "this",
+        "that",
+        "these",
+        "those",
+        "with",
+        "shall",
+        "will",
+        "under",
+        "during",
+        "herein",
+        "hereunder",
+        "hereto",
+        "thereof",
+        "thereto",
+        "hereby",
+        "pursuant",
+        "term",
+        "terms",
+        "party",
+        "parties",
+        "granted",
+        "grants",
+        "receives",
+        "section",
+        "licensor",
+        "licensee",
+        "grantor",
+        "grantee",
+        "lessor",
+        "lessee",
+        "buyer",
+        "seller",
+        "vendor",
+        "supplier",
+        "customer",
+        "client",
+        "recipient",
+        "worldwide",
+        "perpetual",
+        "limited",
+        "personal",
+        "sole",
+        "global",
+        "royalty",
+        "free",
+        "fully",
+        "paid",
+    }
+)
+
+
+def _noun_objects(text: str, noun_class: str) -> frozenset[str]:
+    """Content words naming the subject matter around a grant noun.
+
+    Bounded T0: for every surface form of the noun class, take the window up
+    to the next [.;:,] after it AND back to the previous [.;:,] before it
+    (max 60 chars each — "the TRADEMARK license" puts the subject matter
+    pre-noun) and keep 4+ letter words minus boilerplate, qualifier
+    vocabulary, and the grant nouns themselves. Empty means the side states
+    no subject matter for this noun.
+    """
+    words: set[str] = set()
+    for m in re.finditer(rf"\b(?:{grant_noun_pattern(noun_class)})\b", text, re.IGNORECASE):
+        after = re.split(r"[.;:,]", text[m.end() : m.end() + 60], maxsplit=1)[0]
+        before = re.split(r"[.;:,]", text[max(0, m.start() - 60) : m.start()])[-1]
+        # The backward window stops at a granting verb so it reads the noun's
+        # modifiers ("the TRADEMARK license"), never the sentence subject —
+        # "The Company hereby grants an exclusive license" names a grantor,
+        # not subject matter, and reading it suppressed real flips (round-3
+        # note 2).
+        before = re.split(
+            r"\b(?:grants?|granted|granting|conveys?|issues?|provides?|"
+            r"receives?|retains?|holds?|delivers?)\b",
+            before,
+            flags=re.IGNORECASE,
+        )[-1]
+        for window in (before, after):
+            words.update(
+                w
+                for w in re.findall(r"[a-z]{4,}", window.lower())
+                if w not in _OBJECT_STOPWORDS
+                and w not in POLARITY_VOCAB
+                and w not in GRANT_NOUN_WORDS
+            )
+    return frozenset(words)
+
+
+def _polarity_pass(
+    claim_hits: list, clause_hits: list, where: str, claim: str, clause: str
+) -> tuple[ClauseVerdict | None, ClauseVerdict | None, ClauseVerdict | None, ClauseVerdict | None]:
+    """Per-(stem, noun-class) polarity adjudication:
+    (contradiction, multi, present, not_found).
+
+    Each key ("exclusive:license", "binding:arbitration", ...) is its own
+    comparison, and the verdict's anchor_type is key-qualified
+    ("polarity:exclusive:license") so the cross-clause adjudicator's same-type
+    rules also operate per key — an exclusive REMEDY can never confirm or veto
+    a claim about an exclusive LICENSE. A flip on any key is a contradiction
+    even when a sibling key matches; one key carrying both signs on a side
+    refuses; a key the clause never qualifies is an honest not_found.
+
+    Subject-matter gate (round-2 hardening): the two qualifiers may describe
+    different grants that are simultaneously true (an exclusive Software
+    license beside a non-exclusive Documentation license), and comparing them
+    in either direction would manufacture certainty. The pair refuses when
+    the sides' stated subject matter cannot be matched:
+
+    - ASYMMETRY: one side names subject matter and the other is bare. "The
+      license is exclusive" cannot be aligned to "a non-exclusive license to
+      the source code" — which license is unknowable deterministically.
+    - MUTUAL DIFFERENCE: each side carries a content word the other lacks
+      ("Product source code" vs "Product user manual" — a shared generic
+      word does not make them the same grant).
+
+    Both bare, equal, or one-a-subset-of-the-other still compares: verbose
+    restatement of the same subject matter keeps the catch.
+    """
+
+    def by_key(hits: list) -> dict[str, list]:
+        grouped: dict[str, list] = {}
+        for a in hits:
+            grouped.setdefault(str(a.canonical_value)[:-1], []).append(a)
+        return grouped
+
+    claim_keys = by_key(claim_hits)
+    clause_keys = by_key(clause_hits)
+    contradiction = multi = present = not_found = None
+    for key, c_hits in claim_keys.items():
+        k_hits = clause_keys.get(key, [])
+        qualified = f"polarity:{key}"
+        stem, noun = key.split(":", 1)
+        c_vals = tuple(dict.fromkeys(a.canonical_value for a in c_hits))
+        k_vals = tuple(dict.fromkeys(a.canonical_value for a in k_hits))
+        if not k_hits:
+            if not_found is None:
+                not_found = ClauseVerdict(
+                    "not_found",
+                    f"The summary states {c_hits[0].text}, which the deterministic check "
+                    "could not locate in your loaded sources.",
+                    qualified,
+                    c_vals,
+                    (),
+                )
+            continue
+        if len(c_vals) > 1 or len(k_vals) > 1:
+            if multi is None:
+                multi = ClauseVerdict(
+                    "multi_value_unverifiable",
+                    (
+                        f"The summary and {where} carry {stem} qualifiers that cannot be "
+                        "aligned one-to-one deterministically, so this sentence was not "
+                        "independently checked."
+                    ),
+                    qualified,
+                    c_vals,
+                    k_vals,
+                )
+            continue
+        claim_objects = _noun_objects(claim, noun)
+        clause_objects = _noun_objects(clause, noun)
+        asymmetric = bool(claim_objects) != bool(clause_objects)
+        mutually_different = bool(claim_objects - clause_objects) and bool(
+            clause_objects - claim_objects
+        )
+        if asymmetric or mutually_different:
+            if multi is None:
+                multi = ClauseVerdict(
+                    "multi_value_unverifiable",
+                    (
+                        f"The summary and {where} qualify a {noun} whose subject matter "
+                        f"cannot be matched deterministically, so the {stem} qualifiers "
+                        "were not independently checked."
+                    ),
+                    qualified,
+                    c_vals,
+                    k_vals,
+                )
+            continue
+        if c_vals[0] == k_vals[0]:
+            if present is None:
+                present = ClauseVerdict(
+                    "present",
+                    f"{c_hits[0].text} appears in {where}; review the full passage for context.",
+                    qualified,
+                    c_vals,
+                    k_vals,
+                    claim_span=c_hits[0].text,
+                    clause_span=k_hits[0].text,
+                    where=where,
+                )
+            continue
+        contradiction = ClauseVerdict(
+            "parametric_contradiction",
+            f"The summary states {c_hits[0].text}; {where} states {k_hits[0].text}.",
+            qualified,
+            c_vals,
+            k_vals,
+            claim_span=c_hits[0].text,
+            clause_span=k_hits[0].text,
+            where=where,
+        )
+        break
+    return contradiction, multi, present, not_found
+
+
 def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     """Decide whether ``claim`` is supported, contradicted, or unfound vs ``clause``.
 
@@ -170,6 +391,16 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         clause_hits = [
             a for a in clause_anchors if a.type == anchor_type and a.canonical_value is not None
         ]
+        if anchor_type == "polarity":
+            contradiction, p_multi, p_present, p_not_found = _polarity_pass(
+                claim_hits, clause_hits, where, claim, clause
+            )
+            if contradiction is not None:
+                return contradiction
+            multi_value_verdict = multi_value_verdict or p_multi
+            present_verdict = present_verdict or p_present
+            not_found_verdict = not_found_verdict or p_not_found
+            continue
         # Equal canonicals collapse to one fact: "0.5% (50 bps)" is a single
         # rate written twice, not two values needing alignment. Only genuinely
         # different values trigger the multi-value refusal below.

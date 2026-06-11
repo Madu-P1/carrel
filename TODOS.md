@@ -32,7 +32,7 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 
 | Plan | Trigger | Why deferred | Source |
 |---|---|---|---|
-| Cachet `SourceView` (reader recycled for verification) | Operator wants Cachet users to open a saved brief and view its sources at the exact verified span | Build a thin, study-free Cachet source viewer reusing `routes/reader_nodes.py` + `useNodeDeepLink`/`usePdfDocument`/`PdfViewer`; wire a `/source` route into `CachetApp` so `SourceInspector.openInReader()` stops dead-ending. Do NOT port `features/reader/ReaderView.tsx` (study chrome). Honest highlight only, no generation. **P3 note: `reader_nodes` is KEEP, not a delete-leaf; extract the render primitives before deleting `features/reader`.** | `docs/notes/2026-06-07-cachet-source-viewer.md` |
+| ~~Cachet `SourceView` (reader recycled for verification)~~ | ~~Operator wants Cachet users to open a saved brief and view its sources at the exact verified span~~ | **SUPERSEDED 2026-06-11** by the Document Examination drawer (PR #167): `frontend/src/cachet/examine/` renders the ORIGINAL PDF/DOCX in place with honest quote anchoring (no match → visible refusal), wired into SourceInspector / Lectern / Vault. No `/source` route or reader recycling needed. **The P3 note survives:** `reader_nodes` stays KEEP for the SourcePassageOverlay resolve path; extract render primitives before deleting `features/reader`. | `docs/notes/2026-06-07-cachet-source-viewer.md` |
 
 ## Active backlog (PR #163 review round, 2026-06-09)
 

@@ -162,6 +162,26 @@ class ContractCorpusTests(unittest.TestCase):
         claim = self._verdict_for("term of the agreement")
         self.assertEqual("present", claim["contract_verdict"]["disposition"])
 
+    def test_exclusivity_flip_is_a_contradiction(self) -> None:
+        # The summary upgrades the non-exclusive Section 3 grant to exclusive:
+        # the canonical single-token contract-summary error, caught with both
+        # qualifiers quoted.
+        claim = self._verdict_for("exclusive license")
+        verdict = claim["contract_verdict"]
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertIn("Section 3", verdict["detail"])
+        self.assertIn("non-exclusive", verdict["detail"])
+
+    def test_governing_law_flip_is_a_contradiction(self) -> None:
+        # The summary flips the choice of law to the VENUE state (Section 14
+        # chooses Delaware law but New York courts): the classic AI confusion,
+        # and the venue jurisdiction must not mask the catch.
+        claim = self._verdict_for("governed by New York law")
+        verdict = claim["contract_verdict"]
+        self.assertEqual("parametric_contradiction", verdict["disposition"])
+        self.assertIn("New York", verdict["detail"])
+        self.assertIn("Delaware", verdict["detail"])
+
     def test_best_efforts_claim_is_untreated(self) -> None:
         # "The vendor must use best efforts to protect confidential information." carries
         # no checkable anchor (the source's defined term is "Confidential Information",

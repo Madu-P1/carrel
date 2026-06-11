@@ -15,9 +15,13 @@ class Hit:
 
 
 def _sanitize_query(query: str) -> str:
+    # OR-joined quoted tokens, mirroring services.retrieval.nodes_fts: bare
+    # space-separated terms are implicit AND in FTS5, which zeroes out any
+    # sentence-shaped query with one non-shared word. Ranked BM25 over the
+    # query vocabulary is what the hybrid fusion expects from this arm.
     cleaned = _FTS_OPERATOR_CHARS.sub(" ", query)
-    tokens = [token for token in cleaned.split() if token]
-    return " ".join(tokens)
+    tokens = dict.fromkeys(token for token in cleaned.split() if token)
+    return " OR ".join(f'"{token}"' for token in tokens)
 
 
 def search_keyword(
