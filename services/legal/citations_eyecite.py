@@ -230,6 +230,17 @@ def _acronym_forms(case_name: str) -> set[str]:
     return forms
 
 
+# Dotted single-letter initials ("U.S.", "M.L.B.", "N. L. R. B."): the only
+# short-token caption shape eligible for the initialism carve-out in
+# caption_match_state.
+_DOTTED_INITIALS = re.compile(r"(?:[A-Za-z]\.[\s-]*)+")
+
+
+def _letters_of(text: str) -> str:
+    """The side's letters, lowercased and joined ("M.L.B." -> "mlb")."""
+    return "".join(re.findall(r"[A-Za-z]", text)).lower()
+
+
 _CAPS_RUN = re.compile(r"\b[A-Z][A-Z0-9]{2,}\b")
 
 
@@ -267,9 +278,16 @@ def caption_match_state(ref: CitationRef, case_name: str) -> str:
     Initialism credit is restricted to tokens written in ALL CAPS in the draft
     (:func:`_caps_tokens`): a mixed-case surname that coincidentally spells an
     initialism ("Fat" against "First American Title") is a party name and gets
-    no credit. A side with no significant tokens ("U.S.") is vacuous, and a
-    caption with no populated side at all is a ``match``: a bare citation is
-    never punished for what it does not say.
+    no credit.
+
+    A side whose letters all tokenize away (sub-3-char tokens: dotted initials
+    "M.L.B.", two-letter surnames "Ng") is UNVERIFIABLE, not vacuous, unless it
+    is dotted single-letter initials that spell an initialism of the resolved
+    name ("U.S." for "United States ..."): an unverifiable side caps the result
+    at ``unconfirmed`` even when the other side matches, because "Ng v. Board"
+    on Brown's number must never out-rank "Smith v. Board" (refusal, never the
+    accusation, and never a bless). A caption with no letters at all is a
+    ``match``: a bare citation is never punished for what it does not say.
     """
     raw_sides = [ref.plaintiff or "", ref.defendant or ""]
     sides = [(caption_token_info(raw), _caps_tokens(raw)) for raw in raw_sides]
@@ -280,18 +298,23 @@ def caption_match_state(ref: CitationRef, case_name: str) -> str:
         # initials-caption case like "M. L. B. v. S. L. J."): nothing to
         # compare against, so the draft's caption is never punished.
         return "match"
+    acronyms = _acronym_forms(case_name)
+    # Letter-bearing sides that tokenized to nothing. Dotted single-letter
+    # initials whose letters spell an initialism of the resolved name ("U.S."
+    # -> "us" for "United States v. Carolene Products Co.") stay vacuous; any
+    # other letter-bearing short-token side ("Ng", "M.L.B." against Brown) is
+    # unverifiable and caps the result at the refusal below.
+    unverifiable = [
+        raw
+        for raw, (tokens, _caps) in zip(raw_sides, sides)
+        if not tokens
+        and re.search(r"[A-Za-z]", raw)
+        and not (_DOTTED_INITIALS.fullmatch(raw.strip()) and _letters_of(raw) in acronyms)
+    ]
     if not populated:
-        # No draft side survived tokenization. A truly bare cite (no caption at
-        # all) is a match: a citation is never punished for what it does not
-        # say. But a caption whose sides carry LETTERS that all tokenized away
-        # (dotted initials "M.L.B. v. S.L.J.", two-letter surnames "Ng v. Li")
-        # is a real caption the tool cannot confirm against a resolved name
-        # that HAS tokens; treating it as vacuous let any short-token caption
-        # on a real number read verified. Refuse, never bless.
-        if any(re.search(r"[A-Za-z]", raw) for raw in raw_sides):
+        if unverifiable:
             return "unconfirmed"
         return "match"
-    acronyms = _acronym_forms(case_name)
 
     def _side_matches(side: list[tuple[str, bool]], caps: set[str]) -> bool:
         return any(
@@ -300,7 +323,7 @@ def caption_match_state(ref: CitationRef, case_name: str) -> str:
 
     results = [_side_matches(side, caps) for side, caps in populated]
     if all(results):
-        return "match"
+        return "unconfirmed" if unverifiable else "match"
     if any(results):
         return "unconfirmed"
     return "mismatch"

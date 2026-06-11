@@ -385,8 +385,8 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
           {(coverage.untreated ?? 0) === 1
             ? "1 of "
             : `${coverage.untreated} of `}
-          {coverage.statements ?? 0} statements carried no checkable anchor (citation, quotation,
-          amount, or date) and {(coverage.untreated ?? 0) === 1 ? "was" : "were"} not independently
+          {coverage.statements ?? 0} statements carried no checkable anchor (such as a citation,
+          quotation, amount, or date) and {(coverage.untreated ?? 0) === 1 ? "was" : "were"} not independently
           checked; {(coverage.untreated ?? 0) === 1 ? "it renders" : "they render"} as plain text
           below.
         </p>

@@ -156,6 +156,20 @@ class PresentTests(unittest.TestCase):
         self.assertIn("consistent with", v.detail)
         self.assertIn("1 year", v.detail)
 
+    def test_polarity_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
+        # F2 (final pre-merge review): equal polarity canonicals can have
+        # different surfaces ("non-exclusive" vs "nonexclusive"); the present
+        # detail must say "matches", never that the claim's form appears in
+        # the clause. Same filing-grade rule the other parametric types pin.
+        v = verify_claim_against_clause(
+            "The license granted is non-exclusive.",
+            "Section 2.1. Licensor grants Licensee a nonexclusive license.",
+        )
+        self.assertEqual("present", v.disposition)
+        self.assertNotIn("appears in", v.detail)
+        self.assertIn("matches", v.detail)
+        self.assertIn("nonexclusive", v.detail)
+
     def test_identical_written_value_still_reads_appears_in(self) -> None:
         v = verify_claim_against_clause(
             "The cap is $500,000.",

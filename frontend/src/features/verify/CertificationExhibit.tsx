@@ -325,8 +325,8 @@ export function CertificationExhibit({
                 <dt>Not independently checked</dt>
                 <dd>
                   {model.coverage.untreated === 1
-                    ? "1 statement carried no checkable anchor (citation, quotation, amount, or date) and was not independently checked."
-                    : `${model.coverage.untreated} statements carried no checkable anchor (citation, quotation, amount, or date) and were not independently checked.`}
+                    ? "1 statement carried no checkable anchor (such as a citation, quotation, amount, or date) and was not independently checked."
+                    : `${model.coverage.untreated} statements carried no checkable anchor (such as a citation, quotation, amount, or date) and were not independently checked.`}
                 </dd>
               </div>
             ) : null}

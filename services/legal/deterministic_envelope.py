@@ -83,8 +83,8 @@ _CLAUSE_CHECKABLE = frozenset(
 # A constant because the promotion path and the could-not-check card text must stay
 # identical. See docs/notes/2026-06-08-untreated-vs-could-not-check.md.
 _ANCHOR_FREE_REASON = (
-    "No verifiable anchor (citation, quotation, amount, or date) was found, "
-    "so this statement was not independently checked."
+    "No verifiable anchor (such as a citation, quotation, amount, or date) was "
+    "found, so this statement was not independently checked."
 )
 
 

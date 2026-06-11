@@ -282,6 +282,34 @@ class CaptionMatchStateTests(unittest.TestCase):
         )
         self.assertEqual("match", state)
 
+    def test_one_unverifiable_side_caps_a_matching_caption_at_unconfirmed(self) -> None:
+        # F1 (final pre-merge review): "Ng v. Board" / "M.L.B. v. Board" on
+        # Brown's number read MATCH because the short-token side was excluded
+        # as vacuous and the other side carried "board". An unverifiable side
+        # must cap the result at the refusal: it can never out-rank
+        # "Smith v. Board" (unconfirmed), and never bless.
+        self.assertEqual(
+            "unconfirmed",
+            caption_match_state(_ref("Ng", "Board"), "Brown v. Board of Education"),
+        )
+        self.assertEqual(
+            "unconfirmed",
+            caption_match_state(_ref("M.L.B.", "Board"), "Brown v. Board of Education"),
+        )
+
+    def test_dotted_initials_matching_the_resolved_name_stay_vacuous(self) -> None:
+        # The carve-out that keeps "U.S. v. Carolene Products Co." a match:
+        # dotted single-letter initials whose letters spell an initialism of
+        # the resolved name are a legitimate short form, not an unverifiable
+        # side.
+        self.assertEqual(
+            "match",
+            caption_match_state(
+                _ref("U.S.", "Carolene Products Co."),
+                "United States v. Carolene Products Co.",
+            ),
+        )
+
     def test_all_short_token_caption_is_unconfirmed_not_vacuous(self) -> None:
         # Dotted initials ("M.L.B. v. S.L.J.") and two-letter surnames
         # ("Ng v. Li") tokenize to nothing, and treating that as vacuous let ANY

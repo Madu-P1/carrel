@@ -338,7 +338,11 @@ def _polarity_pass(
             if present is None:
                 present = ClauseVerdict(
                     "present",
-                    f"{c_hits[0].text} appears in {where}; review the full passage for context.",
+                    # _present_detail, not a literal "appears in": the canonical
+                    # values are equal but the surfaces may differ ("non-exclusive"
+                    # vs "nonexclusive"), and a filing-grade detail must never
+                    # assert text the clause does not contain.
+                    _present_detail(c_hits[0], k_hits[0], where),
                     qualified,
                     c_vals,
                     k_vals,
