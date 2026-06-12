@@ -1,0 +1,57 @@
+{
+  "ts": "2026-06-12T23:46:52Z",
+  "feature_slug": "e1-hoist-tokenization",
+  "goal_understood": "Hoist per-node sentence tokenization and per-quote source-pool normalization out of the deterministic verify hot path, byte-identical behavior, with a focused pinning test.",
+  "tree_hash": "71c7d6819c914f9f02bd559e7012b0995258d2de0a483c41a51143fd6870b0ce",
+  "dimensions": {
+    "correctness": {
+      "applies": true,
+      "full_marks": true,
+      "note": "All four binding Acceptance bullets met. (1) sentence_tokens = _content_tokens(sentence) is computed once before the per-node loop in _contract_claim (:550); both per-node calls now use _shares_topic(sentence_tokens, ...) (:559,:564); _clause_on_topic is a thin single-shot wrapper. (2) prepare_source_pool() materializes norm_all/norm_confident/has_uncertain_source/has_sources once per request in services/verify.py (:580), then check_quote_against_pool per quote. (3) Byte-identical by inspection: _content_tokens is the verbatim-extracted inner content() fn; _shares_topic ANDs the two token sets identically; prepare_source_pool reproduces the original usable/norm logic, has_sources=bool(usable) reproduces the 'not usable' early-return guard, dict.fromkeys dedup is behavior-preserving for substring membership. Confirmed empirically: 345 engine-suite tests green, 47 verify+stream green, no assertion changed."
+    },
+    "test_coverage": {
+      "applies": true,
+      "full_marks": true,
+      "note": "Test count net +2 classes / +5 methods, no skip/xfail. TopicTokenHoistTests pins hoisted==per-call across on-topic/value-coincidence/unrelated/empty clauses and _content_tokens purity. PrepareSourcePoolTests pins pooled==single-shot per quote (verbatim/altered-shaped/multi-source/absent/multi-phrase), dedup-invariance, and empty-pool unplaceable. Probed fixtures hit real distinct outcomes (present, unplaceable, multi-source). The pure altered-branch is not exercised by the new parity fixture (uncertain source degrades it to unplaceable) but remains covered by the pre-existing PanelEnvelopeParityTests which stays green. Full contract verify chain green: engine-suites (345), zero-egress (7), verify+stream (47), ruff check + ruff format clean."
+    },
+    "security": {
+      "applies": true,
+      "full_marks": true,
+      "note": "Verifiable surface: no new network/LLM/dependency imports added to any touched file (grep clean); zero-egress invariant tests.test_zero_egress 7/7 green; deterministic-default grep (CACHET_DETERMINISTIC_VERIFY in services/verify.py + routes/verify.py) PRESENT. No secrets, no new input surface; refactor is value-preserving so no false-green / false-accusation path widened. The unknown-unknown truth-surface edge on deterministic_envelope.py is routed to the security human gate, not passed here."
+    },
+    "code_quality": {
+      "applies": true,
+      "full_marks": true,
+      "note": "Tight extraction: _content_tokens + _shares_topic are small, named, intent-stating; _clause_on_topic kept as a documented thin wrapper preserving the public single-shot API. NormalizedSourcePool is a frozen dataclass with a docstring explaining the dedup + has_sources invariant. No dead code, no commented-out blocks, follows the existing module patterns. dataclass already imported. ruff check + format clean."
+    },
+    "alignment": {
+      "applies": true,
+      "full_marks": true,
+      "note": "Matches E1 Acceptance exactly, no scope creep: only the two declared hot-path hoists plus the focused pinning test. No reduction of the original goal. Additive and independently shippable as one draft PR (5 files, untracked .forge/ aside). E2/E3 untouched."
+    },
+    "docs": {
+      "applies": true,
+      "full_marks": true,
+      "note": "Pure internal refactor: no public API, migration, or behavior change to document. New module functions and the dataclass all carry docstrings stating intent and the byte-identical guarantee. No external doc requires updating for an invisible perf hoist."
+    },
+    "performance": {
+      "applies": false,
+      "full_marks": false,
+      "note": "Contract declares benchmarks: [] and no perf signal, so there is no declared benchmark to regress against; per the rubric this dimension does not apply. The structural improvement IS machine-verified: tokenization is provably hoisted out of the per-node loop (single _content_tokens(sentence) call at :550) and source-pool normalization out of the per-quote loop (single prepare_source_pool at verify.py:580). No new quadratic or blocking call introduced."
+    },
+    "craft_ux": {
+      "applies": false,
+      "full_marks": false,
+      "note": "No UI surface changed (backend-only)."
+    },
+    "accessibility": {
+      "applies": false,
+      "full_marks": false,
+      "note": "No UI surface."
+    }
+  },
+  "verdict": "SHIP",
+  "gaps_to_close": [],
+  "human_gates_owed": ["security"],
+  "notes": "Held-out cage (FORGE_HELD_OUT_DIR) was unset in the rating shell so $FORGE_HELD_OUT_DIR/run.sh could not be executed here; the canonical source suites it freezes were run directly and are green (engine-suites 345, zero-egress 7, verify+stream 47, ruff clean). The score-loop gate / Stop hook is responsible for the held-out run."
+}

@@ -545,6 +545,47 @@ class TopicGateFoldTests(unittest.TestCase):
         )
 
 
+class TopicTokenHoistTests(unittest.TestCase):
+    """E1: the sentence token set is derived ONCE per sentence and reused across
+    every candidate clause. ``_shares_topic(_content_tokens(s), c)`` must produce a
+    decision byte-identical to the per-call ``_clause_on_topic(s, c)`` baseline."""
+
+    def test_hoisted_shares_topic_matches_per_call_baseline(self) -> None:
+        from services.legal.deterministic_envelope import (
+            _clause_on_topic,
+            _content_tokens,
+            _shares_topic,
+        )
+
+        sentence = "The liability cap for damages is forty-two thousand dollars."
+        clauses = [
+            # on-topic: shares "liability" / "damage(s)"
+            "Aggregate liability cap for damage claims is $42,000.",
+            # off-topic value coincidence: shares only the number + boilerplate
+            "The signing bonus under this Services Agreement is $42,000.",
+            # unrelated entirely
+            "Either party may terminate on thirty days written notice.",
+            # empty clause
+            "",
+        ]
+        # The hoisted token set: derived from the sentence exactly once.
+        sentence_tokens = _content_tokens(sentence)
+        for clause in clauses:
+            # The hoisted decision must equal the line-by-line baseline that
+            # re-tokenized the sentence on every call.
+            self.assertEqual(
+                _shares_topic(sentence_tokens, clause),
+                _clause_on_topic(sentence, clause),
+                msg=f"hoisted decision diverged for clause: {clause!r}",
+            )
+
+    def test_content_tokens_is_pure(self) -> None:
+        from services.legal.deterministic_envelope import _content_tokens
+
+        sentence = "The indemnity obligation survives termination of the Agreement."
+        self.assertEqual(_content_tokens(sentence), _content_tokens(sentence))
+
+
 class CourtFormatGuardTests(unittest.TestCase):
     """court_mismatch compares courts-db ids only. A corpus whose court field is
     CourtListener's URL or display-name form must make the check vacuous, not
