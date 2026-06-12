@@ -531,6 +531,11 @@ def _contract_claim(
             # not support. The adjudicator never greens it, but keeps it as an
             # accusation veto (the value IS verbatim in the contract).
             on_topic = _clause_on_topic(sentence, node.verbatim_text)
+        elif candidate.disposition == "parametric_contradiction":
+            # Accuser selection only: when several clauses contradict, the
+            # adjudicator lets an on-topic accuser supply the evidence before
+            # an off-topic one. Never gates whether the accusation stands.
+            on_topic = _clause_on_topic(sentence, node.verbatim_text)
         candidates.append(
             ClauseCandidate(candidate, node.heading_path, node.verbatim_text, on_topic)
         )
