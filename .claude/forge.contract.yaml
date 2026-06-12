@@ -1,32 +1,45 @@
-# Forge contract — DOGFOOD run (peripheral Carrel feature, not the verify product)
+# Forge contract — Cachet deterministic verify engine (the product core)
+# Repointed 2026-06-13 from the v0 dogfood (both dogfood tasks done) onto the
+# real deterministic-engine backlog. Queue lives in .claude/forge.engine.tasks.md.
 project:
-  name: "carrel-dogfood"
+  name: "carrel-cachet-engine"
   root: "."                                  # the worktree (cwd); all paths relative to it
   autonomous_env: "FORGE_AUTONOMOUS"
 
 verify:
   commands:
-    - name: "query-store-tests"
-      run: "corepack pnpm --dir frontend exec vitest run src/lib/query.test.ts"
+    - name: "engine-suites"
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_contract_verify tests.test_contract_verify_integration tests.test_deterministic_envelope tests.test_quote_check tests.test_anchors tests.test_citations_eyecite tests.test_local_caselaw"
+      pass_when: "exit_zero"
+    - name: "ruff-check"
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m ruff check services/legal services/verify.py tests"
+      pass_when: "exit_zero"
+    - name: "ruff-format"
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m ruff format --check services/legal services/verify.py tests"
       pass_when: "exit_zero"
   heavy: []
 
 invariants:
   machine_checkable:
-    - name: "query.ts-unchanged"
-      run: "git diff --quiet -- frontend/src/lib/query.ts"   # passes only if query.ts is untouched
+    - name: "zero-egress-holds"
+      # The load-bearing safety property: the deterministic path runs with no
+      # socket. Must stay green regardless of which task the loop picks.
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_zero_egress"
+    - name: "deterministic-default-unset"
+      # The /api/verify route must default to the deterministic no-egress engine
+      # when CACHET_DETERMINISTIC_VERIFY is unset. Guard the default isn't flipped.
+      run: "git grep -nq 'CACHET_DETERMINISTIC_VERIFY' services/verify.py routes/verify.py"
   prose:
-    - "Tests assert real behavior and edge cases. No trivial always-true or 'it renders' assertions."
-    - "This task only adds test coverage. Do not modify query.ts."
+    - "The deterministic verify path adds no network call, no LLM/Claude call, and no new runtime dependency. A silent fallback to a heuristic or to the cloud is forbidden; failures are visible."
+    - "Structural nodes stay non-citable: import NON_CITABLE_NODE_TYPES from services.retrieval.node_type_router, never re-derive the set."
+    - "Honesty over coverage: a could-not-check claim is always preferred to a false 'present' or a false 'no such case'. Never widen a green to earn coverage."
+    - "Changes are additive and independently shippable. Tests assert real behavior and edge cases — no trivial always-true or 'it renders' assertions."
 
 definition_of_done: >
-  A new frontend/src/lib/query.test.ts covers createQuery: initial state (data undefined,
-  loading false, error null); a subscribed refetch success (loading toggles true then false,
-  data set, error cleared); a subscribed refetch error (error set, loading false, data
-  untouched); the stale-response generation guard (an earlier refetch that resolves after a
-  newer one does not clobber the newer result); reset cancels an in-flight refetch and clears
-  state; and an unsubscribed refetch result is dropped (data stays undefined). The test passes
-  under vitest, and query.ts is byte-unchanged.
+  The picked task's Acceptance in .claude/forge.engine.tasks.md is fully met. The engine
+  verify suites are green, the zero-egress invariant holds, and the deterministic verify
+  path still makes no network call, no LLM call, and pulls in no new runtime dependency.
+  The change is additive, test-locked, and independently shippable as one draft PR.
 
 signals:
   evals: []
@@ -37,7 +50,7 @@ signals:
 
 human_gates:
   craft:    { when_paths: ["**/*.css", "**/features/**/*.tsx"], note: "Visual taste; rubric pass not sufficient." }
-  security: { when_paths: ["**/auth/**", "**/*keychain*", "**/*secret*"], note: "Needs a human read." }
+  security: { when_paths: ["**/auth/**", "**/*keychain*", "**/*secret*", "**/local_caselaw.py", "**/case_verification.py", "**/deterministic_envelope.py"], note: "Verify-engine truth surfaces and the corpus-attestation path need a human read — a wrong gate here either accuses a clean draft or clears a fabricated one." }
   followups_log: ".claude/logs/operator-followups.jsonl"
 
 scope:
@@ -49,7 +62,7 @@ scope:
 rubric: { use_default: true }
 
 queue:
-  source: ".claude/forge.dogfood.tasks.md"
+  source: ".claude/forge.engine.tasks.md"
   pick: "lowest-eligible"
   active_plan_dir: "docs/plans/"
 
