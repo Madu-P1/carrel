@@ -43,7 +43,10 @@ definition_of_done: >
 
 signals:
   evals: []
-  held_out: { path: "" }
+  # Held-out armed 2026-06-13 (jarvis-upgrade): frozen copies of the 8 engine
+  # suites + migrations live in the cage; the implementer cannot read or edit
+  # the graded set. run.sh executes them with cwd = the work tree.
+  held_out: { run: "bash $FORGE_HELD_OUT_DIR/run.sh", pass_when: "exit_zero" }
   golden_references: []
   dev_server: { start: "", url: "" }
   benchmarks: []
