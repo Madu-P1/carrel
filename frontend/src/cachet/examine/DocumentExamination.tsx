@@ -13,9 +13,9 @@
  * caller does not know it. Types Cachet cannot faithfully display get an
  * honest refusal naming the type, never a degraded approximation.
  */
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
-import { Spinner } from "@/design-system";
+import { Spinner, useModalDialog } from "@/design-system";
 import { documents } from "@/services/api/endpoints";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
@@ -42,12 +42,20 @@ function paneKindFor(fileType: string): PaneKind {
 
 export function DocumentExamination() {
   const request = examination.value;
-  const closeRef = useRef<HTMLButtonElement>(null);
   const [resolvedType, setResolvedType] = useState<string | null>(null);
   const [resolveFailed, setResolveFailed] = useState(false);
 
   const docId = request?.docId ?? null;
   const knownType = request?.fileType ?? null;
+
+  // aria-modal=true. One hook owns the whole modal lifecycle in the order that
+  // does not strand focus: on open it captures the opener, inerts the rest of
+  // the app (rail + main behind the scrim), focuses the panel, and traps Tab; on
+  // close it un-inerts BEFORE restoring focus to the opener (which lives in the
+  // inerted <main>, so restoring before un-inert would be a no-op in WebKit).
+  // Escape is handled separately below because it must run in the capture phase
+  // to peel one overlay at a time.
+  const scrimRef = useModalDialog<HTMLDivElement>(request != null);
 
   // Announce the host so shared surfaces (SourceInspector) can offer the
   // "Open the document" affordance only where it can actually render.
@@ -84,53 +92,22 @@ export function DocumentExamination() {
     };
   }, [docId, knownType]);
 
-  // Escape closes THIS layer only, and Tab stays inside the dialog.
-  //
-  // Capture phase + stopImmediatePropagation: the Examination drawer (and the
-  // passage overlay) also close on Escape via bubble-phase listeners, so a
-  // bubble listener here would collapse the whole stack with one keypress.
-  // The capture listener runs first and consumes the key, so Escape peels
-  // overlays one layer at a time, the way a lawyer expects a stack of paper
-  // to behave.
-  //
-  // The focus trap is part of the same listener: aria-modal promises AT users
-  // the background is inert, so Tab must wrap inside the panel instead of
-  // walking the lectern behind the scrim.
+  // Escape closes THIS layer only. Capture phase + stopImmediatePropagation:
+  // the Examination drawer (and the passage overlay) also close on Escape via
+  // bubble-phase listeners, so a bubble listener here would collapse the whole
+  // stack with one keypress. The capture listener runs first and consumes the
+  // key, so Escape peels overlays one layer at a time, the way a lawyer expects
+  // a stack of paper to behave. (Tab-trapping and the inert background are
+  // handled by the shared hooks above.)
   useEffect(() => {
     if (!request) {
-      return;
+      return undefined;
     }
-    closeRef.current?.focus();
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
         closeExamination();
-        return;
-      }
-      if (event.key === "Tab") {
-        const panel = closeRef.current?.closest("[role='dialog']");
-        if (!panel) {
-          return;
-        }
-        const focusable = Array.from(
-          panel.querySelectorAll<HTMLElement>(
-            "button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
-          )
-        );
-        if (focusable.length === 0) {
-          return;
-        }
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        const active = document.activeElement as HTMLElement | null;
-        if (!event.shiftKey && active === last) {
-          event.preventDefault();
-          first.focus();
-        } else if (event.shiftKey && (active === first || !panel.contains(active))) {
-          event.preventDefault();
-          last.focus();
-        }
       }
     }
     document.addEventListener("keydown", onKey, true);
@@ -146,7 +123,12 @@ export function DocumentExamination() {
   const locator = request.page ? `p. ${request.page}` : null;
 
   return (
-    <div className={styles.scrim} role="presentation" onClick={() => closeExamination()}>
+    <div
+      ref={scrimRef}
+      className={styles.scrim}
+      role="presentation"
+      onClick={() => closeExamination()}
+    >
       <div
         className={`${verifyStyles.verifyScope} ${styles.panel}`}
         role="dialog"
@@ -160,7 +142,6 @@ export function DocumentExamination() {
             {locator ? <span className={styles.panelLocator}>Cited at {locator}</span> : null}
           </div>
           <button
-            ref={closeRef}
             type="button"
             className={styles.panelClose}
             onClick={() => closeExamination()}

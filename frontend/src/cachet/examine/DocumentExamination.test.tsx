@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerFetchHandler } from "../../../tests/support/mockFetch";
@@ -251,5 +251,80 @@ describe("DocumentExamination", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
     expect(drawerSawEscape).toBe(false);
+  });
+});
+
+describe("DocumentExamination — focus, inert, and paging", () => {
+  it("moves focus into the panel on open and restores it to the opener on close", async () => {
+    mockDocumentFile("doc-1");
+    render(<DocumentExamination />);
+
+    const opener = document.createElement("button");
+    opener.textContent = "open the document";
+    document.body.appendChild(opener);
+    opener.focus();
+
+    act(() => {
+      openExamination({ docId: "doc-1", filename: "contract.pdf", fileType: "pdf" });
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    act(() => {
+      closeExamination();
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(opener);
+
+    opener.remove();
+  });
+
+  it("makes the rest of the app inert while the record is open and restores it on close", async () => {
+    mockDocumentFile("doc-1");
+    render(
+      <div>
+        <nav data-testid="bg-rail">rail</nav>
+        <DocumentExamination />
+      </div>
+    );
+
+    act(() => {
+      openExamination({ docId: "doc-1", filename: "contract.pdf", fileType: "pdf" });
+    });
+    await screen.findByRole("dialog");
+
+    const rail = screen.getByTestId("bg-rail");
+    expect(rail.hasAttribute("inert")).toBe(true);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => {
+      closeExamination();
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(rail.hasAttribute("inert")).toBe(false);
+    expect(rail.hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  it("forward Tab pulls focus back into the panel when it has drifted outside", async () => {
+    render(<DocumentExamination />);
+    act(() => {
+      openExamination({ docId: "doc-4", filename: "ledger.xlsx", fileType: "xlsx" });
+    });
+    const dialog = await screen.findByRole("dialog");
+    const close = within(dialog).getByLabelText("Close the record");
+
+    // Drift focus out of the panel, then a forward Tab must wrap back in (the
+    // forward branch honors the same !panel.contains(active) guard as Shift+Tab).
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(close);
+
+    outside.remove();
   });
 });

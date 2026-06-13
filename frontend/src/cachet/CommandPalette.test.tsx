@@ -1,4 +1,5 @@
-import { fireEvent, render } from "@testing-library/preact";
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { useState } from "preact/hooks";
 import { describe, expect, it, vi } from "vitest";
 
 import { CommandPalette } from "./CommandPalette";
@@ -57,5 +58,29 @@ describe("CommandPalette", () => {
     expect(getByRole("combobox").getAttribute("aria-activedescendant")).toBe("cachet-cmd-verify");
     fireEvent.keyDown(getByRole("dialog"), { key: "ArrowDown" });
     expect(getByRole("combobox").getAttribute("aria-activedescendant")).toBe("cachet-cmd-shelf");
+  });
+
+  it("makes the sibling background inert while open and restores it on close", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <div>
+          <nav data-testid="bg-rail">rail</nav>
+          {open ? (
+            <CommandPalette commands={commands()} onClose={() => setOpen(false)} />
+          ) : null}
+        </div>
+      );
+    }
+    render(<Harness />);
+
+    const rail = screen.getByTestId("bg-rail");
+    expect(rail.hasAttribute("inert")).toBe(true);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(rail.hasAttribute("inert")).toBe(false);
+    expect(rail.hasAttribute("aria-hidden")).toBe(false);
   });
 });

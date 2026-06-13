@@ -154,4 +154,30 @@ describe("SourcePassageOverlay (open in source)", () => {
     ).toBeTruthy();
     expect(document.querySelector("mark")).toBeNull();
   });
+
+  it("focuses Close, traps Tab, and restores focus to the opener on close", async () => {
+    mockResolve.mockResolvedValue(resolution());
+    mockFetchNode.mockResolvedValue(readerNode(`Recitals. ${QUOTE} thereafter.`));
+
+    render(<SourceInspectorBody card={cardWithCitation()} disposition={DISPOSITION} />);
+
+    const openBtn = await screen.findByText("Open in source");
+    openBtn.focus();
+    fireEvent.click(openBtn);
+
+    const closeBtn = await screen.findByLabelText("Close source passage");
+    await waitFor(() => expect(document.activeElement).toBe(closeBtn));
+
+    // The Close button is the only focusable in the panel, so Tab is prevented
+    // and focus stays inside (never walks to the drawer behind the scrim).
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Capture-phase Escape peels this overlay; focus returns to the opener.
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByLabelText("Close source passage")).toBeNull());
+    expect(document.activeElement).toBe(openBtn);
+  });
 });

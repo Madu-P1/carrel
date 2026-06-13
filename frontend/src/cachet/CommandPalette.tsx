@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
+import { useModalDialog } from "@/design-system";
+
 import { filterCommands, type Command } from "./commands";
 import styles from "./cachet.module.css";
 
@@ -20,24 +22,18 @@ export function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const openerRef = useRef<Element | null>(null);
+  // aria-modal=true: one hook captures the opener, inerts the sibling background
+  // (rail + main, so browse mode does not keep reading behind the scrim), focuses
+  // the input (the single tab stop), traps Tab, and on close un-inerts before
+  // restoring focus to the opener. The combobox navigates by aria-activedescendant,
+  // so the trap with one focusable simply keeps focus on the input.
+  const scrimRef = useModalDialog<HTMLDivElement>(true);
 
   const results = useMemo(() => filterCommands(commands, query), [commands, query]);
   // Keep the active index in range as the result set shrinks while typing.
   const activeIndex = results.length === 0 ? -1 : Math.min(active, results.length - 1);
   const activeId = activeIndex >= 0 ? `cachet-cmd-${results[activeIndex].id}` : undefined;
-
-  // Focus the input on open; restore focus to the opener on close.
-  useEffect(() => {
-    openerRef.current = document.activeElement;
-    inputRef.current?.focus();
-    return () => {
-      const opener = openerRef.current as HTMLElement | null;
-      opener?.focus?.();
-    };
-  }, []);
 
   // Keep the active option scrolled into view. The id is a safe slug, so no
   // CSS.escape; scrollIntoView is optional-chained for jsdom (tests).
@@ -70,10 +66,8 @@ export function CommandPalette({
         event.preventDefault();
         if (activeIndex >= 0) run(activeIndex);
         break;
-      case "Tab":
-        // One tab stop: never let focus escape the palette.
-        event.preventDefault();
-        break;
+      // Tab is trapped by useModalDialog (one focusable, so focus stays on the
+      // input); no per-key handling needed here.
       default:
         break;
     }
@@ -81,6 +75,7 @@ export function CommandPalette({
 
   return (
     <div
+      ref={scrimRef}
       className={styles.paletteScrim}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -94,7 +89,6 @@ export function CommandPalette({
         onKeyDown={onKeyDown}
       >
         <input
-          ref={inputRef}
           className={styles.paletteInput}
           type="text"
           role="combobox"

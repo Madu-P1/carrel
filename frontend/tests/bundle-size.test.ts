@@ -147,7 +147,12 @@ const indexCssPath = resolve(distDir, "index.css");
 //     provider-conditional data-handling attestation.
 // Both measured ~126.x KB gz alone; the merged figure is verified post-build
 // against this ceiling (bumped again below if the union exceeds it).
-const ENTRY_JS_GZIP_BUDGET = 127 * 1024;
+// Bumped 127 -> 128 KB for the shared modal a11y hooks: useFocusTrap (focus
+// capture + Tab trap + restore) and useInert/useInertSiblings (background-inert
+// for the aria-modal contract), used by the command palette and the examination
+// overlays so role="dialog" aria-modal honors its promise to AT. The hooks live
+// in the design system, statically imported into the entry. ~127.2 KB gz live.
+const ENTRY_JS_GZIP_BUDGET = 128 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

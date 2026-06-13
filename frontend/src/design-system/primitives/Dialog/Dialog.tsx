@@ -1,15 +1,8 @@
 import { useEffect, useId, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 
+import { getFocusable } from "../../hooks/useFocusTrap";
 import styles from "./Dialog.module.css";
-
-function getFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    )
-  ).filter((element) => !element.hasAttribute("disabled"));
-}
 
 export interface DialogProps {
   open: boolean;
