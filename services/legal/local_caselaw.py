@@ -24,6 +24,7 @@ locally)::
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from urllib.parse import parse_qs
 
@@ -32,6 +33,15 @@ import httpx
 from .citations_eyecite import find_citations
 
 _CITATION_LOOKUP_PATH = "/citation-lookup/"
+
+# The attribute under which a corpus-serving client carries its measured
+# attestation (E2). The deterministic envelope reads it back to cross-check an
+# operator's scope="complete" manifest against the corpus actually loaded, so a
+# manifest string alone can never turn a real-but-unbundled cite into a false
+# "no such case". Named, not arbitrary: the attestation travels with the corpus
+# on the client that serves it, mirroring how the manifest travels with the
+# corpus rather than living in the engine.
+CORPUS_ATTESTATION_ATTR = "cachet_corpus_attestation"
 
 
 @dataclass(frozen=True)
@@ -61,6 +71,60 @@ class CorpusManifest:
     scope: str  # "demo" | "complete"
     case_count: int
     as_of: str  # ISO date the corpus snapshot reflects
+    # Optional content fingerprint of the corpus the operator attests to (E2).
+    # When present it is cross-checked against the measured corpus, so an operator
+    # who declares the right SIZE but loaded a different set of cases is still
+    # caught. Optional ("when available" in the spec): a manifest that predates
+    # fingerprinting still cross-checks on size alone.
+    content_hash: str | None = None
+
+    def matches(self, attestation: CorpusAttestation) -> bool:
+        """Does this DECLARED manifest match the MEASURED corpus (E2)?
+
+        Size must agree. The content hash is checked only when this manifest
+        declares one; a size-only manifest cross-checks on size alone, which is
+        why a deployment that wants the strongest guarantee should also declare a
+        ``content_hash`` (a size-only match cannot distinguish a same-size but
+        different set of cases).
+        """
+        if self.case_count != attestation.case_count:
+            return False
+        if self.content_hash is not None and self.content_hash != attestation.content_hash:
+            return False
+        return True
+
+
+@dataclass(frozen=True)
+class CorpusAttestation:
+    """The MEASURED truth of a loaded corpus: its size and a content fingerprint.
+
+    Distinct from ``CorpusManifest``, which is the operator's DECLARATION. E2
+    cross-checks the declaration against this measurement before honoring
+    ``scope="complete"``. Computed over the in-memory corpus only, never the
+    network, so the zero-egress invariant holds.
+    """
+
+    case_count: int
+    content_hash: str
+
+
+def corpus_fingerprint(corpus: dict[str, LocalCase]) -> str:
+    """Order-independent sha256 over the corpus's citations and case identities.
+
+    Two corpora holding the same cases produce the same fingerprint regardless of
+    dict insertion order; adding, removing, or renaming any case changes it. Pure:
+    same input -> same output, no I/O.
+    """
+    lines = sorted(
+        f"{key}\x1f{case.case_name}\x1f{case.court}\x1f{case.date_filed}"
+        for key, case in corpus.items()
+    )
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def attest_corpus(corpus: dict[str, LocalCase]) -> CorpusAttestation:
+    """Measure a corpus: its case count and content fingerprint (E2)."""
+    return CorpusAttestation(case_count=len(corpus), content_hash=corpus_fingerprint(corpus))
 
 
 # Real, pre-vetted Supreme Court cases keyed by normalized citation.
@@ -166,4 +230,9 @@ def local_caselaw_client(corpus: dict[str, LocalCase] | None = None) -> httpx.Cl
             return httpx.Response(200, json=_lookup_response(text, cases))
         return httpx.Response(404, json={})
 
-    return httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    # Carry the measured attestation of the corpus this client serves, so the
+    # envelope can cross-check an operator's scope="complete" manifest against the
+    # corpus actually loaded (E2). Computed offline over the in-memory dict.
+    setattr(client, CORPUS_ATTESTATION_ATTR, attest_corpus(cases))
+    return client

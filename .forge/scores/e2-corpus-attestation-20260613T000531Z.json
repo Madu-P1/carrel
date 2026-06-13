@@ -1,0 +1,58 @@
+{
+  "ts": "2026-06-13T00:05:31Z",
+  "feature_slug": "e2-corpus-attestation",
+  "goal_understood": "Guard scope='complete' with a measured corpus cross-check (size, optional hash) so an operator string alone can never convert an unbundled real cite into a false 'no such case'; mismatches and unmeasured corpora fold to bounded could-not-check.",
+  "tree_hash": "14bc3c22e828d8c2e584d0a56d8e94b753f89fe6c320eb4077a9c66ac3735c81",
+  "dimensions": {
+    "correctness": {
+      "applies": true,
+      "full_marks": true,
+      "note": "All four branches verified: (1) matching size+hash earns the loud miss (bounded=False, unsupported verdict, 'not found'+'complete as of' in reason); (2) oversized manifest folds to could-not-check (bounded=True, corpus_scope suppressed, 'unknown' verdict, no 'not found'/'no such case'); (3) size-match+wrong-hash folds to could-not-check; (4) client with attr deleted folds to could-not-check. Demo path (scope='demo') is entirely unchanged: bounded=True, emit_manifest_fields=True, corpus fields still emitted. The complete_honored gate in _annotate_litigator_verdicts is a short-circuit requiring manifest != None AND scope=='complete' AND attestation != None AND manifest.matches(attestation) — each condition individually guards the right failure mode. corpus_fingerprint is order-independent (sorted lines before sha256). No silent fallback; failures degrade to could-not-check, never to false green. 356 tests green, zero regressions."
+    },
+    "test_coverage": {
+      "applies": true,
+      "full_marks": true,
+      "note": "11 new tests across two test classes. CorpusAttestationCrossCheckTests pins both directions: matching earns the catch (test_matching_size_and_hash_complete_manifest_earns_the_catch), oversized folds (test_oversized_complete_manifest_folds_to_could_not_check), right-size wrong-hash folds (test_size_match_but_wrong_hash_folds_to_could_not_check), no-attr folds (test_complete_manifest_without_measurement_folds). CorpusFingerprintTests pins purity, order-independence, identity-sensitivity (add/rename/remove), size-only match, hash-override reject, and attest_corpus. Pre-existing CorpusManifestTests (4 tests) are a regression guard for the demo path and the complete path — they still pass. No skip/xfail added. 75 tests total in test_deterministic_envelope, 356 across the full suite."
+    },
+    "security": {
+      "applies": true,
+      "full_marks": false,
+      "note": "Machine-verifiable: no network call introduced (zero-egress 7/7 green), no secrets in logs, no new external dependency (hashlib is stdlib), no new attack surface in terms of data exfiltration. The gate moves exclusively in the safe direction (could-not-check, never a widened false green). However: both local_caselaw.py and deterministic_envelope.py are on the contract's human_gates.security path ('verify-engine truth surfaces and the corpus-attestation path need a human read'). The security dimension cannot be FULL marks here — the unknown-unknown edge (e.g. a crafted corpus that collides the sha256 fingerprint, or a setattr side-channel on the httpx.Client) requires the human operator review the contract explicitly requests. Routing to human gate."
+    },
+    "code_quality": {
+      "applies": true,
+      "full_marks": true,
+      "note": "New types (CorpusAttestation, corpus_fingerprint, attest_corpus) are tightly scoped frozen dataclasses with clear doc-strings. CORPUS_ATTESTATION_ATTR is a named constant, not a magic string. matches() carries a note explaining the asymmetry between size-only and hash-declared manifests. complete_honored + emit_manifest_fields decomposition in _annotate_litigator_verdicts is explicit and readable — each flag does exactly one thing. No dead code, no commented-out blocks. Ruff clean. Follows existing patterns (frozen dataclasses, module-level constants, inline E-tag comments). content_hash: str | None = None as a dataclass field with default is the right shape for optional gradual deployment."
+    },
+    "alignment": {
+      "applies": true,
+      "full_marks": true,
+      "note": "All four E2 acceptance bullets satisfied: (1) scope='complete' honored only on size+hash match; (2) demo manifest path unchanged — verified by test_demo_manifest_rides_the_default_path and manual inspection; (3) both directions pinned in tests; (4) zero-egress holds, fingerprint is computed over in-memory dict only (no I/O). TODOS.md row 42 marked done with implementation pointer and honest residual note. No scope creep."
+    },
+    "docs": {
+      "applies": true,
+      "full_marks": true,
+      "note": "TODOS.md updated with the completed item, implementation pointer, and an explicit residual ('a size-only manifest cannot distinguish a same-size different corpus — declare a content_hash for the strong guarantee'). Public functions (corpus_fingerprint, attest_corpus, CorpusAttestation, CorpusManifest.matches) all have docstrings. _annotate_litigator_verdicts docstring updated to explain the E2 cross-check requirement. CORPUS_ATTESTATION_ATTR has an inline comment explaining why it travels on the client. No migration was added (pure in-memory change)."
+    },
+    "performance": {
+      "applies": false,
+      "full_marks": false,
+      "note": "No benchmarks declared in contract (benchmarks: []). N/A."
+    },
+    "craft_ux": {
+      "applies": false,
+      "full_marks": false,
+      "note": "No UI surface touched. N/A."
+    },
+    "accessibility": {
+      "applies": false,
+      "full_marks": false,
+      "note": "No UI surface touched. N/A."
+    }
+  },
+  "verdict": "SHIP",
+  "gaps_to_close": [],
+  "human_gates_owed": [
+    "security: local_caselaw.py and deterministic_envelope.py are on the contract's human_gates.security list. The change is in the safe direction only (never widens a green, only adds a fold-to-could-not-check guard). The machine-checkable security properties all hold (zero-egress green, no new network, no secrets in logs, no new runtime dep). Human review is required for the unknown-unknown edge: sha256 collision on a crafted corpus, setattr side-channel on the httpx.Client object, and the general 'verify-engine truth surface' gate the contract mandates. Do not merge to main without this read."
+  ]
+}

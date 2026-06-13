@@ -40,7 +40,9 @@ from services.legal.contract_verify import (
     verify_claim_against_clause,
 )
 from services.legal.local_caselaw import (
+    CORPUS_ATTESTATION_ATTR,
     DEMO_MANIFEST,
+    CorpusAttestation,
     CorpusManifest,
     local_caselaw_client,
     local_opinion_text,
@@ -89,7 +91,10 @@ _ANCHOR_FREE_REASON = (
 
 
 def _annotate_litigator_verdicts(
-    sentence: str, case_verdicts: list[dict], manifest: CorpusManifest | None = None
+    sentence: str,
+    case_verdicts: list[dict],
+    manifest: CorpusManifest | None = None,
+    attestation: CorpusAttestation | None = None,
 ) -> None:
     """Annotate the deterministic litigator verdicts in place.
 
@@ -113,15 +118,36 @@ def _annotate_litigator_verdicts(
     - ``bounded_corpus`` and the ``corpus_*`` fields come from the corpus
       MANIFEST (D13), not a constant: a demo or unattested corpus folds every
       miss to could-not-check, while a corpus attesting ``scope="complete"``
-      lets a miss read as the loud "no such case as of <as_of>".
+      lets a miss read as the loud "no such case as of <as_of>". A
+      ``scope="complete"`` manifest is honored ONLY when it is cross-checked
+      against the MEASURED corpus ``attestation`` and matches (E2); a manifest
+      whose declared size/hash does not match the corpus actually loaded, or
+      that arrives with no measurement to check against, folds back to the
+      bounded could-not-check rather than emitting a false "no such case". This
+      is the most dangerous direction (a false accusation), so the operator's
+      string alone never decides it.
     """
-    bounded = manifest is None or manifest.scope != "complete"
+    # E2: only a measured, matching attestation may unlock the loud miss. Demo and
+    # unattested corpora stay bounded; a mismatched/unmeasured "complete" claim is
+    # treated as unattested (bounded, and its unverifiable corpus_* fields are
+    # suppressed so the card never reads "complete" for a corpus we could not
+    # confirm).
+    complete_honored = (
+        manifest is not None
+        and manifest.scope == "complete"
+        and attestation is not None
+        and manifest.matches(attestation)
+    )
+    bounded = not complete_honored
+    emit_manifest_fields = manifest is not None and (
+        manifest.scope != "complete" or complete_honored
+    )
     refs = {r.matched_text: r for r in find_citations(sentence)}
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
             v["bounded_corpus"] = bounded
-            if manifest is not None:
+            if emit_manifest_fields:
                 v["corpus_scope"] = manifest.scope
                 v["corpus_case_count"] = manifest.case_count
                 v["corpus_as_of"] = manifest.as_of
@@ -693,6 +719,12 @@ def build_deterministic_envelope(
         if corpus_manifest is not None
         else (DEMO_MANIFEST if client is None else None)
     )
+    # E2: the MEASURED attestation of the corpus this client serves, used to
+    # cross-check a scope="complete" manifest before any miss can read "no such
+    # case". A client built by local_caselaw_client carries it; a raw injected
+    # client (e.g. a real CourtListener client) carries none, so a "complete"
+    # claim against it cannot be honored and folds to could-not-check.
+    corpus_attestation = getattr(cl_client, CORPUS_ATTESTATION_ATTR, None)
 
     if conn is not None and not doc_ids:
         # Full-library fallback: the demo UI's stream sends no doc_ids, so scope the
@@ -756,7 +788,9 @@ def build_deterministic_envelope(
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
-            _annotate_litigator_verdicts(sentence, serialized, manifest=manifest)
+            _annotate_litigator_verdicts(
+                sentence, serialized, manifest=manifest, attestation=corpus_attestation
+            )
             # Holding-match is off, so the serialized verdicts carry no opinion text;
             # attach the bundled text so the brief-level quote panel can ground a
             # quoted span against the cited opinion (stripped before the SSE wire).
