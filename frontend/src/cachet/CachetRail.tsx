@@ -62,9 +62,10 @@ const SETTINGS_ITEM: RailItem = {
 };
 
 function isActive(currentPath: string, itemPath: string): boolean {
-  if (itemPath === "/verify") {
-    // The lectern ("/") leads into Verify; treat both as the Verify station so
-    // the rail never looks orphaned on the landing.
+  if (itemPath === "/") {
+    // The lectern ("/") is the Verify station. Match it exactly (plus any
+    // future /verify sub-route) so the root never swallows every other route
+    // via startsWith("/") and lights two glyphs at once.
     return currentPath === "/" || currentPath.startsWith("/verify");
   }
   return currentPath.startsWith(itemPath);
