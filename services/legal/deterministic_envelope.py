@@ -32,7 +32,7 @@ import httpx
 
 from services.legal.anchors import Anchor, build_alias_table, extract_anchors
 from services.legal.case_verification import serialize_case_verdict, verify_claims_for_cases
-from services.legal.citations_eyecite import caption_match_state, find_citations
+from services.legal.citations_eyecite import CitationRef, caption_match_state, find_citations
 from services.legal.contract_verify import (
     ClauseCandidate,
     ClauseVerdict,
@@ -88,6 +88,69 @@ _ANCHOR_FREE_REASON = (
 )
 
 
+def _citation_key(value: str | None) -> str | None:
+    """Fold a citation string to an alphanumeric, lowercase key.
+
+    eyecite's ``matched_text`` keeps the draft's spacing ("347 U. S. 483") while
+    CourtListener's citation-lookup API echoes its own form ("347 U.S. 483") and a
+    separate ``normalized_citation``. Folding away whitespace and punctuation
+    collapses those forms to one key ("347us483"), so the caption / year / court
+    gates fire regardless of which parser's spacing won. Returns None for an empty
+    value. Volume + reporter + page already identify a cite uniquely, so dropping
+    formatting cannot collide two genuinely different citations.
+
+    Guards on ``isinstance(value, str)`` rather than truthiness alone: the verdict
+    is a plain dict, not the typed ``CaseVerdict``, so a malformed or spoofed
+    payload could carry a non-string citation; folding must return None there, not
+    crash the whole annotate pass on ``.lower()``.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    folded = re.sub(r"[^a-z0-9]+", "", value.lower())
+    return folded or None
+
+
+def _index_citation_refs(refs: list[CitationRef]) -> dict[str, list[CitationRef]]:
+    """Index the draft's parsed cites under every folded form they resolve by.
+
+    Keyed on both eyecite's matched substring and its ``corrected`` (canonical)
+    form, so a verdict carrying CourtListener's echoed or normalized citation
+    string still finds its draft cite across a spacing/punctuation difference.
+
+    Each key maps to the LIST of distinct cites that fold to it. The same reporter
+    number can appear more than once in a sentence with DIFFERENT captions (one
+    real, one fabricated: "Brown ..., 347 U.S. 483; see also Sham ..., 347 U.S.
+    483"). Collapsing them to a single ref (the old first-wins ``setdefault``) let a
+    correct caption on one occurrence bless a fabricated caption on another, so the
+    caller must see every candidate and refuse unless they all agree.
+    """
+    index: dict[str, list[CitationRef]] = {}
+    for ref in refs:
+        for form in (ref.matched_text, ref.corrected):
+            key = _citation_key(form)
+            if key is not None:
+                bucket = index.setdefault(key, [])
+                if ref not in bucket:
+                    bucket.append(ref)
+    return index
+
+
+def _lookup_citation_refs(index: dict[str, list[CitationRef]], verdict: dict) -> list[CitationRef]:
+    """Every draft cite a resolved verdict could correspond to, by folded form.
+
+    Reconciles the citation-form gap by trying CourtListener's echoed ``citation``
+    and its ``normalized_citation``, both folded through :func:`_citation_key`.
+    Returns more than one cite when the same reporter number appears several times
+    in the sentence; the caller must not bless unless every candidate caption is
+    compatible, so a fabricated caption can never hide behind a correct one.
+    """
+    for form in (verdict.get("citation"), verdict.get("normalized_citation")):
+        key = _citation_key(form)
+        if key is not None and key in index:
+            return index[key]
+    return []
+
+
 def _annotate_litigator_verdicts(
     sentence: str, case_verdicts: list[dict], manifest: CorpusManifest | None = None
 ) -> None:
@@ -100,10 +163,14 @@ def _annotate_litigator_verdicts(
       draft names (a fabricated caption on a real number). eyecite reads the
       draft's party names; ``caption_match_state`` compares them per side, so an
       abbreviated real caption is never falsely flagged.
-    - ``caption_unconfirmed``: one populated caption side matches the resolved
-      case and the other does not ("Smith v. Board" on Brown's number). The
-      refusal state: the verifier downgrades it to could-not-check, never to
-      the mismatch flag and never to verified.
+    - ``caption_unconfirmed``: the refusal state. The verifier downgrades it to
+      could-not-check, never to the mismatch flag and never to verified. Fires
+      when one populated caption side matches the resolved case and the other does
+      not ("Smith v. Board" on Brown's number); when the resolved citation cannot
+      be reconciled to any cite parsed from the draft, or the resolved record
+      carries no name to compare; and when the same reporter number is written more
+      than once with captions that do not all match, so a correct caption can never
+      bless a fabricated one riding the duplicate number.
     - ``year_mismatch`` / ``court_mismatch``: the number resolves and the caption
       fits, but the draft's court-year parenthetical disagrees with the corpus
       record ("347 U.S. 483 (1990)" on a 1954 case; "(9th Cir.)" on a SCOTUS
@@ -116,7 +183,7 @@ def _annotate_litigator_verdicts(
       lets a miss read as the loud "no such case as of <as_of>".
     """
     bounded = manifest is None or manifest.scope != "complete"
-    refs = {r.matched_text: r for r in find_citations(sentence)}
+    refs = _index_citation_refs(find_citations(sentence))
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
@@ -125,37 +192,63 @@ def _annotate_litigator_verdicts(
                 v["corpus_scope"] = manifest.scope
                 v["corpus_case_count"] = manifest.case_count
                 v["corpus_as_of"] = manifest.as_of
-            if not v.get("exists") or not v.get("case_name"):
+            if not v.get("exists"):
                 continue
-            ref = refs.get(v.get("citation"))
-            if ref is None:
-                continue
-            state = caption_match_state(ref, v["case_name"])
-            if state == "mismatch":
-                v["caption_mismatch"] = True
-            elif state == "unconfirmed":
+            matched = _lookup_citation_refs(refs, v)
+            if not v.get("case_name") or not matched:
+                # exists=True but the caption gate cannot run: either the resolved
+                # record carries no name to compare against, or the citation cannot
+                # be reconciled to any cite parsed from the draft (the two parsers'
+                # forms diverge beyond the fold in _citation_key). REFUSE rather than
+                # bless -- an exists=True verdict with no checkable caption reads
+                # could-not-check (unknown), never verified. Without this a fabricated
+                # caption on a real reporter number slipped the gate and read VERIFIED
+                # whenever the forms differed or the name was absent (the existential
+                # false-green; the demo corpus aligns the forms, so the gap only
+                # showed on the live CourtListener path).
                 v["caption_unconfirmed"] = True
-            date_filed = str(v.get("date_filed") or "")
-            if ref.year is not None and len(date_filed) >= 4 and date_filed[:4].isdigit():
-                resolved_year = int(date_filed[:4])
-                if ref.year != resolved_year:
-                    v["year_mismatch"] = True
-                    v["cited_year"] = ref.year
-                    v["resolved_year"] = resolved_year
-            resolved_court = str(v.get("court") or "")
-            # Compare courts only when BOTH sides are courts-db ids ("scotus",
-            # "ca9"). eyecite always emits ids, but a non-demo corpus may carry
-            # CourtListener's URL or display-name form; comparing across formats
-            # would flag every correct parenthetical (a blanket recall collapse),
-            # so a non-id resolved court makes the check vacuous instead.
-            if (
-                ref.court
-                and resolved_court
-                and _COURT_ID.fullmatch(resolved_court)
-                and ref.court != resolved_court
-            ):
-                v["court_mismatch"] = True
-                v["cited_court"] = ref.court
+                continue
+            # Caption gate. With one candidate this is a direct comparison. With
+            # several (the same reporter number written more than once in the
+            # sentence, e.g. one real caption and one fabricated) the engine cannot
+            # tell which occurrence resolved, so it must not let a correct caption
+            # bless a fabricated one: refuse unless EVERY candidate caption is
+            # compatible. Refuse, never accuse a specific occurrence (ADR-0012: no
+            # false accusations).
+            states = {caption_match_state(r, v["case_name"]) for r in matched}
+            if len(matched) > 1:
+                if states != {"match"}:
+                    v["caption_unconfirmed"] = True
+                    continue
+            elif states == {"mismatch"}:
+                v["caption_mismatch"] = True
+            elif states == {"unconfirmed"}:
+                v["caption_unconfirmed"] = True
+            # year / court parenthetical checks, applied across every candidate cite
+            # (all share the reporter number, so they describe one resolved case): a
+            # mismatch on any occurrence is a refusal.
+            for ref in matched:
+                date_filed = str(v.get("date_filed") or "")
+                if ref.year is not None and len(date_filed) >= 4 and date_filed[:4].isdigit():
+                    resolved_year = int(date_filed[:4])
+                    if ref.year != resolved_year:
+                        v["year_mismatch"] = True
+                        v["cited_year"] = ref.year
+                        v["resolved_year"] = resolved_year
+                resolved_court = str(v.get("court") or "")
+                # Compare courts only when BOTH sides are courts-db ids ("scotus",
+                # "ca9"). eyecite always emits ids, but a non-demo corpus may carry
+                # CourtListener's URL or display-name form; comparing across formats
+                # would flag every correct parenthetical (a blanket recall collapse),
+                # so a non-id resolved court makes the check vacuous instead.
+                if (
+                    ref.court
+                    and resolved_court
+                    and _COURT_ID.fullmatch(resolved_court)
+                    and ref.court != resolved_court
+                ):
+                    v["court_mismatch"] = True
+                    v["cited_court"] = ref.court
 
 
 def _opinions_from_verdicts(case_verdicts: list[dict]) -> list[str]:

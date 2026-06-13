@@ -18,7 +18,7 @@ from unittest import mock
 from services import verify as verify_service
 from services.legal.anchors import extract_anchors
 from services.legal.deterministic_envelope import _grounding_verdict, build_deterministic_envelope
-from services.legal.local_caselaw import CorpusManifest, local_caselaw_client
+from services.legal.local_caselaw import DEMO_MANIFEST, CorpusManifest, local_caselaw_client
 from services.verify import (
     _claim_dict_to_verdict,
     _verdict_from_case_verdicts,
@@ -569,6 +569,157 @@ class CourtFormatGuardTests(unittest.TestCase):
             "Brown v. Board of Education, 347 U.S. 483 (1954), controls.", [batch]
         )
         self.assertFalse(batch["verdicts"][0].get("court_mismatch"))
+
+
+class CitationFormDivergenceTests(unittest.TestCase):
+    """Existential false-green guard: eyecite's matched_text keeps the draft's
+    spacing ('347 U. S. 483') while CourtListener echoes its own form
+    ('347 U.S. 483'). The refs index and the verdict lookup must reconcile the two
+    forms so the anti-fabrication caption gate still fires, and a resolved verdict
+    that still cannot be matched to a cite parsed from the draft must read
+    could-not-check, never verified, so the gate can never be silently bypassed on
+    a citation-form difference (the live CourtListener path, where the echoed form
+    is not guaranteed to equal eyecite's matched substring).
+    """
+
+    def _annotate(self, sentence: str, verdict: dict) -> dict:
+        from services.legal.deterministic_envelope import _annotate_litigator_verdicts
+
+        batch = {"ok": True, "verdicts": [verdict]}
+        _annotate_litigator_verdicts(sentence, [batch], manifest=DEMO_MANIFEST)
+        return batch
+
+    def test_fabricated_caption_caught_when_citation_form_diverges(self) -> None:
+        # The draft uses the official reporter spacing, so eyecite reads
+        # matched_text='347 U. S. 483' while CourtListener echoes '347 U.S. 483'.
+        # Before the fix the refs.get() lookup missed on that spacing difference,
+        # the caption_mismatch gate was silently skipped, and the fabricated
+        # caption 'Fake v. Nobody' on a real reporter number read VERIFIED.
+        sentence = "As held in Fake v. Nobody, 347 U. S. 483 (1954), the rule controls."
+        batch = self._annotate(
+            sentence,
+            {
+                "citation": "347 U.S. 483",  # CourtListener echoed/normalized form
+                "normalized_citation": "347 U.S. 483",
+                "status": 200,
+                "exists": True,
+                "case_name": "Brown v. Board of Education",
+                "court": "scotus",
+                "date_filed": "1954-05-17",
+            },
+        )
+        v = batch["verdicts"][0]
+        self.assertTrue(v["exists"])  # the number resolves
+        self.assertTrue(v.get("caption_mismatch"))  # the fabricated caption is caught
+        self.assertEqual("unsupported", _verdict_from_case_verdicts((batch,)))
+
+    def test_resolved_verdict_with_no_matchable_ref_is_not_verified(self) -> None:
+        # Defense in depth: when the resolved citation matches no cite eyecite
+        # parsed from the draft at all (any future normalization gap), the verdict
+        # must fall to could-not-check, never verified, so the caption gate can
+        # never be silently bypassed.
+        sentence = "The rule controls this dispute."  # no parseable cite
+        batch = self._annotate(
+            sentence,
+            {
+                "citation": "347 U.S. 483",
+                "normalized_citation": "347 U.S. 483",
+                "status": 200,
+                "exists": True,
+                "case_name": "Brown v. Board of Education",
+                "court": "scotus",
+                "date_filed": "1954-05-17",
+            },
+        )
+        v = batch["verdicts"][0]
+        self.assertFalse(v.get("caption_mismatch"))  # never a false accusation
+        self.assertTrue(v.get("caption_unconfirmed"))  # the honest refusal
+        self.assertEqual("unknown", _verdict_from_case_verdicts((batch,)))
+
+    def test_correct_caption_with_divergent_form_still_verifies(self) -> None:
+        # The reconciliation must not cost recall: a CORRECT caption on the same
+        # divergent-spacing cite must still verify, no false refusal.
+        sentence = "Segregation was rejected in Brown v. Board of Education, 347 U. S. 483 (1954)."
+        batch = self._annotate(
+            sentence,
+            {
+                "citation": "347 U.S. 483",
+                "normalized_citation": "347 U.S. 483",
+                "status": 200,
+                "exists": True,
+                "case_name": "Brown v. Board of Education",
+                "court": "scotus",
+                "date_filed": "1954-05-17",
+            },
+        )
+        v = batch["verdicts"][0]
+        self.assertFalse(v.get("caption_mismatch"))
+        self.assertFalse(v.get("caption_unconfirmed"))
+        self.assertEqual("verified", _verdict_from_case_verdicts((batch,)))
+
+    def test_exists_true_with_empty_case_name_is_not_verified(self) -> None:
+        # Hardening (cross-model finding): exists=True but the resolved record
+        # carries no case_name. The caption gate cannot run, so the verdict must
+        # refuse, never read verified-by-existence. A degenerate corpus/CL response
+        # must not become a silent false green.
+        sentence = "As held in Fake v. Nobody, 347 U.S. 483 (1954), the rule controls."
+        batch = self._annotate(
+            sentence,
+            {
+                "citation": "347 U.S. 483",
+                "normalized_citation": "347 U.S. 483",
+                "status": 200,
+                "exists": True,
+                "case_name": "",  # resolved but unnamed
+                "court": "scotus",
+                "date_filed": "1954-05-17",
+            },
+        )
+        v = batch["verdicts"][0]
+        self.assertTrue(v.get("caption_unconfirmed"))
+        self.assertEqual("unknown", _verdict_from_case_verdicts((batch,)))
+
+
+class DuplicateReporterNumberTests(unittest.TestCase):
+    """Multi-model adversarial finding: the same reporter number written twice in
+    one sentence with different captions (one real, one fabricated). All occurrences
+    fold to one key, so a correct caption must not bless a fabricated one riding the
+    duplicate number, and a legitimately-repeated correct cite must still verify.
+    """
+
+    def _build(self, draft: str) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(draft, client=local_caselaw_client())
+
+    def test_fabricated_caption_on_duplicate_number_is_not_verified(self) -> None:
+        # "Brown ..., 347 U.S. 483; see also Sham v. Hoax, 347 U.S. 483." Both
+        # occurrences resolve to Brown. The fabricated 'Sham v. Hoax' must NOT read
+        # verified by borrowing the correct Brown caption (the existential
+        # false-green the first fix reintroduced via first-wins indexing).
+        env = self._build(
+            "See Brown v. Board of Education, 347 U.S. 483; see also Sham v. Hoax, 347 U.S. 483."
+        )
+        cv = env["claims"][0]["case_verdicts"]
+        self.assertNotEqual("verified", _verdict_from_case_verdicts(tuple(cv)))
+        self.assertEqual("unknown", _verdict_from_case_verdicts(tuple(cv)))
+        for batch in cv:
+            for v in batch.get("verdicts", []):
+                self.assertTrue(v.get("caption_unconfirmed"))
+                self.assertFalse(v.get("caption_mismatch"))  # refuse, never accuse one occurrence
+
+    def test_repeated_correct_caption_on_duplicate_number_still_verifies(self) -> None:
+        # The refusal must not over-fire: the same number written twice with the
+        # SAME correct caption is a legitimately repeated cite and still verifies.
+        env = self._build(
+            "Brown v. Board of Education, 347 U.S. 483, and again Brown v. Board of "
+            "Education, 347 U.S. 483, both control."
+        )
+        cv = env["claims"][0]["case_verdicts"]
+        self.assertEqual("verified", _verdict_from_case_verdicts(tuple(cv)))
+        for batch in cv:
+            for v in batch.get("verdicts", []):
+                self.assertFalse(v.get("caption_unconfirmed"))
+                self.assertFalse(v.get("caption_mismatch"))
 
 
 class CaptionMismatchBareCiteTests(unittest.TestCase):
