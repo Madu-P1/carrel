@@ -18,7 +18,15 @@ from unittest import mock
 from services import verify as verify_service
 from services.legal.anchors import extract_anchors
 from services.legal.deterministic_envelope import _grounding_verdict, build_deterministic_envelope
-from services.legal.local_caselaw import CorpusManifest, local_caselaw_client
+from services.legal.local_caselaw import (
+    CORPUS_ATTESTATION_ATTR,
+    CorpusAttestation,
+    CorpusManifest,
+    LocalCase,
+    attest_corpus,
+    corpus_fingerprint,
+    local_caselaw_client,
+)
 from services.verify import (
     _claim_dict_to_verdict,
     _verdict_from_case_verdicts,
@@ -444,6 +452,145 @@ class CorpusManifestTests(unittest.TestCase):
         self.assertEqual("verified", _claim_dict_to_verdict(env["claims"][0], 0).verdict)
 
 
+# A two-case corpus used to exercise the E2 cross-check independently of the
+# 3-case demo corpus, so a manifest's declared size can be made to match or
+# mismatch the loaded corpus at will.
+_E2_CORPUS = {
+    "100 U.S. 1": LocalCase("Alpha v. Beta", "/opinion/1/alpha-v-beta/", "scotus", "1880-01-01"),
+    "200 U.S. 2": LocalCase("Gamma v. Delta", "/opinion/2/gamma-v-delta/", "scotus", "1890-02-02"),
+}
+
+
+class CorpusAttestationCrossCheckTests(unittest.TestCase):
+    """E2: scope="complete" is honored only when the operator's DECLARED manifest
+    cross-checks against the MEASURED corpus (size, and a content hash when the
+    manifest declares one). A mismatch, or a corpus with no measurement to check
+    against, folds a citation miss back to the bounded could-not-check rather than
+    emitting a false "no such case" - the most dangerous direction for the product.
+    """
+
+    _MISS = "As held in 999 U.S. 999, the rule applies."
+
+    def _build(self, **kwargs) -> dict:
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            return build_deterministic_envelope(self._MISS, **kwargs)
+
+    def _card(self, env: dict):
+        return _claim_dict_to_verdict(env["claims"][0], 0)
+
+    def test_matching_size_and_hash_complete_manifest_earns_the_catch(self) -> None:
+        # The honored direction: a manifest whose declared size AND content hash
+        # match the loaded corpus lets a genuinely-absent cite read the loud miss.
+        attestation = attest_corpus(_E2_CORPUS)
+        manifest = CorpusManifest(
+            scope="complete",
+            case_count=attestation.case_count,
+            as_of="2026-06-01",
+            content_hash=attestation.content_hash,
+        )
+        env = self._build(client=local_caselaw_client(_E2_CORPUS), corpus_manifest=manifest)
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertFalse(v["bounded_corpus"])
+        card = self._card(env)
+        self.assertEqual("unsupported", card.verdict)
+        reason = (card.unsupported_reason or "").lower()
+        self.assertIn("not found", reason)
+        self.assertIn("complete as of 2026-06-01", reason)
+
+    def test_oversized_complete_manifest_folds_to_could_not_check(self) -> None:
+        # The operator declares a far larger corpus than is actually loaded, so the
+        # manifest does not describe the served corpus: a miss must NOT read "no
+        # such case", or every real-but-unbundled cite becomes a false accusation.
+        manifest = CorpusManifest(scope="complete", case_count=999, as_of="2026-06-01")
+        env = self._build(client=local_caselaw_client(_E2_CORPUS), corpus_manifest=manifest)
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["bounded_corpus"])
+        # The unverifiable manifest's fields are suppressed: the card cannot claim
+        # "complete" for a corpus it could not confirm.
+        self.assertNotIn("corpus_scope", v)
+        card = self._card(env)
+        self.assertEqual("unknown", card.verdict)
+        reason = (card.unsupported_reason or "").lower()
+        self.assertIn("outside the offline corpus", reason)
+        self.assertNotIn("not found", reason)
+        self.assertNotIn("no such case", reason)
+
+    def test_size_match_but_wrong_hash_folds_to_could_not_check(self) -> None:
+        # The subtle swap: the operator declares the right SIZE but a different set
+        # of cases (wrong content hash). Size alone cannot catch this; the declared
+        # hash does, folding the miss to could-not-check.
+        manifest = CorpusManifest(
+            scope="complete",
+            case_count=len(_E2_CORPUS),
+            as_of="2026-06-01",
+            content_hash="0" * 64,
+        )
+        env = self._build(client=local_caselaw_client(_E2_CORPUS), corpus_manifest=manifest)
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["bounded_corpus"])
+        self.assertNotIn("corpus_scope", v)
+        self.assertEqual("unknown", self._card(env).verdict)
+
+    def test_complete_manifest_without_measurement_folds(self) -> None:
+        # A client that carries no measured attestation (e.g. a raw injected
+        # client) cannot have a "complete" claim honored: the operator's string
+        # alone never decides the loud miss.
+        client = local_caselaw_client(_E2_CORPUS)
+        delattr(client, CORPUS_ATTESTATION_ATTR)
+        manifest = CorpusManifest(scope="complete", case_count=len(_E2_CORPUS), as_of="2026-06-01")
+        env = self._build(client=client, corpus_manifest=manifest)
+        v = env["claims"][0]["case_verdicts"][0]["verdicts"][0]
+        self.assertTrue(v["bounded_corpus"])
+        self.assertNotIn("corpus_scope", v)
+        self.assertEqual("unknown", self._card(env).verdict)
+
+
+class CorpusFingerprintTests(unittest.TestCase):
+    """The fingerprint underpinning the E2 cross-check is pure and identity-sensitive."""
+
+    def test_fingerprint_is_order_independent(self) -> None:
+        a = dict(_E2_CORPUS)
+        b = dict(reversed(list(_E2_CORPUS.items())))
+        self.assertEqual(corpus_fingerprint(a), corpus_fingerprint(b))
+
+    def test_fingerprint_is_pure(self) -> None:
+        self.assertEqual(corpus_fingerprint(_E2_CORPUS), corpus_fingerprint(_E2_CORPUS))
+
+    def test_fingerprint_changes_when_a_case_is_renamed(self) -> None:
+        renamed = dict(_E2_CORPUS)
+        renamed["100 U.S. 1"] = LocalCase(
+            "Renamed v. Beta", "/opinion/1/alpha-v-beta/", "scotus", "1880-01-01"
+        )
+        self.assertNotEqual(corpus_fingerprint(_E2_CORPUS), corpus_fingerprint(renamed))
+
+    def test_fingerprint_changes_when_a_case_is_added(self) -> None:
+        bigger = dict(_E2_CORPUS)
+        bigger["300 U.S. 3"] = LocalCase(
+            "Eps v. Zed", "/opinion/3/eps-v-zed/", "scotus", "1900-03-03"
+        )
+        self.assertNotEqual(corpus_fingerprint(_E2_CORPUS), corpus_fingerprint(bigger))
+
+    def test_matches_size_only_when_no_hash_declared(self) -> None:
+        att = attest_corpus(_E2_CORPUS)
+        self.assertTrue(CorpusManifest("complete", att.case_count, "2026-06-01").matches(att))
+        self.assertFalse(CorpusManifest("complete", att.case_count + 1, "2026-06-01").matches(att))
+
+    def test_matches_rejects_wrong_hash_even_on_size_match(self) -> None:
+        att = attest_corpus(_E2_CORPUS)
+        m = CorpusManifest("complete", att.case_count, "2026-06-01", content_hash="f" * 64)
+        self.assertFalse(m.matches(att))
+        good = CorpusManifest(
+            "complete", att.case_count, "2026-06-01", content_hash=att.content_hash
+        )
+        self.assertTrue(good.matches(att))
+
+    def test_attest_corpus_measures_size_and_hash(self) -> None:
+        att = attest_corpus(_E2_CORPUS)
+        self.assertIsInstance(att, CorpusAttestation)
+        self.assertEqual(len(_E2_CORPUS), att.case_count)
+        self.assertEqual(corpus_fingerprint(_E2_CORPUS), att.content_hash)
+
+
 class CiteParentheticalMismatchTests(unittest.TestCase):
     """A real number cited with a wrong year or court refuses, never verifies.
 
@@ -543,6 +690,47 @@ class TopicGateFoldTests(unittest.TestCase):
                 "Aggregate liability cap for damage claims.",
             )
         )
+
+
+class TopicTokenHoistTests(unittest.TestCase):
+    """E1: the sentence token set is derived ONCE per sentence and reused across
+    every candidate clause. ``_shares_topic(_content_tokens(s), c)`` must produce a
+    decision byte-identical to the per-call ``_clause_on_topic(s, c)`` baseline."""
+
+    def test_hoisted_shares_topic_matches_per_call_baseline(self) -> None:
+        from services.legal.deterministic_envelope import (
+            _clause_on_topic,
+            _content_tokens,
+            _shares_topic,
+        )
+
+        sentence = "The liability cap for damages is forty-two thousand dollars."
+        clauses = [
+            # on-topic: shares "liability" / "damage(s)"
+            "Aggregate liability cap for damage claims is $42,000.",
+            # off-topic value coincidence: shares only the number + boilerplate
+            "The signing bonus under this Services Agreement is $42,000.",
+            # unrelated entirely
+            "Either party may terminate on thirty days written notice.",
+            # empty clause
+            "",
+        ]
+        # The hoisted token set: derived from the sentence exactly once.
+        sentence_tokens = _content_tokens(sentence)
+        for clause in clauses:
+            # The hoisted decision must equal the line-by-line baseline that
+            # re-tokenized the sentence on every call.
+            self.assertEqual(
+                _shares_topic(sentence_tokens, clause),
+                _clause_on_topic(sentence, clause),
+                msg=f"hoisted decision diverged for clause: {clause!r}",
+            )
+
+    def test_content_tokens_is_pure(self) -> None:
+        from services.legal.deterministic_envelope import _content_tokens
+
+        sentence = "The indemnity obligation survives termination of the Agreement."
+        self.assertEqual(_content_tokens(sentence), _content_tokens(sentence))
 
 
 class CourtFormatGuardTests(unittest.TestCase):

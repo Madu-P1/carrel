@@ -320,5 +320,69 @@ class PanelEnvelopeParityTests(unittest.TestCase):
         self.assertTrue(r.altered)
 
 
+class PrepareSourcePoolTests(unittest.TestCase):
+    """E1: the source pool is normalized ONCE per request and reused across every
+    draft quote. `prepare_source_pool` + `check_quote_against_pool` must produce a
+    result byte-identical to the single-shot `check_quote_against_sources`."""
+
+    def test_pooled_check_matches_single_shot_for_every_quote(self) -> None:
+        from services.legal.quote_check import (
+            check_quote_against_pool,
+            prepare_source_pool,
+        )
+
+        sources = [
+            SOURCE,
+            SourceText(text="An unrelated complete passage about venue and jurisdiction."),
+            SourceText(text="A truncated fetch tail …", truncated=True),
+            SourceText(text="A single retrieval chunk", complete=False),
+        ]
+        quotes = [
+            "the court held that the statute was unconstitutional as applied",  # verbatim
+            "the court held that THE STATUTE was unconstitutional as applied",  # altered
+            "venue and jurisdiction",  # verbatim in a second source
+            "language present in no source whatsoever",  # absent
+            '"de novo" and "de minimis"',  # two phrases in one span
+        ]
+        # Normalize the pool exactly once, then check each quote against it.
+        pool = prepare_source_pool(sources)
+        for q in quotes:
+            pooled = check_quote_against_pool(q, pool)
+            single = check_quote_against_sources(q, sources)
+            self.assertEqual(pooled.altered, single.altered, msg=f"altered diverged: {q!r}")
+            self.assertEqual(
+                pooled.unplaceable, single.unplaceable, msg=f"unplaceable diverged: {q!r}"
+            )
+            self.assertEqual(pooled.runs, single.runs, msg=f"runs diverged: {q!r}")
+
+    def test_dedupe_does_not_change_verdict(self) -> None:
+        from services.legal.quote_check import (
+            check_quote_against_pool,
+            prepare_source_pool,
+        )
+
+        # The same source repeated must not change any verdict (dedup is
+        # behavior-preserving: a membership test is unaffected by duplicates).
+        deduped = prepare_source_pool([SOURCE, SOURCE, SOURCE])
+        single = prepare_source_pool([SOURCE])
+        for q in ("the court held that the statute was unconstitutional as applied", "fabricated"):
+            self.assertEqual(
+                check_quote_against_pool(q, deduped).altered,
+                check_quote_against_pool(q, single).altered,
+            )
+
+    def test_empty_pool_is_unplaceable(self) -> None:
+        from services.legal.quote_check import (
+            check_quote_against_pool,
+            prepare_source_pool,
+        )
+
+        pool = prepare_source_pool([])
+        self.assertFalse(pool.has_sources)
+        r = check_quote_against_pool("anything at all here", pool)
+        self.assertTrue(r.unplaceable)
+        self.assertFalse(r.altered)
+
+
 if __name__ == "__main__":
     unittest.main()

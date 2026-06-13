@@ -43,8 +43,9 @@ from services import tutor as tutor_service
 from services.legal.align import align_claims_to_draft, placement_to_dict
 from services.legal.quote_check import (
     SourceText,
-    check_quote_against_sources,
+    check_quote_against_pool,
     extract_draft_quotes,
+    prepare_source_pool,
 )
 
 LOGGER = get_logger("einstein.verify")
@@ -575,8 +576,12 @@ def _verify_result_from_envelope(
                 continue
             for cv in claim_dict.get("case_verdicts") or []:
                 source_pool.extend(_opinion_sources_from_case_verdict(cv))
+        # Normalize + dedupe the shared pool ONCE per request (E1), then check each
+        # quote against it: the pool is identical for every span, so re-normalizing
+        # it per quote was pure CPU waste at brief scale.
+        normalized_pool = prepare_source_pool(source_pool)
         quote_results = tuple(
-            _quote_result_to_dict(check_quote_against_sources(q, source_pool), i)
+            _quote_result_to_dict(check_quote_against_pool(q, normalized_pool), i)
             for i, q in enumerate(draft_quotes)
         )
 

@@ -40,7 +40,9 @@ from services.legal.contract_verify import (
     verify_claim_against_clause,
 )
 from services.legal.local_caselaw import (
+    CORPUS_ATTESTATION_ATTR,
     DEMO_MANIFEST,
+    CorpusAttestation,
     CorpusManifest,
     local_caselaw_client,
     local_opinion_text,
@@ -89,7 +91,10 @@ _ANCHOR_FREE_REASON = (
 
 
 def _annotate_litigator_verdicts(
-    sentence: str, case_verdicts: list[dict], manifest: CorpusManifest | None = None
+    sentence: str,
+    case_verdicts: list[dict],
+    manifest: CorpusManifest | None = None,
+    attestation: CorpusAttestation | None = None,
 ) -> None:
     """Annotate the deterministic litigator verdicts in place.
 
@@ -113,15 +118,36 @@ def _annotate_litigator_verdicts(
     - ``bounded_corpus`` and the ``corpus_*`` fields come from the corpus
       MANIFEST (D13), not a constant: a demo or unattested corpus folds every
       miss to could-not-check, while a corpus attesting ``scope="complete"``
-      lets a miss read as the loud "no such case as of <as_of>".
+      lets a miss read as the loud "no such case as of <as_of>". A
+      ``scope="complete"`` manifest is honored ONLY when it is cross-checked
+      against the MEASURED corpus ``attestation`` and matches (E2); a manifest
+      whose declared size/hash does not match the corpus actually loaded, or
+      that arrives with no measurement to check against, folds back to the
+      bounded could-not-check rather than emitting a false "no such case". This
+      is the most dangerous direction (a false accusation), so the operator's
+      string alone never decides it.
     """
-    bounded = manifest is None or manifest.scope != "complete"
+    # E2: only a measured, matching attestation may unlock the loud miss. Demo and
+    # unattested corpora stay bounded; a mismatched/unmeasured "complete" claim is
+    # treated as unattested (bounded, and its unverifiable corpus_* fields are
+    # suppressed so the card never reads "complete" for a corpus we could not
+    # confirm).
+    complete_honored = (
+        manifest is not None
+        and manifest.scope == "complete"
+        and attestation is not None
+        and manifest.matches(attestation)
+    )
+    bounded = not complete_honored
+    emit_manifest_fields = manifest is not None and (
+        manifest.scope != "complete" or complete_honored
+    )
     refs = {r.matched_text: r for r in find_citations(sentence)}
     for batch in case_verdicts:
         for v in batch.get("verdicts", []):
             v["holding_skipped"] = True
             v["bounded_corpus"] = bounded
-            if manifest is not None:
+            if emit_manifest_fields:
                 v["corpus_scope"] = manifest.scope
                 v["corpus_case_count"] = manifest.case_count
                 v["corpus_as_of"] = manifest.as_of
@@ -242,6 +268,35 @@ _TOPIC_STOPWORDS = frozenset(
 _TOPIC_STOPWORDS_FOLDED = frozenset(w[:-1] if w.endswith("s") else w for w in _TOPIC_STOPWORDS)
 
 
+def _content_tokens(text: str) -> set[str]:
+    """Topic-bearing content words of ``text``: 4+ letter words, trailing-s folded,
+    minus the folded stopword set.
+
+    Fold the trailing s BEFORE the stopword filter: filtering first let plural
+    stopword forms ("agreements", "sections") slip through and earn topic-overlap
+    credit. Both sides fold, so a stopword like "this" ("thi" once folded) still
+    filters correctly.
+
+    Pulled out as a named function so the sentence side is computed ONCE per
+    sentence and reused across every candidate clause (E1): the sentence tokens are
+    identical for every clause comparison, so re-deriving them inside the per-node
+    loop was pure CPU waste on the no-egress hot path.
+    """
+    folded = {w[:-1] if w.endswith("s") else w for w in re.findall(r"[a-z]{4,}", text.lower())}
+    return folded - _TOPIC_STOPWORDS_FOLDED
+
+
+def _shares_topic(sentence_tokens: set[str], clause: str) -> bool:
+    """True if the precomputed sentence content tokens overlap the clause's.
+
+    The clause side is the only part that varies per candidate node, so only it is
+    tokenized here; ``sentence_tokens`` is hoisted out of the per-node loop by the
+    caller. ``_shares_topic(_content_tokens(s), c)`` is byte-identical to the old
+    ``_clause_on_topic(s, c)``.
+    """
+    return bool(sentence_tokens & _content_tokens(clause))
+
+
 def _clause_on_topic(sentence: str, clause: str) -> bool:
     """A parametric present is on-topic only if the claim and the matched clause
     share a content word beyond the coincidental value.
@@ -259,18 +314,11 @@ def _clause_on_topic(sentence: str, clause: str) -> bool:
 
     Content words fold a trailing s so a singular/plural pair counts once, and
     the stopword filter compares folded-to-folded so plural stopword forms
-    ("agreements", "sections") cannot slip through and earn topic credit.
+    ("agreements", "sections") cannot slip through and earn topic credit. The hot
+    path calls ``_content_tokens`` + ``_shares_topic`` directly to avoid re-deriving
+    the sentence tokens per node; this thin wrapper is the single-shot equivalent.
     """
-
-    def content(text: str) -> set[str]:
-        # Fold the trailing s BEFORE the stopword filter: filtering first let
-        # plural stopword forms ("agreements", "sections") slip through and earn
-        # topic-overlap credit. Both sides fold, so a stopword like "this"
-        # ("thi" once folded) still filters correctly.
-        folded = {w[:-1] if w.endswith("s") else w for w in re.findall(r"[a-z]{4,}", text.lower())}
-        return folded - _TOPIC_STOPWORDS_FOLDED
-
-    return bool(content(sentence) & content(clause))
+    return _shares_topic(_content_tokens(sentence), clause)
 
 
 def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
@@ -522,6 +570,10 @@ def _contract_claim(
     # The old loop broke on the FIRST present-or-contradiction in rank order,
     # which let an off-topic clause accuse a claim whose value a later clause
     # confirmed (the live false-accusation finding).
+    # The sentence's topic tokens are identical for every candidate clause, so
+    # derive them ONCE here (E1) rather than re-tokenizing the sentence inside the
+    # per-node loop. Only the clause side varies per node.
+    sentence_tokens = _content_tokens(sentence)
     candidates: list[ClauseCandidate] = []
     for node in nodes:
         candidate = verify_claim_against_clause(sentence, node.verbatim_text)
@@ -530,12 +582,12 @@ def _contract_claim(
             # C3: an off-topic clause that merely shares the literal value is
             # not support. The adjudicator never greens it, but keeps it as an
             # accusation veto (the value IS verbatim in the contract).
-            on_topic = _clause_on_topic(sentence, node.verbatim_text)
+            on_topic = _shares_topic(sentence_tokens, node.verbatim_text)
         elif candidate.disposition == "parametric_contradiction":
             # Accuser selection only: when several clauses contradict, the
             # adjudicator lets an on-topic accuser supply the evidence before
             # an off-topic one. Never gates whether the accusation stands.
-            on_topic = _clause_on_topic(sentence, node.verbatim_text)
+            on_topic = _shares_topic(sentence_tokens, node.verbatim_text)
         candidates.append(
             ClauseCandidate(candidate, node.heading_path, node.verbatim_text, on_topic)
         )
@@ -667,6 +719,12 @@ def build_deterministic_envelope(
         if corpus_manifest is not None
         else (DEMO_MANIFEST if client is None else None)
     )
+    # E2: the MEASURED attestation of the corpus this client serves, used to
+    # cross-check a scope="complete" manifest before any miss can read "no such
+    # case". A client built by local_caselaw_client carries it; a raw injected
+    # client (e.g. a real CourtListener client) carries none, so a "complete"
+    # claim against it cannot be honored and folds to could-not-check.
+    corpus_attestation = getattr(cl_client, CORPUS_ATTESTATION_ATTR, None)
 
     if conn is not None and not doc_ids:
         # Full-library fallback: the demo UI's stream sends no doc_ids, so scope the
@@ -730,7 +788,9 @@ def build_deterministic_envelope(
             # Existence verifies the reporter number resolves; this also checks the
             # draft's caption names the resolved case, so a fabricated caption on a
             # real number ("Fake v. Nobody, 347 U.S. 483") is caught, not passed.
-            _annotate_litigator_verdicts(sentence, serialized, manifest=manifest)
+            _annotate_litigator_verdicts(
+                sentence, serialized, manifest=manifest, attestation=corpus_attestation
+            )
             # Holding-match is off, so the serialized verdicts carry no opinion text;
             # attach the bundled text so the brief-level quote panel can ground a
             # quoted span against the cited opinion (stripped before the SSE wire).
