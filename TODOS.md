@@ -23,9 +23,16 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 
 ## Active backlog (from structural-citation gate, Gate 0 shipped 2026-05-22)
 
+Gate 1 (chunks-path low-information / heading filter) shipped 2026-06-13 via Forge
+task E3: the pre-existing shape detectors (`services.retrieval.quote_heuristics`)
+are now layered so they fire ONLY where authoritative node-type info is absent (the
+legacy chunks path, `HydratedNodeContext.node_type_known is False`); the typed path
+defers to `NON_CITABLE_NODE_TYPES` (Gate 0). See `services/tutor.py::_resolve_grounded_answer`
+and `docs/notes/2026-05-22-structural-citation-gate.md`. Gate 2 (below) remains the
+only open structural-citation gate.
+
 | Plan | Trigger | Why deferred | Source |
 |---|---|---|---|
-| Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 | Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 
 ## Active backlog (Cachet source-viewer, queued 2026-06-07)

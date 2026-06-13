@@ -1947,6 +1947,187 @@ class CitationNodeTypeGateTests(unittest.TestCase):
         self.assertEqual((), answer.unsupported_spans)
 
 
+class Gate1ChunksPathLayeringTests(unittest.TestCase):
+    """E3 Gate 1: the fuzzy structural-shape heuristic layers ONLY where
+    authoritative node-type info is absent, the legacy chunks path
+    (node_type_known=False). On the typed-node path NON_CITABLE_NODE_TYPES
+    is the source of truth (Gate 0) and the heuristic must not
+    second-guess a legitimately-typed line. Driven directly through
+    _resolve_grounded_answer so the layering is pinned in isolation, with
+    RETRIEVAL_CHUNKS_HEURISTIC pinned per-test so an inherited env can't
+    flip the outcome."""
+
+    def _result(self, payload: dict[str, object]) -> ClaudeCallResult:
+        return ClaudeCallResult(
+            ok=True,
+            task="balanced",
+            model="claude-sonnet-4-6",
+            request_kind="tutor.grounded_answer",
+            text=None,
+            json_payload=payload,
+            error_code=None,
+            error_message=None,
+            latency_ms=10.0,
+            input_tokens=10,
+            output_tokens=10,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+            cache_hit=False,
+            service_tier="auto",
+            stop_reason="tool_use",
+            request_id="req_gate1_layering",
+        )
+
+    def _ctx(
+        self,
+        *,
+        text: str,
+        node_type_known: bool,
+        node_type: str = "body",
+    ) -> tutor_service.HydratedNodeContext:
+        return tutor_service.HydratedNodeContext(
+            node_id=1,
+            doc_id="doc-1",
+            document_name="Source.pdf",
+            section="Intro",
+            page_num=1,
+            verbatim_text=text,
+            snippet=text,
+            score=0.5,
+            node_type=node_type,
+            node_type_known=node_type_known,
+        )
+
+    def _single_cite_payload(self, *, claim: str, quote: str) -> dict[str, object]:
+        return {
+            "summary": "Summary.",
+            "claims": [
+                {
+                    "text": claim,
+                    "citations": [{"chunk_index": 1, "quote": quote}],
+                }
+            ],
+            "unsupported_spans": [],
+        }
+
+    def _resolve(self, ctx, payload):
+        return tutor_service._resolve_grounded_answer(
+            self._result(payload),
+            [ctx],
+            question="What does the section say?",
+            concept_name=None,
+            learner_confidence=None,
+            scope_fallback_used=False,
+        )
+
+    def test_heading_shape_dropped_on_chunks_path(self) -> None:
+        # Chunks path (type info absent): a verbatim heading line is
+        # structural and must be dropped by Gate 1.
+        ctx = self._ctx(
+            text="Chapter 3: Mitosis Overview\nMitosis separates chromosomes.",
+            node_type_known=False,
+        )
+        payload = self._single_cite_payload(
+            claim="Mitosis is the focus of this section.",
+            quote="Chapter 3: Mitosis Overview",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(0, len(answer.claims))
+        self.assertEqual(1, answer.citation_structural_drop_count)
+        self.assertEqual(0, answer.citation_non_prose_drop_count)
+        self.assertIn("Mitosis is the focus of this section.", answer.unsupported_spans)
+
+    def test_page_number_fragment_dropped_on_chunks_path(self) -> None:
+        # Chunks path: a bare page-number fragment ("p. 22") is
+        # low-information and must be dropped.
+        ctx = self._ctx(
+            text="p. 22\nMitosis separates duplicated chromosomes.",
+            node_type_known=False,
+        )
+        payload = self._single_cite_payload(
+            claim="The discussion is on page 22.",
+            quote="p. 22",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(0, len(answer.claims))
+        self.assertEqual(1, answer.citation_structural_drop_count)
+
+    def test_real_prose_survives_on_chunks_path(self) -> None:
+        # Chunks path: answer-bearing prose is unaffected (no recall loss).
+        ctx = self._ctx(
+            text="Mitosis separates duplicated chromosomes into two identical cells.",
+            node_type_known=False,
+        )
+        payload = self._single_cite_payload(
+            claim="Mitosis produces two identical cells.",
+            quote="Mitosis separates duplicated chromosomes into two identical cells.",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual(0, answer.citation_structural_drop_count)
+
+    def test_heading_shape_kept_on_typed_path(self) -> None:
+        # The E3 layering: an identical heading-shaped quote from a
+        # legitimately-typed body node (node_type_known=True) is KEPT.
+        # NON_CITABLE_NODE_TYPES already eliminated real headings at
+        # retrieval; the fuzzy heuristic must not second-guess a typed
+        # body line. Contrast with the chunks-path test above: same
+        # quote, same flag, opposite outcome, driven solely by whether
+        # type info is present.
+        ctx = self._ctx(
+            text="Chapter 3: Mitosis Overview\nMitosis separates chromosomes.",
+            node_type_known=True,
+            node_type="body",
+        )
+        payload = self._single_cite_payload(
+            claim="Mitosis is the focus of this section.",
+            quote="Chapter 3: Mitosis Overview",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(1, len(answer.claims[0].citations))
+        self.assertEqual(0, answer.citation_structural_drop_count)
+
+    def test_typed_path_structural_still_blocked_by_gate0(self) -> None:
+        # Typed-path structural protection is intact WITHOUT the
+        # heuristic: a genuinely-typed heading node is dropped by the
+        # node_type check (Gate 0), not by Gate 1.
+        ctx = self._ctx(
+            text="Chapter 3: Mitosis Overview",
+            node_type_known=True,
+            node_type="heading",
+        )
+        payload = self._single_cite_payload(
+            claim="Mitosis is the focus of this section.",
+            quote="Chapter 3: Mitosis Overview",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "true"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(0, len(answer.claims))
+        self.assertEqual(1, answer.citation_non_prose_drop_count)
+        self.assertEqual(0, answer.citation_structural_drop_count)
+
+    def test_flag_off_keeps_chunks_structural(self) -> None:
+        # The opt-out flag still governs the chunks path.
+        ctx = self._ctx(
+            text="Chapter 3: Mitosis Overview\nMitosis separates chromosomes.",
+            node_type_known=False,
+        )
+        payload = self._single_cite_payload(
+            claim="Mitosis is the focus of this section.",
+            quote="Chapter 3: Mitosis Overview",
+        )
+        with mock.patch.dict(os.environ, {"RETRIEVAL_CHUNKS_HEURISTIC": "false"}, clear=False):
+            answer = self._resolve(ctx, payload)
+        self.assertEqual(1, len(answer.claims))
+        self.assertEqual(0, answer.citation_structural_drop_count)
+
+
 class CaseVerdictHookTests(unittest.TestCase):
     """Carrel V2: _attach_case_verdicts hooks CourtListener
     verification onto each claim after _resolve_grounded_answer

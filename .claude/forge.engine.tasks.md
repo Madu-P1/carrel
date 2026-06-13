@@ -55,7 +55,7 @@ deliberately NOT queued here — they are not Forge-shippable without a human de
   fire. That is correct; the operator reads the truth-surface change before it lands.
 
 ## E3 — Gate 1: deterministic low-information / heading filter on the legacy chunks path
-- Status: todo
+- Status: done (2026-06-13). Layered the chunks-path shape heuristic via `HydratedNodeContext.node_type_known`; see `services/tutor.py::_resolve_grounded_answer`, `tests/test_tutor_grounded.py::Gate1ChunksPathLayeringTests`, and the shipped note in `docs/notes/2026-05-22-structural-citation-gate.md`.
 - Deps: none
 - Source: TODOS.md Gate 1 row; docs/notes/2026-05-22-structural-citation-gate.md
 - Why: Gate 0 closed the structural-citation hole on the TYPED-node path only. The legacy

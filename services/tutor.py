@@ -229,6 +229,17 @@ class HydratedNodeContext:
     # "body" on the legacy chunks path, which has no structure. Used to
     # keep structural nodes (heading/header/footer) out of citations.
     node_type: str = "body"
+    # E3 / Gate 1: whether `node_type` above is authoritative. True on
+    # the typed-node retrieval path, where the value comes from
+    # nodes.node_type and NON_CITABLE_NODE_TYPES is the source of truth
+    # for citability. False on the legacy chunks path, which concatenates
+    # multiple nodes and has no per-line structure: there `node_type` is
+    # only the "body" default, not a real signal, so the deterministic
+    # shape heuristic (Gate 1) governs structural citability instead. The
+    # two layers never both decide one context: type-known defers to
+    # NON_CITABLE_NODE_TYPES; type-absent defers to is_structural_quote.
+    # See docs/notes/2026-05-22-structural-citation-gate.md.
+    node_type_known: bool = False
     # Cachet PR4 chunk-join: source position, used to merge PROVABLY-ADJACENT
     # citations of the same document into one contiguous source for the
     # draft-quote check, so a quote straddling two retrieved pieces is not
@@ -731,6 +742,10 @@ def _hydrate_from_nodes(
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
                 node_type=hit.node_type,
+                # Typed-node path: nodes.node_type is authoritative, so
+                # NON_CITABLE_NODE_TYPES (not the fuzzy shape heuristic)
+                # governs citability. See E3 / Gate 1.
+                node_type_known=True,
                 char_start=hit.char_start,
                 char_end=hit.char_end,
             )
@@ -790,6 +805,9 @@ def _hydrate_from_chunks(
                 # equation skeletons even though `content` is clean.
                 snippet=strip_extraction_artifacts(hit.snippet),
                 score=float(hit.score),
+                # node_type_known stays False (the default): the chunks
+                # path has no per-line structure, so Gate 1's shape
+                # heuristic governs structural citability here. See E3.
                 chunk_index=int(row["chunk_index"])
                 if row and row["chunk_index"] is not None
                 else None,
@@ -839,6 +857,9 @@ def _node_contexts_from_rows(rows: Sequence[sqlite3.Row]) -> list[HydratedNodeCo
                 snippet=cleaned[:240],
                 score=0.0,
                 node_type=str(row["node_type"]),
+                # Typed-node scope fallback (FROM nodes): node_type is
+                # authoritative here too. See E3 / Gate 1.
+                node_type_known=True,
             )
         )
     return contexts
@@ -1337,12 +1358,23 @@ def _resolve_grounded_answer(
             if matched_quote is None:
                 citation_drop_count += 1
                 continue
-            # Gate 1 (T2 / ADR 0004): drop citations whose shape is
-            # structural (heading, bare reference, banner) even though
-            # the quote is verbatim. Quote-granularity per the plan;
-            # claims whose only citation drops here flow into
-            # unsupported_spans by the existing "if citations:" check.
-            if heuristic_on and is_structural_quote(matched_quote.quote):
+            # Gate 1 (T2 / ADR 0004; E3 layering): drop citations whose
+            # shape is structural (heading, bare reference, banner) even
+            # though the quote is verbatim. The shape heuristic is fuzzy,
+            # so it layers ONLY where authoritative type info is absent:
+            # the legacy chunks path (node_type_known is False). On the
+            # typed-node path the node carries a real node_type and
+            # NON_CITABLE_NODE_TYPES (the Gate 0 check above) is the
+            # source of truth; second-guessing a legitimately-typed
+            # body/list_item line with the heuristic would only cost
+            # citable-quote recall. Quote-granularity per the plan; claims
+            # whose only citation drops here flow into unsupported_spans
+            # by the existing "if citations:" check.
+            if (
+                heuristic_on
+                and not context.node_type_known
+                and is_structural_quote(matched_quote.quote)
+            ):
                 citation_structural_drop_count += 1
                 log_event(
                     LOGGER,
