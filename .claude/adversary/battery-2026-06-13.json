@@ -1,0 +1,79 @@
+[
+  {
+    "family": "near-miss-money",
+    "claim": "The cap is $1,500,000.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "near-miss-money",
+    "claim": "Fees total $50,000.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "dropped-digit",
+    "claim": "The term is 36 months.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "near-miss-pct",
+    "claim": "Interest accrues at 5%.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "polarity-flip",
+    "claim": "The license is exclusive.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "polarity-flip",
+    "claim": "The grant is irrevocable.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "gov-law-look",
+    "claim": "This agreement is governed by the laws of Delaware.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "duration-unit",
+    "claim": "Notice is 30 days.",
+    "disposition": "parametric_contradiction",
+    "honest_req": "must_not_present",
+    "CRACK": false
+  },
+  {
+    "family": "control-true-money",
+    "claim": "The cap is $1,050,000.",
+    "disposition": "present",
+    "honest_req": "control_present_ok",
+    "CRACK": false
+  },
+  {
+    "family": "control-true-pct",
+    "claim": "Interest accrues at 0.5%.",
+    "disposition": "present",
+    "honest_req": "control_present_ok",
+    "CRACK": false
+  },
+  {
+    "family": "control-clean",
+    "claim": "The license is non-exclusive.",
+    "disposition": "present",
+    "honest_req": "control_present_ok",
+    "CRACK": false
+  }
+]

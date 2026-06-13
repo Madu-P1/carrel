@@ -12,6 +12,45 @@ Local-first, source-grounded AI study and research workspace for macOS. Native S
 - **AI:** Claude API via `ai/router.py`. Models: `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (deep). Local default on macOS 26+ Apple Silicon with Apple Intelligence enabled and en_US locale: Apple Foundation Models via `ai/afm_client.py` and the `EinsteinAFMBridge` Swift sidecar. Ollama (`ai/ollama.py`) is the legacy fallback for macOS 14/15 or Intel Macs. Provider auto-resolution lives in `ai/providers.py`. Structured output via `request_tool_call` with forced tool use on Claude; system-prompt enforcement + post-hoc JSON parse on AFM and Ollama (neither has runtime guided-generation as of their respective public APIs). All calls return typed `ClaudeCallResult` with latency + token + cache metrics. Silent fallback to heuristic is forbidden; failures are visible. **Build note:** the `EinsteinAFMBridge` sidecar needs the FoundationModels macro plugin (`@Generable` / `@Guide`), which ships in full Xcode 26+, not the Command Line Tools. `build_and_run.sh` builds it only on a capable toolchain (passing `-DCARREL_AFM`) and skips it otherwise, so Carrel still installs and runs on Claude or Ollama. See the `EinsteinAFMBridge/main.swift` header.
 - **Retrieval:** Hybrid FTS5 + vector via `services/retrieval/hybrid.py` with Reciprocal Rank Fusion. Quote validation at citation resolve time.
 
+## Build macOS Apps capability bundle
+
+The OpenAI `Build macOS Apps` plugin has been extracted for Claude use at
+`docs/extracted/build-macos-apps/`. When working on Carrel's native macOS shell,
+SwiftPM package, AppKit/SwiftUI UI, signing, tests, telemetry, packaging, or
+runtime launch behavior, treat that folder as a local skill bundle.
+
+Claude slash commands wired for this bundle:
+
+- `/macos-app`: general macOS app skill selection and execution.
+- `/build-and-run-macos-app`: setup or use the local build/run/debug workflow.
+- `/test-macos-app`: run and classify macOS SwiftPM/Xcode test failures.
+- `/fix-codesign-error`: inspect signing, entitlements, sandbox, hardened
+  runtime, Gatekeeper, packaging, and notarization failures.
+
+Minimum usage rule: before non-trivial edits under `macos-app/`, read
+`docs/extracted/build-macos-apps/PORTING_NOTES.md` and the relevant
+`skills/*/SKILL.md`. Use the narrowest matching skill:
+
+| Task | Skill file |
+|---|---|
+| Build, launch, debug, logs, Run button | `skills/build-run-debug/SKILL.md` |
+| SwiftPM package workflow | `skills/swiftpm-macos/SKILL.md` |
+| SwiftUI scenes, commands, menus, settings, split views | `skills/swiftui-patterns/SKILL.md` |
+| Large SwiftUI view cleanup | `skills/view-refactor/SKILL.md` |
+| AppKit bridge, panels, responder chain, pasteboard | `skills/appkit-interop/SKILL.md` |
+| Window chrome, placement, restoration, borderless windows | `skills/window-management/SKILL.md` |
+| Liquid Glass adoption or custom chrome removal | `skills/liquid-glass/SKILL.md` |
+| Unified logging / `OSLog.Logger` | `skills/telemetry/SKILL.md` |
+| macOS test triage | `skills/test-triage/SKILL.md` |
+| Signing, entitlements, sandbox, Gatekeeper | `skills/signing-entitlements/SKILL.md` |
+| Packaging, archives, notarization readiness | `skills/packaging-notarization/SKILL.md` |
+
+This is a skills-first bundle, not an MCP server. Claude should apply the skill
+instructions with normal repo tools: `Read`, `Grep`, `Edit`, `Bash`,
+`xcodebuild`, `swift build`, `swift test`, `lldb`, `codesign`, `spctl`,
+`plutil`, and `log stream`. For SwiftPM GUI apps, launch staged `.app` bundles
+with `/usr/bin/open -n`; raw executable launch is for CLI products only.
+
 ## Key directories
 
 | Path | Role |
@@ -78,50 +117,20 @@ The hook is committed to the repo so it's identical for every
 contributor. Bypass with `--no-verify` only for genuine emergencies;
 the full CI chain still runs against the push regardless.
 
-## Running the autonomous routine
+## Autonomous builds (Forge)
 
-Two scripts at `script/` arm and supervise unattended `/carrel-build`
-sessions:
+The Carrel autonomous routine (`/carrel-build` + start-autonomous /
+watchdog scripts + four CARREL_AUTONOMOUS-gated hooks) was retired
+2026-05-30 and de-registered 2026-06-12 — see
+`docs/notes/2026-06-12-carrel-autonomous-deregistration.md` for what was
+removed and how to recover it from git history.
 
-```bash
-./script/start-autonomous.sh /carrel-build          # one armed session
-./script/autonomous-watchdog.sh                     # relaunch loop
-nohup ./script/autonomous-watchdog.sh > /tmp/carrel-watchdog.log 2>&1 &
-```
-
-`start-autonomous.sh` exports `CARREL_AUTONOMOUS=true` so the four
-hooks at `.claude/hooks/` (`route-task`, `audit-gate`, `debate-trigger`,
-`score-loop`) actually fire, and passes `--permission-mode bypassPermissions`
-so claude doesn't deadlock on its own UI prompts. The `audit-gate.py`
-hook is the actual safety net. Without `CARREL_AUTONOMOUS=true` the
-hooks exit silently so ad-hoc edits don't trigger the auditor + rater.
-
-`autonomous-watchdog.sh` relaunches after rate-limit freezes using
-idleness-primary detection (log growth < 512 B in 10 min ⇒ kill) with
-a tight `LIMIT_PATTERN` regex fast-path gated on idleness ≥ 60s so
-prose mentioning "rate limit" cannot false-positive. Each relaunch is
-safe because `/carrel-build` reads `TODOS.md` + the active plan at the
-top of every iteration; state lives in the filesystem, not the session.
-
-Halt the routine with:
-
-```bash
-touch .claude/HALT       # graceful: finishes current cycle and exits
-```
-
-The HALT file is checked at the top of every watchdog iteration, inside
-the poller, and during the retry sleep, so a graceful stop registers
-within seconds. Verify the kill path with `bash tests/test_watchdog_kill.sh`.
-
-At launch the watchdog runs a pre-flight gate-machinery smoke test
-(`tests/test_routine_gate_smoke.py`) that spawns the auditor on a
-synthetic pending action and asserts a verdict file appears within 60s.
-On failure the watchdog refuses to launch so the loop cannot wedge
-silently waiting for verdict files. Override with `CARREL_SKIP_SMOKE=1`
-when you genuinely need to bypass (e.g., no claude CLI on PATH in a
-diagnostic shell). The poller's kill block also sweeps any orphaned
-claude process whose CWD matches the worktree, closing the
-`script(1) -> exec claude` parent-linkage class observed 2026-05-26.
+Unattended builds now go through **Forge** (`~/.claude/skills/forge/`):
+per-project `forge.contract.yaml`, Seatbelt-sandboxed driver,
+deterministic operator-owned held-out tests as the sole ship authority,
+overnight watchdog with HALT kill-switch. Arm per-project via
+`forge-arm.sh`; never globally. The only Carrel hook still registered is
+`obsidian-sync-nudge.py` (Stop).
 
 ## Benchmarks + budgets
 
