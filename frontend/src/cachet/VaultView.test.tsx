@@ -135,6 +135,21 @@ describe("VaultView opened vault", () => {
     expect(await screen.findByText("Verifying against this")).toBeTruthy();
   });
 
+  it("opens a record in the examiner when its name is clicked, not only the Open button", async () => {
+    const { examination } = await import("./examine/examineStore");
+    examination.value = null;
+    mockList.mockResolvedValue([
+      row({ id: "d7", filename: "Lease.pdf", subject_name: "Matter", file_type: "pdf" })
+    ]);
+    render(<VaultView />);
+    await openVault("Matter");
+    // The filename itself is the click target (its own button, accessible name
+    // = the filename, with an "Open <name>" hover title), so "click a document
+    // in the vault to see it" works without hunting for the separate Open button.
+    fireEvent.click(await screen.findByRole("button", { name: "Lease.pdf" }));
+    expect(examination.value).toEqual({ docId: "d7", filename: "Lease.pdf", fileType: "pdf" });
+  });
+
   it("re-files a record via the move picker, but only after the destination confirm", async () => {
     mockList.mockResolvedValueOnce([
       row({ id: "a", filename: "MSA.pdf", subject_name: "Matter" }),

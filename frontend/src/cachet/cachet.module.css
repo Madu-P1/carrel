@@ -1051,12 +1051,37 @@
   gap: 2px;
 }
 .sourceRowName {
+  /* A button styled as the record's name: the whole filename is the primary
+     click target that opens the read-only examiner (the explicit "Open the
+     record" button stays as a labeled affordance). Reset the button chrome,
+     keep the serif ellipsis, and signal clickability with an ink underline on
+     hover/focus, no color shift so the name stays in the house palette. The
+     underline is also the focus indicator, so it carries focus-visible. */
+  display: block;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
   overflow: hidden;
   font-family: var(--font-serif-body);
   font-size: 15px;
   color: var(--ink-1);
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.12s ease;
+}
+.sourceRowName:hover,
+.sourceRowName:focus-visible {
+  text-decoration-color: var(--ink-2);
+}
+.sourceRowName:focus-visible {
+  outline: none;
 }
 .sourceRowMeta {
   font-family: var(--font-serif-body);
