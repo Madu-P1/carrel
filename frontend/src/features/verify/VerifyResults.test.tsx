@@ -393,3 +393,68 @@ describe("verdictSummaryRegister", () => {
     expect(mixed.headline).toBe("1 of 4 statements need your review.");
   });
 });
+
+// The zero-finding state. A verify that produces no cards (a clean prose draft
+// where every sentence is anchor-free) used to render as silent draft read-back:
+// no summary, no scope line, nothing. To the user that reads as "the tool did
+// nothing." The deterministic engine still reports HOW MUCH it examined via the
+// `coverage` block, so we surface an honest, non-alarm coverage statement rather
+// than silence. This is the documented "anchor-free prose gets a COVERAGE
+// statement" decision; it is NOT the per-claim "needs review" alert fatigue that
+// main #154/#155 removed.
+describe("VerifyResults empty-coverage (anchor-free prose is an honest result, not silence)", () => {
+  function engineNoFindings(
+    coverage: { statements: number; treated: number; untreated: number } | null
+  ): VerifyEngine {
+    const e = engineWith([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e.response as any).coverage = coverage;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e.response as any).provider = "deterministic";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e.response as any).draft_text = "Our team will deliver excellent results for every client.";
+    return e;
+  }
+
+  it("anchor-free prose renders an honest coverage statement instead of silence", () => {
+    render(<VerifyResults engine={engineNoFindings({ statements: 2, treated: 0, untreated: 2 })} draft="" />);
+    expect(screen.getByText(/no checkable claims/i)).toBeTruthy();
+    expect(screen.getByText(/read 2 statements/i)).toBeTruthy();
+    expect(screen.getByText(/nothing to verify against your sources/i)).toBeTruthy();
+  });
+
+  it("the coverage statement is a quiet status, never the oxblood alarm", () => {
+    const { container } = render(
+      <VerifyResults engine={engineNoFindings({ statements: 1, treated: 0, untreated: 1 })} draft="" />
+    );
+    const panel = container.querySelector("[data-empty-coverage]");
+    expect(panel).toBeTruthy();
+    // Must be a polite status region (announced once), never the problem headline.
+    expect(panel?.getAttribute("role")).toBe("status");
+    expect(container.querySelector("[data-empty-coverage] [class*='Problem']")).toBeNull();
+  });
+
+  it("singular copy when exactly one statement was read", () => {
+    render(<VerifyResults engine={engineNoFindings({ statements: 1, treated: 0, untreated: 1 })} draft="" />);
+    expect(screen.getByText(/read 1 statement\b/i)).toBeTruthy();
+  });
+
+  it("does not show the coverage statement when there ARE findings", () => {
+    render(<VerifyResults engine={engineWith([noRecordClaim])} draft="" />);
+    expect(screen.queryByText(/no checkable claims/i)).toBeNull();
+  });
+
+  it("does not fabricate a coverage statement when the engine reported no coverage block (LLM path)", () => {
+    render(<VerifyResults engine={engineNoFindings(null)} draft="" />);
+    expect(screen.queryByText(/no checkable claims/i)).toBeNull();
+  });
+
+  it("does not show the coverage statement on an engine error", () => {
+    const e = engineNoFindings({ statements: 2, treated: 0, untreated: 2 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e as any).error = "Verification did not finish.";
+    render(<VerifyResults engine={e} draft="" />);
+    expect(screen.queryByText(/no checkable claims/i)).toBeNull();
+    expect(screen.getByText(/did not finish/i)).toBeTruthy();
+  });
+});

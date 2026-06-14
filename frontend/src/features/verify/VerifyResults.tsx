@@ -399,6 +399,32 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
   );
 }
 
+/**
+ * The zero-finding state, made honest. A deterministic verify that produced no
+ * cards (a clean prose draft where every sentence is anchor-free) used to render
+ * as silent draft read-back: no summary, no scope line, nothing. To the user
+ * that reads as "the tool did nothing." The engine still reports HOW MUCH it
+ * examined via the `coverage` block, so we surface a quiet, non-alarm statement
+ * of exactly that: it read N statements, found no checkable anchor, and so left
+ * them unverified rather than passing them. This is the "anchor-free prose gets
+ * a COVERAGE statement" decision; it wears the neutral ink register (role=status,
+ * no problem headline), never the oxblood alarm that the removed per-claim
+ * "needs review" noise wore.
+ */
+function EmptyCoveragePanel({ statements }: { statements: number }) {
+  const noun = statements === 1 ? "statement" : "statements";
+  return (
+    <div className={styles.summary} role="status" aria-live="polite" data-empty-coverage="true">
+      <p className={styles.summaryHeadline}>No checkable claims in this draft.</p>
+      <p className={styles.scopeNote}>
+        Cachet read {statements} {noun}. None carried a checkable anchor (a citation, a quotation, an
+        amount, or a date), so there was nothing to verify against your sources. Cachet confirms
+        grounding, not prose: a statement with no checkable anchor is left unverified, never passed.
+      </p>
+    </div>
+  );
+}
+
 function quoteStatusLabel(status: VerifyQuoteResult["status"]): string {
   switch (status) {
     case "altered":
@@ -546,6 +572,15 @@ export function VerifyResults({
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
+  // The zero-finding state: a settled deterministic verdict that produced no
+  // cards (every statement was anchor-free). The engine still reports how many
+  // statements it read in `coverage`, so surface an honest coverage statement
+  // instead of rendering the draft back in silence. Scoped to a clean run
+  // (no engine error, no payload error): a genuine failure already adds an
+  // engine-failure card (items > 0) or shows the error banner.
+  const examinedStatements = response?.coverage?.statements ?? 0;
+  const showEmptyCoverage =
+    !!response && !error && !response.error && items.length === 0 && examinedStatements > 0;
   const certModel = certAt && response ? buildCertification(response, certAt, draft) : null;
   // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
   // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
@@ -716,6 +751,8 @@ export function VerifyResults({
               dispositions={items.map((it) => it.disposition)}
               coverage={response?.coverage ?? null}
             />
+          ) : showEmptyCoverage ? (
+            <EmptyCoveragePanel statements={examinedStatements} />
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (
