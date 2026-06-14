@@ -1,8 +1,10 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
+import { useState } from "preact/hooks";
 import { describe, expect, it } from "vitest";
 
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
-import { checksFor } from "./ExaminationDrawer";
+import { ExaminationDrawer, checksFor } from "./ExaminationDrawer";
 
 // The four-checks derivation is trust-critical: it is the drawer's whole claim
 // to honesty (four signals shown separately, at their true weights). These
@@ -100,5 +102,61 @@ describe("checksFor — holding match (assistive register)", () => {
   it("no holding signal -> unknown (not assessed)", () => {
     const c = card([{ citation: "1 U.S. 1", status: 200, exists: true }]);
     expect(rowByName(c, "Holding matches the claim").state).toBe("unknown");
+  });
+});
+
+// The drawer is aria-modal=false (the record behind stays readable, so Tab is
+// NOT trapped), but it still owes the opener its focus back, and while closed it
+// must be inert so its Close button is not a tabbable control stranded in an
+// aria-hidden subtree (WCAG 4.1.2).
+function emptyCard(): VerifyClaimVerdict {
+  return {
+    claim_index: 0,
+    claim_text: "A claim with no attached source.",
+    verdict: "verified",
+    citations: [],
+    case_verdicts: []
+  } as unknown as VerifyClaimVerdict;
+}
+
+describe("ExaminationDrawer — focus + inert", () => {
+  it("captures the opener on open and restores focus to it on close", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" data-testid="opener" onClick={() => setOpen(true)}>
+            examine
+          </button>
+          <ExaminationDrawer card={emptyCard()} open={open} onClose={() => setOpen(false)} />
+        </div>
+      );
+    }
+    render(<Harness />);
+
+    const opener = screen.getByTestId("opener");
+    opener.focus();
+    fireEvent.click(opener);
+
+    const close = await screen.findByRole("button", { name: "Close" });
+    await waitFor(() => expect(document.activeElement).toBe(close));
+
+    fireEvent.click(close);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it("is inert + aria-hidden while closed and interactive while open", () => {
+    const closed = render(
+      <ExaminationDrawer card={emptyCard()} open={false} onClose={() => {}} />
+    );
+    const closedAside = closed.container.querySelector("aside[role='dialog']");
+    expect(closedAside?.hasAttribute("inert")).toBe(true);
+    expect(closedAside?.getAttribute("aria-hidden")).toBe("true");
+    closed.unmount();
+
+    const open = render(<ExaminationDrawer card={emptyCard()} open onClose={() => {}} />);
+    const openAside = open.container.querySelector("aside[role='dialog']");
+    expect(openAside?.hasAttribute("inert")).toBe(false);
+    expect(openAside?.hasAttribute("aria-hidden")).toBe(false);
   });
 });

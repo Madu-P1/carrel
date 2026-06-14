@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef } from "preact/hooks";
 
+import { useInert } from "@/design-system";
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
 import { dispositionForClaim } from "./claimDisposition";
@@ -151,10 +152,26 @@ interface ExaminationDrawerProps {
 
 export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  // The drawer stays mounted and slides; while closed it must be inert so its
+  // Close button (and the source links inside) are not tabbable controls
+  // stranded in an aria-hidden subtree (WCAG 4.1.2). aria-modal stays false:
+  // the record behind is a legitimate reading surface, so Tab is NOT trapped.
+  const asideRef = useInert<HTMLElement>(!open);
 
+  // Capture the opener when the drawer opens and return focus to it on close,
+  // the contract this component's docstring promises. Keyed on `open` only:
+  // re-capturing on a claim switch (card change) while open would overwrite the
+  // opener with the Close button and break the restore.
   useEffect(() => {
-    if (open) closeRef.current?.focus();
-  }, [open, card]);
+    if (open) {
+      openerRef.current = document.activeElement as HTMLElement | null;
+      closeRef.current?.focus();
+    } else if (openerRef.current) {
+      openerRef.current.focus?.();
+      openerRef.current = null;
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -170,11 +187,11 @@ export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProp
 
   return (
     <aside
+      ref={asideRef}
       className={[styles.exam, open ? styles.examOpen : ""].join(" ")}
       role="dialog"
       aria-modal="false"
       aria-label="Examination"
-      aria-hidden={!open}
     >
       <header className={styles.examHead}>
         <span className={styles.examLabel}>Examination</span>

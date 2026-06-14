@@ -9,6 +9,9 @@ export {
 export type { DurationKey, EasingKey } from "./motion";
 export { useAnimation } from "./hooks/useAnimation";
 export type { AnimationSpec } from "./hooks/useAnimation";
+export { getFocusable, useFocusTrap } from "./hooks/useFocusTrap";
+export { useInert } from "./hooks/useInert";
+export { useModalDialog } from "./hooks/useModalDialog";
 
 export { Badge } from "./primitives/Badge";
 export type { BadgeProps } from "./primitives/Badge";

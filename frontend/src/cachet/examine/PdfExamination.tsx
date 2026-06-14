@@ -44,6 +44,37 @@ function clampPage(page: number, pageCount: number): number {
   return Math.max(1, Math.min(pageCount, page));
 }
 
+/**
+ * The page step for a keydown over the PDF pane, or 0 when the key must be left
+ * to the browser. Only a BARE Left/Right arrow pages: a modifier (Shift to
+ * extend a selection, Cmd/Ctrl/Alt for shortcuts) or a keypress whose target is
+ * inside the selectable text layer is left alone, so a reader selecting text in
+ * the record moves the caret instead of flipping the page. Exported pure for
+ * direct unit testing (PdfExamination.test.tsx).
+ */
+export function arrowPageDelta(event: KeyboardEvent, textLayer: Node | null): -1 | 0 | 1 {
+  if (
+    event.defaultPrevented ||
+    event.shiftKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  ) {
+    return 0;
+  }
+  const target = event.target as Node | null;
+  if (target && textLayer?.contains(target)) {
+    return 0;
+  }
+  if (event.key === "ArrowLeft") {
+    return -1;
+  }
+  if (event.key === "ArrowRight") {
+    return 1;
+  }
+  return 0;
+}
+
 async function pageTextItems(pdf: PDFDocumentProxy, pageNumber: number): Promise<PdfTextItemLike[]> {
   const page = await pdf.getPage(pageNumber);
   const content = await page.getTextContent();
@@ -241,13 +272,15 @@ export function PdfExamination({ docId, page, quote }: PdfExaminationProps) {
     };
   }, [pdf, currentPage, containerWidth, quote]);
 
-  // ← / → page through the record while the overlay is open.
+  // ← / → page through the record while the overlay is open, but only a bare
+  // arrow over the page chrome pages: arrowPageDelta leaves Shift+Arrow and any
+  // arrow inside the selectable text layer to the browser so selection is never
+  // hijacked.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "ArrowLeft") {
-        setCurrentPage((current) => Math.max(1, current - 1));
-      } else if (event.key === "ArrowRight") {
-        setCurrentPage((current) => clampPage(current + 1, pageCount || 1));
+      const delta = arrowPageDelta(event, textLayerRef.current);
+      if (delta !== 0) {
+        setCurrentPage((current) => clampPage(current + delta, pageCount || 1));
       }
     }
     window.addEventListener("keydown", onKey);

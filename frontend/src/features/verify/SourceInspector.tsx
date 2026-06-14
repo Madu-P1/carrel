@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
-import { Spinner } from "@/design-system";
+import { Spinner, useFocusTrap } from "@/design-system";
 import { examinationHostMounted, openExamination } from "@/cachet/examine/examineStore";
 import {
   evidence,
@@ -76,7 +76,10 @@ function SourcePassageOverlay({
 }) {
   const [node, setNode] = useState<ReaderNodeResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
-  const closeRef = useRef<HTMLButtonElement>(null);
+  // aria-modal=true: trap Tab inside the panel and, on close, restore focus to
+  // the "Open in source" button that opened it. The hook owns focus only; the
+  // capture-phase Escape below peels this overlay alone off the stack.
+  const panelRef = useFocusTrap<HTMLDivElement>(true);
 
   useEffect(() => {
     let active = true;
@@ -104,7 +107,6 @@ function SourcePassageOverlay({
   }, [nodeId]);
 
   useEffect(() => {
-    closeRef.current?.focus();
     // Capture + stopImmediatePropagation: the Examination drawer beneath also
     // closes on Escape (bubble listener on document). Consuming the key here
     // peels this overlay alone; a second Escape then reaches the drawer.
@@ -126,6 +128,8 @@ function SourcePassageOverlay({
   return (
     <div className={styles.sourceScrim} role="presentation" onClick={onClose}>
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={styles.sourcePanel}
         role="dialog"
         aria-modal="true"
@@ -138,7 +142,6 @@ function SourcePassageOverlay({
             <span className={styles.sourcePanelMeta}>{heading || locator}</span>
           </div>
           <button
-            ref={closeRef}
             type="button"
             className={styles.inspectorClose}
             onClick={onClose}
