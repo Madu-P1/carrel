@@ -25,6 +25,7 @@ as a contradiction by the day-count approximation.
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, replace
 
@@ -46,7 +47,167 @@ from services.retrieval.validators import verbatim_run_present
 # polarity is adjudicated PER STEM (a dedicated pass), because its values are
 # heterogeneous across stems and a whole-type comparison would let a matching
 # qualifier mask a flipped sibling.
-_PARAMETRIC_TYPES = ("money", "percent", "date", "duration", "governing_law", "polarity")
+_PARAMETRIC_TYPES = (
+    "money",
+    "magnitude",
+    "percent",
+    "date",
+    "duration",
+    "governing_law",
+    "polarity",
+)
+
+# --- Near-verbatim altered-figure pass ---------------------------------------
+# When a lawyer pastes a slide or passage VERBATIM and an AI (or a typo) has
+# changed a number, the per-anchor path reports at most ONE altered figure and
+# silently drops the rest (the BIM-lecture slide: "7 billion" altered from "2
+# billion" went unreported while only the "26% vs 16%" showed; with ONLY the
+# billion altered the sentence even read "present"). This pass names EVERY altered
+# figure at once. Safe by construction (see _altered_figures_on_near_copy): it
+# fires only on a near-identical skeleton with at least one figure value shared,
+# and flags only a claim value that appears NOWHERE in the source, so a reorder or
+# an unrelated sentence is never accused. It returns None on anything else and the
+# normal anchor logic runs unchanged.
+_SCALE_UNITS = {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}
+_NEAR_COPY_RATIO = 0.90
+
+# A FIGURE is a number that is clearly a QUANTITY (a magnitude with a scale word, a
+# percent, a currency amount, a 4-digit year, or a grouped large number), never a
+# bare identifier digit ("Q1", "Section 8", "Pillar 1", "23 States"). That bound is
+# what keeps "Pillar 1 vs Pillar 2" and "23 States" out of the positional diff.
+_FIGURE = re.compile(
+    r"(?:EUR|USD|GBP|\$)\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:billion|million|thousand))?"
+    r"|\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand)"
+    r"|\d+(?:\.\d+)?\s*%"
+    r"|(?:19|20)\d{2}"
+    r"|\d{1,3}(?:,\d{3})+(?:\.\d+)?",
+    re.IGNORECASE,
+)
+
+
+def _figure_value(surface: str) -> float | None:
+    m = re.search(r"(\d[\d,]*(?:\.\d+)?)\s*(billion|million|thousand)?", surface, re.IGNORECASE)
+    if not m:
+        return None
+    value = float(m.group(1).replace(",", ""))
+    scale = m.group(2)
+    if scale:
+        value *= _SCALE_UNITS[scale.lower()]
+    return value
+
+
+def _figure_shape(surface: str) -> str:
+    s = surface.lower()
+    if "%" in s:
+        return "percent"
+    for scale in ("billion", "million", "thousand"):
+        if scale in s:
+            return scale
+    if re.fullmatch(r"\s*(?:19|20)\d{2}\s*", s):
+        return "year"
+    return "number"
+
+
+def _figure_skeleton(text: str, figures: list[re.Match]) -> str:
+    """The text with every figure replaced by a placeholder, normalized for the
+    similarity gate. Two passages whose only differences are their figures (a
+    copy with numbers changed) collapse to the SAME skeleton."""
+    out: list[str] = []
+    last = 0
+    for m in figures:
+        out.append(text[last : m.start()])
+        out.append("#")
+        last = m.end()
+    out.append(text[last:])
+    return re.sub(r"[^a-z0-9#]+", " ", "".join(out).lower()).strip()
+
+
+def _canonical_figures(matches: list[re.Match]) -> list[tuple[str, str, float]] | None:
+    """(surface, shape, value) for each figure match, or None if any is uncanonical."""
+    out: list[tuple[str, str, float]] = []
+    for m in matches:
+        text = m.group(0).strip()
+        value = _figure_value(text)
+        if value is None:
+            return None
+        out.append((text, _figure_shape(text), value))
+    return out
+
+
+def _altered_figures_on_near_copy(claim: str, clause: str, where: str) -> ClauseVerdict | None:
+    """Return a contradiction naming the altered figures when ``claim`` is a
+    near-verbatim copy of ``clause`` with numbers changed, else None (the normal
+    anchor logic then runs).
+
+    Safe by construction, three gates that together cannot accuse a reorder or an
+    unrelated sentence:
+      1. NEAR-VERBATIM: the two texts are near-identical once the figures are
+         masked (a paraphrase falls through).
+      2. SHARED FIGURE: at least one figure value is identical on both sides, so
+         the claim is provably derived from THIS clause, not a coincidental match.
+      3. ABSENT VALUE: a claim figure is only ever flagged when its value appears
+         NOWHERE in the clause. A value present elsewhere in the clause is a
+         reorder, never a tamper, so it is never accused (the (shape, value)
+         membership test, not a positional pairing).
+    """
+    claim_figs = list(_FIGURE.finditer(claim))
+    clause_figs = list(_FIGURE.finditer(clause))
+    if not claim_figs or len(claim_figs) != len(clause_figs):
+        return None
+    ratio = difflib.SequenceMatcher(
+        None, _figure_skeleton(claim, claim_figs), _figure_skeleton(clause, clause_figs)
+    ).ratio()
+    if ratio < _NEAR_COPY_RATIO:
+        return None
+    claim_canon = _canonical_figures(claim_figs)
+    clause_canon = _canonical_figures(clause_figs)
+    if claim_canon is None or clause_canon is None:
+        return None
+    claim_keys = {(shape, value) for _, shape, value in claim_canon}
+    clause_keys = {(shape, value) for _, shape, value in clause_canon}
+    if not (claim_keys & clause_keys):
+        # No shared figure: two same-shaped but unrelated sentences. Naming a
+        # pairing would be a guess (the multi-value refusal handles this).
+        return None
+    claim_only = [c for c in claim_canon if (c[1], c[2]) not in clause_keys]
+    clause_only = [c for c in clause_canon if (c[1], c[2]) not in claim_keys]
+    if not claim_only:
+        # Every claim figure appears in the clause (an exact copy or a reorder):
+        # not a contradiction.
+        return None
+    # Pair each altered claim figure with a same-shape source figure (in order) for
+    # the filing-grade detail; an altered figure with no same-shape source value is
+    # named as absent rather than mispaired.
+    diffs: list[tuple[str, str | None]] = []
+    remaining = list(clause_only)
+    for c_text, c_shape, _c_val in claim_only:
+        match = next((i for i, (_, s, _v) in enumerate(remaining) if s == c_shape), None)
+        if match is not None:
+            diffs.append((c_text, remaining.pop(match)[0]))
+        else:
+            diffs.append((c_text, None))
+    if len(diffs) == 1 and diffs[0][1] is not None:
+        detail = f"The summary states {diffs[0][0]}; {where} states {diffs[0][1]}."
+    else:
+        parts = "; ".join(
+            f"{claim_text} (the source states {src})"
+            if src is not None
+            else f"{claim_text} (not found in the source)"
+            for claim_text, src in diffs
+        )
+        detail = f"The summary's figures differ from {where}: {parts}."
+    return ClauseVerdict(
+        "parametric_contradiction",
+        detail,
+        "figure",
+        tuple(claim_text for claim_text, _ in diffs),
+        tuple(src for _, src in diffs if src is not None),
+        claim_span=diffs[0][0],
+        clause_span=diffs[0][1],
+        where=where,
+    )
+
+
 _DURATION_REL_TOLERANCE = 0.05
 _DURATION_UNIT = re.compile(r"\b(year|month|week|day)s?\b", re.IGNORECASE)
 
@@ -380,6 +541,14 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     section = next((a.text for a in clause_anchors if a.type == "section"), None)
     # Singular on purpose: the fallback feeds "{where} states {value}" below.
     where = section or "the loaded source"
+
+    # A pasted-verbatim passage with one or more figures changed: diff EVERY figure
+    # at once and name them all. Runs before the per-anchor loop (which would report
+    # at most one) and refuses on anything that is not a near-verbatim copy, so it
+    # only ever adds catches, never accusations the per-anchor path would not make.
+    near_copy = _altered_figures_on_near_copy(claim, clause, where)
+    if near_copy is not None:
+        return near_copy
 
     # Evaluate EVERY parametric type the claim carries, not just the first. A
     # contradiction in ANY type wins outright: a sentence with a matching amount but a

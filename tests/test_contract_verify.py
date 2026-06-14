@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from services.legal.anchors import Anchor
+from services.legal.anchors import Anchor, extract_anchors
 from services.legal.contract_verify import (
     ClauseCandidate,
     ClauseVerdict,
@@ -1093,6 +1093,131 @@ class AccuserSelectionTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", verdict.disposition)
         self.assertIn("governing-law values", verdict.detail)
         self.assertNotIn("governing_law", verdict.detail)
+
+
+class MagnitudeAnchorTests(unittest.TestCase):
+    """Bare / non-$ magnitude quantities ("20 billion", "EUR 250 thousand") must
+    become anchors so a single-figure non-USD claim can be checked. _MONEY only
+    sees "$"-amounts, which silently dropped every euro / bare-billion figure."""
+
+    def _types(self, text: str) -> list[str]:
+        return [a.type for a in extract_anchors(text)]
+
+    def test_bare_billion_is_a_magnitude_anchor(self) -> None:
+        self.assertIn("magnitude", self._types("Revenues of 20 billion in the year."))
+
+    def test_eur_prefixed_magnitude_is_an_anchor(self) -> None:
+        self.assertIn("magnitude", self._types("a threshold of EUR 250 thousand"))
+
+    def test_dollar_amount_stays_money_not_magnitude(self) -> None:
+        # _MONEY owns "$5 billion"; it must NOT also anchor as a magnitude (double count).
+        types = self._types("a cap of $5 billion")
+        self.assertIn("money", types)
+        self.assertNotIn("magnitude", types)
+
+    def test_small_bare_integer_is_not_a_magnitude(self) -> None:
+        # "23 States", "Section 8", "Pillar 1": a number without a scale word is an
+        # identifier or a count, never a financial magnitude. No false anchor.
+        self.assertNotIn("magnitude", self._types("the rest in the other 23 States"))
+
+    def test_single_magnitude_mismatch_is_a_contradiction(self) -> None:
+        v = verify_claim_against_clause("The fund totals 7 billion.", "The fund totals 2 billion.")
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("7 billion", v.detail)
+        self.assertIn("2 billion", v.detail)
+
+    def test_single_magnitude_match_is_present(self) -> None:
+        v = verify_claim_against_clause("The fund totals 2 billion.", "The fund totals 2 billion.")
+        self.assertEqual("present", v.disposition)
+
+
+class AlteredFigureNearCopyTests(unittest.TestCase):
+    """The lawyer pastes a slide / passage verbatim and an AI (or a typo) has
+    altered one or more figures. The single-anchor path catches at most one of
+    them and silently drops the rest; this pass diffs EVERY figure positionally
+    on a near-verbatim copy and names every alteration. Safe by construction: it
+    only fires when the two texts are near-identical with the figures masked, and
+    refuses (returns to the normal path) on a paraphrase or a shape mismatch."""
+
+    # The real BIM-lecture slide the user tested with.
+    SOURCE = (
+        "Turnover 20 billion (2 billion each generated in Italy, Germany, Spain "
+        "and France, the rest in the other 23 States) PBT 16%"
+    )
+
+    def test_copied_slide_with_two_altered_figures_names_both(self) -> None:
+        claim = (
+            "Turnover 20 billion (7 billion each generated in Italy, Germany, Spain "
+            "and France, the rest in the other 23 States) - PBT 26%"
+        )
+        v = verify_claim_against_clause(claim, self.SOURCE)
+        self.assertEqual("parametric_contradiction", v.disposition)
+        # BOTH alterations are named (the bug: only the % was reported).
+        self.assertIn("7 billion", v.detail)
+        self.assertIn("2 billion", v.detail)
+        self.assertIn("26%", v.detail)
+        self.assertIn("16%", v.detail)
+
+    def test_copied_slide_single_altered_billion_is_caught(self) -> None:
+        # Only the billion changed (the % matches). The billion miss was the bug.
+        claim = (
+            "Turnover 20 billion (7 billion each generated in Italy, Germany, Spain "
+            "and France, the rest in the other 23 States) PBT 16%"
+        )
+        v = verify_claim_against_clause(claim, self.SOURCE)
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("7 billion", v.detail)
+        self.assertIn("2 billion", v.detail)
+
+    def test_verbatim_copy_with_no_altered_figure_is_not_a_contradiction(self) -> None:
+        v = verify_claim_against_clause(self.SOURCE, self.SOURCE)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_altered_year_on_a_copied_line_is_caught(self) -> None:
+        src = "This Agreement is dated March 11, 2023, in the City of Milan."
+        claim = "This Agreement is dated March 11, 2024, in the City of Milan."
+        v = verify_claim_against_clause(claim, src)
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_paraphrase_is_not_positionally_accused(self) -> None:
+        # NOT a near-verbatim copy: the pass must not fire. The MSA money claim
+        # still works through the normal single-anchor path (regression guard).
+        v = verify_claim_against_clause(
+            "Liability under this agreement is capped at $1,000,000.",
+            "Section 8. Limitation of Liability. The aggregate liability of either "
+            "party under this Agreement shall not exceed $500,000.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("$1,000,000", v.detail)
+        self.assertIn("$500,000", v.detail)
+
+    def test_different_sentence_with_same_figure_count_is_not_accused(self) -> None:
+        # Adversarial: a genuinely different sentence whose figures are legitimately
+        # different must NOT be positionally accused. Low skeleton similarity ->
+        # the pass refuses and falls through.
+        claim = "Our Q3 revenue reached 7 billion at a 26% margin this year."
+        v = verify_claim_against_clause(claim, self.SOURCE)
+        self.assertNotIn("differ from", (v.detail or ""))
+
+    def test_reordered_same_figures_are_not_accused(self) -> None:
+        # A near-verbatim copy whose figures are the SAME values in a different
+        # order is not a tamper. Positional pairing would falsely accuse it; the
+        # absent-value rule must never flag a value that appears in the source.
+        v = verify_claim_against_clause(
+            "Allocation: 10% Italy, 20% France, 30% Spain.",
+            "Allocation: 30% Spain, 20% France, 10% Italy.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_no_shared_figure_falls_through_to_the_multi_value_refusal(self) -> None:
+        # All figures differ and none is shared: the claim may be an unrelated
+        # schedule, so naming a pairing would be a guess. The pass refuses (no
+        # shared anchor) and the existing multi-value refusal stands.
+        v = verify_claim_against_clause(
+            "Fees are $1,000,000 and $2,000,000 respectively.",
+            "the fees are $3,000,000 and $4,000,000 respectively",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
 
 
 if __name__ == "__main__":

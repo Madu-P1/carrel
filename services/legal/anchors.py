@@ -58,6 +58,22 @@ _MONEY = re.compile(
     re.IGNORECASE,
 )
 
+# Magnitude quantities WITHOUT a "$": "20 billion", "EUR 2 billion", "300 million",
+# "250 thousand". `_MONEY` only ever saw "$"-amounts, so every euro figure and every
+# bare "N billion" was silently dropped (no anchor, no check). The scale word is
+# REQUIRED: it is the signal that a bare number is a financial magnitude, so an
+# identifier or a count ("23 States", "Section 8", "Pillar 1") never anchors here. An
+# optional non-$ currency code is allowed for display only; the canonical compares by
+# numeric value, the same currency-blind rule `_MONEY` already uses. `_MONEY` is
+# collected first and a magnitude overlapping a money span is dropped in
+# `extract_anchors`, so "$5 billion" stays one money anchor, never also a magnitude.
+_MAGNITUDE = re.compile(
+    r"(?:(?:EUR|USD|GBP)\s?)?"
+    r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
+    r"(?P<scale>billion|million|thousand)\b",
+    re.IGNORECASE,
+)
+
 # Word-form money with no numeral ("one million dollars", "five hundred thousand
 # dollars", "a billion dollars"). Bounded on purpose: a single leading number word
 # (one..twenty, or "a"), an optional "hundred", and a scale word. An AI summary that
@@ -657,6 +673,18 @@ def _money_word_cents(unit: str, hundred: str | None, scale: str) -> int:
     return amount * 100
 
 
+def _magnitude_units(num_text: str, scale: str) -> int:
+    """Canonical WHOLE-UNIT value for a bare magnitude ("20 billion" -> 20_000_000_000).
+
+    Whole units (not cents): a magnitude anchor only ever compares to another
+    magnitude anchor, so the unit just has to be internally consistent. Kept
+    distinct from `_money_cents` so a "$" amount and a bare magnitude are never
+    compared by a coincidental numeric equality across the cents/units boundary.
+    """
+    amount = float(num_text.replace(",", ""))
+    return round(amount * _MONEY_SCALE[scale.lower()])
+
+
 def _duration_days(num: int, unit: str) -> int:
     """Canonical day count (year=365, month=30, week=7, day=1, approximate)."""
     return num * _DURATION_DAYS[unit.lower()]
@@ -767,8 +795,10 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         anchors.append(Anchor("slip_op", m.group(0), m.start(), m.end()))
     for text, start, end in extract_draft_quote_spans(span):
         anchors.append(Anchor("quote", text, start, end))
+    money_spans: list[tuple[int, int]] = []
     for m in _MONEY.finditer(span):
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), _money_cents(m.group(0))))
+        money_spans.append((m.start(), m.end()))
     for m in _MONEY_WORD.finditer(span):
         if _NUMBER_WORD_BEFORE.search(span[: m.start()]):
             # A space-separated compound ("twenty five million dollars"): the
@@ -777,6 +807,21 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             continue
         cents = _money_word_cents(m.group("unit"), m.group("hundred"), m.group("scale"))
         anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents))
+        money_spans.append((m.start(), m.end()))
+    for m in _MAGNITUDE.finditer(span):
+        # "$5 billion" is owned by _MONEY (collected above); skip a magnitude that
+        # overlaps a money span so a "$"-amount is never double-counted.
+        if any(m.start() < me and ms < m.end() for ms, me in money_spans):
+            continue
+        anchors.append(
+            Anchor(
+                "magnitude",
+                m.group(0),
+                m.start(),
+                m.end(),
+                _magnitude_units(m.group("num"), m.group("scale")),
+            )
+        )
     for m in _DURATION.finditer(span):
         num = int(m.group("paren") or m.group("num"))
         anchors.append(
