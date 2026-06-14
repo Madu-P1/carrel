@@ -67,12 +67,28 @@ Gate 0 is also a precondition for flipping `RETRIEVAL_USE_NODES`
 default-on (T12 Phase 4): the migration must not ship a known
 valueless-answer hole.
 
+## Gate 1 (chunks-path heuristic) shipped 2026-06-13 (Forge task E3)
+
+The chunks-path low-information / heading filter is live. A bare
+reference, a page number mis-typed as body, a fragment, or a heading
+line inside a chunk window is caught by the deterministic shape
+detectors in `services/retrieval/quote_heuristics.py` (`is_heading_shape`,
+`is_bare_reference`, `is_banner_shape`; length-floor plus finite-verb,
+no model). Those detectors predate E3; E3's contribution is the
+**layering** the scope boundary above called for: the fuzzy heuristic
+now runs ONLY where authoritative type info is absent. Each
+`HydratedNodeContext` carries `node_type_known` (True on the typed-node
+path, False on the legacy chunks path). At `_resolve_grounded_answer`
+the heuristic is gated on `not context.node_type_known`, so a
+legitimately-typed `body`/`list_item` line is never second-guessed by
+the fuzzy check (that would only cost recall); the typed path defers to
+`NON_CITABLE_NODE_TYPES` (Gate 0), which still backstops it at the same
+site. Tests: `tests/test_tutor_grounded.py::Gate1ChunksPathLayeringTests`
+(layering, both directions) and `tests/test_retrieval_quote_heuristics.py`
+(shape detectors plus purity).
+
 ## Deferred — answer-verification gates
 
-- **Gate 1 — low-information body filter.** A `body` node that is itself
-  not answer-bearing (a bare reference, a page number mis-typed as body,
-  a fragment) and the chunks-path heading-line case. Deterministic
-  heuristics (length, finite-verb presence), no model.
 - **Gate 2 — semantic entailment verifier.** A surviving citation is real
   prose but does not actually support *this* claim. This is the only
   tier that needs a judge model. Candidate: Atla Selene-1-Mini (8B

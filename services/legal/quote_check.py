@@ -215,6 +215,91 @@ def _coerce_sources(sources: list) -> list[SourceText]:
     return out
 
 
+@dataclass(frozen=True)
+class NormalizedSourcePool:
+    """A source pool normalized ONCE for reuse across every draft quote.
+
+    The brief-level panel checks many quoted spans against the SAME pool, so the
+    normalization (NFKC + footnote strip + dash-fold) is hoisted here and computed
+    one time per request rather than re-run per quote (E1). The normalized strings
+    are deduped (a membership test is unaffected by duplicates, so dropping them is
+    behavior-preserving and saves a substring scan per phrase). `has_sources`
+    preserves the original `not usable` guard (a pool with sources but whose text
+    normalizes to empty is still "has sources").
+    """
+
+    norm_all: tuple[str, ...]
+    norm_confident: tuple[str, ...]
+    has_uncertain_source: bool
+    has_sources: bool
+
+
+def prepare_source_pool(sources: list) -> NormalizedSourcePool:
+    """Coerce + normalize a source pool once, for reuse across many draft quotes.
+
+    `sources` may be raw strings (treated as complete + untruncated) or `SourceText`
+    records carrying truncation/completeness. The confident subset (complete AND
+    untruncated, non-empty after normalization) is kept separate, since only those
+    can ground an `altered` verdict; the presence of any partial/truncated source
+    means an absent run degrades to could_not_check instead of altered.
+    """
+    usable = _coerce_sources(sources)
+    norm_all_list = [normalize_for_verbatim(strip_footnote_calls(s.text)) for s in usable]
+    norm_confident_list = [
+        n for n, s in zip(norm_all_list, usable) if s.complete and not s.truncated and n
+    ]
+    return NormalizedSourcePool(
+        # dict.fromkeys dedupes while preserving first-seen order (deterministic).
+        norm_all=tuple(dict.fromkeys(norm_all_list)),
+        norm_confident=tuple(dict.fromkeys(norm_confident_list)),
+        has_uncertain_source=any((s.truncated or not s.complete) for s in usable),
+        has_sources=bool(usable),
+    )
+
+
+def check_quote_against_pool(quote: str, pool: NormalizedSourcePool) -> QuoteCheckResult:
+    """Check one quoted span against a pre-normalized source pool.
+
+    The matching contract is identical to `check_quote_against_sources`; this split
+    only hoists the source normalization out of the per-quote loop. Each run is first
+    split into its distinct quoted phrases (the greedy span regex merges two quotes in
+    one paragraph into a single run; the connecting prose between them is the author's
+    own and is never matched), and each phrase may flex the case of its leading letter
+    (the mid-sentence embedding convention). A phrase is satisfied if it is
+    verbatim-present in ANY source. The quote is ``altered`` only if some phrase is
+    present in NO source AND no truncated-or-partial source could plausibly contain it;
+    in the latter case it degrades to ``unplaceable``.
+    """
+    runs = tuple(split_runs(quote))
+    if not pool.has_sources or not runs:
+        return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
+
+    def _phrase_present(phrase: str) -> bool:
+        for variant in first_letter_variants(phrase):
+            norm_variant = normalize_for_verbatim(variant)
+            if not norm_variant:
+                return True  # vacuous: nothing checkable in this phrase
+            if any(norm_variant in n for n in pool.norm_all):
+                return True
+        return False
+
+    for run in runs:
+        for phrase in quoted_subphrases(run):
+            phrase = phrase.strip()
+            if not phrase or not _HAS_ALNUM.search(phrase):
+                continue
+            if _phrase_present(phrase):
+                continue  # found verbatim somewhere: this phrase is clean
+            # Absent from every source. Only call it altered if we have a
+            # confident (complete, untruncated) source it SHOULD have appeared
+            # in and there is no uncertain source that could plausibly contain it.
+            if pool.norm_confident and not pool.has_uncertain_source:
+                return QuoteCheckResult(quote=quote, altered=True, unplaceable=False, runs=runs)
+            return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
+
+    return QuoteCheckResult(quote=quote, altered=False, unplaceable=False, runs=runs)
+
+
 def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:
     """Check one quoted span against a pool of candidate sources.
 
@@ -231,41 +316,9 @@ def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:
     tool could not fully see is never called altered. These acceptances mirror
     the sentence-level check in deterministic_envelope exactly, so the panel and
     the claim card can never disagree about the same quoted words.
+
+    Single-shot convenience wrapper: prepares the pool then checks one quote. The
+    brief-level panel uses `prepare_source_pool` once and `check_quote_against_pool`
+    per quote to avoid re-normalizing the shared pool for every span.
     """
-    runs = tuple(split_runs(quote))
-    usable = _coerce_sources(sources)
-    if not usable or not runs:
-        return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
-
-    # Normalize each source ONCE (perf [8]); keep the confident-source subset
-    # (complete AND untruncated) separate, since only those can ground an
-    # `altered` verdict. The presence of any partial/truncated source means an
-    # absent run degrades to could_not_check instead of altered.
-    norm_all = [normalize_for_verbatim(strip_footnote_calls(s.text)) for s in usable]
-    norm_confident = [n for n, s in zip(norm_all, usable) if s.complete and not s.truncated and n]
-    has_uncertain_source = any((s.truncated or not s.complete) for s in usable)
-
-    def _phrase_present(phrase: str) -> bool:
-        for variant in first_letter_variants(phrase):
-            norm_variant = normalize_for_verbatim(variant)
-            if not norm_variant:
-                return True  # vacuous: nothing checkable in this phrase
-            if any(norm_variant in n for n in norm_all):
-                return True
-        return False
-
-    for run in runs:
-        for phrase in quoted_subphrases(run):
-            phrase = phrase.strip()
-            if not phrase or not _HAS_ALNUM.search(phrase):
-                continue
-            if _phrase_present(phrase):
-                continue  # found verbatim somewhere: this phrase is clean
-            # Absent from every source. Only call it altered if we have a
-            # confident (complete, untruncated) source it SHOULD have appeared
-            # in and there is no uncertain source that could plausibly contain it.
-            if norm_confident and not has_uncertain_source:
-                return QuoteCheckResult(quote=quote, altered=True, unplaceable=False, runs=runs)
-            return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
-
-    return QuoteCheckResult(quote=quote, altered=False, unplaceable=False, runs=runs)
+    return check_quote_against_pool(quote, prepare_source_pool(sources))

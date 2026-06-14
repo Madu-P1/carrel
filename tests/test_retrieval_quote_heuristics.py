@@ -339,5 +339,41 @@ class ChunksHeuristicEnabledTests(unittest.TestCase):
                     self.assertFalse(chunks_heuristic_enabled())
 
 
+class PurityTests(unittest.TestCase):
+    """E3 acceptance: the heuristic is pure. Same input maps to the
+    same output across repeated calls, with no network or disk I/O. The
+    only environment dependence is the documented CARREL_HEADING_MAX_CHARS
+    length cap; with the environment fixed the mapping is deterministic."""
+
+    SAMPLES = (
+        "Chapter 3: Mitosis Overview",
+        "p. 22",
+        "[12]",
+        "Photosynthesis And Respiration",
+        "Mitosis separates duplicated chromosomes into two identical cells.",
+        "def chunk_text(text: str)",
+        "Conclusion",
+        "",
+    )
+
+    def test_is_structural_quote_is_deterministic(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CARREL_HEADING_MAX_CHARS", None)
+            for quote in self.SAMPLES:
+                with self.subTest(quote=quote):
+                    first = is_structural_quote(quote)
+                    for _ in range(5):
+                        self.assertEqual(first, is_structural_quote(quote))
+
+    def test_component_detectors_are_deterministic(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CARREL_HEADING_MAX_CHARS", None)
+            for quote in self.SAMPLES:
+                with self.subTest(quote=quote):
+                    self.assertEqual(is_heading_shape(quote), is_heading_shape(quote))
+                    self.assertEqual(is_bare_reference(quote), is_bare_reference(quote))
+                    self.assertEqual(is_banner_shape(quote), is_banner_shape(quote))
+
+
 if __name__ == "__main__":
     unittest.main()

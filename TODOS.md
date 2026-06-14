@@ -23,9 +23,16 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 
 ## Active backlog (from structural-citation gate, Gate 0 shipped 2026-05-22)
 
+Gate 1 (chunks-path low-information / heading filter) shipped 2026-06-13 via Forge
+task E3: the pre-existing shape detectors (`services.retrieval.quote_heuristics`)
+are now layered so they fire ONLY where authoritative node-type info is absent (the
+legacy chunks path, `HydratedNodeContext.node_type_known is False`); the typed path
+defers to `NON_CITABLE_NODE_TYPES` (Gate 0). See `services/tutor.py::_resolve_grounded_answer`
+and `docs/notes/2026-05-22-structural-citation-gate.md`. Gate 2 (below) remains the
+only open structural-citation gate.
+
 | Plan | Trigger | Why deferred | Source |
 |---|---|---|---|
-| Gate 1 — low-information body + chunks-path heading filter | Gate 0 closed the structural-citation hole on the typed-node path only | The legacy chunks path is structurally untyped, so a heading line inside a chunk window cannot be caught by a `node_type` check — it needs a heuristic (length, finite-verb presence, bare-reference detection). The same heuristic catches `body` nodes that are themselves not answer-bearing (page numbers mis-typed as body, fragments). Deterministic, no model. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 | Gate 2 — semantic entailment verifier (Selene Mini) | Gate 0/1 are structural; nothing checks whether a verbatim, answer-bearing citation actually supports its claim | A citation can be verbatim and answer-bearing yet still not entail the claim it is attached to. This needs an LLM-as-a-judge. Candidate: Atla Selene-1-Mini (8B open-weights) run locally via Ollama as a judge role distinct from the answering model. Land in the eval harness first (offline, parallel scorer) before any answer-time use. | `docs/notes/2026-05-22-structural-citation-gate.md` |
 
 ## Active backlog (Cachet source-viewer, queued 2026-06-07)
@@ -39,7 +46,7 @@ Plans that came out of completed reviews but were intentionally not in scope of 
 - [ ] useVerify negative-path tests: truncated stream sets the loud error (invariant #6), mid-stream error event, abort superseding, seal-seed clearing on a fresh verify. The guard logic predates the hook extraction and has never been pinned.
 - [ ] source.ts unit tests: upload missing doc_id throw + sourceUpload reset, deleteDocument clears loadedSource for the active record, refreshSources rejection path, readActiveRecord on malformed JSON.
 - [ ] Migration 0028: rebuild document_vaults with `name TEXT COLLATE NOCASE PRIMARY KEY` so case-insensitive vault identity is a schema guarantee, not a per-query convention (delete_vault already compares NOCASE; the schema still permits case-duplicate rows via raw SQL).
-- [ ] Corpus completeness attestation hardening: when the real full-index artifact ships, the manifest needs a corpus-size/hash cross-check before `scope="complete"` is honored (an operator string alone converts every unbundled cite into the loud "no such case"; flagged by adversarial review).
+- [x] Corpus completeness attestation hardening (E2, 2026-06-13): `CorpusManifest.matches(CorpusAttestation)` cross-checks the operator's declared size (and an optional content hash) against the measured corpus before `scope="complete"` is honored; a mismatch or a corpus with no measurement folds the miss back to the bounded could-not-check, never the loud "no such case". The measured `attest_corpus` attestation travels on the corpus-serving client (`CORPUS_ATTESTATION_ATTR`) in `services/legal/local_caselaw.py`; the gate is applied in `_annotate_litigator_verdicts` (`services/legal/deterministic_envelope.py`). Both directions pinned in `tests/test_deterministic_envelope.py` (`CorpusAttestationCrossCheckTests`, `CorpusFingerprintTests`). Residual: a size-only manifest cannot distinguish a same-size different corpus — declare a `content_hash` for the strong guarantee.
 - [ ] Contract contradiction precision: the 1-shared-word topic floor for parametric_contradiction is a deliberate demo-gold tradeoff; revisit with role-aligned clause matching after lawyer validation (T66). Also: claims whose content words are all <4 letters can never read "present" (recall-side, safe direction).
 - [ ] Entry-bundle split: CachetApp is statically imported into the shared entry (~0.6KB headroom under the 127KB budget); dynamic-import the Cachet shell via the documented user-gesture pattern.
 - [ ] Perf (deterministic path at scale): hoist the sentence token set out of the per-node _clause_on_topic loop; pre-normalize + dedupe the brief-level quote source pool once per request instead of per quote; memoize displaySafe segments on draftText.
