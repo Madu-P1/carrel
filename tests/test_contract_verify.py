@@ -1130,6 +1130,27 @@ class MagnitudeAnchorTests(unittest.TestCase):
         v = verify_claim_against_clause("The fund totals 2 billion.", "The fund totals 2 billion.")
         self.assertEqual("present", v.disposition)
 
+    def test_european_decimal_comma_is_refused_not_misparsed(self) -> None:
+        # "1,2 billion" is 1.2 billion (the BIM source writes it). A naive comma
+        # strip read it as 12 billion. We refuse the ambiguous comma-decimal rather
+        # than mint a 10x-wrong canonical: NO magnitude anchor (a miss, not a wrong
+        # value). US grouping ("5,000 billion") still parses.
+        eu = [a for a in extract_anchors("a residual of 1,2 billion") if a.type == "magnitude"]
+        self.assertEqual([], eu)
+        grouped = [
+            a.canonical_value for a in extract_anchors("5,000 billion") if a.type == "magnitude"
+        ]
+        self.assertEqual([5_000_000_000_000], grouped)
+
+    def test_us_and_eu_decimal_are_not_falsely_contradicted(self) -> None:
+        # The dangerous case: a US-decimal draft against the EU-decimal source must
+        # NOT read as a contradiction (1.2 vs a misparsed 12). The EU figure is
+        # refused, so there is nothing to falsely diff.
+        v = verify_claim_against_clause(
+            "The residual is 1.2 billion.", "the residual equals 1,2 billion"
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
 
 class AlteredFigureNearCopyTests(unittest.TestCase):
     """The lawyer pastes a slide / passage verbatim and an AI (or a typo) has

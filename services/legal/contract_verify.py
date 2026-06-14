@@ -35,6 +35,7 @@ from services.legal.anchors import (
     Anchor,
     extract_anchors,
     grant_noun_pattern,
+    parse_grouped_number,
     related_jurisdictions,
 )
 from services.retrieval.validators import verbatim_run_present
@@ -89,7 +90,11 @@ def _figure_value(surface: str) -> float | None:
     m = re.search(r"(\d[\d,]*(?:\.\d+)?)\s*(billion|million|thousand)?", surface, re.IGNORECASE)
     if not m:
         return None
-    value = float(m.group(1).replace(",", ""))
+    value = parse_grouped_number(m.group(1))
+    if value is None:
+        # Ambiguous comma-decimal ("1,2 billion"): refuse rather than diff a wrong
+        # value (the whole near-copy pass then returns None and the anchor logic runs).
+        return None
     scale = m.group(2)
     if scale:
         value *= _SCALE_UNITS[scale.lower()]

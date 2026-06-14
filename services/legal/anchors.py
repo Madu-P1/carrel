@@ -673,15 +673,39 @@ def _money_word_cents(unit: str, hundred: str | None, scale: str) -> int:
     return amount * 100
 
 
-def _magnitude_units(num_text: str, scale: str) -> int:
-    """Canonical WHOLE-UNIT value for a bare magnitude ("20 billion" -> 20_000_000_000).
+def parse_grouped_number(num_text: str) -> float | None:
+    """Parse a figure's numeric part, REFUSING ambiguous comma-decimals.
+
+    A comma is a US thousands separator only when every comma is followed by
+    exactly three digits ("1,000,000"). A comma followed by one or two digits is
+    a European decimal ("1,2 billion" == 1.2 billion, which the BIM-lecture source
+    actually writes), and a naive ",".replace turned "1,2" into 12 (a 10x wrong
+    value, a false contradiction or false present waiting to happen). We cannot
+    disambiguate a European decimal from a US typo, so we refuse (return None): a
+    miss is honest, a wrong canonical is not.
+    """
+    if "," in num_text:
+        if not re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", num_text):
+            return None
+        num_text = num_text.replace(",", "")
+    try:
+        return float(num_text)
+    except ValueError:
+        return None
+
+
+def _magnitude_units(num_text: str, scale: str) -> int | None:
+    """Canonical WHOLE-UNIT value for a bare magnitude ("20 billion" -> 20_000_000_000),
+    or None when the number is an ambiguous comma-decimal (see parse_grouped_number).
 
     Whole units (not cents): a magnitude anchor only ever compares to another
     magnitude anchor, so the unit just has to be internally consistent. Kept
     distinct from `_money_cents` so a "$" amount and a bare magnitude are never
     compared by a coincidental numeric equality across the cents/units boundary.
     """
-    amount = float(num_text.replace(",", ""))
+    amount = parse_grouped_number(num_text)
+    if amount is None:
+        return None
     return round(amount * _MONEY_SCALE[scale.lower()])
 
 
@@ -813,15 +837,12 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         # overlaps a money span so a "$"-amount is never double-counted.
         if any(m.start() < me and ms < m.end() for ms, me in money_spans):
             continue
-        anchors.append(
-            Anchor(
-                "magnitude",
-                m.group(0),
-                m.start(),
-                m.end(),
-                _magnitude_units(m.group("num"), m.group("scale")),
-            )
-        )
+        units = _magnitude_units(m.group("num"), m.group("scale"))
+        if units is None:
+            # An ambiguous comma-decimal ("1,2 billion"): refuse the anchor rather
+            # than mint a 10x-wrong value that would false-flag against the source.
+            continue
+        anchors.append(Anchor("magnitude", m.group(0), m.start(), m.end(), units))
     for m in _DURATION.finditer(span):
         num = int(m.group("paren") or m.group("num"))
         anchors.append(
