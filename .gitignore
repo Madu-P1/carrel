@@ -59,3 +59,10 @@ macos-app/.build/
 macos-app/Resources/app.new.html
 macos-app/Resources/app.new*.html
 macos-app/Resources/assets.new/
+
+# Untracked local cruft that sits in the working tree but is not part of Carrel:
+# a separate ChatGPT app checkout, a stray root-level image, and Forge runtime
+# state (per-run metrics + verdict JSON). None of these belong in the repo.
+/chatgpt-app/
+/man_solo_portrait_final.png
+/.forge/
