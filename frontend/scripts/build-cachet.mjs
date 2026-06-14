@@ -120,12 +120,12 @@ ${safeInline(rewrittenJsSource)}
 if ((bundledHtml.match(/<!doctype html>/gi) ?? []).length !== 1) {
   throw new Error("Cachet bundle: expected exactly one <!doctype html> marker");
 }
-const scriptBlocks = [...bundledHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+const scriptBlocks = [...bundledHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi)];
 if (scriptBlocks.findIndex((m) => /<\/script/i.test(m[1])) !== -1) {
   throw new Error("Cachet bundle: a <script> body contains a </script substring; escape via safeInline().");
 }
 const opens = (bundledHtml.match(/<script\b/gi) ?? []).length;
-const closes = (bundledHtml.match(/<\/script>/gi) ?? []).length;
+const closes = (bundledHtml.match(/<\/script\b[^>]*>/gi) ?? []).length;
 if (opens !== closes) {
   throw new Error(`Cachet bundle: ${opens} <script> opens vs ${closes} closes`);
 }
