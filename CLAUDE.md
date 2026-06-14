@@ -87,7 +87,6 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./script/build_and_run.sh --verify
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
 ./.venv/bin/python -m benchmarks.t1_calibration
-bash /Users/madu/Desktop/Codex/tests/test_watchdog_kill.sh
 swift test --package-path /Users/madu/Desktop/Codex/macos-app
 ```
 
