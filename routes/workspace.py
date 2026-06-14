@@ -8,6 +8,7 @@ import db
 from api_models import GoalRequest, SessionStartRequest, StudyEventRequest
 from app_logging import get_logger, log_event
 from services import graph as graph_service
+from services import revision
 from services import session_engine as session_service
 from services import study as study_service
 from services import workspace as workspace_service
@@ -58,6 +59,11 @@ def health() -> Dict[str, object]:
     return {
         "status": "ok",
         "mode": "local",
+        # The commit this server process BOOTED on (computed once at import, never
+        # per request, so it stays DB-free and <50ms). A long-lived server keeps
+        # running boot-time code after the repo moves, so this is the stale-build
+        # tell: compare it to the repo's live HEAD.
+        "revision": revision.BOOT_COMMIT,
         "paths": {
             "base_dir": str(db.BASE_DIR),
             "db_path": str(db.DB_PATH),

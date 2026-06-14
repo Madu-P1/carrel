@@ -63,6 +63,7 @@ from fastapi import Response
 from fastapi.staticfiles import StaticFiles
 
 import main as backend
+from services import revision as _rev
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "frontend" / "dist"
@@ -93,9 +94,48 @@ _INDEX_HTML = _RAW.replace(
 app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/"]
 
 
+def _stale_overlay() -> str:
+    """A small always-on 'running <commit>' pill, plus a loud banner when the
+    server BOOTED on an older commit than the repo now holds. This is the
+    stale-build guard: a frozen server (the exact failure that made the engine
+    look broken) now announces itself instead of silently serving old code.
+    Computed per '/' request (a cold path, not a hot one) so it reflects the
+    repo's live HEAD against the process's boot commit."""
+    boot = _rev.BOOT_COMMIT
+    head = _rev.current_head()
+    pill = (
+        '<div style="position:fixed;left:8px;bottom:8px;z-index:99998;'
+        "font:11px/1.4 ui-monospace,SFMono-Regular,monospace;color:#8a7f72;"
+        "background:rgba(245,242,237,.88);border:1px solid #d8cfc2;border-radius:6px;"
+        'padding:2px 7px;pointer-events:none">running ' + boot + "</div>"
+    )
+    stale = boot != "unknown" and head != "unknown" and head != boot
+    if not stale:
+        return pill
+    banner = (
+        '<div style="position:fixed;top:0;left:0;right:0;z-index:99999;'
+        "background:#7c1d1d;color:#fff;font:13px/1.5 ui-sans-serif,system-ui;"
+        'text-align:center;padding:7px 12px">'
+        "This server booted on commit "
+        + boot
+        + " but the repo is now at "
+        + head
+        + ". It is serving stale code. Restart it: "
+        '<code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:4px">'
+        "lsof -ti tcp:8000 | xargs kill; python script/serve-cachet.py</code></div>"
+    )
+    return banner + pill
+
+
 @app.get("/")
 def cachet_root() -> Response:
-    return Response(_INDEX_HTML, media_type="text/html")
+    overlay = _stale_overlay()
+    html = (
+        _INDEX_HTML.replace("</body>", overlay + "</body>", 1)
+        if "</body>" in _INDEX_HTML
+        else _INDEX_HTML + overlay
+    )
+    return Response(html, media_type="text/html")
 
 
 # Built JS/CSS (vite emits to dist/assets). Mounted after the /api routes so it
