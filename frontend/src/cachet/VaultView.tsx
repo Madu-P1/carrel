@@ -356,9 +356,20 @@ export function VaultView() {
                 >
                   <span className={styles.sourceRowDot} aria-hidden="true" />
                   <div className={styles.sourceRowMain}>
-                    <span className={styles.sourceRowName} title={doc.filename}>
+                    <button
+                      type="button"
+                      className={styles.sourceRowName}
+                      title={`Open ${doc.filename}`}
+                      onClick={() =>
+                        openExamination({
+                          docId: doc.id,
+                          filename: doc.filename,
+                          fileType: doc.fileType
+                        })
+                      }
+                    >
                       {doc.filename}
-                    </span>
+                    </button>
                     {meta ? <span className={styles.sourceRowMeta}>{meta}</span> : null}
                   </div>
                   <div className={styles.sourceRowActions}>
