@@ -100,8 +100,13 @@ export function WorkspaceSidebar({
       )
     },
     {
+      // "verify" (the V2 verify mode) is surfaced here so the /verify route is
+      // reachable from the rail; navLinks order puts it first in the group. It
+      // predates a dedicated section, which is a later nav-redesign call.
       label: "Tools",
-      items: items.filter((item) => ["search", "concepts", "plan"].includes(item.key))
+      items: items.filter((item) =>
+        ["verify", "search", "concepts", "plan"].includes(item.key)
+      )
     }
   ].filter((section) => section.items.length > 0);
 
