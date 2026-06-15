@@ -127,14 +127,23 @@ def _figure_skeleton(text: str, figures: list[re.Match]) -> str:
     return re.sub(r"[^a-z0-9#]+", " ", "".join(out).lower()).strip()
 
 
-def _canonical_figures(matches: list[re.Match]) -> list[tuple[str, str, float]] | None:
-    """(surface, shape, value) for each figure match, or None if any is uncanonical."""
+def _canonical_figures(matches: list[re.Match]) -> list[tuple[str, str, float]]:
+    """(surface, shape, value) for each canonicalizable figure match.
+
+    SKIPS an uncanonical figure (an ambiguous comma-decimal like "1,2 billion")
+    rather than discarding the whole pass. Bailing on the first such figure meant
+    one comma-decimal disabled the entire altered-figure catch for the sentence:
+    on the BIM slide, "1,2 billion" turned off the catch of a genuinely-altered
+    "60 billion" sitting right beside it. The skipped figure is simply absent from
+    the (shape, value) membership test below, so it is never diffed (consistent
+    with the engine already refusing to adjudicate ambiguous comma-decimals) while
+    every canonicalizable figure is still compared."""
     out: list[tuple[str, str, float]] = []
     for m in matches:
         text = m.group(0).strip()
         value = _figure_value(text)
         if value is None:
-            return None
+            continue
         out.append((text, _figure_shape(text), value))
     return out
 

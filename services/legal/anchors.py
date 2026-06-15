@@ -67,10 +67,13 @@ _MONEY = re.compile(
 # numeric value, the same currency-blind rule `_MONEY` already uses. `_MONEY` is
 # collected first and a magnitude overlapping a money span is dropped in
 # `extract_anchors`, so "$5 billion" stays one money anchor, never also a magnitude.
+# Scale words incl. the abbreviations EU finance/tax decks use ("30 mln", "2 bn",
+# "1,2 mld"). Unambiguous magnitude tokens; the scale word is required so a bare
+# number (a count/identifier) never anchors. Longer/more-specific forms first.
 _MAGNITUDE = re.compile(
     r"(?:(?:EUR|USD|GBP)\s?)?"
     r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
-    r"(?P<scale>billion|million|thousand)\b",
+    r"(?P<scale>billion|million|thousand|mld|bln|mln|bn|mn)\b",
     re.IGNORECASE,
 )
 
@@ -621,8 +624,13 @@ _MONEY_SCALE = {
     "million": 1_000_000,
     "m": 1_000_000,
     "mm": 1_000_000,  # legal/finance notation: $5MM == $5 million
+    "mln": 1_000_000,  # EU finance/tax decks: "30 mln" == 30 million
+    "mn": 1_000_000,
     "billion": 1_000_000_000,
     "b": 1_000_000_000,
+    "bn": 1_000_000_000,
+    "bln": 1_000_000_000,
+    "mld": 1_000_000_000,  # "milliard" == billion (FR/IT/NL decks)
 }
 _DURATION_DAYS = {"year": 365, "month": 30, "week": 7, "day": 1}
 _MONEY_WORD_UNITS = {

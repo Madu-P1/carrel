@@ -1241,5 +1241,68 @@ class AlteredFigureNearCopyTests(unittest.TestCase):
         self.assertEqual("multi_value_unverifiable", v.disposition)
 
 
+class AlteredFigureNearCopyRegressionTests(unittest.TestCase):
+    """The 2026-06-14 mln regression, locked.
+
+    A near-verbatim slide line where ONE figure is altered must read
+    parametric_contradiction naming the altered figure, NOT
+    multi_value_unverifiable — even when the line also carries (a) a second
+    magnitude that MATCHES the source and (b) an ambiguous comma-decimal the
+    engine refuses to canonicalize. The original failure: adding the EU 'mln'
+    abbreviation made the line multi-magnitude, the per-type path refused it as
+    multi-value, and the altered-figure pre-pass had bailed on the comma-decimal
+    '1,2 billion' — so the genuinely-altered '60 billion' silently escaped. The
+    fix makes the pre-pass SKIP an uncanonical figure instead of aborting.
+    """
+
+    def test_one_altered_magnitude_among_a_matching_one_and_a_comma_decimal(self) -> None:
+        # The exact BIM-slide shape: 60->20 billion altered, 300 mln matches, and
+        # the ambiguous "1,2 billion" is present on both sides.
+        claim = (
+            "For Covered Group, 16% - 10%= 6% (60 billion for 6%= 1,2 billion) are extra "
+            "margins, so 300 mln to be allocated to Market States exceeding the threshold"
+        )
+        clause = (
+            "For Covered Group, 16% - 10%= 6% (20 billion for 6%= 1,2 billion) are extra "
+            "margins, so 300 mln to be allocated to Market States exceeding the threshold"
+        )
+        v = verify_claim_against_clause(claim, clause)
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("60 billion", v.detail)
+        self.assertIn("20 billion", v.detail)
+        # The matching 300 mln must NOT be accused, and the verdict must not be a
+        # multi-value refusal that masks the real catch.
+        self.assertNotEqual("multi_value_unverifiable", v.disposition)
+        self.assertNotIn("300", v.detail)
+
+    def test_comma_decimal_alone_does_not_disable_the_altered_figure_catch(self) -> None:
+        # A comma-decimal beside a single altered round magnitude: the catch stands.
+        v = verify_claim_against_clause(
+            "The cap is 5 billion (1,2 billion reserve).",
+            "The cap is 2 billion (1,2 billion reserve).",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("5 billion", v.detail)
+
+    def test_an_exact_reorder_with_a_comma_decimal_is_not_a_contradiction(self) -> None:
+        # Safety: skipping the uncanonical figure must not manufacture a false
+        # catch. Same figures, reordered, with a comma-decimal -> not flagged.
+        v = verify_claim_against_clause(
+            "Tranches of 2 billion and 5 billion (1,2 billion reserve).",
+            "Tranches of 5 billion and 2 billion (1,2 billion reserve).",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_eu_magnitude_abbreviations_are_recognized(self) -> None:
+        # mln/mn/bn/bln/mld canonicalize as magnitudes so a "30 mln" line becomes
+        # checkable (the supported result line beside the flagged ones).
+        from services.legal.anchors import extract_anchors as _ea
+
+        for surface, scaled in (("30 mln", 30_000_000), ("2 bn", 2_000_000_000)):
+            anchors = [a for a in _ea(f"Total is {surface} this year.") if a.type == "magnitude"]
+            self.assertTrue(anchors, f"{surface} should anchor as a magnitude")
+            self.assertEqual(scaled, anchors[0].canonical_value, surface)
+
+
 if __name__ == "__main__":
     unittest.main()
