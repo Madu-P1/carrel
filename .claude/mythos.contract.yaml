@@ -1,0 +1,70 @@
+# Mythos per-project contract — Cachet.
+# Armed 2026-06-15 for an independent fresh-context review of the
+# frontend<->backend seam. Run from a FRESH `claude` session (this branch's
+# session can't spawn mythos's subagents — large screenshots blow the context
+# limit), with:  /mythos --base main
+#
+# Mythos scopes by DIFF (changed files vs base_ref), so it reviews this branch's
+# changes (api_models.py, services/verify.py, the generated wire types, and the
+# frontend verify feature). The UNCHANGED seam files (routes, SSE client, token
+# auth, the serve-cachet delivery path) are added to corpus_paths below so the
+# finder reads them as grounding context and can catch FE<->BE contract drift
+# even where only one side changed.
+
+project:
+  name: "carrel-cachet"
+  root: "."
+
+scope:
+  base_ref: "main"
+  drafts_only: true        # report-only: never write tracked code, never commit/push
+  full_default: false
+  timeout: 600             # seconds per spawned agent
+
+t0:
+  python:
+    # {files} is replaced with the shlex-quoted changed .py files. Absolute venv:
+    # the worktree has no .venv; the canonical interpreter lives in the main checkout.
+    check: "/Users/madu/Desktop/Codex/.venv/bin/python -m ruff check {files} --output-format json"
+  frontend:
+    # lint MUST emit JSON so the engine can parse file:line+ruleId; tsc is parsed from stderr.
+    lint: "corepack pnpm --dir frontend exec eslint . --format json"
+    typecheck: "corepack pnpm --dir frontend typecheck"
+    globs: ["frontend/**/*.{ts,tsx,js,jsx}"]
+
+# Reference context the fresh-context finder reads to ground its findings. The
+# docs carry the conventions; the seam files give it BOTH sides of the
+# frontend<->backend connection so it can spot a wire mismatch the diff alone
+# (which only shows the changed side) would hide.
+corpus_paths:
+  - "CLAUDE.md"
+  - "DESIGN.md"
+  - "docs/adr/"
+  - "docs/notes/"
+  # --- the frontend<->backend seam (the connection under review) ---
+  - "routes/verify.py"                         # POST /api/verify + /stream (SSE)
+  - "services/verify.py"                        # verify_result_to_payload, the wire shape
+  - "api_models.py"                             # VerifyRequest/Response/ClaimVerdictItem (+ flagged_spans)
+  - "services/local_api_security.py"            # the X-Carrel-Local-Token gate
+  - "script/serve-cachet.py"                    # token injection + static serving (the demo delivery)
+  - "frontend/src/services/api/client.ts"       # API_BASE, token resolution, error types
+  - "frontend/src/services/api/streaming.ts"    # the fetch-based SSE consumer
+  - "frontend/src/services/api/endpoints.ts"    # the typed verify client + stream event union
+  - "frontend/src/services/api/types.gen.ts"    # generated wire types (also in generated_globs: read, never flagged)
+  - "frontend/src/features/verify/useVerify.ts" # the stream-consuming engine (error/abort/result handling)
+  - "frontend/src/features/verify/streamProgress.ts" # reduceStreamEvent (error/result state)
+  - "frontend/src/cachet/liveVerify.ts"         # the lectern's persistent verify store
+
+dimensions: [correctness, security, api-contract, perf, design-drift]
+generated_globs: ["**/*.gen.ts", "dist/**", "**/*.lock"]
+
+ledger_dir: ".mythos"               # the engine always writes <root>/.mythos regardless; kept for docs
+accepted_path: ".mythos/accepted.jsonl"
+
+memory:
+  enabled: true
+  kind: "mythos-finding"
+
+# SECURITY: the t0 commands run via a shell; this contract is the operator's security gate.
+# TRUST BOUNDARY (v0): run Mythos only on diffs you trust (your own branch), not hostile
+# third-party PRs, because the contract is read from the working tree.

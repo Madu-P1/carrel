@@ -66,3 +66,6 @@ macos-app/Resources/assets.new/
 /chatgpt-app/
 /man_solo_portrait_final.png
 /.forge/
+
+# Mythos report-only ledger (engine writes here; never committed)
+.mythos/
