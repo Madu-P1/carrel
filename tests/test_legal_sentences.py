@@ -83,5 +83,105 @@ class SplitSentencesTests(unittest.TestCase):
         self.assertEqual(1, len(out))
 
 
+class SlideBulletSegmentationTests(unittest.TestCase):
+    """Property-style coverage for slide / bullet / outline drafts (S1).
+
+    These pin the CURRENT splitter contract on the inputs a lawyer actually
+    pastes from a deck: leading bullet glyphs, leading tabs, blank-line and
+    CRLF runs, and the degenerate single-line paste. They are characterization
+    tests: they assert what the splitter does today so a future change to the
+    segmentation contract has to update them on purpose, not by accident.
+    """
+
+    # The six bullet/list glyphs a slide paste puts at the start of a line.
+    BULLET_GLYPHS = ("•", "-", "*", "◦", "–", "—")
+
+    # A corpus exercised by the invariant properties below. Each entry is a
+    # realistic slide / outline draft; mixed glyphs, tabs, CRLF, and blank-line
+    # runs are all represented so the properties hold across the whole space,
+    # not one happy path.
+    def _corpus(self) -> list[str]:
+        glyph_blocks = [f"{g} First point\n{g} Second point" for g in self.BULLET_GLYPHS]
+        return [
+            *glyph_blocks,
+            "\tFirst point\n\tSecond point",
+            "  \t • Indented bullet\n\t- Tabbed bullet",
+            "Alpha line\r\n\r\nBeta line\r\nGamma line",
+            "Alpha\r\n   \n\nBeta",
+            "Intro line.\n• bullet one\n• bullet two\nClose. Done.",
+            "• one • two • three",
+        ]
+
+    def test_every_segment_is_stripped_and_nonempty(self) -> None:
+        # No returned sentence carries edge whitespace or is empty. An empty or
+        # padded segment would mis-align and pollute the coverage denominator.
+        for draft in self._corpus():
+            for seg in split_sentences(draft):
+                self.assertTrue(seg, f"empty segment from {draft!r}")
+                self.assertEqual(seg, seg.strip(), f"unstripped segment from {draft!r}")
+
+    def test_no_segment_carries_a_line_break(self) -> None:
+        # Line breaks are segment boundaries, so no boundary character may
+        # survive inside a returned sentence.
+        for draft in self._corpus():
+            for seg in split_sentences(draft):
+                self.assertNotIn("\n", seg, f"newline survived in segment from {draft!r}")
+                self.assertNotIn("\r", seg, f"carriage return survived from {draft!r}")
+
+    def test_every_segment_is_a_substring_of_the_draft(self) -> None:
+        # The alignment layer (services.legal.align) relies on each returned
+        # sentence being a verbatim, whitespace-collapsed substring of the draft
+        # so it can place every line back in the document. Pin that invariant.
+        for draft in self._corpus():
+            for seg in split_sentences(draft):
+                self.assertIn(seg, draft, f"segment {seg!r} is not a substring of {draft!r}")
+
+    def test_leading_bullet_glyph_is_preserved_one_segment_per_line(self) -> None:
+        # A bullet glyph at the start of a line is NOT whitespace: it stays on
+        # the segment. Each bullet line becomes exactly one sentence, with the
+        # glyph intact, for every glyph variant.
+        for glyph in self.BULLET_GLYPHS:
+            draft = f"{glyph} First point\n{glyph} Second point\n{glyph} Third point"
+            self.assertEqual(
+                [f"{glyph} First point", f"{glyph} Second point", f"{glyph} Third point"],
+                split_sentences(draft),
+                f"glyph {glyph!r}",
+            )
+
+    def test_leading_tabs_are_stripped(self) -> None:
+        # Tabs ARE whitespace, so a leading tab is removed (unlike a bullet
+        # glyph). A tab does not itself split a line; only \r and \n do.
+        self.assertEqual(
+            ["First point", "Second point"],
+            split_sentences("\tFirst point\n\t\tSecond point"),
+        )
+        # A tab between two fragments on a single line is preserved (it is
+        # neither a line boundary nor edge whitespace) and yields one segment.
+        self.assertEqual(["First\tSecond"], split_sentences("First\tSecond"))
+
+    def test_blank_line_and_crlf_runs_yield_one_segment_per_content_line(self) -> None:
+        # Runs of blank lines and CRLF pairs collapse: the segment count equals
+        # the number of non-blank physical lines, with no empty segments.
+        draft = "Alpha\r\n\r\n\nBeta\n   \n\tGamma\r\n"
+        self.assertEqual(["Alpha", "Beta", "Gamma"], split_sentences(draft))
+
+    def test_single_line_slide_paste_is_the_known_limitation(self) -> None:
+        # KNOWN LIMITATION: when a slide paste arrives as one physical line with
+        # no terminal punctuation, there is no boundary to split on, so the whole
+        # line collapses to ONE segment even though it reads as three bullets.
+        # Splitting mid-line on a bullet glyph is not done because a leading "-"
+        # is ambiguous with a hyphenated phrase and a "*" with emphasis; only a
+        # hard line break is treated as an authoritative boundary. Pin the
+        # collapse so a future intra-line bullet splitter is a deliberate change.
+        draft = "• First point • Second point • Third point"
+        self.assertEqual([draft], split_sentences(draft))
+        # The same content WITH newlines does segment, confirming the limitation
+        # is specifically the missing line break, not the glyph.
+        self.assertEqual(
+            ["• First point", "• Second point", "• Third point"],
+            split_sentences("• First point\n• Second point\n• Third point"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
