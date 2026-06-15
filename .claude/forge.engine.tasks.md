@@ -23,6 +23,12 @@ additive, and independently shippable as one draft (the contract is
 
 ## P0 — Demo readiness (the BIM-slide / Wedge-2 hero path)
 
+### D1 — DONE (92713c1df, 2026-06-15) — EU magnitude abbreviations, no catch regression
+- Shipped: mln/mn/bn/bln/mld recognized; `_canonical_figures` skips uncanonical
+  comma-decimals so the altered-figure pre-pass fires on multi-figure lines.
+  Live BIM: total=3, verified=1 (Result line), unsupported=2 (60bn + 20% France).
+  Regression guard in test_contract_verify.AlteredFigureNearCopyRegressionTests.
+- Original spec below (kept for the record):
 ### D1 — [REVIEW] Recognize EU-finance magnitude abbreviations WITHOUT regressing the figure catch
 - Deps: none. Touches `anchors.py` + `contract_verify.py` (truth surfaces).
 - Why: `mln`/`mn`/`bn`/`bln`/`mld` are standard in EU tax/finance decks (the BIM
@@ -46,7 +52,18 @@ additive, and independently shippable as one draft (the contract is
     `test_deterministic_envelope` stays green unchanged. Zero-egress holds.
 - Note: REVIEW-gated. Do not re-ship without the regression guard above.
 
-### D2 — [REVIEW] Stop conflicting-clauses over-refusal on distinct-fact figures
+### D2 — [REVIEW, STAGED 2026-06-15] Stop conflicting-clauses over-refusal on distinct-fact figures
+- ANALYSIS (2026-06-15): reproduced. A clean "Allocation key: …10% France…" line
+  reads could-not-check because retrieval also pulls an unrelated "16% profitability
+  threshold" clause; that clause yields a spurious percent contradiction (10% vs
+  16%) alongside the true clause's present (10%), and the adjudicator's rule 1
+  refuses (conflicting_clauses) rather than take the present. The refusal is the
+  DELIBERATE guard against false-greening an amended-contract conflict (the worst
+  failure class), so a correct fix needs subject/section topicality on the
+  contradiction (only conflict when the two clauses concern the SAME subject), not
+  a blanket "prefer present". Real work + real false-green risk. NOT demo-critical:
+  D1 already gives acceptance on the tampered slide. Do supervised with both-
+  direction fixtures (clean line passes; a real amended-value conflict still refuses).
 - Deps: none. Touches `contract_verify.py` (adjudicator).
 - Why: a CLEAN "Allocation key: turnover (10% Italy, 10% France …)" line reads
   could-not-check because retrieval also pulls bullet 1's "16%" and the
