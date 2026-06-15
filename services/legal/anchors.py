@@ -45,6 +45,14 @@ class Anchor:
     start: int
     end: int
     canonical_value: object | None = None
+    # The subject a parametric anchor is ABOUT (the "France" of "10% France"),
+    # bound only on an unambiguous percent->proper-noun adjacency (_percent_subject);
+    # None otherwise. Used by contract_verify as a same-subject COMPARISON KEY so
+    # "10% France" never compares to "16% profitability" (different subjects are
+    # different facts, not a conflict). Conservative by construction: an unbindable
+    # percent stays subject-less and uses the value-only path, so a mis-bind can
+    # only cost a catch (could-not-check), never manufacture a verdict.
+    subject: str | None = None
 
 
 _SLIP_OP = re.compile(r"\bNo\.\s+\d{1,4}-\d{1,6}\b|\bslip\s+op\.", re.IGNORECASE)
@@ -618,6 +626,21 @@ _PERCENT_RANGE_BEFORE = re.compile(
     re.IGNORECASE,
 )
 
+# A percent's subject, bound ONLY on an unambiguous adjacency: the percent
+# immediately followed by a single proper-noun token ("10% France", "10% Italy").
+# Case-sensitive on purpose (requires a leading capital), so "10% ordinary",
+# "10%= 6%", "10% - level" bind nothing. Deliberately narrow: a percent carries a
+# subject only when the text makes it obvious. The follower must be a standalone
+# word (a word boundary after), so it does not grab the head of a longer phrase.
+_PERCENT_SUBJECT = re.compile(r"\s+([A-Z][A-Za-z]{2,})\b")
+
+
+def _percent_subject(span: str, end: int) -> str | None:
+    """The proper-noun subject immediately following a percent at ``end``, or None."""
+    m = _PERCENT_SUBJECT.match(span, end)
+    return m.group(1) if m else None
+
+
 _MONEY_SCALE = {
     "thousand": 1_000,
     "k": 1_000,
@@ -874,6 +897,7 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
                 m.start(),
                 m.end(),
                 _percent_bps(m.group("num"), m.group("unit")),
+                subject=_percent_subject(span, m.end()),
             )
         )
     for m in _SECTION.finditer(span):

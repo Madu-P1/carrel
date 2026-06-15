@@ -1304,5 +1304,70 @@ class AlteredFigureNearCopyRegressionTests(unittest.TestCase):
             self.assertEqual(scaled, anchors[0].canonical_value, surface)
 
 
+class SubjectBoundPercentTests(unittest.TestCase):
+    """D2/D3: percents compared by SUBJECT, not bare value.
+
+    D3 — a same-subject percent mismatch is a contradiction ("20% France" vs
+    source "10% France"). D2 — a different-subject percent is NOT a conflict
+    ("10% France" vs "16% profitability"), so a clean allocation line is not
+    refused just because an unrelated clause carries a different rate. Mis-binding
+    fails toward could-not-check, never a green or a false accusation.
+    """
+
+    def test_same_subject_mismatch_is_a_contradiction(self) -> None:  # D3
+        v = verify_claim_against_clause(
+            "Allocation key is 20% France.",
+            "Allocation key is 10% France.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("20%", v.detail)
+        self.assertIn("France", v.detail)
+        self.assertIn("10%", v.detail)
+
+    def test_different_subject_percent_is_not_a_contradiction(self) -> None:  # D2
+        # The over-refusal case: a clean France rate vs an unrelated profitability
+        # rate. Different subjects are different facts -> never a contradiction.
+        v = verify_claim_against_clause(
+            "Allocation key is 10% France.",
+            "Amount A applies above a 16% ordinary level of profitability.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_same_subject_match_is_present(self) -> None:  # D2 acceptance
+        v = verify_claim_against_clause(
+            "Allocation key is 10% France.",
+            "Allocation key: turnover (10% Italy, 10% France, 10% Spain, 10% Germany).",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_subjectless_percents_still_contradict_by_value(self) -> None:
+        # No proper-noun subject on either side -> the value-only path is unchanged,
+        # so a bare rate mismatch is still caught (no regression).
+        v = verify_claim_against_clause(
+            "The ordinary level is 10%.",
+            "The ordinary level is 20%.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_misbound_subject_fails_to_could_not_check_not_a_false_accusation(self) -> None:
+        # A spuriously-bound subject the clause is silent on must read could-not-check
+        # (not_found), never a contradiction. Mis-binding costs recall, never a green
+        # or a false flag (the council's hard line).
+        v = verify_claim_against_clause(
+            "Growth reached 10% Henceforth.",
+            "The threshold is a 16% ordinary level.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_amended_same_subject_conflict_still_flags(self) -> None:
+        # The guard the conflicting-clauses rule protects: a SAME-subject value
+        # change (an amended figure) must still contradict, not slip through.
+        v = verify_claim_against_clause(
+            "The Acme royalty is 12% Acme.",
+            "The Acme royalty is 8% Acme.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -543,6 +543,79 @@ def _polarity_pass(
     return contradiction, multi, present, not_found
 
 
+def _normalize_subject(s: str) -> str:
+    return s.strip().lower()
+
+
+def _subject_aware_percent(
+    claim_hits: list[Anchor], clause_hits: list[Anchor], where: str
+) -> ClauseVerdict | None:
+    """Compare percents by SUBJECT, not by bare value (D2/D3).
+
+    Returns a ClauseVerdict only when the claim's percents carry subjects (the
+    "France" of "10% France"); otherwise None, so the value-only path runs
+    unchanged for subject-less percents (no regression).
+
+    A claim percent is compared ONLY to a clause percent about the SAME (normalized)
+    subject, so "10% France" never conflicts with "16% profitability" — different
+    subjects are different facts, not a contradiction (D2). A same-subject value
+    mismatch IS a contradiction ("20% France" vs source "10% France", D3). Fails
+    toward could-not-check: a claim subject the clause is silent on is not_found,
+    never a contradiction, so a mis-bound subject costs a catch, never a green
+    (the council's hard line). It is a comparison key, not a topicality gate: it
+    does not suppress a standing contradiction, it prevents an apples-to-oranges one.
+    """
+    claim_subj: dict[str, Anchor] = {}
+    for a in claim_hits:
+        if a.subject is not None:
+            claim_subj.setdefault(_normalize_subject(a.subject), a)
+    if not claim_subj:
+        return None  # no subjects on the claim side -> value-only path
+    clause_subj: dict[str, Anchor] = {}
+    for a in clause_hits:
+        if a.subject is not None:
+            clause_subj.setdefault(_normalize_subject(a.subject), a)
+    # Same-subject value mismatch is the only contradiction this path may raise.
+    for subj, ca in claim_subj.items():
+        cl = clause_subj.get(subj)
+        if cl is not None and ca.canonical_value != cl.canonical_value:
+            return ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states {ca.text} for {ca.subject}; {where} states {cl.text}.",
+                "percent",
+                (ca.canonical_value,),
+                (cl.canonical_value,),
+                claim_span=ca.text,
+                clause_span=cl.text,
+                where=where,
+            )
+    matched = [s for s in claim_subj if s in clause_subj]
+    if matched:
+        # Every shared subject agreed (no mismatch returned above): present.
+        ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
+        return ClauseVerdict(
+            "present",
+            _present_detail(ca, cl, where),
+            "percent",
+            tuple(claim_subj[s].canonical_value for s in matched),
+            tuple(clause_subj[s].canonical_value for s in matched),
+            claim_span=ca.text,
+            clause_span=cl.text,
+        )
+    # The claim's percents are subject-bound but this clause is silent on every one
+    # of those subjects: it does not state these facts, so it is not_found here, not
+    # a contradiction. The adjudicator then lets a clause that DOES carry the subject
+    # (a present) win, instead of refusing on a cross-subject conflict.
+    first = next(iter(claim_subj.values()))
+    return ClauseVerdict(
+        "not_found",
+        f"The summary states {first.text} for {first.subject}, which {where} does not state.",
+        "percent",
+        tuple(a.canonical_value for a in claim_subj.values()),
+        (),
+    )
+
+
 def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     """Decide whether ``claim`` is supported, contradicted, or unfound vs ``clause``.
 
@@ -596,6 +669,20 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         # different values trigger the multi-value refusal below.
         claim_values = tuple(dict.fromkeys(a.canonical_value for a in claim_hits))
         clause_values = tuple(dict.fromkeys(a.canonical_value for a in clause_hits))
+        # D2/D3: percents that carry a subject are compared by subject, not by bare
+        # value, BEFORE the value-only gates below (which would otherwise multi-value
+        # or cross-subject-contradict). Subject-less percents return None here and
+        # fall through to the unchanged value-only path.
+        if anchor_type == "percent":
+            sa = _subject_aware_percent(claim_hits, clause_hits, where)
+            if sa is not None:
+                if sa.disposition == "parametric_contradiction":
+                    return sa
+                if sa.disposition == "present":
+                    present_verdict = present_verdict or sa
+                else:
+                    not_found_verdict = not_found_verdict or sa
+                continue
         if not clause_hits:
             if not_found_verdict is None:
                 not_found_verdict = ClauseVerdict(
