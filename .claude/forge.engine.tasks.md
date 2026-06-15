@@ -52,6 +52,12 @@ additive, and independently shippable as one draft (the contract is
     `test_deterministic_envelope` stays green unchanged. Zero-egress holds.
 - Note: REVIEW-gated. Do not re-ship without the regression guard above.
 
+### D2 — DONE (5ebd96ba1, 2026-06-15, supervised + council) — solved via subject-bound percents
+- Shipped together with D3 as ONE principled change (council verdict: subject-binding
+  as a comparison KEY, not a topicality gate, so it does not weaken the
+  conflicting-clauses guard). A clean "10% France" line no longer conflicts with an
+  unrelated "16% profitability" clause. Live BIM: clean allocation line now VERIFIED.
+- Original spec below.
 ### D2 — [REVIEW, STAGED 2026-06-15] Stop conflicting-clauses over-refusal on distinct-fact figures
 - ANALYSIS (2026-06-15): reproduced. A clean "Allocation key: …10% France…" line
   reads could-not-check because retrieval also pulls an unrelated "16% profitability
@@ -79,6 +85,12 @@ additive, and independently shippable as one draft (the contract is
     still refuse with both clauses named — pin them. Honesty-over-coverage holds.
   - Fixtures both directions. Zero-egress holds.
 
+### D3 — DONE (5ebd96ba1, 2026-06-15, supervised + council) — percent subject binding
+- Shipped with D2. anchors.py percents carry an optional subject (conservative
+  proper-noun adjacency); contract_verify._subject_aware_percent makes a
+  same-subject value mismatch a direct contradiction ("20% France" vs "10% France"),
+  more general than the near-verbatim figure pre-pass. Fixtures both directions;
+  mis-bind fails to could-not-check. Original spec below.
 ### D3 — [REVIEW] Percent-anchor subject binding ("20% France" vs source "10% France")
 - Deps: none. Touches `anchors.py` / `contract_verify.py`.
 - Why: a direct percent→subject binding is a stronger, more general catch than the
