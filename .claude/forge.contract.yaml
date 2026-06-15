@@ -9,7 +9,7 @@ project:
 verify:
   commands:
     - name: "engine-suites"
-      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_contract_verify tests.test_contract_verify_integration tests.test_deterministic_envelope tests.test_quote_check tests.test_anchors tests.test_citations_eyecite tests.test_local_caselaw"
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_contract_verify tests.test_contract_verify_integration tests.test_deterministic_envelope tests.test_quote_check tests.test_anchors tests.test_citations_eyecite tests.test_local_caselaw tests.test_legal_sentences tests.test_verify tests.test_verify_stream"
       pass_when: "exit_zero"
     - name: "ruff-check"
       run: "/Users/madu/Desktop/Codex/.venv/bin/python -m ruff check services/legal services/verify.py tests"
