@@ -92,17 +92,26 @@ export function checksFor(card: VerifyClaimVerdict): CheckRow[] {
           ? "flag"
           : "unknown";
 
+  // The engine's own per-claim reason is the honest, specific finding (e.g. "The
+  // summary states 60 billion; the loaded source states 20 billion"). Prefer it
+  // over the blanket strings so a contradiction reads as the contradiction it is,
+  // not "nothing supports this statement" — which is flatly wrong for a sentence
+  // that is verbatim except one altered figure. Falls back to the generic copy
+  // only when the engine attached no reason.
+  const reason = (card.unsupported_reason ?? "").trim() || null;
+  const groundedDetail =
+    grounded === "pass"
+      ? reason ?? "A loaded source supports this statement."
+      : grounded === "flag"
+        ? reason ?? "The loaded sources do not support this statement as written."
+        : "Not checked against loaded sources.";
+
   return [
     {
       name: "Grounded in your sources",
       weight: "Deterministic",
       state: grounded,
-      detail:
-        grounded === "pass"
-          ? "A loaded source supports this statement."
-          : grounded === "flag"
-            ? "Nothing in the loaded sources supports this statement."
-            : "Not checked against loaded sources."
+      detail: groundedDetail
     },
     {
       name: "Cited case exists",

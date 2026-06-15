@@ -72,6 +72,65 @@ const ambiguousCiteClaim = {
   placement: { placed: true, method: "exact", char_start: 0, char_end: 10 }
 };
 
+describe("VerifyResults — acceptance and refusal both visible on a segmented draft", () => {
+  // The demo failure: a slide pasted as one blob verified as ONE claim, so the
+  // surface only ever showed the refusal and never a supported statement beside
+  // it. With the draft segmented per bullet (services.legal.sentences), the same
+  // case study is three statements: two altered figures flag, the untampered
+  // result line is supported. This locks the council ruling — the refusal lands
+  // because acceptance is visible next to it, as a count, no green badge.
+  function segmentedEngine(): VerifyEngine {
+    const claims = [
+      {
+        claim_index: 0,
+        claim_text: "For Covered Group, 6% (60 billion for 6%= 1,2 billion) are extra margins.",
+        verdict: "unsupported",
+        citations: [],
+        case_verdicts: [],
+        unsupported_reason: "The summary states 60 billion; the loaded source states 20 billion.",
+        placement: null
+      },
+      {
+        claim_index: 1,
+        claim_text: "Allocation key: turnover (10% Italy, 20% France, 10% Spain, 10% Germany).",
+        verdict: "unsupported",
+        citations: [],
+        case_verdicts: [],
+        unsupported_reason: "The summary states 20% for France; the loaded source states 10%.",
+        placement: null
+      },
+      {
+        claim_index: 2,
+        claim_text: "Result: 30 mln Amount A taxable in Italy, France, Spain, Germany.",
+        verdict: "verified",
+        citations: [],
+        case_verdicts: [],
+        unsupported_reason: "Present in your sources, in the allocation result line.",
+        placement: null
+      }
+    ];
+    const base = engineWith(claims);
+    return {
+      ...base,
+      response: base.response
+        ? { ...base.response, coverage: { statements: 3, treated: 3, untreated: 0 } }
+        : null
+    };
+  }
+
+  it("shows the flagged count AND the supported count side by side", () => {
+    render(<VerifyResults engine={segmentedEngine()} draft="" />);
+    // Refusal: the problem headline counts only the two altered figures.
+    expect(screen.getByText("2 of 3 statements need your review.")).toBeTruthy();
+    // Acceptance, as a count, beside the refusal — the whole point.
+    const summary = screen.getByRole("status");
+    expect(within(summary).getByText("Supported")).toBeTruthy();
+    expect(within(summary).getByText("Unsupported")).toBeTruthy();
+    // No "All N supported" green headline, no percentage: a finding, not a score.
+    expect(screen.queryByText(/All \d+ statements are supported/)).toBeNull();
+  });
+});
+
 describe("VerifyResults mid-stream error (invariant #6)", () => {
   // A live stream that errored after one of two cite checks landed. The
   // skeleton cards carry verdict "verified" with no case verdicts, so any

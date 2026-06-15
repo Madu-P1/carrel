@@ -76,6 +76,12 @@ class VerifyClaimVerdict:
     assessed_confidence: float | None = None
     assessed_model: str | None = None
     assessed_label: str | None = None
+    # The exact verbatim draft substrings that contradicted the source (e.g. the
+    # altered figure "60 billion"). Each is a literal substring of claim_text, so
+    # the document view can underline the precise changed token inside the flagged
+    # statement rather than only marking the whole sentence. Empty unless this
+    # claim is a parametric contradiction carrying a verbatim span.
+    flagged_spans: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -267,6 +273,39 @@ def _corpus_scope_phrase(case: Dict[str, Any]) -> str:
     return f" (a {count}-case {scope} corpus, as of {as_of})"
 
 
+def _flagged_spans_from_contract(
+    text: str, contract_verdict: Dict[str, Any] | None
+) -> tuple[str, ...]:
+    """Verbatim draft substrings to underline inside a flagged statement.
+
+    Only a parametric contradiction yields token highlights. The altered-figure
+    pre-pass carries the matched draft figure verbatim in ``claim_span`` and in
+    ``claim_values``; the per-type parametric path carries CANONICAL values
+    (normalized, e.g. ``20`` for "20%"), which usually do not appear verbatim. We
+    therefore keep only candidates that are non-empty literal substrings of the
+    claim text, deduped in order. A canonical-only contradiction simply yields no
+    token span (the renderer still marks the whole sentence), so a highlight is
+    never placed on text the engine did not actually flag.
+    """
+    if not contract_verdict or contract_verdict.get("disposition") != "parametric_contradiction":
+        return ()
+    candidates: list[str] = []
+    span = contract_verdict.get("claim_span")
+    if isinstance(span, str):
+        candidates.append(span)
+    for value in contract_verdict.get("claim_values") or ():
+        if isinstance(value, str):
+            candidates.append(value)
+    seen: set[str] = set()
+    out: list[str] = []
+    for candidate in candidates:
+        cleaned = candidate.strip()
+        if cleaned and cleaned in text and cleaned not in seen:
+            seen.add(cleaned)
+            out.append(cleaned)
+    return tuple(out)
+
+
 def _claim_dict_to_verdict(
     claim_dict: Dict[str, Any],
     index: int,
@@ -364,6 +403,12 @@ def _claim_dict_to_verdict(
         assessed_confidence = t1_assessment.get("confidence")
         assessed_model = t1_assessment.get("model")
         assessed_label = t1_assessment.get("label")
+    # Token highlights: only on a confirmed unsupported parametric contradiction,
+    # and only the verbatim spans that occur in the claim text (never a canonical
+    # value that would mis-highlight). Empty for every other disposition.
+    flagged_spans = (
+        _flagged_spans_from_contract(text, contract_verdict) if verdict == "unsupported" else ()
+    )
     return VerifyClaimVerdict(
         claim_index=index,
         claim_text=text,
@@ -375,6 +420,7 @@ def _claim_dict_to_verdict(
         assessed_confidence=assessed_confidence,
         assessed_model=assessed_model,
         assessed_label=assessed_label,
+        flagged_spans=flagged_spans,
     )
 
 
@@ -694,6 +740,7 @@ def _verdict_card_to_dict(verdict: VerifyClaimVerdict) -> Dict[str, Any]:
         "assessed_confidence": verdict.assessed_confidence,
         "assessed_model": verdict.assessed_model,
         "assessed_label": verdict.assessed_label,
+        "flagged_spans": list(verdict.flagged_spans),
     }
 
 

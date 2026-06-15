@@ -492,5 +492,76 @@ class VerifyRouteSmokeTests(unittest.TestCase):
                 self.assertEqual(expected, _deterministic_surface_default(), f"value={value!r}")
 
 
+class FlaggedSpansTests(unittest.TestCase):
+    """The exact-token highlight: verbatim contradicted spans on the wire.
+
+    A flagged statement must carry the precise altered figure(s) it contradicts,
+    as literal substrings of the claim text, so the document view can underline
+    the changed token. A canonical-only value (not present verbatim) must never
+    ride along, or the UI would mis-highlight.
+    """
+
+    def _verdict(self, text, contract_verdict):
+        return verify_service._claim_dict_to_verdict(
+            {
+                "text": text,
+                "citations": [],
+                "case_verdicts": [],
+                "contract_verdict": contract_verdict,
+            },
+            0,
+        )
+
+    def test_verbatim_figure_contradiction_carries_the_altered_span(self) -> None:
+        text = "For Covered Group, 6% (60 billion for 6%= 1,2 billion) are extra margins."
+        card = self._verdict(
+            text,
+            {
+                "disposition": "parametric_contradiction",
+                "detail": "The summary states 60 billion; the loaded source states 20 billion.",
+                "anchor_type": "figure",
+                "claim_values": ["60 billion"],
+                "clause_values": ["20 billion"],
+                "claim_span": "60 billion",
+            },
+        )
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("60 billion", card.flagged_spans)
+        # Every flagged span must be a literal substring of the claim text.
+        for span in card.flagged_spans:
+            self.assertIn(span, text)
+
+    def test_canonical_only_value_yields_no_token_span(self) -> None:
+        text = "Allocation key: turnover (10% Italy, 20% France, 10% Spain)."
+        card = self._verdict(
+            text,
+            {
+                "disposition": "parametric_contradiction",
+                "detail": "The percent values cannot be aligned.",
+                "anchor_type": "percent",
+                "claim_values": ["0.2"],  # canonical, not the verbatim "20%"
+                "clause_values": ["0.1"],
+                "claim_span": None,
+            },
+        )
+        self.assertEqual("unsupported", card.verdict)
+        self.assertEqual((), card.flagged_spans)
+
+    def test_present_verdict_carries_no_flagged_spans(self) -> None:
+        card = self._verdict(
+            "The cap is $1M.",
+            {
+                "disposition": "present",
+                "detail": "Present in your sources.",
+                "anchor_type": "money",
+                "claim_values": ["$1M"],
+                "clause_values": ["$1M"],
+                "claim_span": None,
+            },
+        )
+        self.assertEqual("verified", card.verdict)
+        self.assertEqual((), card.flagged_spans)
+
+
 if __name__ == "__main__":
     unittest.main()

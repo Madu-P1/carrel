@@ -339,6 +339,14 @@ class VerifyClaimVerdictItem(BaseModel):
     assessed_confidence: Optional[float] = Field(default=None, ge=0, le=100)
     assessed_model: Optional[str] = None
     assessed_label: Optional[str] = None
+    # The exact verbatim draft substrings the engine found in contradiction with
+    # the source (e.g. the altered figure "60 billion"), so the document view can
+    # underline the precise changed token inside the flagged statement instead of
+    # only marking the whole sentence. Each entry is a literal substring of
+    # `claim_text`; the renderer highlights only spans it can locate, so a
+    # canonical-but-not-verbatim value simply yields no token highlight (never a
+    # wrong one). Empty for everything except a parametric contradiction.
+    flagged_spans: List[str] = Field(default_factory=list)
 
 
 class VerifySummaryItem(BaseModel):

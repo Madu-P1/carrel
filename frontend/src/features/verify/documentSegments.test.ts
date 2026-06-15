@@ -3,11 +3,40 @@ import { describe, expect, it } from "vitest";
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
 import {
+  highlightRuns,
   paragraphsFromSegments,
   segmentDraft,
   type ClaimSegment,
   type DocumentSegment
 } from "./documentSegments";
+
+describe("highlightRuns — exact-token highlight inside a flagged statement", () => {
+  it("marks a verbatim flagged span and leaves the rest plain", () => {
+    const runs = highlightRuns("60 billion for 6%", ["60 billion"]);
+    expect(runs).toEqual([
+      { text: "60 billion", flagged: true },
+      { text: " for 6%", flagged: false }
+    ]);
+  });
+
+  it("never marks a span that is not literally present (canonical-value safety)", () => {
+    // The per-type parametric path carries canonical values; a span absent from
+    // the text must NOT highlight anything (no mis-highlight on a near miss).
+    const safe = highlightRuns("turnover 20% France", ["0.2"]);
+    expect(safe).toEqual([{ text: "turnover 20% France", flagged: false }]);
+  });
+
+  it("longest match wins and runs never overlap or lose text", () => {
+    const text = "the cap is 20% not 20% per year";
+    const runs = highlightRuns(text, ["20%", "20% per year"]);
+    expect(runs.map((r) => r.text).join("")).toBe(text);
+    expect(runs.find((r) => r.text === "20% per year")?.flagged).toBe(true);
+  });
+
+  it("returns a single unflagged run when there are no spans", () => {
+    expect(highlightRuns("plain text", [])).toEqual([{ text: "plain text", flagged: false }]);
+  });
+});
 
 // Build a claim verdict with a placement. verdict drives the disposition tier:
 // "verified" + no case flags -> pass (unmarked); "unsupported" -> flag; etc.

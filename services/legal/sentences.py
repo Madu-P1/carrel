@@ -71,7 +71,36 @@ _BOUNDARY = re.compile(r"[.!?]+(\s+)(?=[\"'(\[]?[A-Z0-9])")
 
 
 def split_sentences(text: str) -> list[str]:
-    """Split ``text`` into sentences without breaking legal abbreviations."""
+    """Split ``text`` into sentences without breaking legal abbreviations.
+
+    Hard line boundaries are sentence boundaries too. Drafts pasted from slide
+    decks, bullet lists, or outline-style notes routinely carry NO terminal
+    punctuation, so a ``[.!?]``-only split collapses an entire multi-bullet
+    draft into ONE giant "sentence". Downstream (the deterministic verify
+    envelope) that means a single altered figure flags the whole draft as one
+    claim, the examination drawer reads "nothing supports this statement", the
+    per-claim surface has no span to point at, and no supported statement is
+    ever surfaced beside the flagged one. Splitting on newlines first restores
+    the unit a reader actually reasons about (one line / one bullet); each line
+    is then sentence-split exactly as before. Single-line input is unchanged
+    (no newline -> one line -> byte-identical to the prior behavior), and the
+    per-line trim keeps each returned sentence a whitespace-collapsed substring
+    of the draft, so claim-to-draft alignment (services.legal.align) still
+    places every line.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    sentences: list[str] = []
+    for line in re.split(r"[\r\n]+", text):
+        line = line.strip()
+        if line:
+            sentences.extend(_split_line_sentences(line))
+    return sentences
+
+
+def _split_line_sentences(text: str) -> list[str]:
+    """Split a single physical line into sentences (the legal-aware core)."""
     text = text.strip()
     if not text:
         return []

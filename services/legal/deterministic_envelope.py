@@ -698,6 +698,11 @@ def _contract_claim(
             "anchor_type": verdict.anchor_type,
             "claim_values": list(verdict.claim_values),
             "clause_values": list(verdict.clause_values),
+            # The verbatim draft figure the altered-figure pre-pass matched (e.g.
+            # "60 billion"), so the verifier can surface it as a token highlight
+            # inside the flagged statement. None on the per-type parametric path,
+            # whose values are canonical, not verbatim. Server-internal otherwise.
+            "claim_span": verdict.claim_span,
             "section": section,
             # D1: the matched clause text, server-internal (the contract_verdict is
             # not serialized to the wire). It seeds the brief-level quote pool so a

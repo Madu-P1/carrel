@@ -42,6 +42,35 @@ class SplitSentencesTests(unittest.TestCase):
             split_sentences("I think so. The next point is separate."),
         )
 
+    def test_newlines_split_punctuation_free_slide_text(self) -> None:
+        # Slide / bullet drafts carry no terminal punctuation. A [.!?]-only split
+        # would collapse the whole draft into ONE sentence, which is the root cause
+        # of the verify surface flagging the whole draft as a single claim. Hard
+        # line boundaries must split it into the three bullets the reader sees.
+        draft = (
+            "For Covered Group, 16% - 10%= 6% (60 billion for 6%= 1,2 billion) are "
+            "extra margins to be partially allocated to Market States based on a 25% "
+            "Formula: so, 300 mln to be allocated to Market States exceeding the threshold\n"
+            "Allocation key: turnover (10% Italy, 20% France, 10% Spain, 10% Germany)\n"
+            "Result: 30 mln Amount A taxable in Italy, 30 mln Amount A taxable in France"
+        )
+        out = split_sentences(draft)
+        self.assertEqual(3, len(out))
+        self.assertTrue(out[1].startswith("Allocation key:"))
+        self.assertTrue(out[2].startswith("Result:"))
+
+    def test_blank_lines_and_crlf_do_not_yield_empty_sentences(self) -> None:
+        # \r\n and runs of blank lines must collapse, never emit an empty segment
+        # (an empty claim would mis-align and pollute the coverage denominator).
+        out = split_sentences("First line\r\n\r\n\nSecond line\n   \nThird line")
+        self.assertEqual(["First line", "Second line", "Third line"], out)
+
+    def test_multi_sentence_line_still_splits_within_the_line(self) -> None:
+        # Newline splitting is additive: a line carrying real terminal punctuation
+        # is still sentence-split within the line, so prose drafts are unchanged.
+        out = split_sentences("First point. Second point.\nA third on its own line.")
+        self.assertEqual(["First point.", "Second point.", "A third on its own line."], out)
+
     def test_quoted_holding_keeps_its_following_citation(self) -> None:
         # A quoted holding ("...unequal.") followed by its citation is ONE sentence,
         # not two: the closing-quote boundary must not sever a holding from the cite

@@ -105,6 +105,53 @@ describe("checksFor — holding match (assistive register)", () => {
   });
 });
 
+describe("checksFor — grounded reflects the engine's actual finding", () => {
+  // A contract claim carries no cases; its grounding verdict + reason ride the
+  // top-line verdict + unsupported_reason. The drawer must surface that specific
+  // reason, never the blanket "Nothing in the loaded sources supports this
+  // statement" — which is flatly wrong for a sentence that is verbatim except one
+  // altered figure (the reported demo failure).
+  function contractCard(
+    verdict: "verified" | "unsupported" | "unknown",
+    reason: string | null
+  ): VerifyClaimVerdict {
+    return {
+      claim_index: 0,
+      claim_text: "Allocation key: turnover (10% Italy, 20% France, 10% Spain, 10% Germany)",
+      verdict,
+      citations: [],
+      case_verdicts: [],
+      unsupported_reason: reason
+    } as unknown as VerifyClaimVerdict;
+  }
+
+  it("a flagged contract claim shows the specific contradiction, not the blanket lie", () => {
+    const c = contractCard(
+      "unsupported",
+      "The summary states 20% for France; the loaded source states 10%."
+    );
+    const row = rowByName(c, "Grounded in your sources");
+    expect(row.state).toBe("flag");
+    expect(row.detail).toBe("The summary states 20% for France; the loaded source states 10%.");
+    expect(row.detail).not.toMatch(/Nothing in the loaded sources/i);
+  });
+
+  it("a supported contract claim shows its present-hedge reason when one is attached", () => {
+    const c = contractCard("verified", "Present in your sources, in the allocation-key clause.");
+    const row = rowByName(c, "Grounded in your sources");
+    expect(row.state).toBe("pass");
+    expect(row.detail).toBe("Present in your sources, in the allocation-key clause.");
+  });
+
+  it("falls back to generic copy only when the engine attached no reason", () => {
+    const flag = rowByName(contractCard("unsupported", null), "Grounded in your sources");
+    expect(flag.state).toBe("flag");
+    expect(flag.detail).toMatch(/do not support this statement/i);
+    const pass = rowByName(contractCard("verified", null), "Grounded in your sources");
+    expect(pass.detail).toMatch(/A loaded source supports/i);
+  });
+});
+
 // The drawer is aria-modal=false (the record behind stays readable, so Tab is
 // NOT trapped), but it still owes the opener its focus back, and while closed it
 // must be inert so its Close button is not a tabbable control stranded in an

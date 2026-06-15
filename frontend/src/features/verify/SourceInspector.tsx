@@ -21,6 +21,34 @@ function locationLabel(kind: EvidenceResolution["location_kind"]): string {
   return kind === "bbox" || kind === "text_offset" ? "Exact span" : "Approximate passage";
 }
 
+/**
+ * Copy for a claim that carries no attached citation pointer, by disposition.
+ *
+ * The contract path checks a statement against a retrieved clause without
+ * attaching a per-claim citation, so "checked" claims (supported / unsupported)
+ * reach here with no pointer even though a record WAS read. The finding itself is
+ * already shown above (the four checks + the rail note); this line must only say
+ * what is known about the source attachment, and must never assert that nothing
+ * was loaded — that contradicted the loaded-record chip and read as a bug on the
+ * demo. could_not_check is the one state where naming the missing record + the
+ * recovery is the honest, actionable thing to say.
+ */
+function noSourceCopy(kind: ClaimDisposition["kind"]): string {
+  switch (kind) {
+    case "could_not_check":
+      return "No source material reached this statement's check. Pick or load the record this draft relies on in the Vault, then verify again.";
+    case "claim_unsupported":
+    case "proposition_unsupported":
+      return "This statement was checked against your loaded sources; the finding above explains why it could not be confirmed.";
+    case "supported":
+      return "This statement matches your loaded sources; the confirmed language is summarized above.";
+    case "assessed":
+      return "A local model assessed this statement, noted above. No source passage is attached for a verbatim check.";
+    default:
+      return "No source passage is attached to this statement.";
+  }
+}
+
 /** Escape a string for literal use inside a RegExp. */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -359,17 +387,15 @@ export function SourceInspectorBody({
         </section>
       ) : null}
       {!hasSources ? (
-        <p className={styles.sourceMuted}>
-          {disposition.kind === "could_not_check"
-            ? // State-neutral on purpose: this component cannot see whether a
-              // record is loaded in the session, only that NO source material
-              // reached this claim's check. Asserting "no source was loaded"
-              // here contradicted the lectern's record chip on screen whenever
-              // the loaded record simply lacked the material (or the pointer
-              // was stale). Say what is known, name the recovery.
-              "No source material reached this statement's check. Pick or load the record this draft relies on in the Vault, then verify again."
-            : "No source is attached to this statement."}
-        </p>
+        // State-neutral by necessity: this component cannot see whether a record
+        // is loaded in the session, only that no per-claim citation pointer was
+        // attached to THIS statement. The contract path verifies a statement
+        // against a retrieved clause without attaching a citation here, so a
+        // checked-and-flagged or checked-and-supported claim has no pointer yet a
+        // record WAS read. Asserting "no source is attached" in those cases was
+        // the lie that contradicted the loaded-record chip on screen. Describe
+        // what is known about this claim's check, never claim nothing was loaded.
+        <p className={styles.sourceMuted}>{noSourceCopy(disposition.kind)}</p>
       ) : null}
     </>
   );

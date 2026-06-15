@@ -118,6 +118,54 @@ export function segmentDraft(
   return segments;
 }
 
+export interface HighlightRun {
+  text: string;
+  /** True for a run that is one of the flagged (contradicted) draft spans. */
+  flagged: boolean;
+}
+
+/**
+ * Split a claim span's text into runs, marking the verbatim ``spans`` the engine
+ * flagged as contradictions (e.g. the altered figure "60 billion") so the
+ * renderer can underline the precise changed token inside the statement.
+ *
+ * Safety rules (gated by documentSegments.test.ts):
+ *  - Only literal substrings are marked; a span not present in ``text`` is
+ *    ignored, so a canonical-but-not-verbatim value never mis-highlights.
+ *  - Longest match wins at each position and runs never overlap, so two spans
+ *    that share a prefix cannot double-mark a character.
+ *  - The concatenation of all run ``text`` equals the input exactly (no loss).
+ *  - No spans (or none found) returns a single unflagged run, so a caller can
+ *    always render the result the same way.
+ */
+export function highlightRuns(text: string, spans: readonly string[]): HighlightRun[] {
+  const needles = Array.from(
+    new Set((spans ?? []).map((s) => s.trim()).filter((s) => s.length > 0 && text.includes(s)))
+  ).sort((a, b) => b.length - a.length); // longest first: prefer the maximal match
+  if (needles.length === 0) return [{ text, flagged: false }];
+
+  const runs: HighlightRun[] = [];
+  let buffer = "";
+  let i = 0;
+  const flush = () => {
+    if (buffer) runs.push({ text: buffer, flagged: false });
+    buffer = "";
+  };
+  while (i < text.length) {
+    const hit = needles.find((n) => text.startsWith(n, i));
+    if (hit) {
+      flush();
+      runs.push({ text: hit, flagged: true });
+      i += hit.length;
+    } else {
+      buffer += text[i];
+      i += 1;
+    }
+  }
+  flush();
+  return runs;
+}
+
 /**
  * Split a segment list into paragraphs on blank lines (\n\n+), preserving the
  * claim segments. A claim span never crosses a paragraph boundary in practice

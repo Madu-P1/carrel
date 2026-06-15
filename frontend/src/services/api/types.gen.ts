@@ -2908,6 +2908,8 @@ export interface components {
             assessed_model?: string | null;
             /** Assessed Label */
             assessed_label?: string | null;
+            /** Flagged Spans */
+            flagged_spans?: string[];
         };
         /**
          * VerifyCoverageItem
