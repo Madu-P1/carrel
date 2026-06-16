@@ -7,6 +7,49 @@ defects live on the BRANCH, not on `main` — `main` (`efbac6c3b`) does not have
 commits yet. Fix here so PR [carrel#179](https://github.com/Madu-P1/carrel/pull/179) becomes
 mergeable; do NOT merge #179 until every CONFIRMED false green below is closed and locked by a test.
 
+## Fix-pass progress (2026-06-16, started same day)
+
+RESOLVED so far (4 commits on `claude/crazy-brahmagupta-301932`, each test-locked, full
+verify subsets green + acceptance gate zero false greens / zero false accusations):
+
+- `39132e9ef` — findings **1, 2, 13** (+ the cross-type generalization): percent
+  partial-match no longer greens; a non-figure `not_found` (an asserted value the clause
+  is silent on) now OUTRANKS a sibling `present` via a new `unconfirmed_verdict` tier,
+  while a figure scope-out still yields to present. `_subject_aware_percent` requires
+  EVERY claim percent confirmed.
+- `0566e998e` — findings **3, 4, 9**: litigator pass flags EVERY unverified quote
+  (`_all_quotes_unverified`), not just the first; contract laundering pass checks each
+  present against ONLY its own clause and downgrades only that member (no union, no
+  over-stamp).
+- `a29cd794a` — finding **8**: a fabricated caption / absent case outranks a co-occurring
+  quote could-not-check (verdict `unsupported`, reason names the caption).
+- `3b31db645` — findings **7, 15**: a decimal-point vs comma-decimal notation variance is
+  never accused; dead `_canonical_figures` None-guard removed.
+
+REMAINING (merge still BLOCKED until finding 5 closes):
+
+- **Finding 5 (litigator union, the last false green) — NOT YET DONE.** The litigator
+  altered-quote pass still pools ALL opinions in a logical group, so an altered quote
+  verbatim in an UNRELATED co-cited opinion is not flagged. Needs positional quote->cite
+  attribution (check each quoted phrase against the opinion of the cite that follows it in
+  the reflowed logical sentence), which is real parser work. Lower-priority wedge
+  (litigator = Wedge 1, civil-law-killed for the Lebanon round) but still an
+  inviolable-promise violation, so it blocks merge. The CONTRACT union twin (Wedge 2, the
+  moat) IS fixed (finding 4).
+- **Finding 6 (lowercase-continuation grouping) — NOT DONE.** `_split_line_sentences`
+  `_BOUNDARY` requires `[A-Z0-9]` after a terminator, so a lowercase next sentence merges
+  into one logical group. Now benign for the contract path (per-clause), but it widens the
+  litigator opinion pool that feeds finding 5; fix alongside 5.
+- **Finding 11 (vacuous collision gate) — NOT DONE.** `script/cachet-acceptance.py` runs
+  the corpora with the labeler OFF; add a labeler-ON run + percent/polarity partial-match
+  collisions so the gate actually locks these fixes.
+- **Finding 10 (segment `members[0]` fallback)** — wrong-card attribution when a quote
+  wraps across segments; low severity (mis-points the reason, not a false green).
+- **Finding 12 (`_subject_aware_amount` no claim-side verbatim check)** — latent until the
+  AFM labeler is wired (off by default).
+- **Finding 14 (subject-aware percent downgrades a real contradiction to not_found when
+  subject phrasing differs)** — lost catch, fails safe; lower priority.
+
 ## Status / why this exists
 
 An extra-high-effort `/code-review` (9 finder angles + verifiers) over `git diff origin/main...HEAD`
