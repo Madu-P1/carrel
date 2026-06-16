@@ -19,13 +19,22 @@ The bars (a demo is "not broken" iff all four hold):
 
 Usage:
     ./.venv/bin/python script/cachet-acceptance.py [--corpus PATH] [--bar 0.70]
+                                                   [--labeler off|regex]
 Exit 0 iff all four bars pass.
+
+``--labeler regex`` runs with the subject labeler's regex floor ON
+(``CARREL_SUBJECT_LABELER=regex``), so the gate exercises the subject-bound
+percent/polarity path, not just the figure scope-out. Run BOTH modes: the
+figure corpora (collision) are scoped out under ADR-0013 either way, while the
+labeled-collision corpus only decides anything with the labeler on. Default
+``off`` keeps the shipped default config.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -132,7 +141,20 @@ def main() -> int:
     )
     ap.add_argument("--corpus", type=Path, default=default_corpus)
     ap.add_argument("--bar", type=float, default=0.70)
+    ap.add_argument(
+        "--labeler",
+        choices=("off", "regex"),
+        default="off",
+        help="subject labeler mode; 'regex' exercises the subject-bound percent/polarity path",
+    )
     args = ap.parse_args()
+    # get_subject_labeler() reads CARREL_SUBJECT_LABELER per call, so setting it here
+    # is enough to flip the whole run between the figure-scope-out path and the labeled
+    # path. 'off' clears it so the run matches the shipped default exactly.
+    if args.labeler == "off":
+        os.environ.pop("CARREL_SUBJECT_LABELER", None)
+    else:
+        os.environ["CARREL_SUBJECT_LABELER"] = args.labeler
     return run(args.corpus, args.bar)
 
 

@@ -26,23 +26,52 @@ verify subsets green + acceptance gate zero false greens / zero false accusation
 - `3b31db645` — findings **7, 15**: a decimal-point vs comma-decimal notation variance is
   never accused; dead `_canonical_figures` None-guard removed.
 
-REMAINING (merge still BLOCKED until finding 5 closes):
+## Fix-pass batch 3 (2026-06-16, the merge-unblock pass) — commit `8bd492da6`
 
-- **Finding 5 (litigator union, the last false green) — NOT YET DONE.** The litigator
-  altered-quote pass still pools ALL opinions in a logical group, so an altered quote
-  verbatim in an UNRELATED co-cited opinion is not flagged. Needs positional quote->cite
-  attribution (check each quoted phrase against the opinion of the cite that follows it in
-  the reflowed logical sentence), which is real parser work. Lower-priority wedge
-  (litigator = Wedge 1, civil-law-killed for the Lebanon round) but still an
-  inviolable-promise violation, so it blocks merge. The CONTRACT union twin (Wedge 2, the
-  moat) IS fixed (finding 4).
-- **Finding 6 (lowercase-continuation grouping) — NOT DONE.** `_split_line_sentences`
-  `_BOUNDARY` requires `[A-Z0-9]` after a terminator, so a lowercase next sentence merges
-  into one logical group. Now benign for the contract path (per-clause), but it widens the
-  litigator opinion pool that feeds finding 5; fix alongside 5.
-- **Finding 11 (vacuous collision gate) — NOT DONE.** `script/cachet-acceptance.py` runs
-  the corpora with the labeler OFF; add a labeler-ON run + percent/polarity partial-match
-  collisions so the gate actually locks these fixes.
+- **Finding 5 (litigator union, the last false green) — DONE.** The altered-quote pass
+  now attributes each quoted phrase to its ADJACENT citation CLAUSE
+  (`_quotes_unverified_by_clause` / `_clause_opinions` / `_quoted_phrase_segments` in
+  `services/legal/deterministic_envelope.py`): the cite(s) between this phrase and the
+  next quoted phrase (following clause), else the cites between the previous quote and
+  this one (preceding clause). A phrase with no adjacent cite (floating) still falls back
+  to the group union so a fabrication can never ride a green unchecked; a phrase with no
+  cite at all stays unchecked. Refusal-only. Vulcan picked the CLAUSE unit over the
+  appendix's "first following cite, else union" because the clause handles combined
+  string-cites without over-refusing and drops the union-fallback false-green surface.
+  Locked by `test_quote_verbatim_in_a_co_cited_case_is_flagged_not_pooled` (+ cite-first,
+  floating, combined-cite over-refusal locks). `cachet-adversary` HELD 9/9 across the
+  union-pooling family, zero false greens.
+- **Finding 6 (lowercase-continuation grouping) — DONE.** `_BOUNDARY` now treats a
+  terminator immediately before a hard line break as a boundary regardless of the next
+  char's case, preserving the closing-quote rule and the abbreviation/citation
+  suppression. Locked by `test_terminator_then_lowercase_line_stays_two_groups` +
+  `test_closing_quote_then_newline_still_one_group`.
+- **Finding 11 (vacuous gate) — PARTIALLY DONE.** Added `--labeler {off,regex}` to
+  `script/cachet-acceptance.py` so the gate can exercise the subject-bound path, and a
+  `evals/cachet_acceptance/polarity_collision_corpus.jsonl` that locks finding 13
+  (different-subject polarity must not green; passes all four bars in BOTH modes,
+  non-vacuous 2/2 decide-rate). The PERCENT half is DEFERRED (see the new finding below):
+  the labeled percent path has a pre-existing value-only false green AND its multi-value
+  refusal is not bar-3-specific, both of which are percent-ADR work, so a percent
+  collision case cannot pass the gate cleanly yet. Finding 1's partial-match fix stays
+  unit-locked in `test_contract_verify`.
+
+### NEW finding (out of #179 scope, flagged for an ADR): pre-existing percent value-only false green
+
+`verify_claim_against_clause("The royalty is 10%.", "The tax is 10%.")` returns `present`
+on BOTH `main` (`efbac6c3b`) and this branch — percent greens on value match alone,
+ignoring the subject, the exact class ADR-0013 scoped out for money/duration but never
+extended to percent. It is NOT a #179 regression (present on main), and in the full
+pipeline it is mitigated by retrieval topicality (the bare `verify_claim_against_clause`
+the acceptance gate calls hand-pairs claim+clause, bypassing that gate). Fixing it
+properly is the same ADR call as money/duration (memory `cachet-money-duration-false-green`:
+a naive regex subject-gate was built and DISPROVEN for over-refusal; the decided
+architecture is the AFM labeler PROPOSES + the deterministic engine DISPOSES). Do this in
+its own change, with: percent scope-out OR the AFM subject-gate, a bar-3-specific
+multi-value refusal, and the deferred percent collision cases added to the gate.
+
+REMAINING (lower priority, none block merge):
+
 - **Finding 10 (segment `members[0]` fallback)** — wrong-card attribution when a quote
   wraps across segments; low severity (mis-points the reason, not a false green).
 - **Finding 12 (`_subject_aware_amount` no claim-side verbatim check)** — latent until the
