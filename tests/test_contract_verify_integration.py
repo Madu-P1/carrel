@@ -448,7 +448,8 @@ class ContractPathIntegrationTests(unittest.TestCase):
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
 
-    def test_matching_duration_is_present(self) -> None:
+    def test_matching_duration_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a matching duration is could-not-check, not affirmed.
         env = build_deterministic_envelope(
             "The confidentiality term lasts two (2) years.",
             conn=self._conn,
@@ -456,7 +457,7 @@ class ContractPathIntegrationTests(unittest.TestCase):
             embedder=self._embedder,
         )
         verdict = self._verdict_for(env, "confidentiality term")
-        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("not_found", verdict["disposition"])
 
     def test_present_money_with_absent_quoted_holding_is_could_not_check(self) -> None:
         # C2 (anchor-laundering guard): a sentence whose money value matches a clause
@@ -477,15 +478,15 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "a fabricated quote must not ride a matching figure into a verified present",
         )
 
-    def test_present_money_without_a_quote_stays_verified(self) -> None:
-        # Control (no recall regression): the same matching figure with NO quoted
-        # holding is still a clean present -> verified.
+    def test_matching_money_without_a_quote_is_could_not_check(self) -> None:
+        # ADR-0013 scope-out: a matching figure with no quoted holding is no longer a
+        # green "verified"; figures are never affirmed, so it is could-not-check (unknown).
         draft = "The aggregate liability shall not exceed $500,000."
         env = build_deterministic_envelope(
             draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
         )
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
-        self.assertEqual("verified", card.verdict)
+        self.assertEqual("unknown", card.verdict)
 
     def test_offtopic_clause_sharing_a_value_is_could_not_check(self) -> None:
         # C3 (relevance floor): a claim whose money value coincidentally matches an

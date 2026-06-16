@@ -158,9 +158,10 @@ class ContractCorpusTests(unittest.TestCase):
         claim = self._verdict_for("executed on March 11, 2024")
         self.assertEqual("parametric_contradiction", claim["contract_verdict"]["disposition"])
 
-    def test_matching_term_is_present(self) -> None:
+    def test_matching_term_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a matching term (duration) is could-not-check, not affirmed.
         claim = self._verdict_for("term of the agreement")
-        self.assertEqual("present", claim["contract_verdict"]["disposition"])
+        self.assertEqual("not_found", claim["contract_verdict"]["disposition"])
 
     def test_exclusivity_flip_is_a_contradiction(self) -> None:
         # The summary upgrades the non-exclusive Section 3 grant to exclusive:

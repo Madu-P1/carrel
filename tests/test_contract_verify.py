@@ -53,13 +53,14 @@ class ParametricContradictionTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("money", v.anchor_type)
 
-    def test_word_form_money_match_is_present(self) -> None:
-        # The same spelled-out amount agreeing with the contract numeral is a match.
+    def test_word_form_money_match_is_not_affirmed(self) -> None:
+        # The spelled-out amount agrees with the numeral, but ADR-0013 scope-out never
+        # affirms a figure; this is could-not-check, not a green.
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_duration_mismatch_is_a_contradiction(self) -> None:
         v = verify_claim_against_clause(
@@ -71,12 +72,13 @@ class ParametricContradictionTests(unittest.TestCase):
 
     def test_equivalent_durations_are_not_a_contradiction(self) -> None:
         # 12 months and 1 year are the same term; the day-count approximation
-        # must not flag them as a contradiction.
+        # must not flag them as a contradiction. (Scope-out: not affirmed either, so
+        # the durable property is simply "never a contradiction".)
         v = verify_claim_against_clause(
             "The term is 12 months.",
             "this Agreement shall continue for a period of 1 year",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
 
     def test_same_unit_near_miss_duration_is_a_contradiction(self) -> None:
         # The 5% tolerance exists ONLY to bridge the day-count approximation
@@ -114,13 +116,14 @@ class ParametricContradictionTests(unittest.TestCase):
 
 
 class PresentTests(unittest.TestCase):
-    def test_matching_money_value_is_present(self) -> None:
+    def test_matching_money_value_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a matching money value is could-not-check, not a green.
         v = verify_claim_against_clause(
             "The cap is $500,000.",
             "liability shall not exceed $500,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("review the full passage", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
     def test_quoted_language_present_verbatim(self) -> None:
         v = verify_claim_against_clause(
@@ -130,31 +133,25 @@ class PresentTests(unittest.TestCase):
         self.assertEqual("present", v.disposition)
         self.assertEqual("quote", v.anchor_type)
 
-    def test_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
-        # Filing-grade detail strings must be literally true. When the matched
-        # values agree but the written forms differ, the detail says "matches",
-        # never "appears in" (the clause does not contain the summary's form).
+    def test_word_form_money_match_routes_to_could_not_check(self) -> None:
+        # Used to assert filing-grade "present" detail accuracy for a word-form match.
+        # ADR-0013 scope-out: no figure present, so it is an honest could-not-check.
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertNotIn("appears in", v.detail)
-        self.assertIn("matches", v.detail)
-        self.assertIn("$1,000,000", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
-    def test_cross_unit_tolerant_match_reads_consistent_with(self) -> None:
-        # A tolerant cross-unit duration match is an approximation, and the
-        # detail must say so: "consistent with", never "appears in" and never
-        # a bare "matches".
+    def test_cross_unit_tolerant_duration_match_is_not_affirmed(self) -> None:
+        # A tolerant cross-unit duration match used to read "present (consistent with)".
+        # ADR-0013 scope-out no longer affirms a figure, so it is could-not-check.
         v = verify_claim_against_clause(
             "The term is 12 months.",
             "this Agreement shall continue for a period of 1 year",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertNotIn("appears in", v.detail)
-        self.assertIn("consistent with", v.detail)
-        self.assertIn("1 year", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
     def test_polarity_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
         # F2 (final pre-merge review): equal polarity canonicals can have
@@ -170,13 +167,15 @@ class PresentTests(unittest.TestCase):
         self.assertIn("matches", v.detail)
         self.assertIn("nonexclusive", v.detail)
 
-    def test_identical_written_value_still_reads_appears_in(self) -> None:
+    def test_identical_written_value_is_not_affirmed(self) -> None:
+        # Used to read a clean "present (appears in)". ADR-0013 scope-out: figures are
+        # not affirmed -> could-not-check, with an honest detail.
         v = verify_claim_against_clause(
             "The cap is $500,000.",
             "liability shall not exceed $500,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("appears in", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
 
 class NotFoundTests(unittest.TestCase):
@@ -1126,9 +1125,10 @@ class MagnitudeAnchorTests(unittest.TestCase):
         self.assertIn("7 billion", v.detail)
         self.assertIn("2 billion", v.detail)
 
-    def test_single_magnitude_match_is_present(self) -> None:
+    def test_single_magnitude_match_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a figure is never AFFIRMED, even on an exact match.
         v = verify_claim_against_clause("The fund totals 2 billion.", "The fund totals 2 billion.")
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_european_decimal_comma_is_refused_not_misparsed(self) -> None:
         # "1,2 billion" is 1.2 billion (the BIM source writes it). A naive comma
