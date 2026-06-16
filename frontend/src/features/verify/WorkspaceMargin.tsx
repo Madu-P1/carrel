@@ -27,6 +27,7 @@ import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 import { DISPOSITION_ORDER, dispositionForClaim, type ClaimDisposition } from "./claimDisposition";
 import { displaySafe } from "./displaySafe";
 import {
+  highlightRuns,
   paragraphsFromSegments,
   segmentDraft,
   type ClaimSegment
@@ -213,6 +214,13 @@ function ClaimMark({
 }) {
   const tier = meta?.disposition.tier ?? "pass";
   const label = meta?.disposition.label ?? "";
+  // Exact-token highlight: a flagged statement underlines the precise verbatim
+  // span(s) the engine found in contradiction with the source (e.g. the altered
+  // figure "60 billion"), so the eye lands on the changed token, not just the
+  // sentence. Only on a flag; only verbatim substrings (highlightRuns drops any
+  // span not literally present), so a near-miss never paints the wrong word.
+  const flaggedSpans = tier === "flag" ? (meta?.card.flagged_spans ?? []) : [];
+  const runs = flaggedSpans.length > 0 ? highlightRuns(segment.text, flaggedSpans) : null;
   // Supported (pass): a plain, tabbable span that announces "checked, supported"
   // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
@@ -257,7 +265,17 @@ function ClaimMark({
           : undefined
       }
     >
-      {segment.text}
+      {runs
+        ? runs.map((run, ri) =>
+            run.flagged ? (
+              <mark key={ri} className={styles.markToken}>
+                {run.text}
+              </mark>
+            ) : (
+              <span key={ri}>{run.text}</span>
+            )
+          )
+        : segment.text}
     </span>
   );
 }

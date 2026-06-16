@@ -1419,6 +1419,22 @@
   background: color-mix(in srgb, var(--verify-flag) 7%, transparent);
 }
 
+/* Exact-token highlight: the precise verbatim span(s) the engine found in
+   contradiction with the source, inside an already-flagged statement. A faint
+   oxblood wash plus a heavier underline so the eye lands on the changed figure
+   without a second color entering the palette. Inherits the surrounding
+   oxblood; never green, never a badge. */
+.markToken {
+  background: color-mix(in srgb, var(--verify-flag) 14%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  text-decoration: underline;
+  text-decoration-color: var(--verify-flag);
+  text-decoration-thickness: 2.5px;
+  text-underline-offset: 3px;
+}
+
 /* the right margin rail */
 .rail {
   position: relative;
@@ -1773,7 +1789,29 @@
    false by design), instead of silently occluding the centered column. */
 @media (min-width: 1081px) {
   .results[data-exam-open="true"] {
-    padding-right: min(520px, 44vw);
+    /* Gentler than the drawer's full 520px width: the lectern hosts .results in
+       a centered ~816px sheet, so reserving the drawer's full width starved the
+       document column to one word per line. A modest clearance keeps the record
+       readable beside the drawer on both the full-width VerifyView and the
+       narrower lectern sheet. */
+    padding-right: min(360px, 32vw);
+  }
+  /* The document grid keeps a fixed 300px rail track; once the surface is
+     narrowed by the drawer that fixed track starves the minmax(0, 34rem)
+     document column to zero, collapsing the prose to one word per line (the
+     reported demo bug). While the drawer is open the rail's findings are
+     already visible inside it, so collapse the grid to a single document column
+     and let the rail notes stack beneath the prose instead of competing for a
+     fixed 300px. */
+  .results[data-exam-open="true"] .canvas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .results[data-exam-open="true"] .rail {
+    position: static;
+  }
+  .results[data-exam-open="true"] .marginNote {
+    position: static !important;
+    top: auto !important;
   }
 }
 

@@ -53,13 +53,14 @@ class ParametricContradictionTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("money", v.anchor_type)
 
-    def test_word_form_money_match_is_present(self) -> None:
-        # The same spelled-out amount agreeing with the contract numeral is a match.
+    def test_word_form_money_match_is_not_affirmed(self) -> None:
+        # The spelled-out amount agrees with the numeral, but ADR-0013 scope-out never
+        # affirms a figure; this is could-not-check, not a green.
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_duration_mismatch_is_a_contradiction(self) -> None:
         v = verify_claim_against_clause(
@@ -71,12 +72,13 @@ class ParametricContradictionTests(unittest.TestCase):
 
     def test_equivalent_durations_are_not_a_contradiction(self) -> None:
         # 12 months and 1 year are the same term; the day-count approximation
-        # must not flag them as a contradiction.
+        # must not flag them as a contradiction. (Scope-out: not affirmed either, so
+        # the durable property is simply "never a contradiction".)
         v = verify_claim_against_clause(
             "The term is 12 months.",
             "this Agreement shall continue for a period of 1 year",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
 
     def test_same_unit_near_miss_duration_is_a_contradiction(self) -> None:
         # The 5% tolerance exists ONLY to bridge the day-count approximation
@@ -114,13 +116,14 @@ class ParametricContradictionTests(unittest.TestCase):
 
 
 class PresentTests(unittest.TestCase):
-    def test_matching_money_value_is_present(self) -> None:
+    def test_matching_money_value_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a matching money value is could-not-check, not a green.
         v = verify_claim_against_clause(
             "The cap is $500,000.",
             "liability shall not exceed $500,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("review the full passage", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
     def test_quoted_language_present_verbatim(self) -> None:
         v = verify_claim_against_clause(
@@ -130,31 +133,25 @@ class PresentTests(unittest.TestCase):
         self.assertEqual("present", v.disposition)
         self.assertEqual("quote", v.anchor_type)
 
-    def test_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
-        # Filing-grade detail strings must be literally true. When the matched
-        # values agree but the written forms differ, the detail says "matches",
-        # never "appears in" (the clause does not contain the summary's form).
+    def test_word_form_money_match_routes_to_could_not_check(self) -> None:
+        # Used to assert filing-grade "present" detail accuracy for a word-form match.
+        # ADR-0013 scope-out: no figure present, so it is an honest could-not-check.
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertNotIn("appears in", v.detail)
-        self.assertIn("matches", v.detail)
-        self.assertIn("$1,000,000", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
-    def test_cross_unit_tolerant_match_reads_consistent_with(self) -> None:
-        # A tolerant cross-unit duration match is an approximation, and the
-        # detail must say so: "consistent with", never "appears in" and never
-        # a bare "matches".
+    def test_cross_unit_tolerant_duration_match_is_not_affirmed(self) -> None:
+        # A tolerant cross-unit duration match used to read "present (consistent with)".
+        # ADR-0013 scope-out no longer affirms a figure, so it is could-not-check.
         v = verify_claim_against_clause(
             "The term is 12 months.",
             "this Agreement shall continue for a period of 1 year",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertNotIn("appears in", v.detail)
-        self.assertIn("consistent with", v.detail)
-        self.assertIn("1 year", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
     def test_polarity_present_detail_never_asserts_text_the_clause_lacks(self) -> None:
         # F2 (final pre-merge review): equal polarity canonicals can have
@@ -170,13 +167,15 @@ class PresentTests(unittest.TestCase):
         self.assertIn("matches", v.detail)
         self.assertIn("nonexclusive", v.detail)
 
-    def test_identical_written_value_still_reads_appears_in(self) -> None:
+    def test_identical_written_value_is_not_affirmed(self) -> None:
+        # Used to read a clean "present (appears in)". ADR-0013 scope-out: figures are
+        # not affirmed -> could-not-check, with an honest detail.
         v = verify_claim_against_clause(
             "The cap is $500,000.",
             "liability shall not exceed $500,000 in the aggregate",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("appears in", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
 
 class NotFoundTests(unittest.TestCase):
@@ -1126,9 +1125,10 @@ class MagnitudeAnchorTests(unittest.TestCase):
         self.assertIn("7 billion", v.detail)
         self.assertIn("2 billion", v.detail)
 
-    def test_single_magnitude_match_is_present(self) -> None:
+    def test_single_magnitude_match_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a figure is never AFFIRMED, even on an exact match.
         v = verify_claim_against_clause("The fund totals 2 billion.", "The fund totals 2 billion.")
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_european_decimal_comma_is_refused_not_misparsed(self) -> None:
         # "1,2 billion" is 1.2 billion (the BIM source writes it). A naive comma
@@ -1239,6 +1239,198 @@ class AlteredFigureNearCopyTests(unittest.TestCase):
             "the fees are $3,000,000 and $4,000,000 respectively",
         )
         self.assertEqual("multi_value_unverifiable", v.disposition)
+
+
+class AlteredFigureNearCopyRegressionTests(unittest.TestCase):
+    """The 2026-06-14 mln regression, locked.
+
+    A near-verbatim slide line where ONE figure is altered must read
+    parametric_contradiction naming the altered figure, NOT
+    multi_value_unverifiable — even when the line also carries (a) a second
+    magnitude that MATCHES the source and (b) an ambiguous comma-decimal the
+    engine refuses to canonicalize. The original failure: adding the EU 'mln'
+    abbreviation made the line multi-magnitude, the per-type path refused it as
+    multi-value, and the altered-figure pre-pass had bailed on the comma-decimal
+    '1,2 billion' — so the genuinely-altered '60 billion' silently escaped. The
+    fix makes the pre-pass SKIP an uncanonical figure instead of aborting.
+    """
+
+    def test_one_altered_magnitude_among_a_matching_one_and_a_comma_decimal(self) -> None:
+        # The exact BIM-slide shape: 60->20 billion altered, 300 mln matches, and
+        # the ambiguous "1,2 billion" is present on both sides.
+        claim = (
+            "For Covered Group, 16% - 10%= 6% (60 billion for 6%= 1,2 billion) are extra "
+            "margins, so 300 mln to be allocated to Market States exceeding the threshold"
+        )
+        clause = (
+            "For Covered Group, 16% - 10%= 6% (20 billion for 6%= 1,2 billion) are extra "
+            "margins, so 300 mln to be allocated to Market States exceeding the threshold"
+        )
+        v = verify_claim_against_clause(claim, clause)
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("60 billion", v.detail)
+        self.assertIn("20 billion", v.detail)
+        # The matching 300 mln must NOT be accused, and the verdict must not be a
+        # multi-value refusal that masks the real catch.
+        self.assertNotEqual("multi_value_unverifiable", v.disposition)
+        self.assertNotIn("300", v.detail)
+
+    def test_comma_decimal_alone_does_not_disable_the_altered_figure_catch(self) -> None:
+        # A comma-decimal beside a single altered round magnitude: the catch stands.
+        v = verify_claim_against_clause(
+            "The cap is 5 billion (1,2 billion reserve).",
+            "The cap is 2 billion (1,2 billion reserve).",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("5 billion", v.detail)
+
+    def test_an_exact_reorder_with_a_comma_decimal_is_not_a_contradiction(self) -> None:
+        # Safety: skipping the uncanonical figure must not manufacture a false
+        # catch. Same figures, reordered, with a comma-decimal -> not flagged.
+        v = verify_claim_against_clause(
+            "Tranches of 2 billion and 5 billion (1,2 billion reserve).",
+            "Tranches of 5 billion and 2 billion (1,2 billion reserve).",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_decimal_point_vs_source_comma_decimal_is_not_accused(self) -> None:
+        # Finding 7 (xhigh review, 2026-06-16): the claim writes a value with a decimal
+        # POINT ("1.2 billion") that the source wrote as an ambiguous comma-decimal
+        # ("1,2 billion"). Same value, different notation; the canonical path skips the
+        # source's comma-decimal, which made the claim figure read "absent" -> a false
+        # contradiction accusing a faithful figure. It must read could-not-check now.
+        v = verify_claim_against_clause(
+            "Revenue was 1.2 billion and costs were 60 billion.",
+            "Revenue was 1,2 billion and costs were 60 billion.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_eu_magnitude_abbreviations_are_recognized(self) -> None:
+        # mln/mn/bn/bln/mld canonicalize as magnitudes so a "30 mln" line becomes
+        # checkable (the supported result line beside the flagged ones).
+        from services.legal.anchors import extract_anchors as _ea
+
+        for surface, scaled in (("30 mln", 30_000_000), ("2 bn", 2_000_000_000)):
+            anchors = [a for a in _ea(f"Total is {surface} this year.") if a.type == "magnitude"]
+            self.assertTrue(anchors, f"{surface} should anchor as a magnitude")
+            self.assertEqual(scaled, anchors[0].canonical_value, surface)
+
+
+class SubjectBoundPercentTests(unittest.TestCase):
+    """D2/D3: percents compared by SUBJECT, not bare value.
+
+    D3 — a same-subject percent mismatch is a contradiction ("20% France" vs
+    source "10% France"). D2 — a different-subject percent is NOT a conflict
+    ("10% France" vs "16% profitability"), so a clean allocation line is not
+    refused just because an unrelated clause carries a different rate. Mis-binding
+    fails toward could-not-check, never a green or a false accusation.
+    """
+
+    def test_same_subject_mismatch_is_a_contradiction(self) -> None:  # D3
+        v = verify_claim_against_clause(
+            "Allocation key is 20% France.",
+            "Allocation key is 10% France.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+        self.assertIn("20%", v.detail)
+        self.assertIn("France", v.detail)
+        self.assertIn("10%", v.detail)
+
+    def test_different_subject_percent_is_not_a_contradiction(self) -> None:  # D2
+        # The over-refusal case: a clean France rate vs an unrelated profitability
+        # rate. Different subjects are different facts -> never a contradiction.
+        v = verify_claim_against_clause(
+            "Allocation key is 10% France.",
+            "Amount A applies above a 16% ordinary level of profitability.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_same_subject_match_is_present(self) -> None:  # D2 acceptance
+        v = verify_claim_against_clause(
+            "Allocation key is 10% France.",
+            "Allocation key: turnover (10% Italy, 10% France, 10% Spain, 10% Germany).",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_subjectless_percents_still_contradict_by_value(self) -> None:
+        # No proper-noun subject on either side -> the value-only path is unchanged,
+        # so a bare rate mismatch is still caught (no regression).
+        v = verify_claim_against_clause(
+            "The ordinary level is 10%.",
+            "The ordinary level is 20%.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_misbound_subject_fails_to_could_not_check_not_a_false_accusation(self) -> None:
+        # A spuriously-bound subject the clause is silent on must read could-not-check
+        # (not_found), never a contradiction. Mis-binding costs recall, never a green
+        # or a false flag (the council's hard line).
+        v = verify_claim_against_clause(
+            "Growth reached 10% Henceforth.",
+            "The threshold is a 16% ordinary level.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_amended_same_subject_conflict_still_flags(self) -> None:
+        # The guard the conflicting-clauses rule protects: a SAME-subject value
+        # change (an amended figure) must still contradict, not slip through.
+        v = verify_claim_against_clause(
+            "The Acme royalty is 12% Acme.",
+            "The Acme royalty is 8% Acme.",
+        )
+        self.assertEqual("parametric_contradiction", v.disposition)
+
+    def test_partial_subject_match_is_not_a_green(self) -> None:
+        # Finding 1 (xhigh review, 2026-06-16): the prior code greened on ANY one
+        # matched subject, so "10% France and 20% Germany" vs a clause stating only
+        # "10% France" read present -- the unconfirmed 20% Germany rode the green.
+        # A present requires EVERY claim percent confirmed; a subject the clause is
+        # silent on makes the sentence could-not-check, never green.
+        v = verify_claim_against_clause(
+            "Allocation is 10% France and 20% Germany.",
+            "Allocation is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_subjectless_sibling_percent_is_not_a_green(self) -> None:
+        # Finding 2: one subject-bound percent agrees, but a subject-LESS sibling
+        # percent is unchecked. The agreement must not short-circuit the value-only
+        # multi-value gate and green the whole sentence.
+        v = verify_claim_against_clause(
+            "The rate is 10% France and the surtax is 20%.",
+            "The rate is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+
+    def test_full_multi_subject_match_is_still_present(self) -> None:
+        # Regression guard for the fix above: when EVERY claim subject is confirmed
+        # (reordered, clause may carry extras), the sentence is still present.
+        v = verify_claim_against_clause(
+            "Allocation: 10% Italy and 20% France.",
+            "Allocation: 20% France, 10% Italy, 30% Spain.",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_non_figure_present_does_not_mask_an_unconfirmed_percent(self) -> None:
+        # Cross-type partial match (xhigh review): a governing-law present must NOT
+        # green a sentence whose sibling percent the clause is silent on. The
+        # unconfirmed percent outranks the present -> could-not-check.
+        v = verify_claim_against_clause(
+            "This Agreement is governed by New York law and the royalty is 20% Germany.",
+            "This Agreement is governed by New York law. The royalty is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+
+    def test_figure_scope_out_still_yields_to_a_real_present(self) -> None:
+        # The deliberate counter-case the fix must preserve: a confirmed 50% royalty
+        # in a sentence that also names a (scoped-out) 12-month window still reads
+        # present -- a figure not_found yields to a sibling non-figure present.
+        v = verify_claim_against_clause(
+            "The royalty is 50% of fees over the prior 12 months.",
+            "Section 9.2. The royalty is 50% of fees over the prior 12 months.",
+        )
+        self.assertEqual("present", v.disposition)
 
 
 if __name__ == "__main__":

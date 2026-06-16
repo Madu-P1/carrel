@@ -448,7 +448,8 @@ class ContractPathIntegrationTests(unittest.TestCase):
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
         self.assertEqual("unsupported", card.verdict)
 
-    def test_matching_duration_is_present(self) -> None:
+    def test_matching_duration_is_not_affirmed(self) -> None:
+        # ADR-0013 scope-out: a matching duration is could-not-check, not affirmed.
         env = build_deterministic_envelope(
             "The confidentiality term lasts two (2) years.",
             conn=self._conn,
@@ -456,7 +457,7 @@ class ContractPathIntegrationTests(unittest.TestCase):
             embedder=self._embedder,
         )
         verdict = self._verdict_for(env, "confidentiality term")
-        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("not_found", verdict["disposition"])
 
     def test_present_money_with_absent_quoted_holding_is_could_not_check(self) -> None:
         # C2 (anchor-laundering guard): a sentence whose money value matches a clause
@@ -477,15 +478,136 @@ class ContractPathIntegrationTests(unittest.TestCase):
             "a fabricated quote must not ride a matching figure into a verified present",
         )
 
-    def test_present_money_without_a_quote_stays_verified(self) -> None:
-        # Control (no recall regression): the same matching figure with NO quoted
-        # holding is still a clean present -> verified.
+    def test_wrapped_quote_laundering_through_a_present_is_could_not_check(self) -> None:
+        # C2 across a SOFT LINE WRAP. The per-segment anchor-laundering guard re-checks a
+        # present's quoted phrases against its matched clause, but it runs per physical
+        # line. When a fabricated quote hard-wraps across two lines -- opening " on line 1,
+        # closing " on line 2 -- neither per-line segment holds a complete quoted span, so
+        # extract_draft_quote_spans finds nothing on either line and the per-segment guard
+        # never fires. A still-greening present (governing-law here; figures never green
+        # post ADR-0013) then launders the absent quote into a verified card. The logical-
+        # sentence pass must reflow the wrap and downgrade to the honest could-not-check;
+        # it never accuses (no "altered"/"unsupported").
+        draft = (
+            "The agreement is governed by Delaware law and the parties stipulated "
+            'that "the\nreceiving party shall return all materials upon request."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-4"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        card = next(c for c in result.claim_verdicts if "governed" in c.claim_text)
+        self.assertEqual(
+            "unknown",
+            card.verdict,
+            "a wrapped fabricated quote must not ride a governing-law present into verified",
+        )
+
+    def test_nonwrapped_present_quote_laundering_is_caught_by_the_per_segment_guard(self) -> None:
+        # CONTROL: the same fabricated quote on ONE physical line is caught by the existing
+        # per-segment C2 guard (the span is whole in the single segment), so it reads
+        # could-not-check with or without the logical-sentence pass. Pins that the wrapped
+        # case above is specifically the per-line gap, not a general regression.
+        draft = (
+            "The agreement is governed by Delaware law and the parties stipulated "
+            'that "the receiving party shall return all materials upon request."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-4"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        card = next(c for c in result.claim_verdicts if "governed" in c.claim_text)
+        self.assertEqual("unknown", card.verdict)
+
+    def test_verbatim_wrapped_quote_on_a_present_stays_verified(self) -> None:
+        # NO over-refusal (the inviolable direction): a quoted phrase that IS verbatim in
+        # the present's own clause, even when hard-wrapped across two lines, must NOT be
+        # refused. The logical-sentence pass pools only the present-producing clause and
+        # re-checks the reflowed quote there; a verbatim match keeps the green. The pass
+        # only ever emits could-not-check on an ABSENT quote, never on a real one.
+        draft = (
+            "The royalty equals 50% of net fees and the clause provides that fees are "
+            '"received\nin the twelve (12) months preceding each report."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        card = next(c for c in result.claim_verdicts if "royalty" in c.claim_text)
+        self.assertEqual("verified", card.verdict)
+
+    def test_altered_wrapped_quote_on_a_present_downgrades_to_unknown(self) -> None:
+        # The friendly-khayyam trip-wire's _DRAFT_ALTERED case, adapted to this branch
+        # (its money anchor never greens post ADR-0013, and its no-newline-split premise
+        # is false post 3374549af, so a verbatim port cannot pass here). A NEAR-verbatim
+        # quote with one word changed ("following" for the clause's "preceding"), hard-
+        # wrapped across two lines, rides a percent present. The reflow must catch the
+        # altered phrase against the clause and downgrade the green to could-not-check.
+        draft = (
+            "The royalty equals 50% of net fees and the clause provides that fees are "
+            '"received\nin the twelve (12) months following each report."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        card = next(c for c in result.claim_verdicts if "royalty" in c.claim_text)
+        self.assertEqual("unknown", card.verdict)
+
+    def test_wrapped_quote_only_launders_its_own_present_not_a_sibling(self) -> None:
+        # Findings 4/9 (xhigh review, 2026-06-16): the contract laundering pass pooled
+        # EVERY present's clause into one set and stamped the single reason on EVERY
+        # present member. A wrapped quote verbatim in a SIBLING present's clause but
+        # absent from its own present's clause was laundered through clean (4), and a
+        # clean present whose own quote IS verbatim was over-refused (9). Per-clause,
+        # per-member fixes both: only the present whose own clause lacks the quote is
+        # downgraded; the sibling present is untouched.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-launder', 'l.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 1. This Agreement is governed by the laws of Delaware. The remedy "
+                "is exclusive and final for all claims arising hereunder.",
+            ),
+            _node(
+                1,
+                "Section 2. The royalty rate is 50% of net fees received each quarter "
+                "under this license.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-launder", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._conn.commit()
+        # "remedy is exclusive and final" is verbatim in clause 1 (Delaware) but ABSENT
+        # from clause 2 (the 50% clause); it rides the percent present off clause 2.
+        draft = (
+            "This Agreement is governed by the laws of Delaware, and the royalty\n"
+            'rate is 50%, providing the "remedy is exclusive and final" for all claims.'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-launder"], embedder=self._embedder
+        )
+        by_text = {
+            c.claim_text: c.verdict
+            for c in verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts
+        }
+        percent_card = next(v for t, v in by_text.items() if "50%" in t)
+        self.assertEqual("unknown", percent_card)  # the laundering green is downgraded
+        gl_card = next(v for t, v in by_text.items() if "Delaware" in t)
+        self.assertEqual("verified", gl_card)  # the sibling present is NOT over-refused
+
+    def test_matching_money_without_a_quote_is_could_not_check(self) -> None:
+        # ADR-0013 scope-out: a matching figure with no quoted holding is no longer a
+        # green "verified"; figures are never affirmed, so it is could-not-check (unknown).
         draft = "The aggregate liability shall not exceed $500,000."
         env = build_deterministic_envelope(
             draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
         )
         card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
-        self.assertEqual("verified", card.verdict)
+        self.assertEqual("unknown", card.verdict)
 
     def test_offtopic_clause_sharing_a_value_is_could_not_check(self) -> None:
         # C3 (relevance floor): a claim whose money value coincidentally matches an

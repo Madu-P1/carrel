@@ -38,6 +38,7 @@ from services.legal.anchors import (
     parse_grouped_number,
     related_jurisdictions,
 )
+from ai.subject_labeler import get_subject_labeler
 from services.retrieval.validators import verbatim_run_present
 
 # percent compares by exact basis-point equality through the default
@@ -113,6 +114,16 @@ def _figure_shape(surface: str) -> str:
     return "number"
 
 
+def _number_digits(surface: str) -> str:
+    """The bare digit sequence of a figure, separators and scale words stripped, so
+    "1.2 billion", "1,2 billion", and "12 billion" all collapse to "12". Used to tell a
+    NOTATION variance (a decimal-comma vs a decimal-point of the same value) from a
+    genuine alteration when one side wrote the value as an ambiguous comma-decimal the
+    canonical path skipped."""
+    body = re.sub(r"(?:billion|million|thousand)", "", surface, flags=re.IGNORECASE)
+    return re.sub(r"\D", "", body)
+
+
 def _figure_skeleton(text: str, figures: list[re.Match]) -> str:
     """The text with every figure replaced by a placeholder, normalized for the
     similarity gate. Two passages whose only differences are their figures (a
@@ -127,14 +138,23 @@ def _figure_skeleton(text: str, figures: list[re.Match]) -> str:
     return re.sub(r"[^a-z0-9#]+", " ", "".join(out).lower()).strip()
 
 
-def _canonical_figures(matches: list[re.Match]) -> list[tuple[str, str, float]] | None:
-    """(surface, shape, value) for each figure match, or None if any is uncanonical."""
+def _canonical_figures(matches: list[re.Match]) -> list[tuple[str, str, float]]:
+    """(surface, shape, value) for each canonicalizable figure match.
+
+    SKIPS an uncanonical figure (an ambiguous comma-decimal like "1,2 billion")
+    rather than discarding the whole pass. Bailing on the first such figure meant
+    one comma-decimal disabled the entire altered-figure catch for the sentence:
+    on the BIM slide, "1,2 billion" turned off the catch of a genuinely-altered
+    "60 billion" sitting right beside it. The skipped figure is simply absent from
+    the (shape, value) membership test below, so it is never diffed (consistent
+    with the engine already refusing to adjudicate ambiguous comma-decimals) while
+    every canonicalizable figure is still compared."""
     out: list[tuple[str, str, float]] = []
     for m in matches:
         text = m.group(0).strip()
         value = _figure_value(text)
         if value is None:
-            return None
+            continue
         out.append((text, _figure_shape(text), value))
     return out
 
@@ -166,8 +186,6 @@ def _altered_figures_on_near_copy(claim: str, clause: str, where: str) -> Clause
         return None
     claim_canon = _canonical_figures(claim_figs)
     clause_canon = _canonical_figures(clause_figs)
-    if claim_canon is None or clause_canon is None:
-        return None
     claim_keys = {(shape, value) for _, shape, value in claim_canon}
     clause_keys = {(shape, value) for _, shape, value in clause_canon}
     if not (claim_keys & clause_keys):
@@ -176,9 +194,32 @@ def _altered_figures_on_near_copy(claim: str, clause: str, where: str) -> Clause
         return None
     claim_only = [c for c in claim_canon if (c[1], c[2]) not in clause_keys]
     clause_only = [c for c in clause_canon if (c[1], c[2]) not in claim_keys]
+    # Finding 7 (xhigh review): a claim figure the canonical set reports "absent" may
+    # simply be the SAME value the clause wrote as an ambiguous comma-decimal the
+    # canonical path skipped ("1.2 billion" vs the source's "1,2 billion"). Never accuse
+    # a notation variance: drop a claim_only figure whose shape AND bare digits match a
+    # skipped uncanonical clause figure (could-not-check via the normal path, not a
+    # false contradiction). A genuinely altered figure beside a comma-decimal ("60
+    # billion" for "20 billion", with "1,2 billion" present) has different digits and is
+    # still caught.
+    clause_uncanon = [
+        (m.group(0).strip(), _figure_shape(m.group(0).strip()))
+        for m in clause_figs
+        if _figure_value(m.group(0).strip()) is None
+    ]
+    if clause_uncanon:
+        claim_only = [
+            c
+            for c in claim_only
+            if not any(
+                shape == c[1] and _number_digits(text) == _number_digits(c[0])
+                for text, shape in clause_uncanon
+            )
+        ]
     if not claim_only:
-        # Every claim figure appears in the clause (an exact copy or a reorder):
-        # not a contradiction.
+        # Every claim figure appears in the clause (an exact copy or a reorder), or the
+        # only "absent" ones are notation variants of a skipped comma-decimal: not a
+        # contradiction.
         return None
     # Pair each altered claim figure with a same-shape source figure (in order) for
     # the filing-grade detail; an altered figure with no same-shape source value is
@@ -534,6 +575,187 @@ def _polarity_pass(
     return contradiction, multi, present, not_found
 
 
+def _normalize_subject(s: str) -> str:
+    return s.strip().lower()
+
+
+def _subject_aware_percent(
+    claim_hits: list[Anchor], clause_hits: list[Anchor], where: str
+) -> ClauseVerdict | None:
+    """Compare percents by SUBJECT, not by bare value (D2/D3).
+
+    Returns a ClauseVerdict only when the claim's percents carry subjects (the
+    "France" of "10% France"); otherwise None, so the value-only path runs
+    unchanged for subject-less percents (no regression).
+
+    A claim percent is compared ONLY to a clause percent about the SAME (normalized)
+    subject, so "10% France" never conflicts with "16% profitability" — different
+    subjects are different facts, not a contradiction (D2). A same-subject value
+    mismatch IS a contradiction ("20% France" vs source "10% France", D3). Fails
+    toward could-not-check: a claim subject the clause is silent on is not_found,
+    never a contradiction, so a mis-bound subject costs a catch, never a green
+    (the council's hard line). It is a comparison key, not a topicality gate: it
+    does not suppress a standing contradiction, it prevents an apples-to-oranges one.
+    """
+    claim_subj: dict[str, Anchor] = {}
+    for a in claim_hits:
+        if a.subject is not None:
+            claim_subj.setdefault(_normalize_subject(a.subject), a)
+    if not claim_subj:
+        return None  # no subjects on the claim side -> value-only path
+    clause_subj: dict[str, Anchor] = {}
+    for a in clause_hits:
+        if a.subject is not None:
+            clause_subj.setdefault(_normalize_subject(a.subject), a)
+    # Same-subject value mismatch is the only contradiction this path may raise.
+    for subj, ca in claim_subj.items():
+        cl = clause_subj.get(subj)
+        if cl is not None and ca.canonical_value != cl.canonical_value:
+            return ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states {ca.text} for {ca.subject}; {where} states {cl.text}.",
+                "percent",
+                (ca.canonical_value,),
+                (cl.canonical_value,),
+                claim_span=ca.text,
+                clause_span=cl.text,
+                where=where,
+            )
+    matched = [s for s in claim_subj if s in clause_subj]
+    # Present requires EVERY claim percent to be confirmed: each must carry a subject
+    # AND the clause must state that subject (equal value -- a mismatch already returned
+    # a contradiction above). The prior code greened on ANY one matched subject, so a
+    # claim like "10% France and 20% Germany" against a clause stating only "10% France"
+    # read present and the unconfirmed 20% Germany rode the green (xhigh review finding 1,
+    # 2026-06-16). A subject the clause is silent on, or a subject-LESS sibling percent
+    # (excluded from claim_subj, so len(claim_hits) > len(claim_subj)), leaves part of
+    # the claim unconfirmed -> could-not-check, never a green the unconfirmed part rides
+    # on (the council's hard line).
+    all_confirmed = len(claim_hits) == len(claim_subj) == len(matched)
+    if all_confirmed:
+        ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
+        return ClauseVerdict(
+            "present",
+            _present_detail(ca, cl, where),
+            "percent",
+            tuple(claim_subj[s].canonical_value for s in matched),
+            tuple(clause_subj[s].canonical_value for s in matched),
+            claim_span=ca.text,
+            clause_span=cl.text,
+        )
+    # Not fully confirmed: the clause is silent on at least one claim subject, or a
+    # subject-less sibling percent remains unchecked. Not a contradiction (different /
+    # silent subjects are not a value conflict) and not a green -> honest could-not-check.
+    first = next(iter(claim_subj.values()))
+    return ClauseVerdict(
+        "not_found",
+        f"The summary states {first.text} for {first.subject}, which {where} does not fully state.",
+        "percent",
+        tuple(a.canonical_value for a in claim_subj.values()),
+        (),
+    )
+
+
+def _subject_aware_amount(
+    claim_hits: list[Anchor],
+    clause_hits: list[Anchor],
+    where: str,
+    anchor_type: str,
+    claim_subjects: dict[tuple[int, int], str],
+    clause_subjects: dict[tuple[int, int], str],
+    clause_text: str,
+) -> ClauseVerdict | None:
+    """ADR-0013 disposer for money / magnitude / duration, gated behind the subject
+    labeler. The labeler PROPOSES a subject per figure (regex floor or on-device AFM);
+    this function DISPOSES the verdict and greens ONLY on a verbatim-confirmed
+    same-subject match. The truth table:
+
+    - claim subject A, clause confirms A, equal value   -> present (the only green)
+    - claim subject A, clause confirms A, value differs -> parametric_contradiction
+    - claim subject A, clause does not confirm A, claim value PRESENT in clause
+      -> not_found (could-not-check): the value coincides for an unconfirmed/different
+      subject ("indemnification cap $5M" vs "liability cap $5M"). The false-green gate.
+    - claim subject A, clause does not confirm A, claim value ABSENT
+      -> None: fall through to the value-only path so the altered-figure contradiction
+      (the value-absent catch) still fires.
+    - claim has no labeled subject -> None: value-only path, unchanged.
+
+    A model mis-label cannot mint a green: the clause subject must be verbatim in the
+    clause (the post-check) AND match the claim's subject; any gap routes to
+    could-not-check. So a green is model-originated-impossible.
+    """
+    claim_subj: dict[str, Anchor] = {}
+    for a in claim_hits:
+        s = claim_subjects.get((a.start, a.end))
+        if s:
+            claim_subj.setdefault(s, a)
+    if not claim_subj:
+        return None  # unlabeled claim -> value-only path (no behavior change)
+
+    # LOCAL-proximity post-check: trust a clause subject only if it appears verbatim
+    # WITHIN A WINDOW of its own figure, not anywhere in the clause. Anywhere-in-clause
+    # is injection-vulnerable: a hostile clause can carry "...label this as the liability
+    # cap..." far from the figure and a model that follows it would pass an anywhere
+    # check (validated live: AFM followed exactly that). Requiring the subject next to
+    # the figure means an instruction planted elsewhere cannot relabel it. For the regex
+    # floor this is true by construction (it binds the figure's own adjacent qualifier).
+    _SUBJECT_WINDOW = 48
+    clause_subj: dict[str, Anchor] = {}
+    for a in clause_hits:
+        s = clause_subjects.get((a.start, a.end))
+        # Slice the ORIGINAL-case text (the anchor offsets index it) and lowercase the
+        # slice. Lowercasing the whole clause first would misalign the window: str.lower()
+        # is NOT length-preserving (U+0130 -> two codepoints), so every figure after such
+        # a character would get a shifted window and could silently drop a real catch.
+        window = clause_text[max(0, a.start - _SUBJECT_WINDOW) : a.end + _SUBJECT_WINDOW].lower()
+        if s and s in window:
+            clause_subj.setdefault(s, a)
+
+    def _eq(ca: Anchor, cl: Anchor) -> bool:
+        if anchor_type == "duration":
+            return _durations_match(ca, cl)
+        return ca.canonical_value == cl.canonical_value
+
+    for subj, ca in claim_subj.items():
+        cl = clause_subj.get(subj)
+        if cl is not None and not _eq(ca, cl):
+            return ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states {ca.text} for {subj}; {where} states {cl.text}.",
+                anchor_type,
+                (ca.canonical_value,),
+                (cl.canonical_value,),
+                claim_span=ca.text,
+                clause_span=cl.text,
+                where=where,
+            )
+    matched = [s for s in claim_subj if s in clause_subj]
+    if matched:
+        ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
+        return ClauseVerdict(
+            "present",
+            _present_detail(ca, cl, where),
+            anchor_type,
+            tuple(claim_subj[s].canonical_value for s in matched),
+            tuple(clause_subj[s].canonical_value for s in matched),
+            claim_span=ca.text,
+            clause_span=cl.text,
+        )
+    # No verbatim-confirmed shared subject. Never green on a value coincidence.
+    claim_vals = {a.canonical_value for a in claim_subj.values()}
+    if claim_vals & {a.canonical_value for a in clause_hits}:
+        first = next(iter(claim_subj.values()))
+        return ClauseVerdict(
+            "not_found",
+            f"The summary states {first.text} for {next(iter(claim_subj))}; {where} carries "
+            "that value but its subject could not be confirmed, so it was not independently checked.",
+            anchor_type,
+            tuple(claim_vals),
+            (),
+        )
+    return None  # claim value absent -> value-only path (the value-absent catch fires)
+
+
 def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     """Decide whether ``claim`` is supported, contradicted, or unfound vs ``clause``.
 
@@ -546,6 +768,25 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     section = next((a.text for a in clause_anchors if a.type == "section"), None)
     # Singular on purpose: the fallback feeds "{where} states {value}" below.
     where = section or "the loaded source"
+
+    # ADR-0013: resolve the subject labeler once. None when CARREL_SUBJECT_LABELER is
+    # off -> the subject-aware amount path is skipped entirely and behavior is byte-for
+    # -byte unchanged. When on, label money/magnitude/duration figures with the
+    # obligation they are about so the disposer can refuse a cross-subject value
+    # coincidence ("indemnification cap $5M" vs "liability cap $5M").
+    _labeler = get_subject_labeler()
+    claim_subjects: dict[tuple[int, int], str] = {}
+    clause_subjects: dict[tuple[int, int], str] = {}
+    if _labeler is not None:
+        _amount_types = {"money", "magnitude", "duration"}
+        for _span, _lab in _labeler.label_subjects(
+            claim, [a for a in claim_anchors if a.type in _amount_types]
+        ).items():
+            claim_subjects[_span] = _normalize_subject(_lab.subject)
+        for _span, _lab in _labeler.label_subjects(
+            clause, [a for a in clause_anchors if a.type in _amount_types]
+        ).items():
+            clause_subjects[_span] = _normalize_subject(_lab.subject)
 
     # A pasted-verbatim passage with one or more figures changed: diff EVERY figure
     # at once and name them all. Runs before the per-anchor loop (which would report
@@ -563,6 +804,15 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     present_verdict: ClauseVerdict | None = None
     not_found_verdict: ClauseVerdict | None = None
     multi_value_verdict: ClauseVerdict | None = None
+    # A figure (money/magnitude/duration) not_found is a SCOPE-OUT (ADR-0013): a value
+    # match will not be affirmed, and it must NOT block a sibling non-figure present
+    # (the deliberate "50% royalty in a 12-month window" case). A NON-figure not_found
+    # (percent / date / governing_law / polarity) means the claim asserts a value the
+    # clause does not confirm -- an unconfirmed assertion that must OUTRANK a sibling
+    # present, or the unconfirmed value rides the green (xhigh review, 2026-06-16:
+    # "governed by NY law and the royalty is 20% Germany" vs a clause stating NY law +
+    # "10% France" read present, laundering the unconfirmed 20% Germany).
+    unconfirmed_verdict: ClauseVerdict | None = None
     for anchor_type in _PARAMETRIC_TYPES:
         claim_hits = [
             a for a in claim_anchors if a.type == anchor_type and a.canonical_value is not None
@@ -580,23 +830,78 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                 return contradiction
             multi_value_verdict = multi_value_verdict or p_multi
             present_verdict = present_verdict or p_present
-            not_found_verdict = not_found_verdict or p_not_found
+            # Polarity is non-figure: an unconfirmed key must outrank a sibling present
+            # (a partial polarity confirmation is could-not-check, not green).
+            unconfirmed_verdict = unconfirmed_verdict or p_not_found
             continue
         # Equal canonicals collapse to one fact: "0.5% (50 bps)" is a single
         # rate written twice, not two values needing alignment. Only genuinely
         # different values trigger the multi-value refusal below.
         claim_values = tuple(dict.fromkeys(a.canonical_value for a in claim_hits))
         clause_values = tuple(dict.fromkeys(a.canonical_value for a in clause_hits))
+        # D2/D3: percents that carry a subject are compared by subject, not by bare
+        # value, BEFORE the value-only gates below (which would otherwise multi-value
+        # or cross-subject-contradict). Subject-less percents return None here and
+        # fall through to the unchanged value-only path.
+        if anchor_type == "percent":
+            sa = _subject_aware_percent(claim_hits, clause_hits, where)
+            if sa is not None:
+                if sa.disposition == "parametric_contradiction":
+                    return sa
+                if sa.disposition == "present":
+                    present_verdict = present_verdict or sa
+                else:
+                    # Percent is non-figure: a percent the clause does not fully confirm
+                    # is an unconfirmed assertion that must outrank a sibling present.
+                    unconfirmed_verdict = unconfirmed_verdict or sa
+                continue
+        if _labeler is not None and anchor_type in ("money", "magnitude", "duration"):
+            sa = _subject_aware_amount(
+                claim_hits,
+                clause_hits,
+                where,
+                anchor_type,
+                claim_subjects,
+                clause_subjects,
+                clause,
+            )
+            if sa is not None:
+                if sa.disposition == "parametric_contradiction":
+                    return sa
+                # scope-out: a confirmed same-subject MATCH still does not affirm a
+                # figure; only a contradiction is a definite figure verdict, everything
+                # else is could-not-check. (Kept at the not_found tier on purpose: a
+                # sibling non-figure present, e.g. a 50% royalty rate in a sentence that
+                # also names a 12-month window, must still read present; routing the
+                # incidental figure to the multi_value tier would over-refuse the real
+                # verification and also perturbs the cross-clause carrier veto.)
+                if not_found_verdict is None:
+                    not_found_verdict = ClauseVerdict(
+                        "not_found",
+                        f"The summary states {claim_hits[0].text}; a deterministic check "
+                        "does not affirm a figure without confirming its obligation, so it "
+                        "was not independently verified.",
+                        anchor_type,
+                        claim_values,
+                        clause_values,
+                    )
+                continue
         if not clause_hits:
-            if not_found_verdict is None:
-                not_found_verdict = ClauseVerdict(
-                    "not_found",
-                    f"The summary states {claim_hits[0].text}, which the deterministic check "
-                    "could not locate in your loaded sources.",
-                    anchor_type,
-                    claim_values,
-                    (),
-                )
+            _absent = ClauseVerdict(
+                "not_found",
+                f"The summary states {claim_hits[0].text}, which the deterministic check "
+                "could not locate in your loaded sources.",
+                anchor_type,
+                claim_values,
+                (),
+            )
+            # A figure absent from the source is a scope-out (yields to a sibling
+            # present); a non-figure value the source is silent on is an unconfirmed
+            # assertion that must outrank a sibling present.
+            if anchor_type in ("money", "magnitude", "duration"):
+                not_found_verdict = not_found_verdict or _absent
+            elif unconfirmed_verdict is None:
+                unconfirmed_verdict = _absent
             continue
         if len(claim_values) > 1 or len(clause_values) > 1:
             # Multiple values of this type on a side: a deterministic clause-level check
@@ -647,6 +952,26 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         else:
             matched = _values_match(list(claim_values), list(clause_values))
         if matched:
+            if anchor_type in ("money", "magnitude", "duration"):
+                # ADR-0013 scope-out: a figure is never AFFIRMED. A deterministic check
+                # cannot confirm a value belongs to the claimed obligation without subject
+                # understanding it does not reliably have (the AFM 3B labeler was validated
+                # and failed to earn it), so a value MATCH is could-not-check, never a green.
+                # Figure claims only ever CATCH (the contradiction below / near-copy /
+                # subject mismatch) or honestly refuse -> zero figure false greens by
+                # construction. (not_found tier on purpose: an incidental figure must not
+                # suppress a sibling non-figure present; see the subject-aware block note.)
+                if not_found_verdict is None:
+                    not_found_verdict = ClauseVerdict(
+                        "not_found",
+                        f"{claim_hits[0].text} appears in {where}, but a deterministic check "
+                        "cannot confirm it states this obligation, so it was not "
+                        "independently verified.",
+                        anchor_type,
+                        claim_values,
+                        clause_values,
+                    )
+                continue
             if present_verdict is None:
                 present_verdict = ClauseVerdict(
                     "present",
@@ -670,11 +995,14 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             where=where,
         )
     # Precedence: a single-value contradiction already returned outright above. Among the
-    # rest, an honest could-not-check (a type carried multiple values we could not align)
-    # outranks a present, because a sentence is not "present" if any checkable part of it
-    # went unaligned; a present in turn outranks a bare not_found.
+    # rest, an honest could-not-check outranks a present, because a sentence is not
+    # "present" if any checkable part of it went unaligned (multi_value) or unconfirmed (a
+    # non-figure value the clause is silent on). A FIGURE not_found is the exception: it is
+    # a scope-out that yields to a sibling present, so it stays below present.
     if multi_value_verdict is not None:
         return multi_value_verdict
+    if unconfirmed_verdict is not None:
+        return unconfirmed_verdict
     if present_verdict is not None:
         return present_verdict
     if not_found_verdict is not None:

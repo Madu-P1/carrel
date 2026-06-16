@@ -9,7 +9,7 @@ project:
 verify:
   commands:
     - name: "engine-suites"
-      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_contract_verify tests.test_contract_verify_integration tests.test_deterministic_envelope tests.test_quote_check tests.test_anchors tests.test_citations_eyecite tests.test_local_caselaw"
+      run: "/Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_contract_verify tests.test_contract_verify_integration tests.test_deterministic_envelope tests.test_quote_check tests.test_anchors tests.test_citations_eyecite tests.test_local_caselaw tests.test_legal_sentences tests.test_verify tests.test_verify_stream"
       pass_when: "exit_zero"
     - name: "ruff-check"
       run: "/Users/madu/Desktop/Codex/.venv/bin/python -m ruff check services/legal services/verify.py tests"
@@ -34,6 +34,7 @@ invariants:
     - "Structural nodes stay non-citable: import NON_CITABLE_NODE_TYPES from services.retrieval.node_type_router, never re-derive the set."
     - "Honesty over coverage: a could-not-check claim is always preferred to a false 'present' or a false 'no such case'. Never widen a green to earn coverage."
     - "Changes are additive and independently shippable. Tests assert real behavior and edge cases — no trivial always-true or 'it renders' assertions."
+    - "REAL-WORLD REGRESSION RULE (the 2026-06-14 mln lesson): the in-repo fixture suite is NOT proof of correctness — a change can pass every unit test and still regress a real tampered-slide catch (adding `mln` to the magnitude detector passed unit logic and silently downgraded the live 60-billion catch to could-not-check via the cross-clause adjudicator). Any task that touches anchor extraction, the contract adjudicator, or a verdict register MUST add a fixture reproducing the real behavior it changes (e.g. a near-verbatim multi-figure sentence with one altered value still reads UNSUPPORTED, not multi-value-could-not-check), and MUST NOT weaken an existing catch to gain coverage. If you cannot reproduce the behavior as a deterministic fixture, the task is REVIEW-gated, not auto-ship."
 
 definition_of_done: >
   The picked task's Acceptance in .claude/forge.engine.tasks.md is fully met. The engine
@@ -50,7 +51,7 @@ signals:
 
 human_gates:
   craft:    { when_paths: ["**/*.css", "**/features/**/*.tsx"], note: "Visual taste; rubric pass not sufficient." }
-  security: { when_paths: ["**/auth/**", "**/*keychain*", "**/*secret*", "**/local_caselaw.py", "**/case_verification.py", "**/deterministic_envelope.py"], note: "Verify-engine truth surfaces and the corpus-attestation path need a human read — a wrong gate here either accuses a clean draft or clears a fabricated one." }
+  security: { when_paths: ["**/auth/**", "**/*keychain*", "**/*secret*", "**/local_caselaw.py", "**/case_verification.py", "**/deterministic_envelope.py", "**/contract_verify.py", "**/anchors.py", "**/sentences.py"], note: "Verify-engine truth surfaces. A wrong change here either accuses a clean draft or clears a fabricated one, and the in-repo fixtures provably miss real-slide regressions (the mln/adjudicator case, 2026-06-14). Any change to these files is REVIEW-gated for a human read before it lands, even on a green gate." }
   followups_log: ".claude/logs/operator-followups.jsonl"
 
 scope:

@@ -45,6 +45,14 @@ class Anchor:
     start: int
     end: int
     canonical_value: object | None = None
+    # The subject a parametric anchor is ABOUT (the "France" of "10% France"),
+    # bound only on an unambiguous percent->proper-noun adjacency (_percent_subject);
+    # None otherwise. Used by contract_verify as a same-subject COMPARISON KEY so
+    # "10% France" never compares to "16% profitability" (different subjects are
+    # different facts, not a conflict). Conservative by construction: an unbindable
+    # percent stays subject-less and uses the value-only path, so a mis-bind can
+    # only cost a catch (could-not-check), never manufacture a verdict.
+    subject: str | None = None
 
 
 _SLIP_OP = re.compile(r"\bNo\.\s+\d{1,4}-\d{1,6}\b|\bslip\s+op\.", re.IGNORECASE)
@@ -67,10 +75,13 @@ _MONEY = re.compile(
 # numeric value, the same currency-blind rule `_MONEY` already uses. `_MONEY` is
 # collected first and a magnitude overlapping a money span is dropped in
 # `extract_anchors`, so "$5 billion" stays one money anchor, never also a magnitude.
+# Scale words incl. the abbreviations EU finance/tax decks use ("30 mln", "2 bn",
+# "1,2 mld"). Unambiguous magnitude tokens; the scale word is required so a bare
+# number (a count/identifier) never anchors. Longer/more-specific forms first.
 _MAGNITUDE = re.compile(
     r"(?:(?:EUR|USD|GBP)\s?)?"
     r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
-    r"(?P<scale>billion|million|thousand)\b",
+    r"(?P<scale>billion|million|thousand|mld|bln|mln|bn|mn)\b",
     re.IGNORECASE,
 )
 
@@ -615,14 +626,34 @@ _PERCENT_RANGE_BEFORE = re.compile(
     re.IGNORECASE,
 )
 
+# A percent's subject, bound ONLY on an unambiguous adjacency: the percent
+# immediately followed by a single proper-noun token ("10% France", "10% Italy").
+# Case-sensitive on purpose (requires a leading capital), so "10% ordinary",
+# "10%= 6%", "10% - level" bind nothing. Deliberately narrow: a percent carries a
+# subject only when the text makes it obvious. The follower must be a standalone
+# word (a word boundary after), so it does not grab the head of a longer phrase.
+_PERCENT_SUBJECT = re.compile(r"\s+([A-Z][A-Za-z]{2,})\b")
+
+
+def _percent_subject(span: str, end: int) -> str | None:
+    """The proper-noun subject immediately following a percent at ``end``, or None."""
+    m = _PERCENT_SUBJECT.match(span, end)
+    return m.group(1) if m else None
+
+
 _MONEY_SCALE = {
     "thousand": 1_000,
     "k": 1_000,
     "million": 1_000_000,
     "m": 1_000_000,
     "mm": 1_000_000,  # legal/finance notation: $5MM == $5 million
+    "mln": 1_000_000,  # EU finance/tax decks: "30 mln" == 30 million
+    "mn": 1_000_000,
     "billion": 1_000_000_000,
     "b": 1_000_000_000,
+    "bn": 1_000_000_000,
+    "bln": 1_000_000_000,
+    "mld": 1_000_000_000,  # "milliard" == billion (FR/IT/NL decks)
 }
 _DURATION_DAYS = {"year": 365, "month": 30, "week": 7, "day": 1}
 _MONEY_WORD_UNITS = {
@@ -866,6 +897,7 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
                 m.start(),
                 m.end(),
                 _percent_bps(m.group("num"), m.group("unit")),
+                subject=_percent_subject(span, m.end()),
             )
         )
     for m in _SECTION.finditer(span):
