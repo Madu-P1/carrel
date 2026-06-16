@@ -1006,6 +1006,20 @@ class AlteredQuoteTests(unittest.TestCase):
         reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
         self.assertFalse(any(reasons), f"two verbatim quotes wrongly flagged: {reasons}")
 
+    def test_two_altered_quotes_in_one_logical_sentence_both_flag(self) -> None:
+        # Finding 3 (xhigh review, 2026-06-16): a hard-wrapped logical sentence
+        # carrying TWO altered quotes, each cited to a real case, must downgrade BOTH
+        # segments. The prior pass returned on the FIRST miss, so only the first
+        # flagged and the second rode a green by case-existence. The pooled opinion
+        # text here is Brown's (347); both quotes are absent from it, so both are
+        # could-not-check.
+        env = self._build(
+            'The Court held that "separate but unfair has no place," 347 U.S. 483,\n'
+            'and also that "the statute is hereby void," 576 U.S. 644.'
+        )
+        flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
+        self.assertEqual(2, len(flagged), "only one of two altered quotes was refused")
+
     def test_hard_wrapped_quote_and_cite_is_attributed(self) -> None:
         # The regression guard: a doctored quote and the citation that grounds it,
         # hard-wrapped onto SEPARATE physical lines (exactly how a pasted brief

@@ -417,8 +417,8 @@ def _clause_on_topic(sentence: str, clause: str) -> bool:
     return _shares_topic(_content_tokens(sentence), clause)
 
 
-def _quote_unverified(sentence: str, opinions: list[str]) -> tuple[str, str] | None:
-    """The first quoted phrase not verbatim in any held opinion, as (reason, phrase).
+def _all_quotes_unverified(sentence: str, opinions: list[str]) -> list[tuple[str, str]]:
+    """EVERY quoted phrase not verbatim in any held opinion, as (reason, phrase).
 
     ``opinions`` is the bundled opinion text of the cases cited in THIS sentence
     (same-sentence attribution; the build loop pools across the physical lines a
@@ -427,26 +427,42 @@ def _quote_unverified(sentence: str, opinions: list[str]) -> tuple[str, str] | N
     bundled opinion text is not guaranteed complete, so an absent phrase may be a
     misquote OR a real passage we do not hold. Refusing to verify is the honest
     call; a false "you fabricated this quote" is the malpractice direction. Returns
-    None when there is nothing to quote or no opinion to check against. Each run is
+    [] when there is nothing to quote or no opinion to check against. Each run is
     split into its distinct quoted phrases first, so two genuinely-verbatim quotes
-    the greedy span regex merged into one run are checked separately, not flagged as
-    one. The returned ``phrase`` lets the caller attach the reason to the exact
-    surface segment that holds it.
+    the greedy span regex merged into one run are checked separately. ALL misses are
+    returned (not just the first): a logical sentence carrying two different altered
+    quotes, each attributed to its own real cite, must flag BOTH, or the second rides
+    a green (xhigh review finding 3). Each returned ``phrase`` lets the caller attach
+    the reason to the exact surface segment that holds it.
     """
     spans = extract_draft_quote_spans(sentence)
     if not spans or not opinions:
-        return None
+        return []
+    out: list[tuple[str, str]] = []
     for inner_text, _start, _end in spans:
         for run in split_runs(inner_text):
             for phrase in quoted_subphrases(run):
                 phrase = phrase.strip()
                 if phrase and not _run_present_any(phrase, opinions):
-                    return (
-                        f'The quoted language "{phrase}" could not be verified against '
-                        "the source text checked.",
-                        phrase,
+                    out.append(
+                        (
+                            f'The quoted language "{phrase}" could not be verified against '
+                            "the source text checked.",
+                            phrase,
+                        )
                     )
-    return None
+    return out
+
+
+def _quote_unverified(sentence: str, opinions: list[str]) -> tuple[str, str] | None:
+    """The FIRST quoted phrase not verbatim in any held opinion, as (reason, phrase).
+
+    Thin wrapper over :func:`_all_quotes_unverified` for callers that only need to
+    know whether ANY quote is unverified (the contract clause C2 guard). Returns None
+    when every quoted phrase is verbatim or there is nothing to check.
+    """
+    misses = _all_quotes_unverified(sentence, opinions)
+    return misses[0] if misses else None
 
 
 def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
@@ -1048,12 +1064,12 @@ def build_deterministic_envelope(
     for members in members_by_group.values():
         logical_text = " ".join(sentences[i] for i in members)
         pooled = [op for i in members for op in opinions_by_sentence.get(i, [])]
-        found = _quote_unverified(logical_text, pooled)
-        if found is None:
-            continue
-        reason, phrase = found
-        target = _segment_holding_quoted_phrase(members, sentences, phrase)
-        claims[target]["quote_could_not_check_reason"] = reason
+        # Flag EVERY unverified quoted phrase, not just the first: a logical sentence
+        # carrying two different altered quotes, each cited to its own real case, must
+        # downgrade BOTH segments or the second rides a green (xhigh review finding 3).
+        for reason, phrase in _all_quotes_unverified(logical_text, pooled):
+            target = _segment_holding_quoted_phrase(members, sentences, phrase)
+            claims[target].setdefault("quote_could_not_check_reason", reason)
 
     # Contract anchor-laundering pass, SAME-LOGICAL-SENTENCE granularity. The C2
     # guard inside _contract_claim re-checks a non-quote present's quoted phrases
@@ -1076,20 +1092,22 @@ def build_deterministic_envelope(
         present_members = [i for i in members if _is_nonquote_contract_present(claims[i])]
         if not present_members:
             continue
-        present_clauses = [
-            claims[i]["contract_verdict"]["clause_text"]
-            for i in present_members
-            if claims[i]["contract_verdict"].get("clause_text")
-        ]
-        if not present_clauses:
-            continue
         logical_text = " ".join(sentences[i] for i in members)
-        found = _quote_unverified(logical_text, present_clauses)
-        if found is None:
-            continue
-        reason, _phrase = found
+        # Check each present's wrapped quotes against ONLY ITS OWN matched clause, and
+        # downgrade ONLY that present. Pooling every present's clause into one set was
+        # strictly more lenient than the per-segment C2 guard it mirrors: a fabricated
+        # quote absent from THIS present's clause but verbatim in a sibling present's
+        # clause was laundered through clean (xhigh review finding 4), and the single
+        # pooled reason was stamped on EVERY present member, downgrading a clean present
+        # whose own quote IS verbatim (finding 9). Per-clause, per-member closes both:
+        # the present whose clause lacks the quote is the one (and only one) downgraded.
         for i in present_members:
-            claims[i].setdefault("quote_could_not_check_reason", reason)
+            clause_text = claims[i]["contract_verdict"].get("clause_text")
+            if not clause_text:
+                continue
+            found = _quote_unverified(logical_text, [clause_text])
+            if found is not None:
+                claims[i].setdefault("quote_could_not_check_reason", found[0])
 
     return {
         "claims": claims,

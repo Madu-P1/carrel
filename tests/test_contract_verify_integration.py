@@ -554,6 +554,51 @@ class ContractPathIntegrationTests(unittest.TestCase):
         card = next(c for c in result.claim_verdicts if "royalty" in c.claim_text)
         self.assertEqual("unknown", card.verdict)
 
+    def test_wrapped_quote_only_launders_its_own_present_not_a_sibling(self) -> None:
+        # Findings 4/9 (xhigh review, 2026-06-16): the contract laundering pass pooled
+        # EVERY present's clause into one set and stamped the single reason on EVERY
+        # present member. A wrapped quote verbatim in a SIBLING present's clause but
+        # absent from its own present's clause was laundered through clean (4), and a
+        # clean present whose own quote IS verbatim was over-refused (9). Per-clause,
+        # per-member fixes both: only the present whose own clause lacks the quote is
+        # downgraded; the sibling present is untouched.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-launder', 'l.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 1. This Agreement is governed by the laws of Delaware. The remedy "
+                "is exclusive and final for all claims arising hereunder.",
+            ),
+            _node(
+                1,
+                "Section 2. The royalty rate is 50% of net fees received each quarter "
+                "under this license.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-launder", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._conn.commit()
+        # "remedy is exclusive and final" is verbatim in clause 1 (Delaware) but ABSENT
+        # from clause 2 (the 50% clause); it rides the percent present off clause 2.
+        draft = (
+            "This Agreement is governed by the laws of Delaware, and the royalty\n"
+            'rate is 50%, providing the "remedy is exclusive and final" for all claims.'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-launder"], embedder=self._embedder
+        )
+        by_text = {
+            c.claim_text: c.verdict
+            for c in verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts
+        }
+        percent_card = next(v for t, v in by_text.items() if "50%" in t)
+        self.assertEqual("unknown", percent_card)  # the laundering green is downgraded
+        gl_card = next(v for t, v in by_text.items() if "Delaware" in t)
+        self.assertEqual("verified", gl_card)  # the sibling present is NOT over-refused
+
     def test_matching_money_without_a_quote_is_could_not_check(self) -> None:
         # ADR-0013 scope-out: a matching figure with no quoted holding is no longer a
         # green "verified"; figures are never affirmed, so it is could-not-check (unknown).
