@@ -459,6 +459,22 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
     return found[0] if found else None
 
 
+def _segment_holding_quoted_phrase(members: list[int], sentences: list[str], phrase: str) -> int:
+    """The surface segment to attach a quote refusal to.
+
+    Prefer the segment that holds the flagged ``phrase`` INSIDE a quoted span, so
+    the reason points the lawyer at the quote itself, not an unquoted prose mention
+    of the same words earlier in the same logical sentence (a raw substring test
+    would attach to the prose line). Falls back to the first segment whose text
+    merely contains the phrase (the quote's own words may wrap across two segments,
+    sitting whole in neither span), then to the first member.
+    """
+    for i in members:
+        if any(phrase in inner for inner, _start, _end in extract_draft_quote_spans(sentences[i])):
+            return i
+    return next((i for i in members if phrase in sentences[i]), members[0])
+
+
 def _run_present_any(run: str, opinions: list[str]) -> bool:
     """True if ``run`` (or its leading-letter case variant) is verbatim in any opinion."""
     return any(
@@ -1020,7 +1036,7 @@ def build_deterministic_envelope(
         if found is None:
             continue
         reason, phrase = found
-        target = next((i for i in members if phrase in sentences[i]), members[0])
+        target = _segment_holding_quoted_phrase(members, sentences, phrase)
         claims[target]["quote_could_not_check_reason"] = reason
 
     return {

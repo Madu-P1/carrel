@@ -235,6 +235,22 @@ class SplitSentencesWithGroupsTests(unittest.TestCase):
     def test_empty_input_is_empty(self) -> None:
         self.assertEqual(([], []), split_sentences_with_groups("   \n  "))
 
+    def test_citation_bearing_soft_wrap_still_groups(self) -> None:
+        # Guard against silent re-regression. The grouping relies on the per-line
+        # splitter and the whole-draft splitter agreeing after whitespace-collapse;
+        # both call find_citations on DIFFERENT text (one line vs the whole draft),
+        # so a future change to citation detection could make a per-line segment stop
+        # being a prefix of its logical sentence, firing the identity fallback and
+        # silently re-stranding a wrapped quote from the cite that grounds it. Pin
+        # that a citation-bearing soft wrap stays ONE group (fallback does NOT fire).
+        for draft in (
+            'The Court wrote "A is B" in\nBrown v. Board of Education, 347 U.S. 483 (1954).',
+            'It announced that "A is B," see\nBrown v. Board of Education, 347 U.S. 483.',
+        ):
+            segments, groups = split_sentences_with_groups(draft)
+            self.assertEqual(2, len(segments), draft)
+            self.assertEqual([0, 0], groups, f"identity fallback wrongly fired on: {draft!r}")
+
     def test_groups_are_contiguous_and_monotonic(self) -> None:
         # A group never reappears after a later group starts (segments stay in
         # reading order), so members of a group are always a contiguous run.

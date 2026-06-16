@@ -1040,6 +1040,22 @@ class AlteredQuoteTests(unittest.TestCase):
         flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
         self.assertEqual(1, len(flagged), "wrapped doctored quote run was not refused")
 
+    def test_refusal_attaches_to_the_quote_segment_not_a_prose_mention(self) -> None:
+        # When the same words appear as unquoted prose EARLIER in the logical
+        # sentence and as the actual quote LATER, the could-not-check reason must
+        # land on the segment holding the QUOTE, not the prose mention (a raw
+        # substring match would wrongly attach to the prose line).
+        env = self._build(
+            "Discussing separate facilities are inherently equal as a concept,\n"
+            'the Court wrote "separate facilities are inherently equal" Brown, 347 U.S. 483.'
+        )
+        flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
+        self.assertEqual(1, len(flagged))
+        self.assertTrue(
+            flagged[0]["text"].startswith("the Court wrote"),
+            f"refusal attached to the wrong segment: {flagged[0]['text']!r}",
+        )
+
     def test_hard_wrap_does_not_attribute_across_a_real_sentence_boundary(self) -> None:
         # A quote and an unrelated cite that sit in two DIFFERENT sentences must not
         # be attributed even when the draft also wraps lines: a real period boundary
