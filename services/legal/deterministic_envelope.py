@@ -529,11 +529,14 @@ def _clause_opinions(
     segment (the following clause, the dominant ``"holding," A, B.`` pattern), else the
     cite(s) between the previous segment and this one (the cite-first ``In A and B, held
     "q"`` pattern). A phrase with cites in the sentence but none adjacent (a floating
-    quote whose grounding is positionally unclear) falls back to the group union so a
-    fabricated phrase can never ride a green UNchecked; a phrase in a sentence with no
-    cite at all is not ours to check (returns ``None``, mirroring
-    :func:`_all_quotes_unverified`'s empty-opinions short-circuit). A clause cite whose
-    opinion is not bundled contributes no confirming text, so the phrase reads
+    quote whose grounding is positionally unclear) falls back to the group union: it is
+    still CHECKED rather than skipped, so a fabrication cannot pass unexamined. (The union
+    is lenient -- a floating phrase verbatim in any co-cited opinion still reads present;
+    that residual is the combined-cite leniency the over-refusal guard accepts, not the
+    finding-5 class, which is the bounded case where a phrase HAS an adjacent cite.) A
+    phrase in a sentence with no cite at all is not ours to check (returns ``None``,
+    mirroring :func:`_all_quotes_unverified`'s empty-opinions short-circuit). A clause
+    cite whose opinion is not bundled contributes no confirming text, so the phrase reads
     could-not-check, never confirmed off an unrelated co-cited opinion (finding 5).
     """
     next_seg_start = min((s for s in seg_starts if s >= seg_end), default=None)
@@ -1174,7 +1177,8 @@ def build_deterministic_envelope(
         # and still flags EVERY miss (not just the first), so a logical sentence carrying
         # two altered quotes downgrades BOTH segments (finding 3). ``pooled`` is the
         # floating-phrase fallback only: a phrase with no cite adjacent to it is still
-        # checked against the union so it can never ride a green unchecked.
+        # checked against the union (examined, not skipped) rather than riding the
+        # segment's green unexamined.
         for reason, phrase in _quotes_unverified_by_clause(logical_text, pooled):
             target = _segment_holding_quoted_phrase(members, sentences, phrase)
             claims[target].setdefault("quote_could_not_check_reason", reason)
