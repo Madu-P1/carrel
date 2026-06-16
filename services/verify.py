@@ -341,12 +341,23 @@ def _claim_dict_to_verdict(
     contract_contradiction = (
         bool(contract_verdict) and contract_verdict.get("disposition") == "parametric_contradiction"
     )
+    # The litigator case-existence verdict, computed once. A fabricated caption on a
+    # real reporter number ("Smith v. Jones, 347 U.S. 483", which resolves to Brown) or
+    # a cited case that does not exist yields "unsupported" -- a HARD fabrication catch,
+    # the core litigator beat.
+    case_verdict_value = _verdict_from_case_verdicts(case_verdicts) if case_verdicts else None
     if citations:
         verdict: VerifyVerdict = "verified"
     elif section_absent and not contract_contradiction:
         # A draft sentence citing a section the source contract does not contain
         # is unsupported regardless of its predicate, whatever else the sentence
         # carries (computed unconditionally upstream since the percent build).
+        verdict = "unsupported"
+    elif case_verdict_value == "unsupported":
+        # A fabricated caption / non-existent cited case must outrank a could-not-check
+        # quote reason on the same sentence, exactly as section_absent does: otherwise a
+        # fabricated caption that also carries an unverifiable quote softens from
+        # "unsupported" to "unknown", masking the catch (xhigh review finding 8).
         verdict = "unsupported"
     elif quote_could_not_check_reason:
         # The cite may exist, but a quoted phrase could not be verified against the
@@ -359,8 +370,8 @@ def _claim_dict_to_verdict(
         verdict = "unknown"
     elif contract_verdict:
         verdict = _verdict_from_contract(contract_verdict)
-    elif case_verdicts:
-        verdict = _verdict_from_case_verdicts(case_verdicts)
+    elif case_verdict_value is not None:
+        verdict = case_verdict_value
     else:
         verdict = "unsupported"
     # C1 silent-pass guard: when the engine reported it declined to ground this run
@@ -385,6 +396,12 @@ def _claim_dict_to_verdict(
         reason = str(contract_verdict.get("detail") or "") or None if contract_verdict else None
     elif section_absent and not contract_contradiction:
         reason = str(section_verdict.get("detail") or "") or None
+    elif case_verdict_value == "unsupported":
+        # The verdict was hoisted to unsupported for the fabricated caption / absent
+        # case; the reason must name THAT, not a co-occurring quote could-not-check, so
+        # the filing-grade record reads "resolves to a different case", not "the quote
+        # could not be verified" (xhigh review finding 8).
+        reason = _deterministic_reason(case_verdicts, contract_verdict)
     elif quote_could_not_check_reason:
         reason = str(quote_could_not_check_reason)
     elif could_not_check_reason:

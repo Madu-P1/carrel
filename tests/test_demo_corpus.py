@@ -82,6 +82,24 @@ class LitigatorCorpusTests(unittest.TestCase):
         self.assertEqual(1, len(unverified))  # the doctored Brown quote
         self.assertIn("could not be verified", unverified[0]["quote_could_not_check_reason"])
 
+    def test_fabricated_caption_with_a_quote_stays_unsupported_not_unknown(self) -> None:
+        # Finding 8 (xhigh review): a fabricated caption on a REAL reporter number
+        # ("Smith v. Jones, 347 U.S. 483", which resolves to Brown) that ALSO carries an
+        # unverifiable quote must read "unsupported" (the fabrication catch), not soften
+        # to "unknown" because the quote-could-not-check reason won the precedence. The
+        # reason must name the caption mismatch, not the quote.
+        from services import verify as verify_service
+
+        draft = (
+            'The Court observed that "separate facilities are inherently equal" in '
+            "Smith v. Jones, 347 U.S. 483."
+        )
+        with mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False):
+            env = build_deterministic_envelope(draft, client=local_caselaw_client())
+        card = verify_service._verify_result_from_envelope(draft, env, 0.0).claim_verdicts[0]
+        self.assertEqual("unsupported", card.verdict)
+        self.assertIn("resolves to", card.unsupported_reason or "")
+
 
 class ContractCorpusTests(unittest.TestCase):
     def setUp(self) -> None:
