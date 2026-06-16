@@ -17,7 +17,11 @@ from unittest import mock
 
 from services import verify as verify_service
 from services.legal.anchors import extract_anchors
-from services.legal.deterministic_envelope import _grounding_verdict, build_deterministic_envelope
+from services.legal.deterministic_envelope import (
+    _grounding_verdict,
+    _quote_unverified_reason,
+    build_deterministic_envelope,
+)
 from services.legal.local_caselaw import (
     CORPUS_ATTESTATION_ATTR,
     DEMO_MANIFEST,
@@ -28,6 +32,8 @@ from services.legal.local_caselaw import (
     corpus_fingerprint,
     local_caselaw_client,
 )
+from services.legal.sentences import split_sentences
+from services.retrieval.typed_hybrid import RetrievedNode
 from services.verify import (
     _claim_dict_to_verdict,
     _verdict_from_case_verdicts,
@@ -1199,6 +1205,134 @@ class QuotePanelRegressionTests(unittest.TestCase):
         self.assertEqual(1, len(payload["quote_results"]))
         self.assertEqual("verbatim", payload["quote_results"][0]["status"])
         self.assertNotIn("opinion_text", json.dumps(payload))
+
+
+class ContractWrappedQuoteTests(unittest.TestCase):
+    """A quoted clause phrase hard-wrapped across two PHYSICAL lines must not slip
+    the contract clause-quote check (the C2 anchor-laundering guard in
+    `_contract_claim`).
+
+    Context: the litigator altered-quote pass had a latent gap (fixed 2026-06-16
+    on a sibling branch) where, after `split_sentences` began splitting on hard
+    newlines, a quoted phrase and its grounding cite landed in separate per-line
+    segments and the quote check was silently dropped. These tests pin that the
+    CONTRACT path on THIS branch is safe, for two independent reasons:
+
+      1. `split_sentences` here splits only on `[.!?]+` sentence punctuation, never
+         on a bare newline, so the wrapped quote stays in the SAME segment as the
+         parametric (money) anchor that fires the C2 guard. The phrase is never
+         stranded.
+      2. Even with the newline embedded inside the segment, `_quote_unverified_reason`
+         -> `verbatim_run_present` -> `normalize_for_verbatim` folds `\\n`/`\\r`/`\\t`
+         to spaces and collapses whitespace runs, so a wrapped quote matches its
+         source clause identically to its unwrapped form.
+
+    If a future change ports the per-line split into `split_sentences` without the
+    logical-sentence reflow, test 1 and the end-to-end tests below break loudly,
+    which is the intended trip-wire.
+    """
+
+    # Literal newline built with chr(10): a "\n" escape typed into a single-quoted
+    # string literal would be decoded into a real newline by the editing tool and
+    # break the source. chr(10) is plain ASCII and survives intact.
+    _NL = chr(10)
+    _CLAUSE = (
+        "Section 4. The Provider shall indemnify the Client for any and all losses "
+        "up to a maximum aggregate liability of $5,000,000."
+    )
+    # Money ($5,000,000) matches the clause -> a "present" with anchor_type "money",
+    # which fires the C2 guard (line ~721) that re-checks the quoted phrase. The quote
+    # spans a physical line break (newline after "shall"): the contract analogue of
+    # the litigator hard-wrap.
+    _DRAFT_VERBATIM = (
+        "Under Section 4 the agreement caps liability at $5,000,000 and provides "
+        'that the Provider "shall' + _NL + 'indemnify the Client" for losses.'
+    )
+    # Same wrap, but the quoted phrase names the "Supplier" (the clause says
+    # "Client") -- an altered quote that the guard must still catch across the wrap.
+    _DRAFT_ALTERED = (
+        "Under Section 4 the agreement caps liability at $5,000,000 and provides "
+        'that the Provider "shall' + _NL + 'indemnify the Supplier" for losses.'
+    )
+
+    @staticmethod
+    def _fake_node(text: str) -> RetrievedNode:
+        return RetrievedNode(
+            node_id=1,
+            doc_id="d1",
+            node_type="body",
+            heading_path="Section 4",
+            page=None,
+            char_start=0,
+            char_end=len(text),
+            verbatim_text=text,
+            snippet=text,
+            score=1.0,
+        )
+
+    def _conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE documents (id TEXT, status TEXT)")
+        conn.execute("INSERT INTO documents VALUES ('d1', 'ready')")
+        conn.execute("CREATE TABLE nodes (doc_id TEXT, verbatim_text TEXT, reading_order INTEGER)")
+        conn.execute("INSERT INTO nodes VALUES ('d1', ?, 0)", (self._CLAUSE,))
+        conn.commit()
+        return conn
+
+    def _run(self, draft: str) -> dict:
+        # Retrieval is faked to the source clause so the test does not depend on the
+        # offline embedding weights; the embedder sentinel is non-None so the contract
+        # branch runs (and is then ignored by the patched retrieval).
+        with (
+            mock.patch.dict(os.environ, {"COURTLISTENER_API_TOKEN": "local"}, clear=False),
+            mock.patch(
+                "services.legal.deterministic_envelope.search_typed_hybrid",
+                return_value=[self._fake_node(self._CLAUSE)],
+            ),
+        ):
+            return build_deterministic_envelope(
+                draft,
+                conn=self._conn(),
+                doc_ids=["d1"],
+                embedder=object(),
+                client=local_caselaw_client(),
+            )
+
+    def test_hard_wrapped_quote_stays_in_one_segment(self) -> None:
+        # Reason 1: the wrapped quote is not stranded -- it stays in one segment with
+        # the money anchor, embedded newline and all.
+        segments = split_sentences(self._DRAFT_VERBATIM)
+        self.assertEqual(1, len(segments), segments)
+        self.assertIn(self._NL, segments[0])
+
+    def test_quote_check_sees_the_full_wrapped_phrase(self) -> None:
+        # Reason 2 (clean direction): the embedded newline does not produce a false
+        # could-not-check; the wrapped verbatim quote matches the source clause.
+        segment = split_sentences(self._DRAFT_VERBATIM)[0]
+        self.assertIsNone(_quote_unverified_reason(segment, [self._CLAUSE]))
+
+    def test_wrapped_altered_quote_is_still_caught(self) -> None:
+        # Reason 2 (catch direction): the check fires across the wrap, so an altered
+        # wrapped quote is not silently dropped -- it returns a could-not-check reason.
+        segment = split_sentences(self._DRAFT_ALTERED)[0]
+        self.assertIsNotNone(_quote_unverified_reason(segment, [self._CLAUSE]))
+
+    def test_end_to_end_wrapped_verbatim_quote_is_verified(self) -> None:
+        env = self._run(self._DRAFT_VERBATIM)
+        self.assertEqual(1, len(env["claims"]))
+        claim = env["claims"][0]
+        self.assertNotIn("quote_could_not_check_reason", claim)
+        self.assertEqual("present", claim["contract_verdict"]["disposition"])
+        self.assertEqual("verified", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_end_to_end_wrapped_altered_quote_downgrades_to_unknown(self) -> None:
+        env = self._run(self._DRAFT_ALTERED)
+        self.assertEqual(1, len(env["claims"]))
+        claim = env["claims"][0]
+        # The money still matches, but the wrapped altered quote is caught by the C2
+        # guard, so the present is downgraded to the honest could-not-check.
+        self.assertIn("quote_could_not_check_reason", claim)
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
 
 
 if __name__ == "__main__":

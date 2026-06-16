@@ -713,6 +713,21 @@ def _contract_claim(
     # reason so the verifier downgrades verified -> unknown. A present that came
     # FROM a verbatim quote (anchor_type "quote") is already confirmed and exempt.
     # Refuse, never accuse (ADR-0012 invariant 2).
+    #
+    # Hard-wrap safety (mirrors the litigator altered-quote gap fixed on a sibling
+    # branch 2026-06-16): a quoted clause phrase wrapped across two PHYSICAL lines is
+    # safe here for two independent reasons, so no logical-sentence reflow is needed
+    # on this branch. (1) `sentence` is a `split_sentences` segment, and that splitter
+    # breaks only on [.!?] punctuation, never on a bare newline, so the wrapped quote
+    # stays in THIS segment beside its parametric anchor instead of being stranded
+    # into a separate one (the failure shape that silently dropped the litigator
+    # check). (2) Even with the newline embedded mid-segment, _quote_unverified_reason
+    # -> verbatim_run_present -> normalize_for_verbatim folds newline/CR/tab to spaces
+    # and collapses whitespace runs, so a wrapped quote matches the clause exactly as
+    # its unwrapped form would. Both properties are pinned by
+    # tests.test_deterministic_envelope.ContractWrappedQuoteTests; if a later change
+    # ports a per-line split into split_sentences, those tests fail loudly and this
+    # guard must adopt the litigator path's logical-sentence reflow.
     if (
         verdict.disposition == "present"
         and verdict.anchor_type != "quote"
