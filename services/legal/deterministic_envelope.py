@@ -1189,7 +1189,8 @@ def build_deterministic_envelope(
     # term that hard-wraps across two lines sits whole in NEITHER per-line segment's
     # quoted span, so extract_draft_quote_spans finds nothing on either line and the
     # per-segment guard never fires -- a still-greening present (governing-law /
-    # polarity / percent; figures never green post ADR-0013) launders the absent
+    # polarity / subject-bound percent; figures and subject-less percents never green
+    # post ADR-0013) launders the absent
     # quote through clean. Mirror the litigator pass: reflow each logical sentence and
     # re-check its wrapped quotes against ONLY the clause(s) that produced its
     # present(s) -- the same precision the per-segment guard had, so a quote absent

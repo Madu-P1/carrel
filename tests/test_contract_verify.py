@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from services.legal.anchors import Anchor, extract_anchors
 from services.legal.contract_verify import (
@@ -253,22 +255,30 @@ class PercentClauseTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("percent", v.anchor_type)
 
-    def test_percent_present_with_hedge_detail(self) -> None:
+    def test_subjectless_percent_match_is_scoped_out(self) -> None:
+        # Was test_percent_present_with_hedge_detail (read "present"). ADR-0013 addendum
+        # (2026-06-16): a subject-less percent is never affirmed on a bare value match --
+        # only the proper-noun-bound percent greens. A clean same-obligation common-noun
+        # percent ("royalty 12.5%" vs "a royalty of 12.5%") is now an honest
+        # could-not-check; a value coincidence is not a confirmation. The decided recall
+        # cost, applied to percent uniformly with money/duration.
         v = verify_claim_against_clause(
             "The royalty is 12.5% of net revenue.",
             "Section 4.1. Licensee shall pay a royalty of 12.5% of net revenue.",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("review the full passage", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("12.5%", v.detail)  # bar-3 specificity: names its own figure
 
-    def test_percent_aligns_across_notations(self) -> None:
-        # "0.5%" in the summary vs "50 bps" in the clause is the same rate; the
-        # basis-point canonical makes the notations compare equal, exactly.
+    def test_percent_notation_alignment_is_scoped_out_without_a_subject(self) -> None:
+        # "0.5%" vs "50 bps" still canonicalize equal, but the percents are subject-less
+        # ("fee" vs "late charge"), so the bare value match is scoped out (ADR-0013
+        # addendum) rather than greened. Notation canonicalization is still exercised by
+        # the contradiction path; a value match ALONE earns could-not-check, not a green.
         v = verify_claim_against_clause(
             "The fee increases by 0.5% for each month of delay.",
             "Section 3. A late charge of 50 bps accrues for each month of delay.",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_percent_not_found_is_the_honest_exit(self) -> None:
         v = verify_claim_against_clause(
@@ -277,14 +287,40 @@ class PercentClauseTests(unittest.TestCase):
         )
         self.assertEqual("not_found", v.disposition)
 
-    def test_dual_notation_of_one_rate_is_present_not_a_refusal(self) -> None:
-        # '0.5% (50 bps)' is ONE rate written twice; equal canonicals collapse
-        # before the multi-value test, so the legal dual-notation convention
-        # reads present instead of an unnecessary could-not-check.
+    def test_dual_notation_collapses_to_one_value_then_scopes_out(self) -> None:
+        # '0.5% (50 bps)' is ONE rate written twice: equal canonicals still collapse, so
+        # this is NOT a multi-value refusal. But the single subject-less percent is then
+        # scoped out (ADR-0013 addendum) -> could-not-check, not present. The collapse is
+        # what keeps it out of multi_value_unverifiable; the scope-out is what keeps a bare
+        # value coincidence from greening.
         v = verify_claim_against_clause(
             "A late charge of 0.5% (50 bps) accrues monthly.",
             "Section 3. A late charge of 0.5% accrues monthly.",
         )
+        self.assertEqual("not_found", v.disposition)
+
+    def test_subjectless_percent_same_value_different_subject_is_not_green(self) -> None:
+        # THE false green the addendum closes: same value, different obligation. 10% == 10%
+        # but "royalty" and "tax" are different facts, so a deterministic check cannot
+        # affirm it -> could-not-check, never supported (the one inviolable failure).
+        v = verify_claim_against_clause("The royalty is 10%.", "The tax is 10%.")
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("10%", v.detail)
+
+    def test_subjectless_percent_cannot_launder_a_sibling_present(self) -> None:
+        # The laundering vector: a genuinely-confirmed governing-law present must NOT carry
+        # an unconfirmed percent to a green. The unconfirmed percent outranks the sibling
+        # present, so the whole sentence reads could-not-check.
+        v = verify_claim_against_clause(
+            "Governed by New York law and the royalty is 10%.",
+            "This Agreement is governed by New York law. The tax is 10%.",
+        )
+        self.assertEqual("not_found", v.disposition)
+
+    def test_subject_bound_percent_match_still_greens(self) -> None:
+        # The one percent green path the scope-out PRESERVES: a proper-noun-bound subject
+        # the clause confirms ("10% France" vs "10% France") still reads present.
+        v = verify_claim_against_clause("Allocation is 10% France.", "Allocation is 10% France.")
         self.assertEqual("present", v.disposition)
 
     def test_two_percents_on_one_side_refuse_to_guess(self) -> None:
@@ -293,6 +329,32 @@ class PercentClauseTests(unittest.TestCase):
             "Section 6. Interest accrues at 5% per annum.",
         )
         self.assertEqual("multi_value_unverifiable", v.disposition)
+        # Bar-3 specificity: the refusal must quote a figure from its own statement.
+        self.assertIn("8%", v.detail)
+        self.assertIn("5%", v.detail)
+
+    def test_percent_collision_corpus_has_zero_false_greens(self) -> None:
+        # Locks the ADR-0013 percent-addendum canary INTO the CI test chain, not just the
+        # manual acceptance gate: every same-value/different-subject percent pair (incl. the
+        # multi-anchor laundering and surface-shape cases the cachet-adversary minted) must
+        # never read supported, and the non-vacuity decide cases must still decide. The
+        # percent path is labeler-independent, so the shipped default config is sufficient.
+        corpus = (
+            Path(__file__).resolve().parents[1]
+            / "evals"
+            / "cachet_acceptance"
+            / "percent_collision_corpus.jsonl"
+        )
+        definite = {"present": "supported", "parametric_contradiction": "contradicted"}
+        cases = [json.loads(line) for line in corpus.read_text().splitlines() if line.strip()]
+        self.assertGreater(len(cases), 50)  # non-vacuity: the corpus is actually populated
+        for c in cases:
+            vd = verify_claim_against_clause(c["claim"], c["clause"])
+            state = definite.get(vd.disposition, "could_not_verify")
+            if c["expected"] == "could_not_verify":
+                self.assertNotEqual("supported", state, f"FALSE GREEN on {c['id']}: {c['claim']!r}")
+            else:
+                self.assertEqual(c["expected"], state, f"{c['id']} should be {c['expected']}")
 
 
 class ClauseAdjudicationTests(unittest.TestCase):
@@ -1423,12 +1485,14 @@ class SubjectBoundPercentTests(unittest.TestCase):
         self.assertNotEqual("present", v.disposition)
 
     def test_figure_scope_out_still_yields_to_a_real_present(self) -> None:
-        # The deliberate counter-case the fix must preserve: a confirmed 50% royalty
-        # in a sentence that also names a (scoped-out) 12-month window still reads
-        # present -- a figure not_found yields to a sibling non-figure present.
+        # The deliberate counter-case the fix must preserve: a confirmed SUBJECT-BOUND
+        # percent ("50% France") in a sentence that also names a (scoped-out) 12-month
+        # window still reads present -- a figure not_found yields to a sibling non-figure
+        # present. (The percent must be subject-BOUND now: a subject-less percent scopes
+        # out under the ADR-0013 percent addendum and would no longer be the present here.)
         v = verify_claim_against_clause(
-            "The royalty is 50% of fees over the prior 12 months.",
-            "Section 9.2. The royalty is 50% of fees over the prior 12 months.",
+            "Allocation is 50% France over the prior 12 months.",
+            "Section 9.2. Allocation is 50% France over the prior 12 months.",
         )
         self.assertEqual("present", v.disposition)
 

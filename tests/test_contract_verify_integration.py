@@ -255,7 +255,12 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertIn("99%", verdict["detail"])
         self.assertIn("50%", verdict["detail"])
 
-    def test_matching_percent_is_present(self) -> None:
+    def test_subjectless_percent_without_a_subject_is_could_not_check(self) -> None:
+        # Was test_matching_percent_is_present (read "present"). ADR-0013 percent addendum
+        # (2026-06-16): a subject-less percent ("the royalty equals 50%") is no longer
+        # affirmed on a bare value match -- only a proper-noun-bound percent greens. Like
+        # the money scope-out below, a matching figure with no confirmed subject is now an
+        # honest could-not-check (not_found), never a green. The decided recall cost.
         env = build_deterministic_envelope(
             "The royalty equals 50% of the net fees received in the preceding twelve (12) months.",
             conn=self._conn,
@@ -263,7 +268,7 @@ class ContractPathIntegrationTests(unittest.TestCase):
             embedder=self._embedder,
         )
         verdict = self._verdict_for(env, "50%")
-        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("not_found", verdict["disposition"])
 
     def test_fabricated_section_cannot_ride_a_matching_percent(self) -> None:
         # The review's live finding: a clause-checkable anchor used to suppress
@@ -519,12 +524,15 @@ class ContractPathIntegrationTests(unittest.TestCase):
         card = next(c for c in result.claim_verdicts if "governed" in c.claim_text)
         self.assertEqual("unknown", card.verdict)
 
-    def test_verbatim_wrapped_quote_on_a_present_stays_verified(self) -> None:
-        # NO over-refusal (the inviolable direction): a quoted phrase that IS verbatim in
-        # the present's own clause, even when hard-wrapped across two lines, must NOT be
-        # refused. The logical-sentence pass pools only the present-producing clause and
-        # re-checks the reflowed quote there; a verbatim match keeps the green. The pass
-        # only ever emits could-not-check on an ABSENT quote, never on a real one.
+    def test_verbatim_wrapped_quote_does_not_launder_a_subjectless_percent(self) -> None:
+        # Was test_verbatim_wrapped_quote_on_a_present_stays_verified (read "verified" off
+        # the percent present). ADR-0013 percent addendum: the subject-less percent "royalty
+        # equals 50%" now scopes out and OUTRANKS a co-occurring present, so a verbatim
+        # wrapped quote in the same logical sentence can no longer carry the unconfirmed
+        # percent to "verified". The honest verdict is could-not-check (unknown): the quote
+        # is real, but the percent claim bundled with it is unconfirmed. The reflow's
+        # over-refusal guard for a quote riding a SURVIVING present is preserved by
+        # test_verbatim_wrapped_quote_on_a_surviving_present_stays_verified below.
         draft = (
             "The royalty equals 50% of net fees and the clause provides that fees are "
             '"received\nin the twelve (12) months preceding each report."'
@@ -534,6 +542,38 @@ class ContractPathIntegrationTests(unittest.TestCase):
         )
         result = verify_service._verify_result_from_envelope(draft, env, 0.0)
         card = next(c for c in result.claim_verdicts if "royalty" in c.claim_text)
+        self.assertEqual("unknown", card.verdict)
+
+    def test_verbatim_wrapped_quote_on_a_surviving_present_stays_verified(self) -> None:
+        # The reflow over-refusal guard, re-scaffolded onto a SURVIVING present now that a
+        # subject-less percent no longer greens. A quoted phrase that IS verbatim in the
+        # governing-law present's own clause, hard-wrapped across two lines, must NOT be
+        # refused: the logical-sentence pass reflows the quote and re-checks it against the
+        # present-producing clause; a verbatim match keeps the green. The pass only ever
+        # emits could-not-check on an ABSENT quote, never on a real one.
+        self._conn.execute(
+            "INSERT INTO documents (id, filename, file_type, status, source_kind, subject_name) "
+            "VALUES ('contract-quote-ok', 'q.pdf', 'pdf', 'ready', 'upload', 'Agreement')"
+        )
+        nodes = [
+            _node(
+                0,
+                "Section 1. This Agreement is governed by the laws of Delaware, and fees "
+                "are received in the twelve (12) months preceding each report.",
+            ),
+        ]
+        ids = insert_typed_nodes(self._conn, "contract-quote-ok", nodes)
+        embed_and_index_nodes(self._conn, nodes, ids, embedder=self._embedder)
+        self._conn.commit()
+        draft = (
+            'This Agreement is governed by the laws of Delaware, where fees are "received\n'
+            'in the twelve (12) months preceding each report."'
+        )
+        env = build_deterministic_envelope(
+            draft, conn=self._conn, doc_ids=["contract-quote-ok"], embedder=self._embedder
+        )
+        result = verify_service._verify_result_from_envelope(draft, env, 0.0)
+        card = next(c for c in result.claim_verdicts if "Delaware" in c.claim_text)
         self.assertEqual("verified", card.verdict)
 
     def test_altered_wrapped_quote_on_a_present_downgrades_to_unknown(self) -> None:

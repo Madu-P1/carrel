@@ -912,11 +912,20 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             # so route to the could-not-check tray (ADR-0012 invariant 2: below-confidence
             # is never a guessed verdict). Role-aligned multi-value checking is T1 work.
             if multi_value_verdict is None:
+                # Bar-3 specificity: name the claim's OWN values, never a content-free wall.
+                # "values" not "figures" -- this branch also serves date / governing_law, which
+                # are not figures. Quote each value so a value that itself contains a comma (a
+                # date: "January 1, 2025") cannot blur into its neighbour in the list.
+                _claim_figs = "; ".join(f"'{t}'" for t in dict.fromkeys(a.text for a in claim_hits))
+                _clause_figs = "; ".join(
+                    f"'{t}'" for t in dict.fromkeys(a.text for a in clause_hits)
+                )
                 multi_value_verdict = ClauseVerdict(
                     "multi_value_unverifiable",
                     (
-                        f"The {anchor_type} values in the summary and {where} cannot be aligned "
-                        "one-to-one deterministically, so this sentence was not independently checked."
+                        f"The summary's {anchor_type} values ({_claim_figs}) and {where}'s "
+                        f"({_clause_figs}) cannot be aligned one-to-one deterministically, so "
+                        "this sentence was not independently checked."
                     ),
                     anchor_type,
                     claim_values,
@@ -966,6 +975,31 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                         "not_found",
                         f"{claim_hits[0].text} appears in {where}, but a deterministic check "
                         "cannot confirm it states this obligation, so it was not "
+                        "independently verified.",
+                        anchor_type,
+                        claim_values,
+                        clause_values,
+                    )
+                continue
+            if anchor_type == "percent":
+                # ADR-0013 addendum (2026-06-16): a percent that reaches this value-only
+                # branch is SUBJECT-LESS -- _subject_aware_percent returned None because no
+                # claim percent carried a proper-noun-bound subject. Greening on the bare
+                # value is the same false green ADR-0013 scoped out for money/duration:
+                # "the royalty is 10%" reads supported against "the tax is 10%" (same value,
+                # different obligation). A deterministic check cannot confirm the percent is
+                # ABOUT the claimed obligation, so a value match is could-not-check, never a
+                # green. Routed to the unconfirmed tier (OUTRANKS a sibling present, unlike
+                # the figure scope-out which yields) so the unconfirmed percent cannot ride a
+                # co-occurring green ("governed by NY law and the royalty is 10%" must not
+                # green off a clause that confirms only the NY law). The subject-BOUND percent
+                # green ("10% France" vs "10% France") stays alive in _subject_aware_percent
+                # above; only the bare-value fallthrough loses its green.
+                if unconfirmed_verdict is None:
+                    unconfirmed_verdict = ClauseVerdict(
+                        "not_found",
+                        f"The summary states {claim_hits[0].text}, but a deterministic check "
+                        "cannot confirm which obligation it states, so it was not "
                         "independently verified.",
                         anchor_type,
                         claim_values,

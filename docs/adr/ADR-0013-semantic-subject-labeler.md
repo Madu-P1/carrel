@@ -19,6 +19,61 @@ non-figure anchors). The AFM labeler + canaries are retained in-tree but OFF/exp
 Demo greens now come from the provably-safe anchors (citations, governing-law, polarity,
 verbatim quotes); figure claims catch alterations or honestly refuse.
 
+## Addendum 2026-06-16: the scope-out extends to subject-less PERCENTS
+
+This ADR's "Out of scope" originally read "Percent (already handled by
+`_subject_aware_percent`)." That was wrong, and the gap is a function-level false
+green of the inviolable class. `_subject_aware_percent` only binds a subject on an
+unambiguous percent->proper-noun adjacency ("10% France"); the far more common
+common-noun shape ("the royalty is 10%") stays SUBJECT-LESS and fell through to the
+value-only path, which greened on the bare value. So:
+
+```
+verify_claim_against_clause("The royalty is 10%.", "The tax is 10%.")  -> present   # FALSE GREEN
+```
+
+A percent value coincidence across unconfirmed subjects is the SAME false green this
+ADR scoped out for money/duration ("indemnification cap $5M" vs "liability cap $5M").
+Decision: **a subject-less percent is never AFFIRMED on a bare value match** -- it
+returns could-not-check, exactly like money/magnitude/duration. The subject-BOUND
+percent green (`_subject_aware_percent`, proper-noun adjacency) is unchanged and stays
+the one percent green path; only the value-only fallthrough loses its green. The
+value-MISMATCH catch is retained (the altered-figure / contradiction path), same as for
+the other figures. The scope-out routes to the UNCONFIRMED tier (outranks a sibling
+present), not the figure tier (which yields): a percent is a non-figure assertion, so an
+unconfirmed percent must not ride a co-occurring green ("governed by NY law and the
+royalty is 10%" must not green off a clause that only confirms the NY law). This closes
+both the direct false green and that laundering vector. It is labeler-independent: the
+subject labeler (`CARREL_SUBJECT_LABELER`) only labels money/magnitude/duration, so the
+percent scope-out holds identically under `--labeler off` and `--labeler regex`.
+
+Cost: the decided recall cost extends to percent. Clean same-obligation common-noun
+percents ("the royalty is 12.5%" vs "a royalty of 12.5%") now read could-not-check rather
+than supported, in BOTH modes. This is the same trade the ADR already accepted for
+figures, applied uniformly: a value coincidence is not a confirmation, and a loud
+could-not-check is reviewable where a false green is the pilot-ender (ADR-0009).
+
+Alternatives considered for percent and rejected:
+- (b) Wire percent through the subject labeler (add `percent` to the labeled types +
+  a percent disposer + verbatim post-check). Restores the common-noun green ONLY in
+  `--labeler regex`/`afm` mode (off by default), inherits the regex floor's
+  false-accusation surface and the disproven AFM path. RECOVERABLE: if a stronger
+  on-device model later passes the canaries, percent recall returns via the same
+  proposes-disposes contract as money/duration. Not built now.
+- (c) An always-on DETERMINISTIC verbatim local-proximity subject check (extract the
+  claim's leading noun, require it verbatim within a window of the clause's matching
+  figure). This is the binder Alternative (A) below already built and reverted
+  ("deterministic subject-binding cannot be both safe and useful"); as a green-narrower
+  it avoids the false-accusation mode but keeps a residual proximity-coincidence false
+  green (the claim noun landing inside the window of an unrelated same-value figure),
+  which would need its own canary. Rejected for the same reason figures scope out.
+
+Gate: `evals/cachet_acceptance/percent_collision_corpus.jsonl` (same-value /
+different-subject percent pairs, expected could-not-check) joins the collision and
+polarity-collision canaries; zero false greens under BOTH `--labeler off` and
+`--labeler regex`. The percent `multi_value_unverifiable` refusal detail now names the
+claim's own figures (bar-3 specificity).
+
 ## Validation outcome (2026-06-16, live EinsteinAFMBridge on macOS 26.5)
 
 Built the bridge (full Xcode 26, `swift build --product EinsteinAFMBridge -Xswiftc
@@ -185,7 +240,9 @@ ADR fixes the contract and the safety invariant, not the signatures:
 
 - A cloud model in the verdict path (breaks the moat).
 - The model as a verdict-maker (it is a labeler only; the deterministic rule decides).
-- Percent (already handled by `_subject_aware_percent`).
+- ~~Percent (already handled by `_subject_aware_percent`).~~ CORRECTED: only the
+  proper-noun-bound percent was handled; the subject-less percent value-only green is
+  scoped out by the 2026-06-16 addendum above.
 - Non money/magnitude/duration anchor types.
 
 ## Rollback
