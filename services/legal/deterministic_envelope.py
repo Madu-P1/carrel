@@ -491,6 +491,108 @@ def _segment_holding_quoted_phrase(members: list[int], sentences: list[str], phr
     return next((i for i in members if phrase in sentences[i]), members[0])
 
 
+def _quoted_phrase_segments(sentence: str) -> list[tuple[str, int, int]]:
+    """(phrase, start, end): each quoted phrase to check, with offsets into ``sentence``.
+
+    The same phrase set as :func:`_all_quotes_unverified` (each quoted span split into
+    the verbatim runs between the author's [edits]/ellipses, recovering the phrases the
+    greedy span regex merged into one run), but every phrase keeps the [start, end) of
+    the quoted SEGMENT it sits in, so the caller can find the citation clause adjacent
+    to it. ``pos`` walks the span's inner text, advancing past each quote mark the split
+    consumed, so a phrase keeps its true draft offset even inside a merged span.
+    """
+    out: list[tuple[str, int, int]] = []
+    for inner, span_start, _span_end in extract_draft_quote_spans(sentence):
+        pos = span_start
+        for idx, part in enumerate(re.split(r'["“”]', inner)):
+            if idx % 2 == 0 and part.strip():  # quoted parts; odd parts are the author's prose
+                seg_end = pos + len(part)
+                for run in split_runs(part):
+                    run = run.strip()
+                    if run:
+                        out.append((run, pos, seg_end))
+            pos += len(part) + 1  # +1 for the quote mark the split consumed
+    return out
+
+
+def _clause_opinions(
+    seg_start: int,
+    seg_end: int,
+    seg_starts: list[int],
+    seg_ends: list[int],
+    cites: list[tuple[int, str | None]],
+    group_opinions: list[str],
+) -> list[str] | None:
+    """Opinions to check a quoted segment against; ``None`` when it has no grounding cite.
+
+    The adjacent citation CLAUSE: the cite(s) between this segment and the next quoted
+    segment (the following clause, the dominant ``"holding," A, B.`` pattern), else the
+    cite(s) between the previous segment and this one (the cite-first ``In A and B, held
+    "q"`` pattern). A phrase with cites in the sentence but none adjacent (a floating
+    quote whose grounding is positionally unclear) falls back to the group union so a
+    fabricated phrase can never ride a green UNchecked; a phrase in a sentence with no
+    cite at all is not ours to check (returns ``None``, mirroring
+    :func:`_all_quotes_unverified`'s empty-opinions short-circuit). A clause cite whose
+    opinion is not bundled contributes no confirming text, so the phrase reads
+    could-not-check, never confirmed off an unrelated co-cited opinion (finding 5).
+    """
+    next_seg_start = min((s for s in seg_starts if s >= seg_end), default=None)
+    prev_seg_end = max((e for e in seg_ends if e <= seg_start), default=None)
+    following = [
+        op
+        for cstart, op in cites
+        if cstart >= seg_end and (next_seg_start is None or cstart < next_seg_start)
+    ]
+    preceding = [
+        op
+        for cstart, op in cites
+        if cstart < seg_start and (prev_seg_end is None or cstart >= prev_seg_end)
+    ]
+    if following:
+        return [op for op in following if op]
+    if preceding:
+        return [op for op in preceding if op]
+    if cites:
+        return group_opinions  # floating phrase: the union keeps it from riding a green
+    return None  # no cite anywhere in the sentence: not checked
+
+
+def _quotes_unverified_by_clause(sentence: str, group_opinions: list[str]) -> list[tuple[str, str]]:
+    """EVERY quoted phrase not verbatim in the opinion of ITS adjacent citation clause.
+
+    Finding 5 (xhigh review, 2026-06-16): checking a phrase against the UNION of every
+    cited opinion in a logical sentence is strictly more lenient than per-cite checking,
+    so a fabricated quote cited to case A but verbatim in co-cited case B's opinion rode
+    a green. Each phrase is instead checked only against the citation clause that grounds
+    IT (see :func:`_clause_opinions`); a co-cited case grounding a DIFFERENT quote is
+    excluded. Refusal-only (could-not-check), never an "altered" accusation, exactly like
+    :func:`_all_quotes_unverified`: the bundled opinion text is not guaranteed complete,
+    so an absent phrase may be a misquote OR a passage we do not hold. Returns (reason,
+    phrase) per miss so the caller attaches each reason to the surface segment holding it.
+    """
+    segments = _quoted_phrase_segments(sentence)
+    if not segments:
+        return []
+    cites: list[tuple[int, str | None]] = [
+        (ref.start, local_opinion_text(ref.corrected or ref.matched_text))
+        for ref in find_citations(sentence)
+    ]
+    seg_starts = [s for _phrase, s, _e in segments]
+    seg_ends = [e for _phrase, _s, e in segments]
+    out: list[tuple[str, str]] = []
+    for phrase, seg_start, seg_end in segments:
+        opinions = _clause_opinions(seg_start, seg_end, seg_starts, seg_ends, cites, group_opinions)
+        if opinions is not None and not _run_present_any(phrase, opinions):
+            out.append(
+                (
+                    f'The quoted language "{phrase}" could not be verified against '
+                    "the source text checked.",
+                    phrase,
+                )
+            )
+    return out
+
+
 def _is_nonquote_contract_present(claim: dict) -> bool:
     """True if ``claim`` greens off a NON-quote contract present (a launderable card).
 
@@ -1064,10 +1166,16 @@ def build_deterministic_envelope(
     for members in members_by_group.values():
         logical_text = " ".join(sentences[i] for i in members)
         pooled = [op for i in members for op in opinions_by_sentence.get(i, [])]
-        # Flag EVERY unverified quoted phrase, not just the first: a logical sentence
-        # carrying two different altered quotes, each cited to its own real case, must
-        # downgrade BOTH segments or the second rides a green (xhigh review finding 3).
-        for reason, phrase in _all_quotes_unverified(logical_text, pooled):
+        # Attribute each quoted phrase to the citation clause that grounds IT, not the
+        # union of every opinion cited in the logical sentence. Pooling was strictly
+        # more lenient: a fabricated quote cited to case A but verbatim in co-cited case
+        # B's opinion was treated as present and rode a green (xhigh review finding 5).
+        # _quotes_unverified_by_clause checks each phrase against only its adjacent cite,
+        # and still flags EVERY miss (not just the first), so a logical sentence carrying
+        # two altered quotes downgrades BOTH segments (finding 3). ``pooled`` is the
+        # floating-phrase fallback only: a phrase with no cite adjacent to it is still
+        # checked against the union so it can never ride a green unchecked.
+        for reason, phrase in _quotes_unverified_by_clause(logical_text, pooled):
             target = _segment_holding_quoted_phrase(members, sentences, phrase)
             claims[target].setdefault("quote_could_not_check_reason", reason)
 

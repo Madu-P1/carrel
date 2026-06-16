@@ -56,18 +56,32 @@ _ABBREVIATIONS = {
     "pt",
 }
 
-# A sentence end is [.!?] + whitespace + an opening quote/bracket? + a capital
-# or digit. We re-merge if the token before the punctuation is a known
-# abbreviation or a single-letter initial.
+# A sentence end is [.!?] + whitespace then EITHER a hard line break (a real
+# terminator immediately before a newline is a boundary regardless of the next
+# line's case) OR, on the same line, an opening quote/bracket? + a capital or
+# digit. We re-merge if the token before the punctuation is a known abbreviation
+# or a single-letter initial. The hard-line-break arm is case-insensitive on
+# purpose: a lowercase continuation ("...unequal.\nbrown 347 U.S. 483 confirms
+# it.") used to merge two genuinely-separate sentences into one logical group,
+# widening the opinion pool the altered-quote attribution pass checks against
+# (xhigh review finding 6). It only fires on the whole-draft logical split:
+# split_sentences splits on newlines first, so the per-line core never sees one.
 #
 # NOTE: we deliberately do NOT treat a closing-quote boundary ("...unequal." Brown
 # v. Board, 347 U.S. 483.) as a split point. Doing so severs a quoted holding from
 # the citation that immediately follows it (the litigator pattern), which is worse
 # than the cost it would fix: a brief of quoted holdings WITHOUT inline citations
-# collapses into one claim. Splitting that case correctly needs citation-aware
-# lookahead (eyecite spans start at the reporter, not the party name), which is not
-# yet built. See docs/notes on the unit-of-grounding limitation.
-_BOUNDARY = re.compile(r"[.!?]+(\s+)(?=[\"'(\[]?[A-Z0-9])")
+# collapses into one claim. The newline arm preserves this: the terminator must sit
+# immediately before the line break, so a period inside a closing quote (".\n) does
+# not split. Splitting the same-line closing-quote case correctly needs citation-
+# aware lookahead (eyecite spans start at the reporter, not the party name), which
+# is not yet built. See docs/notes on the unit-of-grounding limitation.
+_BOUNDARY = re.compile(
+    r"[.!?]+(?:"
+    r"(?P<ws_nl>[ \t]*[\r\n]+\s*)"  # hard line break: a boundary at any next-char case
+    r"|(?P<ws_inline>\s+)(?=[\"'(\[]?[A-Z0-9])"  # same line: next opens with a cap/digit
+    r")"
+)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -209,7 +223,8 @@ def _split_line_sentences(text: str) -> list[str]:
     for m in _BOUNDARY.finditer(text):
         if _inside_citation(m.start()):
             continue
-        punct_end = m.start() + len(m.group(0)) - len(m.group(1))
+        ws = m.group("ws_nl") or m.group("ws_inline")
+        punct_end = m.start() + len(m.group(0)) - len(ws)
         segment = text[start:punct_end]
         last_token = re.split(r"[\s(]+", segment.strip())[-1].rstrip(".!?")
         if last_token.lower() in _ABBREVIATIONS or (len(last_token) == 1 and last_token.isupper()):

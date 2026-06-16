@@ -1020,6 +1020,88 @@ class AlteredQuoteTests(unittest.TestCase):
         flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
         self.assertEqual(2, len(flagged), "only one of two altered quotes was refused")
 
+    def test_quote_verbatim_in_a_co_cited_case_is_flagged_not_pooled(self) -> None:
+        # Finding 5 (xhigh review, 2026-06-16): the LAST false green. The altered-quote
+        # pass pooled the UNION of every cited opinion in a logical sentence, which is
+        # strictly more lenient than per-cite checking. A quote cited to Brown but
+        # verbatim in CO-CITED Roe's opinion was treated as present and rode a green.
+        # Each quote must be checked only against the citation clause that grounds IT.
+        # Roe's opinion is seeded with the Brown-cited phrase so the union would
+        # confirm it; the per-clause attribution must refuse it.
+        # Seed Roe's opinion so it contains BOTH quoted phrases verbatim (the phrase
+        # the extractor checks keeps its trailing comma), so the OLD union would
+        # confirm the Brown-cited phrase off Roe and green it. The per-clause fix must
+        # check the first phrase against Brown's opinion alone, where it is absent.
+        roe_with_brown_phrase = LocalCase(
+            "Roe v. Wade",
+            "/opinion/410/roe-v-wade/",
+            "scotus",
+            "1973-01-22",
+            opinion_text=(
+                "The right is fundamental, the Court held. "
+                "The statute is void as written, it further declared."
+            ),
+        )
+        draft = (
+            'The Court held that "the statute is void as written," 347 U.S. 483, '
+            'and that "the right is fundamental," 410 U.S. 113.'
+        )
+        with mock.patch.dict(
+            "services.legal.local_caselaw.DEMO_CORPUS",
+            {"410 U.S. 113": roe_with_brown_phrase},
+        ):
+            env = self._build(draft)
+        claim = env["claims"][0]
+        # The Brown-cited phrase is absent from Brown's OWN opinion, so it must be
+        # refused, not greened by Roe's co-cited opinion.
+        self.assertIn("quote_could_not_check_reason", claim)
+        self.assertIn("the statute is void as written", claim["quote_could_not_check_reason"])
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_cite_first_fabricated_quote_is_refused(self) -> None:
+        # Cite-first construction ("In A, the Court held 'q'"): the quote has no
+        # FOLLOWING cite, so it attributes to the preceding clause (Brown). The phrase
+        # is absent from Brown's opinion, so it is refused -- the preceding-clause
+        # fallback must not silently leave a cite-first fabrication unchecked.
+        env = self._build('In 347 U.S. 483, the Court held "the statute is void as written."')
+        claim = env["claims"][0]
+        self.assertIn("quote_could_not_check_reason", claim)
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_floating_fabricated_quote_cannot_ride_a_green(self) -> None:
+        # A fabricated quote with NO cite adjacent to it ("floating"), in a sentence
+        # whose OTHER quote is correctly cited and would green the segment. The floating
+        # phrase falls back to the group union, so it is still checked and refused -- it
+        # can never ride the segment's green unchecked.
+        env = self._build(
+            'The brief asserts "this fabricated floating phrase" and that '
+            '"separate but equal has no place," 347 U.S. 483.'
+        )
+        claim = env["claims"][0]
+        self.assertIn("quote_could_not_check_reason", claim)
+        self.assertIn("fabricated floating phrase", claim["quote_could_not_check_reason"])
+        self.assertEqual("unknown", _claim_dict_to_verdict(claim, 0).verdict)
+
+    def test_combined_string_cite_quote_is_not_over_refused(self) -> None:
+        # The over-refusal guard: a quote grounded in a combined string-cite ("'q,' A,
+        # and B.") is verbatim in the SECOND cite of the clause. Per-clause attribution
+        # unions the cites of the adjacent clause, so a legitimately combined-cited quote
+        # stays verified instead of being falsely refused.
+        roe = LocalCase(
+            "Roe v. Wade",
+            "/opinion/410/roe-v-wade/",
+            "scotus",
+            "1973-01-22",
+            opinion_text="The right is fundamental, the Court declared.",
+        )
+        with mock.patch.dict("services.legal.local_caselaw.DEMO_CORPUS", {"410 U.S. 113": roe}):
+            env = self._build(
+                'The Court held "the right is fundamental," 347 U.S. 483, and 410 U.S. 113.'
+            )
+        claim = env["claims"][0]
+        self.assertNotIn("quote_could_not_check_reason", claim)
+        self.assertEqual("verified", _claim_dict_to_verdict(claim, 0).verdict)
+
     def test_hard_wrapped_quote_and_cite_is_attributed(self) -> None:
         # The regression guard: a doctored quote and the citation that grounds it,
         # hard-wrapped onto SEPARATE physical lines (exactly how a pasted brief

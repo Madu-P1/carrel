@@ -218,6 +218,28 @@ class SplitSentencesWithGroupsTests(unittest.TestCase):
         self.assertEqual(2, len(segments))
         self.assertEqual([0, 1], groups)
 
+    def test_terminator_then_lowercase_line_stays_two_groups(self) -> None:
+        # A real terminator followed by a hard line break is a sentence boundary even
+        # when the next line opens lowercase. Without this, a lowercase continuation
+        # merged two genuinely-separate sentences into ONE logical group, widening the
+        # opinion pool the altered-quote attribution pass pools over (xhigh finding 6).
+        segments, groups = split_sentences_with_groups(
+            "The schools were unequal.\nbrown confirmed this, 347 U.S. 483."
+        )
+        self.assertEqual(2, len(segments))
+        self.assertEqual([0, 1], groups)
+
+    def test_closing_quote_then_newline_still_one_group(self) -> None:
+        # The newline-boundary must NOT fire when the terminator sits inside a closing
+        # quote (the period is not immediately before the line break): the closing-quote
+        # rule still holds, so a quoted holding and its following cite on the next line
+        # stay one logical group.
+        segments, groups = split_sentences_with_groups(
+            'The Court called them "inherently unequal."\nBrown, 347 U.S. 483, announced it.'
+        )
+        self.assertEqual(2, len(segments))
+        self.assertEqual([0, 0], groups)
+
     def test_blank_line_paragraphs_are_distinct_groups(self) -> None:
         segments, groups = split_sentences_with_groups(
             "First sentence ends here.\n\nSecond sentence begins anew."
