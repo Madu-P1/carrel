@@ -475,6 +475,22 @@ def _segment_holding_quoted_phrase(members: list[int], sentences: list[str], phr
     return next((i for i in members if phrase in sentences[i]), members[0])
 
 
+def _is_nonquote_contract_present(claim: dict) -> bool:
+    """True if ``claim`` greens off a NON-quote contract present (a launderable card).
+
+    These are the cards the C2 anchor-laundering guard protects: a value/structure
+    match (governing-law / polarity / percent; figures never green post ADR-0013) that
+    reads "verified", which a fabricated quoted phrase in the same logical sentence
+    could ride on. A present that came FROM a verbatim quote (anchor_type "quote") is
+    already the quote's own confirmation and is exempt, exactly as the per-segment
+    guard in _contract_claim treats it.
+    """
+    cv = claim.get("contract_verdict")
+    return (
+        cv is not None and cv.get("disposition") == "present" and cv.get("anchor_type") != "quote"
+    )
+
+
 def _run_present_any(run: str, opinions: list[str]) -> bool:
     """True if ``run`` (or its leading-letter case variant) is verbatim in any opinion."""
     return any(
@@ -1038,6 +1054,42 @@ def build_deterministic_envelope(
         reason, phrase = found
         target = _segment_holding_quoted_phrase(members, sentences, phrase)
         claims[target]["quote_could_not_check_reason"] = reason
+
+    # Contract anchor-laundering pass, SAME-LOGICAL-SENTENCE granularity. The C2
+    # guard inside _contract_claim re-checks a non-quote present's quoted phrases
+    # against its matched clause, but it runs per PHYSICAL LINE: a quoted contract
+    # term that hard-wraps across two lines sits whole in NEITHER per-line segment's
+    # quoted span, so extract_draft_quote_spans finds nothing on either line and the
+    # per-segment guard never fires -- a still-greening present (governing-law /
+    # polarity / percent; figures never green post ADR-0013) launders the absent
+    # quote through clean. Mirror the litigator pass: reflow each logical sentence and
+    # re-check its wrapped quotes against ONLY the clause(s) that produced its
+    # present(s) -- the same precision the per-segment guard had, so a quote absent
+    # there is still caught instead of hidden behind a broader pool. The downgrade
+    # lands on the PRESENT claim(s) (the card that would otherwise read verified), not
+    # the quote-holding segment, since that is the card the laundering rides. Gated on
+    # a present so it only fires where a green exists to launder; only ever emits
+    # could-not-check, never an accusation (ADR-0012 invariant 2). Single-line groups
+    # recompute the per-segment guard's result identically, so this is purely additive
+    # (setdefault keeps the already-attached reason and never double-writes).
+    for members in members_by_group.values():
+        present_members = [i for i in members if _is_nonquote_contract_present(claims[i])]
+        if not present_members:
+            continue
+        present_clauses = [
+            claims[i]["contract_verdict"]["clause_text"]
+            for i in present_members
+            if claims[i]["contract_verdict"].get("clause_text")
+        ]
+        if not present_clauses:
+            continue
+        logical_text = " ".join(sentences[i] for i in members)
+        found = _quote_unverified(logical_text, present_clauses)
+        if found is None:
+            continue
+        reason, _phrase = found
+        for i in present_members:
+            claims[i].setdefault("quote_could_not_check_reason", reason)
 
     return {
         "claims": claims,

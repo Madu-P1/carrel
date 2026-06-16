@@ -127,3 +127,32 @@ and make them pass for real (not by monkeypatch). Add at minimum:
 - Memory: `cachet-line-split-breaks-quote-attribution`, `cachet-money-duration-false-green`,
   `cachet-verify-three-failure-layers`, `cachet-verify-segmentation-fix`.
 - Sibling trip-wire branch: `origin/claude/friendly-khayyam-55ec9d` (`221b31be7`).
+
+## Resolution (2026-06-16) — ported
+
+The port landed: `build_deterministic_envelope` now runs a logical-sentence contract
+anchor-laundering pass (helper `_is_nonquote_contract_present`) right after the
+litigator altered-quote pass. It reflows each logical sentence, re-checks its wrapped
+quotes against ONLY the clause(s) that produced its present(s) (preserving the
+per-segment guard's precision), and downgrades the PRESENT claim(s) to could-not-check.
+Regression tests live in `tests/test_contract_verify_integration.py` (real retrieval,
+no monkeypatch).
+
+Two corrections to this handoff, established empirically while doing the port:
+
+1. **It CAN be a false green, in one layout.** The handoff's probe put the whole quote
+   on line 2, so the present line stayed clean. But when the quote OPENS on the present
+   line and its body wraps onto an anchor-free line, the present card read **`verified`**
+   (the fabricated body rendered as untreated plain text, not a could-not-check card).
+   Confirmed RED before the fix via `test_wrapped_quote_laundering_through_a_present_is_could_not_check`.
+   So this was sharper than a pure recall gap; the port closes it.
+2. **The friendly-khayyam trip-wire cannot be ported verbatim.** Both its premises are
+   false on this branch: it asserts `len(split_sentences) == 1` (false post `3374549af`,
+   which splits on newlines) and it greens on **money** (false post ADR-0013 `4b04374db`).
+   It was adapted in spirit to still-greening anchors (governing-law / percent), per this
+   handoff's own step 2.
+
+Acceptance: full Python unittest leg green (742, 1 skipped); ruff clean;
+`script/cachet-acceptance.py` zero false greens + zero false accusations on all five
+corpora (definite-rate RED is the pre-decided ADR-0013 recall cost, upstream of this
+change at `verify_claim_against_clause`, which the envelope post-loop does not touch).
