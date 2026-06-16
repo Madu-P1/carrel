@@ -10,4 +10,6 @@ The vendor grants the customer an exclusive license to use the Software.
 
 The agreement is governed by New York law.
 
+The parties submit to "the exclusive jurisdiction of the courts of New York."
+
 The vendor must use best efforts to protect confidential information.

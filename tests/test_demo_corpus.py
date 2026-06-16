@@ -201,6 +201,18 @@ class ContractCorpusTests(unittest.TestCase):
         self.assertIn("New York", verdict["detail"])
         self.assertIn("Delaware", verdict["detail"])
 
+    def test_venue_quote_is_present(self) -> None:
+        # The one AFFIRMED verdict in the demo (council 2026-06-16): a verbatim
+        # quote of Section 14's venue clause greens via the provably-safe quote
+        # anchor, so the buyer can calibrate what a refusal means. Same two words
+        # "New York" as the governing-law contradiction above, opposite verdicts:
+        # the choice of law is wrong (red), the venue quote is verbatim-correct
+        # (green). A green here is character-for-character, never a rubber stamp.
+        claim = self._verdict_for("exclusive jurisdiction of the courts of New York")
+        verdict = claim["contract_verdict"]
+        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("quote", verdict["anchor_type"])
+
     def test_best_efforts_claim_is_untreated(self) -> None:
         # "The vendor must use best efforts to protect confidential information." carries
         # no checkable anchor (the source's defined term is "Confidential Information",

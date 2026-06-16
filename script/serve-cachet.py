@@ -43,6 +43,15 @@ os.environ["CACHET_DETERMINISTIC_VERIFY"] = "1"
 # load-bearing for the offline demo; kept as defence-in-depth and for the
 # opt-out LLM path. This token never leaves the device.
 os.environ.setdefault("COURTLISTENER_API_TOKEN", "local")
+# NOTE on subject binding: CARREL_SUBJECT_LABELER stays OFF here on purpose. The
+# regex floor only binds a figure when a qualified noun sits adjacent to it; real
+# contract phrasing ("capped at $X", "shall not exceed $Y") uses bare role words,
+# so the floor binds nothing and does NOT stop a cross-subject false-RED ("$1M
+# indemnification cap" vs "$500k liability cap"). Turning it on adds no guard and
+# the code keeps it off until the AFM semantic labeler is validated (ADR-0013).
+# The demo protection is the curated on-script corpus (one value per sentence, no
+# cross-subject figure pairs), not this flag. Bare figures are never AFFIRMED
+# regardless (ADR-0013 scope-out), so there are no false greens.
 # Fast ingest: the deterministic quote/cite catch reads full document text, not
 # vectors, so skip per-chunk embedding on upload. Cuts a huge contract from
 # ~8.7 min to ~2s (ce74049d0). Cachet-ingested docs have no vectors (FTS +
