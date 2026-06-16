@@ -53,7 +53,7 @@ from services.legal.quote_check import (
     quoted_subphrases,
     split_runs,
 )
-from services.legal.sentences import split_sentences
+from services.legal.sentences import split_sentences, split_sentences_with_groups
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
     T1Assessment,
@@ -417,19 +417,21 @@ def _clause_on_topic(sentence: str, clause: str) -> bool:
     return _shares_topic(_content_tokens(sentence), clause)
 
 
-def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
-    """A quoted phrase that is not verbatim in the cited opinion text we hold.
+def _quote_unverified(sentence: str, opinions: list[str]) -> tuple[str, str] | None:
+    """The first quoted phrase not verbatim in any held opinion, as (reason, phrase).
 
     ``opinions`` is the bundled opinion text of the cases cited in THIS sentence
-    (the build loop attributes same-sentence only). A phrase that is present is
-    confirmed; a phrase that is ABSENT returns a could-not-check reason, NOT an
-    "altered" accusation: the bundled opinion text is not guaranteed complete, so an
-    absent phrase may be a misquote OR a real passage we do not hold. Refusing to
-    verify is the honest call; a false "you fabricated this quote" is the
-    malpractice direction. Returns None when there is nothing to quote or no opinion
-    to check against. Each run is split into its distinct quoted phrases first, so
-    two genuinely-verbatim quotes the greedy span regex merged into one run are
-    checked separately, not flagged as one.
+    (same-sentence attribution; the build loop pools across the physical lines a
+    logical sentence wraps onto). A phrase that is present is confirmed; a phrase
+    that is ABSENT yields a could-not-check reason, NOT an "altered" accusation: the
+    bundled opinion text is not guaranteed complete, so an absent phrase may be a
+    misquote OR a real passage we do not hold. Refusing to verify is the honest
+    call; a false "you fabricated this quote" is the malpractice direction. Returns
+    None when there is nothing to quote or no opinion to check against. Each run is
+    split into its distinct quoted phrases first, so two genuinely-verbatim quotes
+    the greedy span regex merged into one run are checked separately, not flagged as
+    one. The returned ``phrase`` lets the caller attach the reason to the exact
+    surface segment that holds it.
     """
     spans = extract_draft_quote_spans(sentence)
     if not spans or not opinions:
@@ -441,9 +443,20 @@ def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
                 if phrase and not _run_present_any(phrase, opinions):
                     return (
                         f'The quoted language "{phrase}" could not be verified against '
-                        "the source text checked."
+                        "the source text checked.",
+                        phrase,
                     )
     return None
+
+
+def _quote_unverified_reason(sentence: str, opinions: list[str]) -> str | None:
+    """The could-not-check reason for the first unverified quoted phrase, or None.
+
+    Thin wrapper over :func:`_quote_unverified` for callers (the contract clause
+    path) that need only the message, not the phrase span.
+    """
+    found = _quote_unverified(sentence, opinions)
+    return found[0] if found else None
 
 
 def _run_present_any(run: str, opinions: list[str]) -> bool:
@@ -868,11 +881,15 @@ def build_deterministic_envelope(
     source_parties, source_sections = (
         _source_party_section_sets(conn, doc_ids) if contract_mode else (frozenset(), frozenset())
     )
-    sentences = split_sentences(draft)
+    # ``sentences`` is the per-line surface (one unit per physical line); each is a
+    # claim. ``sentence_groups[i]`` is the LOGICAL sentence it belongs to, so the
+    # altered-quote pass can pool opinions across the lines a sentence wraps onto
+    # without merging two genuinely-separate sentences sharing a line.
+    sentences, sentence_groups = split_sentences_with_groups(draft)
     claims: list[dict] = []
-    # Opinion text of the cases that resolved in each sentence. The altered-quote
-    # pass below attributes SAME-SENTENCE only; this map is keyed by sentence
-    # index for that pass.
+    # Opinion text of the cases that resolved in each per-line sentence. The
+    # altered-quote pass below pools these by logical sentence (sentence_groups)
+    # before attributing, so this map is keyed by per-line index.
     opinions_by_sentence: dict[int, list[str]] = {}
     for i, sentence in enumerate(sentences):
         anchors = extract_anchors(sentence, alias_table=alias_table)
@@ -980,17 +997,31 @@ def build_deterministic_envelope(
                 }
             )
 
-    # Altered-quote pass, SAME-SENTENCE attribution only. A quoted run is checked
-    # only against the cases cited in its OWN sentence. Proximity is not attribution:
-    # a quote in a sentence adjacent to an unrelated cite ("Brown, 347 U.S. 483. The
-    # contract defined 'X'.") must never be accused of misquoting that case. The cost
-    # is that an altered quote whose cite sits in a separate sentence is reported
-    # could-not-check rather than flagged, which is the right trade for a tool whose
-    # core promise is no false accusations.
-    for i, sentence in enumerate(sentences):
-        unverified = _quote_unverified_reason(sentence, opinions_by_sentence.get(i, []))
-        if unverified:
-            claims[i]["quote_could_not_check_reason"] = unverified
+    # Altered-quote pass, SAME-LOGICAL-SENTENCE attribution. A quoted run is checked
+    # only against the cases cited in its OWN logical sentence, with opinions pooled
+    # across the physical lines that sentence hard-wraps onto. Pooling by logical
+    # sentence (not by raw per-line segment) is what lets a quoted holding and the
+    # citation that grounds it stay attributed when the draft wraps them onto
+    # separate lines; the per-line surface split alone would strand the quote from
+    # its cite and silently drop the refusal (the core litigator beat). Proximity is
+    # still not attribution: a real sentence boundary remains a boundary in
+    # sentence_groups, so a quote and an unrelated cite in two DIFFERENT sentences
+    # sharing a line ("Brown, 347 U.S. 483. The contract defined 'X'.") are never
+    # attributed. The check runs on the reflowed logical text so a quote whose own
+    # words wrap across lines is still read whole; the reason lands on the surface
+    # segment that holds the flagged phrase, so the per-line surface is unchanged.
+    members_by_group: dict[int, list[int]] = {}
+    for i, gid in enumerate(sentence_groups):
+        members_by_group.setdefault(gid, []).append(i)
+    for members in members_by_group.values():
+        logical_text = " ".join(sentences[i] for i in members)
+        pooled = [op for i in members for op in opinions_by_sentence.get(i, [])]
+        found = _quote_unverified(logical_text, pooled)
+        if found is None:
+            continue
+        reason, phrase = found
+        target = next((i for i in members if phrase in sentences[i]), members[0])
+        claims[target]["quote_could_not_check_reason"] = reason
 
     return {
         "claims": claims,

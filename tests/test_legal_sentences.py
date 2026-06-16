@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from services.legal.sentences import split_sentences
+from services.legal.sentences import split_sentences, split_sentences_with_groups
 
 
 class SplitSentencesTests(unittest.TestCase):
@@ -181,6 +181,69 @@ class SlideBulletSegmentationTests(unittest.TestCase):
             ["• First point", "• Second point", "• Third point"],
             split_sentences("• First point\n• Second point\n• Third point"),
         )
+
+
+class SplitSentencesWithGroupsTests(unittest.TestCase):
+    """The grouping map merges segments a SOFT line wrap split, while keeping the
+    surface per-line and never merging across a real sentence boundary. This is the
+    attribution unit the altered-quote check pools by; a hard-wrapped quote and its
+    citation must land in one group or the litigator refusal silently stops firing.
+    """
+
+    def test_segments_match_split_sentences_exactly(self) -> None:
+        # The surface is unchanged: the segments returned are byte-identical to
+        # split_sentences, so the per-line claim surface and alignment are untouched.
+        draft = 'A quoted holding "is split" across\ntwo lines here, Brown, 347 U.S. 483.'
+        segments, groups = split_sentences_with_groups(draft)
+        self.assertEqual(split_sentences(draft), segments)
+        self.assertEqual(len(segments), len(groups))
+
+    def test_soft_wrapped_sentence_segments_share_one_group(self) -> None:
+        # A single logical sentence hard-wrapped across two physical lines: two
+        # surface segments, ONE logical group, so an attribution pass can pool them.
+        segments, groups = split_sentences_with_groups(
+            'The Court observed that "X is Y" in\nthe modern context, Brown, 347 U.S. 483.'
+        )
+        self.assertEqual(2, len(segments))
+        self.assertEqual([0, 0], groups)
+
+    def test_real_period_boundary_on_one_line_stays_two_groups(self) -> None:
+        # Proximity is not attribution: two real sentences sharing one physical line
+        # are two groups, so a quote in one is never pooled with a cite in the other.
+        # (A period followed by a closing quote is deliberately NOT a boundary, per
+        # the closing-quote rule, so this uses a plain period boundary.)
+        segments, groups = split_sentences_with_groups(
+            "It announced the rule plainly. The authority is Brown, 347 U.S. 483."
+        )
+        self.assertEqual(2, len(segments))
+        self.assertEqual([0, 1], groups)
+
+    def test_blank_line_paragraphs_are_distinct_groups(self) -> None:
+        segments, groups = split_sentences_with_groups(
+            "First sentence ends here.\n\nSecond sentence begins anew."
+        )
+        self.assertEqual(2, len(segments))
+        self.assertEqual([0, 1], groups)
+
+    def test_single_line_input_is_identity_grouped(self) -> None:
+        # No newline -> segments == logical sentences -> each its own group, so the
+        # litigator-only single-line path is byte-identical to the pre-fix behavior.
+        segments, groups = split_sentences_with_groups("One sentence. Two sentence.")
+        self.assertEqual(["One sentence.", "Two sentence."], segments)
+        self.assertEqual([0, 1], groups)
+
+    def test_empty_input_is_empty(self) -> None:
+        self.assertEqual(([], []), split_sentences_with_groups("   \n  "))
+
+    def test_groups_are_contiguous_and_monotonic(self) -> None:
+        # A group never reappears after a later group starts (segments stay in
+        # reading order), so members of a group are always a contiguous run.
+        _, groups = split_sentences_with_groups(
+            'Held that "A is B" in\nthe text, Brown, 347 U.S. 483. '
+            "A new point begins.\nAnd it wraps on, too."
+        )
+        for earlier, later in zip(groups, groups[1:]):
+            self.assertIn(later, (earlier, earlier + 1))
 
 
 if __name__ == "__main__":

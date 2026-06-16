@@ -1006,6 +1006,51 @@ class AlteredQuoteTests(unittest.TestCase):
         reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
         self.assertFalse(any(reasons), f"two verbatim quotes wrongly flagged: {reasons}")
 
+    def test_hard_wrapped_quote_and_cite_is_attributed(self) -> None:
+        # The regression guard: a doctored quote and the citation that grounds it,
+        # hard-wrapped onto SEPARATE physical lines (exactly how a pasted brief
+        # wraps), must still be attributed and refused. Same-line behavior already
+        # works; the per-line surface split must not strand the quote from its cite.
+        env = self._build(
+            'The Court observed that "separate facilities are inherently equal" in\n'
+            "the modern context, Brown v. Board of Education, 347 U.S. 483."
+        )
+        flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
+        self.assertEqual(1, len(flagged), "hard-wrapped doctored quote was not refused")
+        self.assertIn("separate facilities are inherently equal", flagged[0]["text"])
+
+    def test_hard_wrapped_correct_quote_is_not_flagged(self) -> None:
+        # The other direction: a verbatim quote whose OWN words wrap across the line
+        # break is read whole (reflowed) and confirmed, never falsely refused.
+        env = self._build(
+            'The Court held that "Separate educational facilities are inherently\n'
+            'unequal." Brown v. Board of Education, 347 U.S. 483.'
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"correct wrapped quote wrongly refused: {reasons}")
+
+    def test_doctored_quote_whose_own_words_wrap_is_caught(self) -> None:
+        # The strongest form: the doctored phrase itself spans the line break. The
+        # check runs on the reflowed logical sentence, so the altered run is read
+        # whole and refused, not silently dropped because no one line holds it.
+        env = self._build(
+            'The Court observed that "separate facilities are inherently\n'
+            'equal" in Brown v. Board of Education, 347 U.S. 483.'
+        )
+        flagged = [c for c in env["claims"] if "quote_could_not_check_reason" in c]
+        self.assertEqual(1, len(flagged), "wrapped doctored quote run was not refused")
+
+    def test_hard_wrap_does_not_attribute_across_a_real_sentence_boundary(self) -> None:
+        # A quote and an unrelated cite that sit in two DIFFERENT sentences must not
+        # be attributed even when the draft also wraps lines: a real period boundary
+        # stays a boundary, so proximity-not-attribution survives the line split.
+        env = self._build(
+            "Brown v. Board of Education, 347 U.S. 483 (1954). The contract there\n"
+            'defined the term as "any motor vehicle" for all purposes.'
+        )
+        reasons = [c.get("quote_could_not_check_reason") for c in env["claims"]]
+        self.assertFalse(any(reasons), f"non-cited-source quote falsely refused: {reasons}")
+
 
 class GroundingVerdictTests(unittest.TestCase):
     """PR-2: a section reference absent from the source is a hard verdict; the

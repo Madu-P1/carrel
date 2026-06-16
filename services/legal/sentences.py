@@ -99,6 +99,69 @@ def split_sentences(text: str) -> list[str]:
     return sentences
 
 
+def split_sentences_with_groups(text: str) -> tuple[list[str], list[int]]:
+    """Per-line surface segments plus, for each, the id of its LOGICAL sentence.
+
+    ``segments`` is exactly ``split_sentences(text)`` -- one unit per physical
+    line, the surface a reader points at and the alignment layer places (the
+    slide/bullet fix). ``groups[i]`` is the id of the logical sentence segment
+    ``i`` belongs to: the line-unaware unit grounding used BEFORE the per-line
+    split. When a logical sentence hard-wraps across physical lines (a quoted
+    holding and the citation that grounds it, say), its several consecutive
+    segments share one group id, so an attribution pass (the altered-quote check)
+    can pool by logical sentence -- restoring same-sentence attribution across a
+    soft line wrap -- while the surface stays per-line.
+
+    Ground truth is the pre-line-split splitter (``_split_line_sentences`` over
+    the whole draft, which is exactly what ``split_sentences`` was before the
+    per-line change): the per-line segments are a strict refinement of it (every
+    line-split boundary is also one of its boundaries, plus extra cuts at soft
+    wraps), so consecutive segments are merged until their space-joined,
+    whitespace-collapsed text equals the next logical sentence. A real sentence
+    boundary (a period mid-line) stays a boundary in BOTH, so it is never merged:
+    "proximity is not attribution" holds -- only soft wraps merge. Defensive: if
+    the two ever fail to line up exactly, every segment gets its own group
+    (identity) -- the pre-fix per-segment behavior, never a mis-group or a crash.
+    """
+    segments = split_sentences(text)
+    # The line-unaware core over the whole draft == the pre-regression logical split.
+    logical = _split_line_sentences(text)
+    return segments, _logical_groups(segments, logical)
+
+
+def _collapse(text: str) -> str:
+    """Whitespace-collapsed form: every run of whitespace becomes a single space."""
+    return " ".join(text.split())
+
+
+def _logical_groups(segments: list[str], logical: list[str]) -> list[int]:
+    """Map each surface segment to the index of the logical sentence it falls in.
+
+    Greedy: accumulate consecutive segments until their collapsed space-join equals
+    the current logical sentence, then advance. On any mismatch (the segments are
+    not a clean refinement of ``logical``) fall back to identity grouping, so the
+    caller degrades to per-segment attribution rather than mis-grouping or raising.
+    """
+    groups: list[int] = []
+    gid = 0
+    acc = ""
+    for seg in segments:
+        if gid >= len(logical):
+            return list(range(len(segments)))
+        target = _collapse(logical[gid])
+        acc = f"{acc} {seg}" if acc else seg
+        collapsed = _collapse(acc)
+        if not target.startswith(collapsed):
+            return list(range(len(segments)))
+        groups.append(gid)
+        if collapsed == target:
+            gid += 1
+            acc = ""
+    if acc or gid != len(logical):
+        return list(range(len(segments)))
+    return groups
+
+
 def _split_line_sentences(text: str) -> list[str]:
     """Split a single physical line into sentences (the legal-aware core)."""
     text = text.strip()
