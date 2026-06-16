@@ -1293,6 +1293,18 @@ class AlteredFigureNearCopyRegressionTests(unittest.TestCase):
         )
         self.assertNotEqual("parametric_contradiction", v.disposition)
 
+    def test_decimal_point_vs_source_comma_decimal_is_not_accused(self) -> None:
+        # Finding 7 (xhigh review, 2026-06-16): the claim writes a value with a decimal
+        # POINT ("1.2 billion") that the source wrote as an ambiguous comma-decimal
+        # ("1,2 billion"). Same value, different notation; the canonical path skips the
+        # source's comma-decimal, which made the claim figure read "absent" -> a false
+        # contradiction accusing a faithful figure. It must read could-not-check now.
+        v = verify_claim_against_clause(
+            "Revenue was 1.2 billion and costs were 60 billion.",
+            "Revenue was 1,2 billion and costs were 60 billion.",
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
     def test_eu_magnitude_abbreviations_are_recognized(self) -> None:
         # mln/mn/bn/bln/mld canonicalize as magnitudes so a "30 mln" line becomes
         # checkable (the supported result line beside the flagged ones).

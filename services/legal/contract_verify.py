@@ -114,6 +114,16 @@ def _figure_shape(surface: str) -> str:
     return "number"
 
 
+def _number_digits(surface: str) -> str:
+    """The bare digit sequence of a figure, separators and scale words stripped, so
+    "1.2 billion", "1,2 billion", and "12 billion" all collapse to "12". Used to tell a
+    NOTATION variance (a decimal-comma vs a decimal-point of the same value) from a
+    genuine alteration when one side wrote the value as an ambiguous comma-decimal the
+    canonical path skipped."""
+    body = re.sub(r"(?:billion|million|thousand)", "", surface, flags=re.IGNORECASE)
+    return re.sub(r"\D", "", body)
+
+
 def _figure_skeleton(text: str, figures: list[re.Match]) -> str:
     """The text with every figure replaced by a placeholder, normalized for the
     similarity gate. Two passages whose only differences are their figures (a
@@ -176,8 +186,6 @@ def _altered_figures_on_near_copy(claim: str, clause: str, where: str) -> Clause
         return None
     claim_canon = _canonical_figures(claim_figs)
     clause_canon = _canonical_figures(clause_figs)
-    if claim_canon is None or clause_canon is None:
-        return None
     claim_keys = {(shape, value) for _, shape, value in claim_canon}
     clause_keys = {(shape, value) for _, shape, value in clause_canon}
     if not (claim_keys & clause_keys):
@@ -186,9 +194,32 @@ def _altered_figures_on_near_copy(claim: str, clause: str, where: str) -> Clause
         return None
     claim_only = [c for c in claim_canon if (c[1], c[2]) not in clause_keys]
     clause_only = [c for c in clause_canon if (c[1], c[2]) not in claim_keys]
+    # Finding 7 (xhigh review): a claim figure the canonical set reports "absent" may
+    # simply be the SAME value the clause wrote as an ambiguous comma-decimal the
+    # canonical path skipped ("1.2 billion" vs the source's "1,2 billion"). Never accuse
+    # a notation variance: drop a claim_only figure whose shape AND bare digits match a
+    # skipped uncanonical clause figure (could-not-check via the normal path, not a
+    # false contradiction). A genuinely altered figure beside a comma-decimal ("60
+    # billion" for "20 billion", with "1,2 billion" present) has different digits and is
+    # still caught.
+    clause_uncanon = [
+        (m.group(0).strip(), _figure_shape(m.group(0).strip()))
+        for m in clause_figs
+        if _figure_value(m.group(0).strip()) is None
+    ]
+    if clause_uncanon:
+        claim_only = [
+            c
+            for c in claim_only
+            if not any(
+                shape == c[1] and _number_digits(text) == _number_digits(c[0])
+                for text, shape in clause_uncanon
+            )
+        ]
     if not claim_only:
-        # Every claim figure appears in the clause (an exact copy or a reorder):
-        # not a contradiction.
+        # Every claim figure appears in the clause (an exact copy or a reorder), or the
+        # only "absent" ones are notation variants of a skipped comma-decimal: not a
+        # contradiction.
         return None
     # Pair each altered claim figure with a same-shape source figure (in order) for
     # the filing-grade detail; an altered figure with no same-shape source value is
