@@ -1368,6 +1368,58 @@ class SubjectBoundPercentTests(unittest.TestCase):
         )
         self.assertEqual("parametric_contradiction", v.disposition)
 
+    def test_partial_subject_match_is_not_a_green(self) -> None:
+        # Finding 1 (xhigh review, 2026-06-16): the prior code greened on ANY one
+        # matched subject, so "10% France and 20% Germany" vs a clause stating only
+        # "10% France" read present -- the unconfirmed 20% Germany rode the green.
+        # A present requires EVERY claim percent confirmed; a subject the clause is
+        # silent on makes the sentence could-not-check, never green.
+        v = verify_claim_against_clause(
+            "Allocation is 10% France and 20% Germany.",
+            "Allocation is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    def test_subjectless_sibling_percent_is_not_a_green(self) -> None:
+        # Finding 2: one subject-bound percent agrees, but a subject-LESS sibling
+        # percent is unchecked. The agreement must not short-circuit the value-only
+        # multi-value gate and green the whole sentence.
+        v = verify_claim_against_clause(
+            "The rate is 10% France and the surtax is 20%.",
+            "The rate is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+
+    def test_full_multi_subject_match_is_still_present(self) -> None:
+        # Regression guard for the fix above: when EVERY claim subject is confirmed
+        # (reordered, clause may carry extras), the sentence is still present.
+        v = verify_claim_against_clause(
+            "Allocation: 10% Italy and 20% France.",
+            "Allocation: 20% France, 10% Italy, 30% Spain.",
+        )
+        self.assertEqual("present", v.disposition)
+
+    def test_non_figure_present_does_not_mask_an_unconfirmed_percent(self) -> None:
+        # Cross-type partial match (xhigh review): a governing-law present must NOT
+        # green a sentence whose sibling percent the clause is silent on. The
+        # unconfirmed percent outranks the present -> could-not-check.
+        v = verify_claim_against_clause(
+            "This Agreement is governed by New York law and the royalty is 20% Germany.",
+            "This Agreement is governed by New York law. The royalty is 10% France.",
+        )
+        self.assertNotEqual("present", v.disposition)
+
+    def test_figure_scope_out_still_yields_to_a_real_present(self) -> None:
+        # The deliberate counter-case the fix must preserve: a confirmed 50% royalty
+        # in a sentence that also names a (scoped-out) 12-month window still reads
+        # present -- a figure not_found yields to a sibling non-figure present.
+        v = verify_claim_against_clause(
+            "The royalty is 50% of fees over the prior 12 months.",
+            "Section 9.2. The royalty is 50% of fees over the prior 12 months.",
+        )
+        self.assertEqual("present", v.disposition)
+
 
 if __name__ == "__main__":
     unittest.main()

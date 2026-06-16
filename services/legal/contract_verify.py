@@ -591,8 +591,17 @@ def _subject_aware_percent(
                 where=where,
             )
     matched = [s for s in claim_subj if s in clause_subj]
-    if matched:
-        # Every shared subject agreed (no mismatch returned above): present.
+    # Present requires EVERY claim percent to be confirmed: each must carry a subject
+    # AND the clause must state that subject (equal value -- a mismatch already returned
+    # a contradiction above). The prior code greened on ANY one matched subject, so a
+    # claim like "10% France and 20% Germany" against a clause stating only "10% France"
+    # read present and the unconfirmed 20% Germany rode the green (xhigh review finding 1,
+    # 2026-06-16). A subject the clause is silent on, or a subject-LESS sibling percent
+    # (excluded from claim_subj, so len(claim_hits) > len(claim_subj)), leaves part of
+    # the claim unconfirmed -> could-not-check, never a green the unconfirmed part rides
+    # on (the council's hard line).
+    all_confirmed = len(claim_hits) == len(claim_subj) == len(matched)
+    if all_confirmed:
         ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
         return ClauseVerdict(
             "present",
@@ -603,14 +612,13 @@ def _subject_aware_percent(
             claim_span=ca.text,
             clause_span=cl.text,
         )
-    # The claim's percents are subject-bound but this clause is silent on every one
-    # of those subjects: it does not state these facts, so it is not_found here, not
-    # a contradiction. The adjudicator then lets a clause that DOES carry the subject
-    # (a present) win, instead of refusing on a cross-subject conflict.
+    # Not fully confirmed: the clause is silent on at least one claim subject, or a
+    # subject-less sibling percent remains unchecked. Not a contradiction (different /
+    # silent subjects are not a value conflict) and not a green -> honest could-not-check.
     first = next(iter(claim_subj.values()))
     return ClauseVerdict(
         "not_found",
-        f"The summary states {first.text} for {first.subject}, which {where} does not state.",
+        f"The summary states {first.text} for {first.subject}, which {where} does not fully state.",
         "percent",
         tuple(a.canonical_value for a in claim_subj.values()),
         (),
@@ -765,6 +773,15 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     present_verdict: ClauseVerdict | None = None
     not_found_verdict: ClauseVerdict | None = None
     multi_value_verdict: ClauseVerdict | None = None
+    # A figure (money/magnitude/duration) not_found is a SCOPE-OUT (ADR-0013): a value
+    # match will not be affirmed, and it must NOT block a sibling non-figure present
+    # (the deliberate "50% royalty in a 12-month window" case). A NON-figure not_found
+    # (percent / date / governing_law / polarity) means the claim asserts a value the
+    # clause does not confirm -- an unconfirmed assertion that must OUTRANK a sibling
+    # present, or the unconfirmed value rides the green (xhigh review, 2026-06-16:
+    # "governed by NY law and the royalty is 20% Germany" vs a clause stating NY law +
+    # "10% France" read present, laundering the unconfirmed 20% Germany).
+    unconfirmed_verdict: ClauseVerdict | None = None
     for anchor_type in _PARAMETRIC_TYPES:
         claim_hits = [
             a for a in claim_anchors if a.type == anchor_type and a.canonical_value is not None
@@ -782,7 +799,9 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                 return contradiction
             multi_value_verdict = multi_value_verdict or p_multi
             present_verdict = present_verdict or p_present
-            not_found_verdict = not_found_verdict or p_not_found
+            # Polarity is non-figure: an unconfirmed key must outrank a sibling present
+            # (a partial polarity confirmation is could-not-check, not green).
+            unconfirmed_verdict = unconfirmed_verdict or p_not_found
             continue
         # Equal canonicals collapse to one fact: "0.5% (50 bps)" is a single
         # rate written twice, not two values needing alignment. Only genuinely
@@ -801,7 +820,9 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                 if sa.disposition == "present":
                     present_verdict = present_verdict or sa
                 else:
-                    not_found_verdict = not_found_verdict or sa
+                    # Percent is non-figure: a percent the clause does not fully confirm
+                    # is an unconfirmed assertion that must outrank a sibling present.
+                    unconfirmed_verdict = unconfirmed_verdict or sa
                 continue
         if _labeler is not None and anchor_type in ("money", "magnitude", "duration"):
             sa = _subject_aware_amount(
@@ -835,15 +856,21 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     )
                 continue
         if not clause_hits:
-            if not_found_verdict is None:
-                not_found_verdict = ClauseVerdict(
-                    "not_found",
-                    f"The summary states {claim_hits[0].text}, which the deterministic check "
-                    "could not locate in your loaded sources.",
-                    anchor_type,
-                    claim_values,
-                    (),
-                )
+            _absent = ClauseVerdict(
+                "not_found",
+                f"The summary states {claim_hits[0].text}, which the deterministic check "
+                "could not locate in your loaded sources.",
+                anchor_type,
+                claim_values,
+                (),
+            )
+            # A figure absent from the source is a scope-out (yields to a sibling
+            # present); a non-figure value the source is silent on is an unconfirmed
+            # assertion that must outrank a sibling present.
+            if anchor_type in ("money", "magnitude", "duration"):
+                not_found_verdict = not_found_verdict or _absent
+            elif unconfirmed_verdict is None:
+                unconfirmed_verdict = _absent
             continue
         if len(claim_values) > 1 or len(clause_values) > 1:
             # Multiple values of this type on a side: a deterministic clause-level check
@@ -937,11 +964,14 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             where=where,
         )
     # Precedence: a single-value contradiction already returned outright above. Among the
-    # rest, an honest could-not-check (a type carried multiple values we could not align)
-    # outranks a present, because a sentence is not "present" if any checkable part of it
-    # went unaligned; a present in turn outranks a bare not_found.
+    # rest, an honest could-not-check outranks a present, because a sentence is not
+    # "present" if any checkable part of it went unaligned (multi_value) or unconfirmed (a
+    # non-figure value the clause is silent on). A FIGURE not_found is the exception: it is
+    # a scope-out that yields to a sibling present, so it stays below present.
     if multi_value_verdict is not None:
         return multi_value_verdict
+    if unconfirmed_verdict is not None:
+        return unconfirmed_verdict
     if present_verdict is not None:
         return present_verdict
     if not_found_verdict is not None:
