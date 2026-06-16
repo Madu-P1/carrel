@@ -248,3 +248,98 @@ Line numbers are approximate — grep the named symbol.
 - Memory: `cachet-money-duration-false-green`, `cachet-line-split-breaks-quote-attribution`,
   `cachet-verify-three-failure-layers`, `cachet-clean-prose-coverage-decision`.
 - Companion handoff (already resolved): `docs/notes/2026-06-16-contract-path-wrapped-quote-twin-handoff.md`.
+
+---
+
+## Appendix: finding 5 — exact design + repro (handed off 2026-06-16)
+
+The one remaining false green. Read this whole appendix before touching the code.
+
+### Exact code site
+
+`services/legal/deterministic_envelope.py`, the litigator altered-quote pass at the
+bottom of `build_deterministic_envelope` (search `for members in members_by_group`).
+After the batch-2 fix it reads roughly:
+
+```python
+for members in members_by_group.values():
+    logical_text = " ".join(sentences[i] for i in members)
+    pooled = [op for i in members for op in opinions_by_sentence.get(i, [])]   # <-- UNION
+    for reason, phrase in _all_quotes_unverified(logical_text, pooled):
+        target = _segment_holding_quoted_phrase(members, sentences, phrase)
+        claims[target].setdefault("quote_could_not_check_reason", reason)
+```
+
+`pooled` is the UNION of every cited opinion in the logical group. `_all_quotes_unverified`
+flags a phrase only when it is absent from ALL pooled opinions. So a phrase cited to case A
+but verbatim in co-cited case B's opinion is treated as present -> not flagged -> the
+segment greens by case-existence. That is the false green.
+
+### The fix (per-phrase -> following-cite attribution)
+
+A quoted phrase must be checked against the opinion of the citation that GROUNDS it, not
+the union. The legal pattern is `"quoted holding," Case v. Case, Reporter.` -- the cite
+follows the quote. So:
+
+1. In the reflowed `logical_text`, find the character offset of each quoted phrase
+   (extract_draft_quote_spans gives spans; quoted_subphrases/split_runs give the phrases
+   within a span -- you need each phrase's position in logical_text).
+2. Find the citations in `logical_text` and their offsets. `find_citations(logical_text)`
+   (services.legal.citations_eyecite) gives spans that START at the reporter; the cite's
+   bundled opinion is `local_opinion_text(<citation form>)`.
+3. Attribute each quoted phrase to the FIRST citation whose offset is after the phrase's
+   end (the cite that follows it). Check the phrase against ONLY that cite's opinion. If
+   there is no following cite in the logical sentence, fall back to the group union (the
+   wrap case where the quote's own cite is the only one) -- that preserves the batch-1/2
+   wrapped-quote-with-its-own-cite behavior.
+4. Flag the phrase (on its holding segment, via `_segment_holding_quoted_phrase`) only when
+   it is absent from its attributed cite's opinion.
+
+Keep it a refusal, never an accusation (could-not-check only), per ADR-0012 invariant 2.
+Do NOT regress: a single-cite wrapped quote must still be checked against that cite; two
+VERBATIM quotes each to their own cite must stay clean; the doctored-quote demo
+(`test_motion_refuses_the_doctored_quote`) must stay green.
+
+### CRITICAL gotcha (cost me an hour): opinion text ignores the injected client
+
+`_attach_bundled_opinion_text` -> `local_opinion_text(citation)` reads the DEFAULT
+`DEMO_CORPUS`, NOT the `client=local_caselaw_client(corpus)` you pass to
+`build_deterministic_envelope`. So an end-to-end repro with a CUSTOM 2-opinion corpus
+silently gets `pooled == []` (no opinions attached) and nothing is ever flagged -- a false
+"pass" of your repro. In `DEMO_CORPUS` today only Brown (`347 U.S. 483`) has non-empty
+`opinion_text`; `576 U.S. 644` (Obergefell) and `410 U.S. 113` (Roe) are empty.
+
+Two ways to write a real repro:
+- EASY (function-level, no envelope): call `_all_quotes_unverified(logical_text, [op_A, op_B])`
+  directly with two opinion strings, where the phrase cited to A is verbatim in B. Today's
+  union returns [] (false pass); the fixed per-cite version returns the phrase. This is the
+  cleanest unit lock.
+- END-TO-END: monkeypatch `services.legal.local_caselaw.local_opinion_text` (or seed two
+  `DEMO_CORPUS` entries with `opinion_text`) so two cited cases both carry opinion text,
+  then build a draft `'... "<phrase verbatim in B>," A v. A, 100 U.S. 1, and also ...,
+  B v. B, 200 U.S. 2.'` and assert the segment citing A reads `unknown` (not `verified`)
+  via `verify_service._verify_result_from_envelope`.
+
+### Repro harness (reused from the fix pass)
+
+- Litigator envelope: `build_deterministic_envelope(draft, client=local_caselaw_client())`;
+  cards via `services.verify._verify_result_from_envelope(draft, env, 0.0).claim_verdicts`;
+  a `verdict == "verified"` segment whose quote is altered-vs-its-own-cite is the false green.
+- Grouping: `services.legal.sentences.split_sentences_with_groups(draft)` -> (segments,
+  group_ids); repeated ids = one logical sentence.
+- abs venv: `/Users/madu/Desktop/Codex/.venv/bin/python`, cwd = the worktree.
+
+### Do finding 6 in the same pass
+
+`_split_line_sentences` `_BOUNDARY` (`services/legal/sentences.py`) requires `[A-Z0-9]`
+after a terminator, so a lowercase next sentence merges into one logical group and WIDENS
+the pool feeding finding 5. Fix the boundary (treat a terminator + newline as a boundary
+regardless of the next char's case, without regressing the abbreviation/citation
+suppression already there), with a `split_sentences_with_groups` test that two real
+sentences -- second starting lowercase -- stay two groups.
+
+### State at handoff
+
+9/15 findings closed on `claude/crazy-brahmagupta-301932` (HEAD `67082b3ef`), full Python
+verify chain green, acceptance gate zero false greens + zero false accusations. PR #179
+HELD. Closing finding 5 (+ 6) is what unblocks the merge; then run finding 11 to LOCK.
