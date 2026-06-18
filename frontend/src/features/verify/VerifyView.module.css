@@ -1591,6 +1591,15 @@
   border-left-color: var(--text-secondary);
   border-left-width: 3px;
 }
+/* An affirming pass: the engine vouched, the calibration beat. Strong ink, never
+   oxblood (reserved for the verdict/flag) and never a literal green (DESIGN). */
+.marginNote[data-tier="confirm"] {
+  border-left-color: var(--text-primary);
+  border-left-width: 3px;
+}
+.marginNote[data-tier="confirm"] .noteKind {
+  color: var(--text-primary);
+}
 .noteKind {
   margin: 0 0 5px;
   display: flex;

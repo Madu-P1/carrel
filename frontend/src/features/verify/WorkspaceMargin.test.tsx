@@ -69,6 +69,33 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     expect(mark.getAttribute("data-tier")).toBe("pass");
   });
 
+  it("an affirming pass (present in your sources) shows a confirm card, the calibration beat", () => {
+    // The demo's killer beat: a verbatim 'present' confirmation (verdict verified
+    // WITH a presence reason) must surface as a positive carousel card so the buyer
+    // can see what the engine vouched for, next to the contradictions. A silent
+    // empty-detail pass stays unmarked; an affirming one earns a 'confirm' note.
+    const green = {
+      ...card(0, {
+        text: "The statute was unconstitutional as applied.",
+        start: 0,
+        end: 44,
+        verdict: "verified"
+      }),
+      unsupported_reason: "This language appears verbatim in Section 14 of your source."
+    } as VerifyClaimVerdict;
+    const { getAllByText, container } = renderMargin([green]);
+    // Rendered both as the confirm card's label and the carousel's live status.
+    expect(getAllByText(/Present in your sources/i).length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-tier="confirm"]')).not.toBeNull();
+  });
+
+  it("a silent supported claim (no detail) stays out of the carousel, unmarked", () => {
+    const { container } = renderMargin([
+      card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "verified" })
+    ]);
+    expect(container.querySelector('[data-tier="confirm"]')).toBeNull();
+  });
+
   it("a refusal is announced as could-not-check, never as 'flagged'", () => {
     // The screen reader is the only rendering some users get. Announcing the
     // honest refusal as "Statement flagged" turns a could-not-check into an

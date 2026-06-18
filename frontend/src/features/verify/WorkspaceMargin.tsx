@@ -48,12 +48,19 @@ function markClass(tier: ClaimDisposition["tier"]): string {
   }
 }
 
-/** The rail-note tier attribute (flag/query/refusal) for the left border. */
-function noteTier(tier: ClaimDisposition["tier"]): "flag" | "query" | "refusal" | null {
-  if (tier === "flag") return "flag";
-  if (tier === "assistive") return "query";
-  if (tier === "refusal") return "refusal";
-  return null; // pass: no note
+/** The rail-note tier attribute for the left border. A pass that carries an
+ *  affirming detail (a contract "present"/verbatim confirmation, or a verified
+ *  citation) earns a positive "confirm" note so the buyer can see what the
+ *  engine actually vouched for, the calibration that tells them what a refusal
+ *  means; a silent empty-detail pass stays unmarked, the absence of a flag. */
+function noteTier(
+  d: ClaimDisposition
+): "flag" | "query" | "refusal" | "confirm" | null {
+  if (d.tier === "flag") return "flag";
+  if (d.tier === "assistive") return "query";
+  if (d.tier === "refusal") return "refusal";
+  if (d.tier === "pass" && d.detail.trim()) return "confirm";
+  return null; // silent pass: no note
 }
 
 interface WorkspaceMarginProps {
@@ -95,14 +102,16 @@ export function WorkspaceMargin({
       para.map((seg) => ({ ...seg, text: displaySafe(seg.text) }))
     );
 
-    // Non-supported PLACED claims get a rail note. (Supported = unmarked, no
-    // note. Unplaced = no span here, lives in the tray.)
+    // PLACED claims that carry a note get a rail card: every flag/query/refusal,
+    // plus an affirming pass (a "present"/verbatim confirmation) so the buyer
+    // sees what the engine vouched for. A silent empty-detail pass stays
+    // unmarked. (Unplaced = no span here, lives in the tray.)
     const placedClaimIndices = segments
       .filter((s): s is ClaimSegment => s.kind === "claim")
       .map((s) => s.claimIndex);
     const rail = placedClaimIndices.filter((idx) => {
       const m = meta.get(idx);
-      return m ? noteTier(m.disposition.tier) !== null : false;
+      return m ? noteTier(m.disposition) !== null : false;
     });
 
     // Unplaced claims (no span produced) -> the tray, worst-first.
@@ -442,7 +451,7 @@ function MarginNote({
   card: VerifyClaimVerdict;
   onExamine: (claimIndex: number) => void;
 }) {
-  const tier = noteTier(disposition.tier);
+  const tier = noteTier(disposition);
   // The wire's unsupported_reason is the refusal's audit trail, but for an
   // unknown-verdict card the disposition detail already IS that reason
   // (claimDisposition reads it first); suppress the trail when it would print

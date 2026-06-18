@@ -201,7 +201,7 @@ export function LecternView() {
             <label className={styles.lecternSourceAdd} data-busy={upload ? "true" : undefined}>
               <input
                 type="file"
-                accept=".pdf,.docx,.txt"
+                accept=".pdf,.docx,.txt,.md"
                 className={styles.dropzoneInput}
                 disabled={!!upload}
                 onChange={(e) => void onSourceFile((e.target as HTMLInputElement).files)}

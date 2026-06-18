@@ -58,8 +58,14 @@ names the clause and quotes both values, so the record stands on its own:
 - "capped at $1,000,000" vs the contract's $500,000: **contradiction** ("The
   summary states $1,000,000; Section 8 states $500,000"), pure arithmetic, zero
   ML.
-- "two (2) years" matches the contract's term: **present** in Section 12
-  ("review the full clause for context").
+- "two (2) years" matches the contract's term: **could not check** (ADR-0013
+  scope-out; the engine refuses to affirm a bare duration on a value match alone).
+  A one-line aside, not the centerpiece.
+- the venue quote "the exclusive jurisdiction of the courts of New York"
+  (verbatim in Section 14): **present (green)** — the calibration beat. Same two
+  words "New York" as the governing-law claim above, opposite verdicts: the
+  choice-of-law is RED (contract says Delaware), the venue quote is GREEN because
+  it is character-for-character faithful. A green is checked, not guessed.
 - "an exclusive license" vs the contract's non-exclusive Section 3 grant:
   **contradiction** ("The summary states exclusive; Section 3 states
   non-exclusive") — the canonical single-token summary error, pure string
@@ -70,8 +76,8 @@ names the clause and quotes both values, so the record stands on its own:
   Section 14 sends disputes to NEW YORK COURTS, which is exactly why an AI
   summary flips the governing law — the engine separates venue from choice of
   law and is not fooled.
-- "best efforts" carries no checkable anchor: the honest **could not check**, not
-  a silent pass and not an accusation.
+- "best efforts" carries no checkable anchor: **untreated** — no card, plain
+  draft text. Not graded, not a could-not-check card. Do not point at this line.
 
 ## Beat 4 — the audit artifact
 
