@@ -149,6 +149,33 @@ def money_mutations(seed: Seed) -> Iterator[AttackCase]:
         )
 
 
+# --- currency confusion (same digits, different currency) -------------------
+
+# Built at runtime via chr() so no non-ASCII literal sits in the source.
+_CURRENCY = ((chr(0x20AC), "EUR"), (chr(0xA3), "GBP"), (chr(0xA5), "JPY"))
+
+
+def currency_confusion_mutations(seed: Seed) -> Iterator[AttackCase]:
+    # Same digits, swapped currency symbol: EUR/GBP/JPY 500,000 is not USD 500,000.
+    # The engine must not affirm a currency-swapped figure on the bare number alone.
+    if seed.anchor_type != MONEY or not seed.value or not seed.single_value:
+        return
+    if "$" not in seed.value:
+        return
+    for symbol, code in _CURRENCY:
+        variant = seed.value.replace("$", symbol)
+        claim = seed.claim.replace(seed.value, variant, 1)
+        yield _case(
+            seed,
+            "currency-confusion-money",
+            code,
+            claim,
+            {CONTRADICTED, COULD_NOT_VERIFY},
+            f"{code} {variant} vs the clause's USD {seed.value}; same digits, "
+            f"different currency. Must not be affirmed on the number alone.",
+        )
+
+
 # --- duration ---------------------------------------------------------------
 
 _DUR_RANGES = {"year": (1, 15), "month": (1, 48), "week": (1, 52), "day": (5, 185)}
@@ -449,6 +476,7 @@ def quote_mutations(seed: Seed) -> Iterator[AttackCase]:
 
 CONTRACT_MUTATORS = (
     money_mutations,
+    currency_confusion_mutations,
     duration_mutations,
     percent_mutations,
     date_mutations,

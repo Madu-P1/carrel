@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-23T23:18:05.319451Z",
-  "total_probes": 493,
+  "generated_at": "2026-06-23T23:30:25.407671Z",
+  "total_probes": 508,
   "families": [
     "citation-caption-mismatch",
     "citation-court-mismatch",
@@ -8,6 +8,7 @@
     "citation-verbatim-control",
     "citation-year-mismatch",
     "clean-control",
+    "currency-confusion-money",
     "equivalent-duration",
     "format-variant-date",
     "format-variant-percent",
@@ -26,7 +27,7 @@
     "word-form-money"
   ],
   "summary": {
-    "held": 490,
+    "held": 505,
     "false_green": 2,
     "laundering": 0,
     "false_accusation": 0,
@@ -85,6 +86,15 @@
       "by_state": {
         "could_not_verify": 13,
         "supported": 7
+      },
+      "exploratory": false
+    },
+    "currency-confusion-money": {
+      "total": 15,
+      "held": 15,
+      "cracks": 0,
+      "by_state": {
+        "could_not_verify": 15
       },
       "exploratory": false
     },
@@ -705,6 +715,63 @@
       "is_crack": false
     },
     {
+      "case_id": "money.liability_cap|currency-confusion-money|EUR",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The aggregate liability cap is \u20ac500,000.",
+      "source": "in no event shall the aggregate liability of the parties exceed $500,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.liability_cap;mutator:currency-confusion-money",
+      "rationale": "EUR \u20ac500,000 vs the clause's USD $500,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.liability_cap|currency-confusion-money|GBP",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The aggregate liability cap is \u00a3500,000.",
+      "source": "in no event shall the aggregate liability of the parties exceed $500,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.liability_cap;mutator:currency-confusion-money",
+      "rationale": "GBP \u00a3500,000 vs the clause's USD $500,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.liability_cap|currency-confusion-money|JPY",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The aggregate liability cap is \u00a5500,000.",
+      "source": "in no event shall the aggregate liability of the parties exceed $500,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.liability_cap;mutator:currency-confusion-money",
+      "rationale": "JPY \u00a5500,000 vs the clause's USD $500,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
       "case_id": "money.indemnity_cap|value-contradiction-money|$1,000",
       "family": "value-contradiction-money",
       "mode": "contract",
@@ -1169,6 +1236,63 @@
       "engine_disposition": "parametric_contradiction",
       "anchor_type": "money",
       "detail": "The summary states one million dollars; the loaded source states $2,000,000.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.indemnity_cap|currency-confusion-money|EUR",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "Indemnification is capped at \u20ac2,000,000.",
+      "source": "the indemnifying party's total indemnification obligation shall not exceed $2,000,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.indemnity_cap;mutator:currency-confusion-money",
+      "rationale": "EUR \u20ac2,000,000 vs the clause's USD $2,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.indemnity_cap|currency-confusion-money|GBP",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "Indemnification is capped at \u00a32,000,000.",
+      "source": "the indemnifying party's total indemnification obligation shall not exceed $2,000,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.indemnity_cap;mutator:currency-confusion-money",
+      "rationale": "GBP \u00a32,000,000 vs the clause's USD $2,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.indemnity_cap|currency-confusion-money|JPY",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "Indemnification is capped at \u00a52,000,000.",
+      "source": "the indemnifying party's total indemnification obligation shall not exceed $2,000,000",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.indemnity_cap;mutator:currency-confusion-money",
+      "rationale": "JPY \u00a52,000,000 vs the clause's USD $2,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
       "outcome": "HELD",
       "is_crack": false
     },
@@ -1641,6 +1765,63 @@
       "is_crack": false
     },
     {
+      "case_id": "money.purchase_price|currency-confusion-money|EUR",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The purchase price is \u20ac15,000,000.",
+      "source": "the Buyer shall pay the Seller a purchase price of $15,000,000 at Closing",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.purchase_price;mutator:currency-confusion-money",
+      "rationale": "EUR \u20ac15,000,000 vs the clause's USD $15,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.purchase_price|currency-confusion-money|GBP",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The purchase price is \u00a315,000,000.",
+      "source": "the Buyer shall pay the Seller a purchase price of $15,000,000 at Closing",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.purchase_price;mutator:currency-confusion-money",
+      "rationale": "GBP \u00a315,000,000 vs the clause's USD $15,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.purchase_price|currency-confusion-money|JPY",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The purchase price is \u00a515,000,000.",
+      "source": "the Buyer shall pay the Seller a purchase price of $15,000,000 at Closing",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.purchase_price;mutator:currency-confusion-money",
+      "rationale": "JPY \u00a515,000,000 vs the clause's USD $15,000,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
       "case_id": "money.deposit|value-contradiction-money|$1,000",
       "family": "value-contradiction-money",
       "mode": "contract",
@@ -2109,6 +2290,63 @@
       "is_crack": false
     },
     {
+      "case_id": "money.deposit|currency-confusion-money|EUR",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The earnest money deposit is \u20ac250,000.",
+      "source": "Purchaser shall deliver an earnest money deposit of $250,000 within three business days",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.deposit;mutator:currency-confusion-money",
+      "rationale": "EUR \u20ac250,000 vs the clause's USD $250,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.deposit|currency-confusion-money|GBP",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The earnest money deposit is \u00a3250,000.",
+      "source": "Purchaser shall deliver an earnest money deposit of $250,000 within three business days",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.deposit;mutator:currency-confusion-money",
+      "rationale": "GBP \u00a3250,000 vs the clause's USD $250,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.deposit|currency-confusion-money|JPY",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The earnest money deposit is \u00a5250,000.",
+      "source": "Purchaser shall deliver an earnest money deposit of $250,000 within three business days",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.deposit;mutator:currency-confusion-money",
+      "rationale": "JPY \u00a5250,000 vs the clause's USD $250,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
       "case_id": "money.annual_fee|value-contradiction-money|$1,000",
       "family": "value-contradiction-money",
       "mode": "contract",
@@ -2573,6 +2811,63 @@
       "engine_disposition": "parametric_contradiction",
       "anchor_type": "money",
       "detail": "The summary states one million dollars; the loaded source states $90,000.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.annual_fee|currency-confusion-money|EUR",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The annual license fee is \u20ac90,000.",
+      "source": "Customer shall pay an annual license fee of $90,000 payable in advance",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.annual_fee;mutator:currency-confusion-money",
+      "rationale": "EUR \u20ac90,000 vs the clause's USD $90,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.annual_fee|currency-confusion-money|GBP",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The annual license fee is \u00a390,000.",
+      "source": "Customer shall pay an annual license fee of $90,000 payable in advance",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.annual_fee;mutator:currency-confusion-money",
+      "rationale": "GBP \u00a390,000 vs the clause's USD $90,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
+      "outcome": "HELD",
+      "is_crack": false
+    },
+    {
+      "case_id": "money.annual_fee|currency-confusion-money|JPY",
+      "family": "currency-confusion-money",
+      "mode": "contract",
+      "claim": "The annual license fee is \u00a590,000.",
+      "source": "Customer shall pay an annual license fee of $90,000 payable in advance",
+      "acceptable_states": [
+        "contradicted",
+        "could_not_verify"
+      ],
+      "origin": "seed:money.annual_fee;mutator:currency-confusion-money",
+      "rationale": "JPY \u00a590,000 vs the clause's USD $90,000; same digits, different currency. Must not be affirmed on the number alone.",
+      "engine_state": "could_not_verify",
+      "engine_disposition": "not_found",
+      "anchor_type": null,
+      "detail": "The summary's language does not appear in your loaded sources.",
       "outcome": "HELD",
       "is_crack": false
     },

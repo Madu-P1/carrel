@@ -1,14 +1,14 @@
-# Cachet confession ledger — 2026-06-23T23:18:05.319451Z
+# Cachet confession ledger — 2026-06-23T23:30:25.407671Z
 
 Cachet attacked its own deterministic verify engine. Every probe below was run through the REAL engine (no mock of verdict logic), under a socket ban that proves zero network egress, and carries a PROVABLE honest expectation by construction. A divergence from that expectation is a real crack, not a guess.
 
 ## Headline
 
-- **493** adversarial probes across **22** families
-- **490** HELD (engine answered honestly)
+- **508** adversarial probes across **23** families
+- **505** HELD (engine answered honestly)
 - **2** crack(s) surfaced — listed first, each with its locking test
   - FALSE GREEN (P0): 2  |  LAUNDERING (P0): 0  |  FALSE ACCUSATION (P1): 0
-- composition: 47 hand-crafted hard cases, 446 systematic value-space probes
+- composition: 47 hand-crafted hard cases, 461 systematic value-space probes
 
 ## Cracks (the confession)
 
@@ -51,6 +51,7 @@ Here the engine REFUSED a claim that was honestly supportable — it failed to c
 | `citation-verbatim-control` | proven | 1 | 1 | 0 | supported:1 |
 | `citation-year-mismatch` | proven | 3 | 3 | 0 | contradicted:3 |
 | `clean-control` | proven | 20 | 20 | 0 | could_not_verify:13, supported:7 |
+| `currency-confusion-money` | proven | 15 | 15 | 0 | could_not_verify:15 |
 | `equivalent-duration` | proven | 3 | 3 | 0 | could_not_verify:3 |
 | `format-variant-date` | proven | 4 | 4 | 0 | supported:4 |
 | `format-variant-percent` | proven | 6 | 6 | 0 | supported:6 |
