@@ -10,16 +10,22 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import db
 from services import verify as verify_service
 from services.ingestion.persistence import embed_and_index_nodes, insert_typed_nodes
 from services.ingestion.typed_walker import TypedNode
-from services.legal.deterministic_envelope import build_deterministic_envelope
+from services.legal import deterministic_envelope as envelope_module
+from services.legal.deterministic_envelope import (
+    _BUDGET_EXHAUSTED_REASON,
+    build_deterministic_envelope,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MIGRATIONS_SOURCE = REPO_ROOT / "migrations"
@@ -875,6 +881,96 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertEqual("unsupported", card.verdict)
         self.assertIn("$1,000,000", card.unsupported_reason or "")
         self.assertIn("$500,000", card.unsupported_reason or "")
+
+    # Per-request retrieval budget. build_deterministic_envelope issues one
+    # search_typed_hybrid (offline-embed) call per contract-anchored sentence with
+    # no inner cap; a 200_000-char draft of short anchored sentences would issue
+    # thousands of calls and burn minutes of CPU on a single request. The budget
+    # bounds that; sentences past it must read could-not-check, never a silent drop
+    # and never a green.
+    _BUDGET_DRAFT = (
+        "The aggregate liability shall not exceed $500,000.\n"
+        "The aggregate liability shall not exceed $400,000.\n"
+        "The aggregate liability shall not exceed $300,000.\n"
+        "The aggregate liability shall not exceed $200,000.\n"
+        "The aggregate liability shall not exceed $100,000.\n"
+    )
+
+    def test_retrieval_budget_caps_calls_and_truncates_honestly(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"CACHET_VERIFY_MAX_RETRIEVALS": "2"}, clear=False),
+            mock.patch.object(
+                envelope_module,
+                "search_typed_hybrid",
+                wraps=envelope_module.search_typed_hybrid,
+            ) as spy,
+        ):
+            env = build_deterministic_envelope(
+                self._BUDGET_DRAFT,
+                conn=self._conn,
+                doc_ids=["contract-1"],
+                embedder=self._embedder,
+            )
+
+        # The cap is the hard bound on retrieval calls per request.
+        self.assertEqual(2, spy.call_count)
+        claims = env["claims"]
+        self.assertEqual(5, len(claims))
+        # The first two sentences were checked (real verdict, no budget reason).
+        for claim in claims[:2]:
+            self.assertIn("contract_verdict", claim)
+            self.assertNotEqual(_BUDGET_EXHAUSTED_REASON, claim.get("could_not_check_reason"))
+        # The rest are honest could-not-check: no verdict, no silent drop, no green.
+        for idx, claim in enumerate(claims[2:], start=2):
+            self.assertEqual(_BUDGET_EXHAUSTED_REASON, claim["could_not_check_reason"])
+            self.assertNotIn("contract_verdict", claim)
+            card = verify_service._claim_dict_to_verdict(claim, idx)
+            self.assertEqual("unknown", card.verdict)
+
+    def test_default_budget_does_not_truncate_a_real_draft(self) -> None:
+        # No env override: every anchored sentence is checked, proving the cap sits
+        # above honest drafts and adds no truncation to the default path.
+        env = build_deterministic_envelope(
+            self._BUDGET_DRAFT,
+            conn=self._conn,
+            doc_ids=["contract-1"],
+            embedder=self._embedder,
+        )
+        for claim in env["claims"]:
+            self.assertNotEqual(_BUDGET_EXHAUSTED_REASON, claim.get("could_not_check_reason"))
+            self.assertIn("contract_verdict", claim)
+
+    def test_budget_exhaustion_keeps_the_retrieval_free_section_absent_catch(self) -> None:
+        # A fabricated-section reference is caught by _grounding_verdict, a pure
+        # set-membership test over source_sections that issues ZERO retrieval calls.
+        # When it arrives after the retrieval budget is spent, the hard "unsupported"
+        # fabrication catch must still fire: a retrieval budget must not weaken a
+        # verdict that costs no retrieval. With max=1 the first sentence spends the
+        # budget; the fabricated Section 99 sentence is over budget yet must NOT
+        # degrade to the budget could-not-check.
+        draft = (
+            "The aggregate liability shall not exceed $500,000.\n"
+            "The obligations of Section 99 are incorporated by reference.\n"
+        )
+        with (
+            mock.patch.dict(os.environ, {"CACHET_VERIFY_MAX_RETRIEVALS": "1"}, clear=False),
+            mock.patch.object(
+                envelope_module,
+                "search_typed_hybrid",
+                wraps=envelope_module.search_typed_hybrid,
+            ) as spy,
+        ):
+            env = build_deterministic_envelope(
+                draft, conn=self._conn, doc_ids=["contract-1"], embedder=self._embedder
+            )
+
+        # Only the first sentence consumed retrieval; the section catch needs none.
+        self.assertEqual(1, spy.call_count)
+        section_claim = env["claims"][1]
+        self.assertNotEqual(_BUDGET_EXHAUSTED_REASON, section_claim.get("could_not_check_reason"))
+        self.assertEqual("section_absent", section_claim["section_verdict"]["disposition"])
+        card = verify_service._claim_dict_to_verdict(section_claim, 1)
+        self.assertEqual("unsupported", card.verdict)
 
 
 if __name__ == "__main__":

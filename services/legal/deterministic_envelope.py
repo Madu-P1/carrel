@@ -24,8 +24,11 @@ stays in lock-step with the LLM path.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
+import time
+from dataclasses import dataclass
 from typing import Sequence
 
 import httpx
@@ -88,6 +91,96 @@ _ANCHOR_FREE_REASON = (
     "No verifiable anchor (such as a citation, quotation, amount, or date) was "
     "found, so this statement was not independently checked."
 )
+
+# Per-request retrieval budget. build_deterministic_envelope issues one
+# search_typed_hybrid call per contract-anchored sentence (and one per anchor-free
+# sentence when T1 is permitted); each call embeds the sentence with the offline
+# model (pure CPU, no network, no inner cap). /api/verify accepts drafts up to
+# 200_000 chars (api_models.py), so a draft of thousands of short anchored
+# sentences issues thousands of calls and burns minutes of CPU on a single request
+# with no other ceiling. The default sits far above any honest draft (a real
+# contract draft anchors at most low hundreds of sentences); it exists to bound the
+# abuse / multi-tenant tail, not to truncate real work. Set max_calls < 0 to lift
+# the count ceiling. The wall-clock deadline (CACHET_VERIFY_DEADLINE_MS) is an
+# optional secondary guard for service deployments, OFF by default so the default
+# and test paths stay deterministic. A timeout that wrapped the synchronous,
+# CPU-bound verify_draft with asyncio.wait_for would NOT cancel the CPU loop and
+# could not surface per-unit honesty; this cooperative budget does both.
+_DEFAULT_MAX_RETRIEVALS = 1000
+_MAX_RETRIEVALS_ENV = "CACHET_VERIFY_MAX_RETRIEVALS"
+_DEADLINE_MS_ENV = "CACHET_VERIFY_DEADLINE_MS"
+
+# Attached when a checkable sentence's clause retrieval is skipped because the
+# request's retrieval budget is spent. A check was warranted and could not
+# complete, so it is an honest could-not-check, never a silent drop and never a
+# green (ADR-0012 invariant 2).
+_BUDGET_EXHAUSTED_REASON = (
+    "This statement was not checked because this request reached its verification "
+    "budget. Re-run with a shorter draft, or raise the budget, to check it."
+)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_positive_ms(name: str) -> float | None:
+    raw = os.getenv(name)
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+@dataclass
+class _RetrievalBudget:
+    """A per-request ceiling on clause-retrieval calls inside one envelope.
+
+    ``consume()`` grants one ``search_typed_hybrid`` call or returns False once the
+    budget is spent; the caller then surfaces the sentence as could-not-check. A
+    negative ``max_calls`` lifts the count ceiling (operator escape hatch);
+    ``deadline`` is an optional wall-clock cutoff (None = off).
+    """
+
+    max_calls: int
+    deadline: float | None
+    used: int = 0
+
+    @classmethod
+    def from_env(cls) -> "_RetrievalBudget":
+        max_calls = _env_int(_MAX_RETRIEVALS_ENV, _DEFAULT_MAX_RETRIEVALS)
+        deadline_ms = _env_positive_ms(_DEADLINE_MS_ENV)
+        deadline = time.perf_counter() + deadline_ms / 1000.0 if deadline_ms else None
+        return cls(max_calls=max_calls, deadline=deadline)
+
+    def exhausted(self) -> bool:
+        if 0 <= self.max_calls <= self.used:
+            return True
+        return self.deadline is not None and time.perf_counter() >= self.deadline
+
+    def consume(self) -> bool:
+        if self.exhausted():
+            return False
+        self.used += 1
+        return True
+
+
+def _budget_exhausted_claim(sentence: str) -> dict:
+    return {
+        "text": sentence,
+        "citations": [],
+        "case_verdicts": [],
+        "could_not_check_reason": _BUDGET_EXHAUSTED_REASON,
+    }
 
 
 def _citation_key(value: str | None) -> str | None:
@@ -1039,6 +1132,11 @@ def build_deterministic_envelope(
     # altered-quote pass can pool opinions across the lines a sentence wraps onto
     # without merging two genuinely-separate sentences sharing a line.
     sentences, sentence_groups = split_sentences_with_groups(draft)
+    # Bounds total clause-retrieval (offline-embed) CPU per request. Each
+    # contract-anchored sentence (and each T1 anchor-free sentence) consumes one
+    # call; once spent, a checkable sentence becomes an honest could-not-check
+    # rather than issuing an unbounded number of embeds (see _RetrievalBudget).
+    budget = _RetrievalBudget.from_env()
     claims: list[dict] = []
     # Opinion text of the cases that resolved in each per-line sentence. The
     # altered-quote pass below pools these by logical sentence (sentence_groups)
@@ -1088,6 +1186,30 @@ def build_deterministic_envelope(
                         ),
                     }
                 )
+            elif not budget.consume():
+                # The per-request retrieval budget is spent, so the clause
+                # RETRIEVAL is skipped. But the retrieval-FREE deterministic catch
+                # still runs: _grounding_verdict (section-absent) is a pure
+                # set-membership test over source_sections that issues zero
+                # search_typed_hybrid calls, so a fabricated section reference must
+                # keep its hard unsupported finding even when the request is over
+                # budget. Only the retrieval-dependent clause check degrades to an
+                # honest could-not-check (never a silent drop, never a green; ADR-0012
+                # invariant 2). Bounding a retrieval budget must not weaken a verdict
+                # that costs no retrieval (Mythos run mythos-cmp-20260623T1730Z +
+                # cross-model review).
+                section_verdict = _grounding_verdict(anchors, source_sections)
+                if section_verdict is not None:
+                    claims.append(
+                        {
+                            "text": sentence,
+                            "citations": [],
+                            "case_verdicts": [],
+                            "section_verdict": section_verdict,
+                        }
+                    )
+                else:
+                    claims.append(_budget_exhausted_claim(sentence))
             else:
                 claims.append(
                     _contract_claim(
@@ -1126,7 +1248,11 @@ def build_deterministic_envelope(
             # flag-off.
             if contract_mode and conn is not None and doc_ids and t1_permitted():
                 emb = _ensure_embedder()
-                if emb is not None:
+                # The T1 retrieval is also budgeted. When the budget is spent the
+                # sentence simply stays untreated: there is nothing to check, so
+                # skipping the optional assessment misrepresents nothing (unlike the
+                # contract path, where a checkable anchor went unchecked).
+                if emb is not None and budget.consume():
                     assessment = _t1_anchor_free_assessment(conn, sentence, doc_ids, emb)
                     if assessment is not None:
                         del claim["untreated"]
