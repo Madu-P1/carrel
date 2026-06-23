@@ -1,0 +1,16 @@
+{
+  "id": "subjmismatch.percent_interest",
+  "family": "subject-mismatch-single",
+  "mode": "contract",
+  "claim": "The early-payment discount is 8%.",
+  "source": "overdue amounts shall bear interest at a rate of 8% per annum",
+  "expected": [
+    "contradicted",
+    "could_not_verify"
+  ],
+  "got_state": "supported",
+  "got_disposition": "present",
+  "outcome": "FALSE_GREEN",
+  "locking_test": "test_redteam_subject_mismatch_single_001",
+  "rationale": "8% is the default interest rate; the claim re-attributes it to a discount. Affirming it (supported) would be subject-blind: a false green."
+}

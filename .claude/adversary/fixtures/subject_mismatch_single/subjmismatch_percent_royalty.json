@@ -1,0 +1,16 @@
+{
+  "id": "subjmismatch.percent_royalty",
+  "family": "subject-mismatch-single",
+  "mode": "contract",
+  "claim": "The audit fee is 10% of Net Sales.",
+  "source": "Licensee shall pay Licensor a royalty of 10% of Net Sales",
+  "expected": [
+    "contradicted",
+    "could_not_verify"
+  ],
+  "got_state": "supported",
+  "got_disposition": "present",
+  "outcome": "FALSE_GREEN",
+  "locking_test": "test_redteam_subject_mismatch_single_002",
+  "rationale": "10% is the royalty rate; the claim re-attributes it to an audit fee. Affirming it (supported) would be subject-blind: a false green."
+}

@@ -171,6 +171,48 @@ additive, and independently shippable as one draft (the contract is
 
 ---
 
+## Red-team findings (cachet-adversary 2026-06-24)
+
+Surfaced by the read-only adversarial discovery battery (`evals/adversary/`): 493
+probes across 22 families through the real engine, 490 held, 0 false accusations, 0
+laundering, 2 false greens, 1 honest-direction observation. Full write-up:
+`docs/notes/2026-06-24-redteam-findings.md`. Locking tests committed in
+`tests/test_redteam_findings.py` (open findings `expectedFailure`; do NOT pre-add to
+the frozen held-out set while E2/E3 are in flight — same discipline as R1).
+
+### RT1 — [REVIEW] (P0 false green) Single-value percent affirmed subject-blind
+- Status: todo. Deps: none. Maps to the operator-gated "Role-aligned clause
+  matching" item below — this is its deterministic, minimal, test-locked repro.
+- Source: cachet-adversary `subject-mismatch-single` family @ the percent path
+  (`contract_verify.py` / `anchors.py`).
+- Grounding: repro: `verify_claim_against_clause("The audit fee is 10% of Net
+  Sales.", "Licensee shall pay Licensor a royalty of 10% of Net Sales").disposition
+  == "present"` (false green). Identical with `CARREL_SUBJECT_LABELER=off` and
+  `=regex`. Money/duration scope this out (ADR-0013); percent does not.
+- Goal: a single-value percent whose subject is absent from the clause must not be
+  affirmed (`present`); resolve to could-not-check, OR bind the subject. Operator
+  decides which (option 1 scope-out vs option 2 role-aligned matching).
+- Acceptance: held-out: `tests/test_redteam_findings.py::PercentSubjectBindingTests`
+  (the two `expectedFailure` cases flip to pass) AND the money/duration positive
+  controls stay green; no false accusations introduced; zero-egress holds.
+
+### RT2 — [REVIEW] (P3, honest-direction) Verbatim quote missed on sentence-start case
+- Status: todo. Deps: none.
+- Source: cachet-adversary `quote-verbatim-control` @ the quote path
+  (`anchors.py` / `contract_verify.py`).
+- Grounding: repro: `verify_claim_against_clause('... "time is of the essence" ...',
+  "Time is of the essence with respect to each obligation ...").disposition ==
+  "not_found"` — a present verbatim quote left unconfirmed because the clause
+  capitalizes it at a sentence start. Safe direction (never a false green).
+- Goal: case-insensitive / case-folded quote-anchor matching so a present quote is
+  confirmed regardless of leading case.
+- Acceptance: held-out:
+  `tests/test_redteam_findings.py::QuoteCaseSensitivityTests` flips to pass; the
+  three already-passing quote controls and all quote-alteration refusals stay green;
+  zero-egress holds.
+
+---
+
 ## NOT queued (operator / validation gated — never Forge-shippable)
 - Role-aligned clause matching (after T66 validation).
 - T1 labeled legal corpus (data task).
