@@ -94,6 +94,11 @@ def _litigator_state(verdict: dict[str, Any]) -> str:
     flagged = any(bool(verdict.get(k)) for k in _LITIGATOR_FLAG_KEYS)
     if flagged:
         return CONTRADICTED
+    # exists=True but the caption could not be confirmed is the engine's honest
+    # could-not-check, NOT an affirmation. Reading it as supported would mislabel a
+    # real refusal as a false green, so the probe must surface it as could_not_verify.
+    if verdict.get("caption_unconfirmed"):
+        return COULD_NOT_VERIFY
     if verdict.get("exists") is True:
         return SUPPORTED
     return COULD_NOT_VERIFY

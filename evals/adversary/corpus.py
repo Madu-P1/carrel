@@ -4,19 +4,11 @@ Every seed is a CLEAN pair: the draft claim is consistent with the source clause
 The mutators in ``mutators.py`` perturb these seeds into adversarial cases whose
 honest verdict is provable from the perturbation. Keeping the seeds clean and the
 perturbations typed is what lets the harness know the honest answer by construction.
-
-``baseline_state`` is the honest verdict the engine returns on the UNPERTURBED pair:
-  - figures (money/duration/percent/date) -> ``could_not_verify`` (ADR-0013 never
-    affirms a figure, even a matching one);
-  - verbatim quotes -> ``supported``.
-A test pins these baselines against the real engine so a regression surfaces here.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from .contracts import COULD_NOT_VERIFY, SUPPORTED
 
 # Anchor types the contract path can check.
 MONEY = "money"
@@ -42,7 +34,6 @@ class Seed:
     anchor_type: str
     claim: str
     clause: str
-    baseline_state: str
     value: str | None = None
     subject: str | None = None
     quote: str | None = None
@@ -61,7 +52,6 @@ _MONEY_SEEDS = [
         MONEY,
         "The aggregate liability cap is $500,000.",
         "in no event shall the aggregate liability of the parties exceed $500,000",
-        COULD_NOT_VERIFY,
         value="$500,000",
     ),
     Seed(
@@ -70,7 +60,6 @@ _MONEY_SEEDS = [
         MONEY,
         "Indemnification is capped at $2,000,000.",
         "the indemnifying party's total indemnification obligation shall not exceed $2,000,000",
-        COULD_NOT_VERIFY,
         value="$2,000,000",
     ),
     Seed(
@@ -79,7 +68,6 @@ _MONEY_SEEDS = [
         MONEY,
         "The purchase price is $15,000,000.",
         "the Buyer shall pay the Seller a purchase price of $15,000,000 at Closing",
-        COULD_NOT_VERIFY,
         value="$15,000,000",
     ),
     Seed(
@@ -88,7 +76,6 @@ _MONEY_SEEDS = [
         MONEY,
         "The earnest money deposit is $250,000.",
         "Purchaser shall deliver an earnest money deposit of $250,000 within three business days",
-        COULD_NOT_VERIFY,
         value="$250,000",
     ),
     Seed(
@@ -97,7 +84,6 @@ _MONEY_SEEDS = [
         MONEY,
         "The annual license fee is $90,000.",
         "Customer shall pay an annual license fee of $90,000 payable in advance",
-        COULD_NOT_VERIFY,
         value="$90,000",
     ),
 ]
@@ -110,7 +96,6 @@ _DURATION_SEEDS = [
         DURATION,
         "Confidentiality obligations survive termination for 5 years.",
         "the confidentiality obligations shall survive termination for a period of 5 years",
-        COULD_NOT_VERIFY,
         value="5 years",
     ),
     Seed(
@@ -119,7 +104,6 @@ _DURATION_SEEDS = [
         DURATION,
         "The non-compete lasts 24 months following termination.",
         "Section 9.1. The employee shall not compete for a period of 24 months following termination.",
-        COULD_NOT_VERIFY,
         value="24 months",
     ),
     Seed(
@@ -128,7 +112,6 @@ _DURATION_SEEDS = [
         DURATION,
         "The initial term is 3 years.",
         "this Agreement shall have an initial term of 3 years from the Effective Date",
-        COULD_NOT_VERIFY,
         value="3 years",
     ),
     Seed(
@@ -137,7 +120,6 @@ _DURATION_SEEDS = [
         DURATION,
         "The cure period is 30 days.",
         "the breaching party shall have 30 days after written notice to cure the breach",
-        COULD_NOT_VERIFY,
         value="30 days",
     ),
 ]
@@ -150,7 +132,6 @@ _PERCENT_SEEDS = [
         PERCENT,
         "The royalty rate is 10%.",
         "Licensee shall pay Licensor a royalty of 10% of Net Sales",
-        COULD_NOT_VERIFY,
         value="10%",
     ),
     Seed(
@@ -159,7 +140,6 @@ _PERCENT_SEEDS = [
         PERCENT,
         "Default interest accrues at 8%.",
         "overdue amounts shall bear interest at a rate of 8% per annum",
-        COULD_NOT_VERIFY,
         value="8%",
     ),
     Seed(
@@ -168,7 +148,6 @@ _PERCENT_SEEDS = [
         PERCENT,
         "The investor receives 20% of the equity.",
         "in consideration of the Investment the Investor shall receive 20% of the fully diluted equity",
-        COULD_NOT_VERIFY,
         value="20%",
     ),
 ]
@@ -182,7 +161,6 @@ _SUBJECT_SEEDS = [
         PERCENT,
         "The allocation to France is 10%.",
         "the allocation to France shall be 10% and the allocation to Germany shall be 25%",
-        COULD_NOT_VERIFY,
         value="10%",
         subject="France",
         single_value=False,
@@ -193,7 +171,6 @@ _SUBJECT_SEEDS = [
         PERCENT,
         "The Class A coupon is 6%.",
         "the Class A notes bear a coupon of 6% and the Class B notes bear a coupon of 9%",
-        COULD_NOT_VERIFY,
         value="6%",
         subject="Class A",
         single_value=False,
@@ -208,7 +185,6 @@ _DATE_SEEDS = [
         DATE,
         "The Effective Date is March 11, 2024.",
         "this Agreement is entered into and effective as of March 11, 2024",
-        COULD_NOT_VERIFY,
         value="March 11, 2024",
     ),
     Seed(
@@ -217,7 +193,6 @@ _DATE_SEEDS = [
         DATE,
         "Closing occurs on September 30, 2025.",
         "the Closing shall take place on September 30, 2025 or such other date as the parties agree",
-        COULD_NOT_VERIFY,
         value="September 30, 2025",
     ),
 ]
@@ -230,7 +205,6 @@ _GOVERNING_LAW_SEEDS = [
         GOVERNING_LAW,
         "This Agreement is governed by the laws of New York.",
         "this Agreement shall be governed by and construed in accordance with the laws of the State of New York",
-        COULD_NOT_VERIFY,
         value="New York",
     ),
     Seed(
@@ -239,7 +213,6 @@ _GOVERNING_LAW_SEEDS = [
         GOVERNING_LAW,
         "This Agreement is governed by Delaware law.",
         "this Agreement shall be governed by the laws of the State of Delaware without regard to conflicts of law",
-        COULD_NOT_VERIFY,
         value="Delaware",
     ),
 ]
@@ -252,7 +225,6 @@ _POLARITY_SEEDS = [
         POLARITY,
         "The license is exclusive.",
         "Licensor hereby grants to Licensee an exclusive license to the Licensed Technology",
-        COULD_NOT_VERIFY,
         value="exclusive",
     ),
     Seed(
@@ -261,7 +233,6 @@ _POLARITY_SEEDS = [
         POLARITY,
         "The indemnity survives termination.",
         "the indemnification obligations in this Section shall survive termination of this Agreement",
-        COULD_NOT_VERIFY,
         value="survives",
     ),
 ]
@@ -274,7 +245,6 @@ _QUOTE_SEEDS = [
         QUOTE,
         'The agreement says the obligations "survive termination" of the contract.',
         "These obligations survive termination of this Agreement for any reason.",
-        SUPPORTED,
         quote="survive termination",
     ),
     Seed(
@@ -283,7 +253,6 @@ _QUOTE_SEEDS = [
         QUOTE,
         'The contract requires the vendor to "indemnify and hold harmless" the customer.',
         "Vendor shall indemnify and hold harmless Customer from any and all claims arising hereunder.",
-        SUPPORTED,
         quote="indemnify and hold harmless",
     ),
     Seed(
@@ -292,7 +261,6 @@ _QUOTE_SEEDS = [
         QUOTE,
         'The contract states that "time is of the essence" for all deadlines.',
         "Time is of the essence with respect to each obligation under this Agreement.",
-        SUPPORTED,
         quote="time is of the essence",
     ),
     Seed(
@@ -301,7 +269,6 @@ _QUOTE_SEEDS = [
         QUOTE,
         'The seller provides the goods on an "as is" basis.',
         "The goods are provided strictly on an as is basis without warranty of any kind.",
-        SUPPORTED,
         quote="as is",
     ),
 ]

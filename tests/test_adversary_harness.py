@@ -140,6 +140,11 @@ class BatteryInvariantTests(unittest.TestCase):
     result: BatteryResult
     by_id: dict[str, Record]
 
+    # The ONLY false greens the engine is currently allowed to produce (the open
+    # single-value percent subject-binding gap). A new false green anywhere else must
+    # fail the exact-allow-set test below, not merely appear in the human-read ledger.
+    KNOWN_FALSE_GREENS = {"subjmismatch.percent_royalty", "subjmismatch.percent_interest"}
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.result = run_battery()
@@ -168,11 +173,51 @@ class BatteryInvariantTests(unittest.TestCase):
         self.assertIs(Outcome.HELD, self.by_id["subjmismatch.duration_cure"].outcome)
 
     def test_quote_alteration_never_false_greens(self) -> None:
-        for r in self.result.records:
-            if r.case.family == "quote-alteration":
-                self.assertNotEqual(
-                    SUPPORTED, r.result.state, f"fabricated quote affirmed: {r.case.case_id}"
-                )
+        matched = [r for r in self.result.records if r.case.family == "quote-alteration"]
+        # Non-vacuous guard: the highest-value family must actually be present, or this
+        # check would silently pass on zero records if quote_mutations stopped emitting.
+        self.assertGreaterEqual(len(matched), 12, "quote-alteration family empty/shrunk")
+        for r in matched:
+            self.assertNotEqual(
+                SUPPORTED, r.result.state, f"fabricated quote affirmed: {r.case.case_id}"
+            )
+
+    def test_false_greens_are_exactly_the_known_allow_set(self) -> None:
+        # The P0 invariant: pin the EXACT set of false greens so a new one in ANY
+        # family (money/date/quote/litigator/currency) trips this test instead of
+        # hiding in the ledger. When the percent gap is fixed, this set shrinks.
+        actual = {r.case.case_id for r in self.result.records if r.outcome is Outcome.FALSE_GREEN}
+        self.assertEqual(self.KNOWN_FALSE_GREENS, actual)
+
+
+class EngineDispositionMappingTests(unittest.TestCase):
+    def test_all_contract_dispositions_are_mapped(self) -> None:
+        # The dispositions verify_claim_against_clause can emit, per the ClauseVerdict
+        # docstring in services/legal/contract_verify.py. If the engine adds or renames
+        # one, this fails so STATE_BY_DISPOSITION (and the harness) cannot silently
+        # default it to could_not_verify and hide a real verdict.
+        engine_contract_dispositions = {
+            "present",
+            "parametric_contradiction",
+            "multi_value_unverifiable",
+            "conflicting_clauses",
+            "not_found",
+        }
+        for disposition in engine_contract_dispositions:
+            self.assertIn(disposition, STATE_BY_DISPOSITION, disposition)
+
+
+class DeterminismTests(unittest.TestCase):
+    def test_battery_is_reproducible_run_to_run(self) -> None:
+        # The ledger markets determinism to the buyer; pin it. Two runs must yield
+        # identical (case_id, state, outcome) tuples in identical order, so a future
+        # nondeterministic mutator (e.g. set-iteration ordering) cannot ship silently.
+        def snapshot() -> list[tuple[str, str, str]]:
+            return [
+                (r.case.case_id, r.result.state, r.outcome.value) for r in run_battery().records
+            ]
+
+        self.assertEqual(snapshot(), snapshot())
 
 
 class ZeroEgressTests(unittest.TestCase):
