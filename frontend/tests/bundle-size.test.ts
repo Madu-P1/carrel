@@ -163,8 +163,9 @@ const indexCssPath = resolve(distDir, "index.css");
 // recovery CTA, and the library list states. These live in the Library/Reader/Ask
 // feature views, statically imported into the entry shell. The carousel and the
 // empty-state work land together at ~128.1 KB gz combined.
+// SI-5 (structural-integrity panel) also lands on the verify surface at
+// ~+0.14 KB gz; it fits comfortably under the 130 KB budget above.
 const ENTRY_JS_GZIP_BUDGET = 130 * 1024;
-
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
  *  History:

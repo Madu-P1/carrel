@@ -6,7 +6,8 @@ import {
   briefs as briefsApi,
   type VerifyClaimVerdict,
   type VerifyQuoteResult,
-  type VerifyQuoteSegment
+  type VerifyQuoteSegment,
+  type VerifyStructuralFinding
 } from "@/services/api/endpoints";
 
 import { buildCertification, fingerprintDraft } from "./certification";
@@ -538,6 +539,62 @@ function QuotePanel({ quotes }: QuotePanelProps) {
   );
 }
 
+/** The mono-uppercase status label for a structural finding. A flagged
+ * defined-term-unused is a confident catch; the could-not-check kinds are review
+ * prompts (the reference or value could not be confirmed). */
+export function structuralStatusLabel(finding: VerifyStructuralFinding): string {
+  switch (finding.kind) {
+    case "defined_term_unused":
+      return "Defined term unused";
+    case "dangling_cross_reference":
+      return "Reference unverified";
+    case "internal_contradiction":
+      return "Possible inconsistency";
+    default:
+      return finding.disposition === "flagged" ? "Flagged" : "Could not check";
+  }
+}
+
+interface StructuralPanelProps {
+  findings: VerifyStructuralFinding[];
+}
+
+/**
+ * Cachet SI-5: document-level structural-integrity panel. Lists the engine's
+ * intra-document findings — a flagged defined-term-unused catch wears the oxblood
+ * register, the could-not-check review prompts (unresolved cross-references,
+ * possible inconsistencies) wear the quiet hairline. Draft-level, a sibling to the
+ * quotation check. Returns null when the engine surfaced nothing. No green, no
+ * confidence numbers, by design.
+ */
+function StructuralPanel({ findings }: StructuralPanelProps) {
+  if (findings.length === 0) return null;
+  return (
+    <section className={styles.structurePanel} aria-label="Structure check">
+      <h2 className={styles.structurePanelTitle}>Structure check</h2>
+      <ul className={styles.structureList}>
+        {findings.map((finding, i) => (
+          <li
+            key={`${finding.kind}-${finding.target ?? ""}-${finding.start}-${i}`}
+            className={[
+              styles.structureItem,
+              finding.disposition === "flagged" ? styles.structureFlag : styles.structureReview
+            ].join(" ")}
+          >
+            <span className={styles.structureStatus}>{structuralStatusLabel(finding)}</span>
+            <p className={styles.structureDetail}>{finding.detail}</p>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.scopeNote}>
+        This checks the document against itself: that cross-references resolve and defined terms are
+        used. A flag is a confident defect; a review item could not be confirmed and may point to
+        another document.
+      </p>
+    </section>
+  );
+}
+
 /**
  * A null/undefined/non-object entry in claim_verdicts or a streamed claims
  * batch (a malformed payload, a dropped SSE frame) must not crash the verdict
@@ -741,6 +798,7 @@ export function VerifyResults({
   // surface quotes that need attention (altered / could-not-check); a fully
   // verbatim quote needs no callout (absence of a flag is the pass).
   const quoteResults = response?.quote_results ?? stream.quotes ?? [];
+  const structuralFindings = response?.structural_findings ?? [];
 
   return (
     <div
@@ -917,6 +975,8 @@ export function VerifyResults({
           ) : null}
 
           <QuotePanel quotes={quoteResults} />
+
+          {settled && <StructuralPanel findings={structuralFindings} />}
 
           {settled && items.length > 0 ? (
             <div className={styles.resultActions}>

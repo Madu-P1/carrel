@@ -295,6 +295,52 @@ class VerifyDraftOrchestrationTests(unittest.TestCase):
         payload = verify_service.verify_result_to_payload(result)
         self.assertIsNone(payload.get("coverage"))
 
+    def test_structural_findings_ride_the_wire(self) -> None:
+        # SI-5: document-level structural-integrity findings travel envelope ->
+        # VerifyResult -> payload -> VerifyResponse, preserving disposition.
+        findings = [
+            {
+                "kind": "defined_term_unused",
+                "disposition": "flagged",
+                "detail": 'The term "Indemnified Party" is defined but never used.',
+                "span": "Indemnified Party",
+                "start": 0,
+                "end": 1,
+                "target": "Indemnified Party",
+            },
+            {
+                "kind": "dangling_cross_reference",
+                "disposition": "could_not_check",
+                "detail": "Section 9 was not found among declared sections.",
+                "span": "Section 9",
+                "start": 2,
+                "end": 3,
+                "target": "9",
+            },
+        ]
+        envelope = self._envelope(
+            claims=[{"text": "x", "citations": [], "case_verdicts": [], "untreated": True}],
+            model="deterministic-v1",
+            provider="deterministic",
+            structural_findings=findings,
+        )
+        payload = verify_service.verify_result_to_payload(self._call(envelope))
+        self.assertEqual(findings, payload.get("structural_findings"))
+        # The typed wire model accepts and preserves the field.
+        from api_models import VerifyResponse
+
+        resp = VerifyResponse(**payload)
+        self.assertEqual(
+            ["flagged", "could_not_check"], [f.disposition for f in resp.structural_findings]
+        )
+
+    def test_envelope_without_structural_findings_yields_empty_list(self) -> None:
+        envelope = self._envelope(
+            claims=[{"text": "x", "citations": [{"node_id": "c1"}], "case_verdicts": []}]
+        )
+        payload = verify_service.verify_result_to_payload(self._call(envelope))
+        self.assertEqual([], payload.get("structural_findings"))
+
     def test_assessed_fields_default_none_on_the_wire(self) -> None:
         # T1 PR-2: the assessed_* tier fields exist on every card, default None, and
         # round-trip through the payload. Nothing sets them yet (the selector is dark).

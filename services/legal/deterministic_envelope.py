@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from dataclasses import asdict
 from typing import Sequence
 
 import httpx
@@ -54,6 +55,7 @@ from services.legal.quote_check import (
     split_runs,
 )
 from services.legal.sentences import split_sentences, split_sentences_with_groups
+from services.legal.structural_integrity import check_structural_integrity
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
     T1Assessment,
@@ -1221,10 +1223,17 @@ def build_deterministic_envelope(
             if found is not None:
                 claims[i].setdefault("quote_could_not_check_reason", found[0])
 
+    # SI-4: intra-document structural integrity over the draft, additive. Source-free
+    # and pure (no DB/network/model), so it never affects the cross-document verdicts
+    # above; it only adds its own register. A draft with no structural defects yields
+    # an empty list, never a green claim.
+    structural_findings = [asdict(f) for f in check_structural_integrity(draft)]
+
     return {
         "claims": claims,
         "unsupported_spans": [],
         "model": _DETERMINISTIC_MODEL,
         "error": None,
         "provider": "deterministic",
+        "structural_findings": structural_findings,
     }
