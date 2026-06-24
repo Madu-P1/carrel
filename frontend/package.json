@@ -12,8 +12,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "NODE_OPTIONS=--max-old-space-size=4096 vitest run",
-    "test:watch": "NODE_OPTIONS=--max-old-space-size=4096 vitest"
+    "test": "NODE_OPTIONS=\"--max-old-space-size=4096 --no-experimental-webstorage\" vitest run",
+    "test:watch": "NODE_OPTIONS=\"--max-old-space-size=4096 --no-experimental-webstorage\" vitest"
   },
   "dependencies": {
     "3d-force-graph": "^1.80.0",
