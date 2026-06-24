@@ -1,0 +1,11 @@
+{
+  "family": "percent-subject-binding",
+  "draft_claim": "France's allocation is 20%.",
+  "source_text": "The allocation to Italy is 20% of turnover.",
+  "expected_honest_disposition": "could_not_check",
+  "actual_disposition": "present",
+  "classification": "FALSE_GREEN",
+  "severity": "P0",
+  "engine_entry": "services.legal.contract_verify.verify_claim_against_clause(claim, clause).disposition",
+  "note": "Single percent value (20%) bound to Italy in the source; the claim binds it to France. The engine returns present ('20% appears in the loaded source') because the value matches and the shared content token 'allocation' passes the topicality gate, even though the subject (France vs Italy) differs. Money and duration scope out to could_not_check on the same shape (ADR-0013); percent does not. This is the known RT1 P0 and the ADR-0013 percent scope-out (PR carrel#181 draft) is not on main."
+}

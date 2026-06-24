@@ -1,0 +1,18 @@
+{
+  "family": "percent-labeled-binding",
+  "severity": "P0",
+  "classification": "FALSE_GREEN",
+  "engine_entry": "services.legal.contract_verify.verify_claim_against_clause(claim, clause).disposition == 'present'",
+  "summary": "The percent subject binder (_PERCENT_SUBJECT = r'\\s+([A-Z][A-Za-z]{2,})\\b', anchors.py:~635) treats ANY capitalized word after the % as the subject. It works on real proper nouns (France/Italy: 924/924 wrong-subject pairs held, 84/84 legit greens preserved) but greens clearly-unsupported claims whenever a capitalized COMMON word coincidentally appears in the source, blind to negation / polarity / concept-mismatch. This is why the council flipped NARROW -> BROAD: the subject-LABELED green path is not soundly bindable deterministically. Fix = scope percent out of deterministic affirmation entirely (mirror money/duration); affirm only via the AFM subject labeler (ADR-0013). PR #181 (subject-less scope-out only) does NOT close these.",
+  "expected_honest_disposition": "could_not_check",
+  "cases": [
+    {"claim": "The interest rate is 20% Interest.", "source": "A 20% Interest-free period applies for year one.", "actual": "present", "why_unsupported": "20% interest vs 20% interest-FREE (opposite)"},
+    {"claim": "A 20% Discount is given.", "source": "A 20% Discount is expressly NOT given; a surcharge applies.", "actual": "present", "why_unsupported": "negated"},
+    {"claim": "Tax is 20% Effective.", "source": "The 20% Effective date is January 1.", "actual": "present", "why_unsupported": "effective RATE vs effective DATE"},
+    {"claim": "Equity stake is 20% Common.", "source": "20% Common shares were cancelled.", "actual": "present", "why_unsupported": "cancelled"},
+    {"claim": "Royalties are 20% Net.", "source": "20% Net losses must be absorbed by the Licensee.", "actual": "present", "why_unsupported": "net royalty vs net LOSSES"},
+    {"claim": "The bonus is 20% Annual.", "source": "A 20% Annual cap was rejected by the parties.", "actual": "present", "why_unsupported": "rejected term"},
+    {"claim": "The fee is 20% Monthly.", "source": "A 20% Monthly figure appears only as a prohibited example.", "actual": "present", "why_unsupported": "prohibited example"},
+    {"claim": "Liability is reduced 20% Gross.", "source": "20% Gross negligence is the threshold for liability.", "actual": "present", "why_unsupported": "different concept ('Gross')"}
+  ]
+}
