@@ -942,7 +942,15 @@ def _quote_result_to_dict(result, index: int) -> Dict[str, Any]:
         status = "altered"
     else:
         status = "verbatim"
-    return {"index": index, "quote": result.quote, "status": status}
+    return {
+        "index": index,
+        "quote": result.quote,
+        "status": status,
+        # Autopsy tiling (populated only for an altered quote): the lawyer's own
+        # words split into genuine vs fabricated phrases. Carries no source text,
+        # so the slim SSE payload and zero-egress posture are unchanged.
+        "segments": [{"text": s.text, "kind": s.kind} for s in result.segments],
+    }
 
 
 def verify_draft_stream(

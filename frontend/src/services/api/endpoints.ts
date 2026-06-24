@@ -23,6 +23,8 @@ export type VerifyClaimVerdict = NonNullable<VerifyResponse["claim_verdicts"]>[n
 export type VerifyCaseVerdictBatch = NonNullable<VerifyClaimVerdict["case_verdicts"]>[number];
 /** One brief-level draft-quote-verbatim result (Cachet PR4). */
 export type VerifyQuoteResult = NonNullable<VerifyResponse["quote_results"]>[number];
+/** One render slice of an altered quote's autopsy tiling (Cachet quote autopsy). */
+export type VerifyQuoteSegment = NonNullable<VerifyQuoteResult["segments"]>[number];
 
 /** Cachet PR6 — Shelf persistence (saved briefs). */
 export type BriefSaveRequest = components["schemas"]["BriefSaveRequest"];

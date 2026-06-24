@@ -517,3 +517,66 @@ describe("VerifyResults empty-coverage (anchor-free prose is an honest result, n
     expect(screen.getByText(/did not finish/i)).toBeTruthy();
   });
 });
+
+// The quote autopsy: an altered quote rendered with its genuine words in ink and
+// its fabricated words struck through in oxblood. The render is driven entirely
+// by the engine's per-phrase `segments`, so the strike can never disagree with
+// the verdict, can never over-accuse a genuine word, and reconstructs the exact
+// quote. This is the fabricated-quote moment an existence-only citation checker
+// would pass.
+describe("VerifyResults quote autopsy", () => {
+  function engineWithQuote(quote: Record<string, unknown>): VerifyEngine {
+    const base = engineWith([noRecordClaim]);
+    return {
+      ...base,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      response: { ...(base.response as any), quote_results: [quote] } as any
+    };
+  }
+
+  const alteredQuote = {
+    index: 0,
+    quote: "due process requires notice ... the court awarded treble damages",
+    status: "altered",
+    segments: [
+      { text: "due process requires notice", kind: "verbatim" },
+      { text: " ... the court awarded ", kind: "neutral" },
+      { text: "treble damages", kind: "altered" }
+    ]
+  };
+
+  it("strikes the fabricated words and leaves the genuine words in ink", () => {
+    const { container } = render(<VerifyResults engine={engineWithQuote(alteredQuote)} draft="" />);
+    expect(container.querySelector('[data-kind="altered"]')?.textContent).toBe("treble damages");
+    expect(container.querySelector('[data-kind="verbatim"]')?.textContent).toContain(
+      "due process requires notice"
+    );
+  });
+
+  it("reconstructs the exact quote from its segments (no dropped or reordered words)", () => {
+    const { container } = render(<VerifyResults engine={engineWithQuote(alteredQuote)} draft="" />);
+    expect(container.querySelector("blockquote")?.textContent).toContain(
+      "due process requires notice ... the court awarded treble damages"
+    );
+  });
+
+  it("never strikes a genuine word (the autopsy cannot over-accuse)", () => {
+    const { container } = render(<VerifyResults engine={engineWithQuote(alteredQuote)} draft="" />);
+    const struck = Array.from(container.querySelectorAll('[data-kind="altered"]'))
+      .map((n) => n.textContent)
+      .join(" ");
+    expect(struck).not.toContain("due process");
+  });
+
+  it("a quote with no segments renders plainly (a could-not-check refusal is never struck)", () => {
+    const noSegments = {
+      index: 0,
+      quote: "the statute was unconstitutional as applied",
+      status: "could_not_check",
+      segments: []
+    };
+    const { container } = render(<VerifyResults engine={engineWithQuote(noSegments)} draft="" />);
+    expect(container.querySelector('[data-kind="altered"]')).toBeNull();
+    expect(screen.getByText("Could not check")).toBeTruthy();
+  });
+});
