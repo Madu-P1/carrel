@@ -255,7 +255,10 @@ class ContractPathIntegrationTests(unittest.TestCase):
         self.assertIn("99%", verdict["detail"])
         self.assertIn("50%", verdict["detail"])
 
-    def test_matching_percent_is_present(self) -> None:
+    def test_matching_percent_is_could_not_check(self) -> None:
+        # BROAD percent scope-out (2026-06-24): a matching percent value is not affirmed by
+        # the deterministic engine (could-not-check), mirroring money/duration. Affirmation
+        # of a percent returns only via the AFM subject labeler.
         env = build_deterministic_envelope(
             "The royalty equals 50% of the net fees received in the preceding twelve (12) months.",
             conn=self._conn,
@@ -263,7 +266,7 @@ class ContractPathIntegrationTests(unittest.TestCase):
             embedder=self._embedder,
         )
         verdict = self._verdict_for(env, "50%")
-        self.assertEqual("present", verdict["disposition"])
+        self.assertEqual("not_found", verdict["disposition"])
 
     def test_fabricated_section_cannot_ride_a_matching_percent(self) -> None:
         # The review's live finding: a clause-checkable anchor used to suppress
@@ -525,15 +528,18 @@ class ContractPathIntegrationTests(unittest.TestCase):
         # refused. The logical-sentence pass pools only the present-producing clause and
         # re-checks the reflowed quote there; a verbatim match keeps the green. The pass
         # only ever emits could-not-check on an ABSENT quote, never on a real one.
+        # Carrier is a governing-law present: percent is no longer a present under the
+        # BROAD percent scope-out, so the surviving present type carries the case, and the
+        # wrapped quote is verbatim in contract-4's Section 11 (its own clause).
         draft = (
-            "The royalty equals 50% of net fees and the clause provides that fees are "
-            '"received\nin the twelve (12) months preceding each report."'
+            "The agreement is governed by Delaware law, construed "
+            '"in accordance with\nthe laws of the State of Delaware."'
         )
         env = build_deterministic_envelope(
-            draft, conn=self._conn, doc_ids=["contract-2"], embedder=self._embedder
+            draft, conn=self._conn, doc_ids=["contract-4"], embedder=self._embedder
         )
         result = verify_service._verify_result_from_envelope(draft, env, 0.0)
-        card = next(c for c in result.claim_verdicts if "royalty" in c.claim_text)
+        card = next(c for c in result.claim_verdicts if "governed" in c.claim_text)
         self.assertEqual("verified", card.verdict)
 
     def test_altered_wrapped_quote_on_a_present_downgrades_to_unknown(self) -> None:

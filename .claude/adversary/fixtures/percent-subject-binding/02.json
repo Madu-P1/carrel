@@ -1,0 +1,11 @@
+{
+  "family": "percent-subject-binding",
+  "draft_claim": "The discount for early payment is 5%.",
+  "source_text": "A late-payment penalty of 5% applies to overdue invoices.",
+  "expected_honest_disposition": "could_not_check",
+  "actual_disposition": "present",
+  "classification": "FALSE_GREEN",
+  "severity": "P0",
+  "engine_entry": "services.legal.contract_verify.verify_claim_against_clause(claim, clause).disposition",
+  "note": "Single percent value (5%) is the late-payment PENALTY in the source; the claim binds it to an early-payment DISCOUNT (opposite economic direction). The engine affirms present on the bare 5% value-match. Honest disposition is could_not_check: the deterministic engine cannot bind the 5% to the claim's subject."
+}
