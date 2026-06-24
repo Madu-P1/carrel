@@ -2980,6 +2980,32 @@ export interface components {
              * @enum {string}
              */
             status: "verbatim" | "altered" | "could_not_check";
+            /** Segments */
+            segments?: components["schemas"]["VerifyQuoteSegmentItem"][];
+        };
+        /**
+         * VerifyQuoteSegmentItem
+         * @description One render slice of an altered quote, for the autopsy panel (Cachet).
+         *
+         *     The deterministic quote check decides, phrase by phrase, whether each quoted
+         *     phrase appears verbatim in the cited source. For an altered quote those
+         *     decisions tile the lawyer's quote into ordered segments: ``verbatim`` (the
+         *     genuine words, shown in ink), ``altered`` (the fabricated words the engine
+         *     could not find in any confident source, struck through in oxblood), and
+         *     ``neutral`` (the author's edit marks and connecting prose, never matched).
+         *     The segments concatenate back to the exact quote; they carry no source text,
+         *     only the lawyer's own words and the per-phrase verdict the engine already
+         *     reached, so this surfaces detail behind the verdict without weakening the
+         *     zero-egress posture or changing any disposition.
+         */
+        VerifyQuoteSegmentItem: {
+            /** Text */
+            text: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "verbatim" | "altered" | "neutral";
         };
         /**
          * VerifyRequest

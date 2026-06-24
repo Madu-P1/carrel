@@ -15,9 +15,12 @@ import unittest
 
 from services.legal.quote_check import (
     QuoteCheckResult,
+    QuoteSegment,
     SourceText,
+    check_quote_against_pool,
     check_quote_against_sources,
     extract_draft_quotes,
+    prepare_source_pool,
     split_runs,
 )
 
@@ -382,6 +385,179 @@ class PrepareSourcePoolTests(unittest.TestCase):
         r = check_quote_against_pool("anything at all here", pool)
         self.assertTrue(r.unplaceable)
         self.assertFalse(r.altered)
+
+
+class QuoteAutopsySegmentTests(unittest.TestCase):
+    """The autopsy tiling: an altered quote is split into genuine vs fabricated
+    segments for the panel to render (genuine in ink, fabricated struck in
+    oxblood). The segments are a RENDER aid layered on the existing verdict: they
+    must never change the disposition, must concatenate back to the exact quote,
+    and must never mark a genuine word as fabricated.
+    """
+
+    def _segs(self, quote: str, sources=None) -> tuple[QuoteSegment, ...]:
+        return check(quote, sources).segments
+
+    def test_segments_concatenate_to_the_exact_quote(self) -> None:
+        # The renderer reconstructs the quote from the segments, so any dropped or
+        # reordered character would corrupt the lawyer's words. Hold the invariant
+        # across single-run, multi-run, and edit-mark quotes.
+        for quote in [
+            "the court awarded treble damages to the plaintiff",  # single fabricated run
+            "due process requires notice ... the court awarded treble damages",
+            "[T]he court reversed that the statute was unconstitutional",
+            "the statute was constitutional as applied",
+        ]:
+            segs = self._segs(quote)
+            self.assertTrue(segs, f"expected autopsy segments for altered quote {quote!r}")
+            self.assertEqual(
+                quote,
+                "".join(s.text for s in segs),
+                msg=f"segments did not reconstruct {quote!r}",
+            )
+
+    def test_genuine_run_is_ink_and_fabricated_run_is_struck(self) -> None:
+        # A quote that splices a verbatim opening to a fabricated tail across an
+        # ellipsis: the genuine run reads back as `verbatim`, the invented run as
+        # `altered`. This is the on-screen autopsy beat.
+        quote = "due process requires notice ... the court awarded treble damages to the plaintiff"
+        segs = self._segs(quote)
+        verbatim_text = " ".join(s.text for s in segs if s.kind == "verbatim")
+        altered_text = " ".join(s.text for s in segs if s.kind == "altered")
+        self.assertIn("due process requires notice", verbatim_text)
+        self.assertIn("treble damages", altered_text)
+        # The genuine words are never struck.
+        self.assertNotIn("due process requires notice", altered_text)
+
+    def test_verbatim_quote_has_no_segments(self) -> None:
+        # A clean quote is the unmarked pass (it is not even listed in the panel),
+        # so it carries no autopsy tiling: the quote renders plainly.
+        r = check("the court held that the statute was unconstitutional as applied")
+        self.assertFalse(r.altered)
+        self.assertEqual((), r.segments)
+
+    def test_could_not_check_quote_has_no_segments(self) -> None:
+        # The honest refusal strikes nothing: a could-not-check quote must not
+        # render any oxblood `altered` segment (that would over-accuse).
+        r = check("the statute was unconstitutional as applied", [])
+        self.assertTrue(r.unplaceable)
+        self.assertEqual((), r.segments)
+
+    def test_altered_status_iff_an_altered_segment_exists(self) -> None:
+        # The render can never disagree with the verdict: an altered quote has at
+        # least one struck segment; a non-altered quote has none.
+        altered = check("the statute was constitutional as applied")
+        self.assertTrue(altered.altered)
+        self.assertTrue(any(s.kind == "altered" for s in altered.segments))
+
+        clean = check("the court held that the statute was unconstitutional as applied")
+        self.assertFalse(any(s.kind == "altered" for s in clean.segments))
+
+    def test_segments_match_between_pooled_and_single_shot(self) -> None:
+        # The brief-level panel uses the pooled path; it must tile identically to
+        # the single-shot path for the same quote and sources.
+        quote = "due process requires notice ... the court awarded treble damages"
+        pool = prepare_source_pool([SOURCE])
+        pooled = check_quote_against_pool(quote, pool)
+        single = check_quote_against_sources(quote, [SOURCE])
+        self.assertEqual(single.segments, pooled.segments)
+
+
+class WordLevelAutopsyTests(unittest.TestCase):
+    """The autopsy strikes only the INVENTED words, not the whole altered run.
+
+    The fabricated phrase is aligned token-by-token against the genuine source;
+    only tokens absent from every source are struck. Cry-wolf-safe: a word that
+    IS in the source is never struck (err toward under-striking). An altered
+    quote always shows at least one struck span (whole-phrase fallback)."""
+
+    def _kinds(self, quote: str, sources=None):
+        segs = check(quote, sources).segments
+        altered = " ".join(s.text for s in segs if s.kind == "altered")
+        verbatim = " ".join(s.text for s in segs if s.kind == "verbatim")
+        return altered, verbatim, segs
+
+    def test_single_inserted_word_strikes_only_that_word(self) -> None:
+        # Source: "...the statute was unconstitutional as applied to the
+        # petitioner...". The draft splices in "clearly". Only "clearly" is
+        # struck; every genuine word stays ink.
+        altered, verbatim, _ = self._kinds(
+            "the statute was clearly unconstitutional as applied to the petitioner"
+        )
+        self.assertIn("clearly", altered)
+        for genuine in ("statute", "unconstitutional", "applied", "petitioner"):
+            self.assertNotIn(
+                genuine, altered, f"{genuine!r} is in the source and must not be struck"
+            )
+            self.assertIn(genuine, verbatim)
+
+    def test_single_substituted_word_strikes_only_that_word(self) -> None:
+        # A clearly fabricated substitution ("void", not a source substring) is
+        # pinpointed; the genuine words around it stay ink.
+        altered, verbatim, _ = self._kinds("the statute was void as applied")
+        self.assertIn("void", altered)
+        self.assertNotIn("statute", altered)
+        self.assertIn("statute", verbatim)
+
+    def test_leading_capital_and_bracket_edits_are_never_struck(self) -> None:
+        # Mythos f1 regression: the word-level strike must honor the same
+        # leading-letter edits the disposition gate accepts. A genuine word the
+        # lawyer capitalized to embed mid-sentence ("Due" for source "due"), and
+        # the "he" residue of a "[T]he" bracket-cap, are genuine and must NOT be
+        # struck even when a real fabrication ("frobnicatexyz") sits beside them.
+        for quote in (
+            "Due process requires notice and frobnicatexyz opportunity",
+            "Statute was frobnicatexyz unconstitutional",
+            "[T]he statute was frobnicatexyz unconstitutional",
+        ):
+            altered, _, segs = self._kinds(quote)
+            self.assertEqual(quote, "".join(s.text for s in segs), f"concat broke for {quote!r}")
+            self.assertIn("frobnicatexyz", altered, f"real fabrication not struck in {quote!r}")
+            for genuine in ("Due", "Statute", "process", "statute", "unconstitutional"):
+                self.assertNotIn(
+                    genuine, altered, f"{genuine!r} is genuine and must not be struck in {quote!r}"
+                )
+
+    def test_word_level_segments_concatenate_to_the_exact_quote(self) -> None:
+        for quote in [
+            "the statute was clearly unconstitutional as applied to the petitioner",
+            "the statute was constitutional as applied",
+            "due process requires notice ... the court awarded treble damages",
+        ]:
+            _, _, segs = self._kinds(quote)
+            self.assertEqual(quote, "".join(s.text for s in segs))
+
+    def test_never_strikes_a_word_present_in_the_source(self) -> None:
+        # Every struck token must be absent from the source pool (the cry-wolf
+        # invariant, at word granularity). Normalize both sides the way the
+        # matcher does before checking membership.
+        from services.retrieval.validators import normalize_for_verbatim
+
+        quote = "the statute was clearly unconstitutional as applied to the petitioner"
+        segs = check(quote).segments
+        src_norm = normalize_for_verbatim(SOURCE)
+        for s in segs:
+            if s.kind != "altered":
+                continue
+            for tok in s.text.split():
+                n = normalize_for_verbatim(tok)
+                if n:
+                    self.assertNotIn(n, src_norm, f"struck token {tok!r} is present in the source")
+
+    def test_fully_fabricated_phrase_strikes_the_whole_phrase(self) -> None:
+        # No token aligns to anything in the source: the whole phrase is struck.
+        altered, verbatim, _ = self._kinds("xylophone zebra quux frobnicate")
+        self.assertIn("xylophone", altered)
+        self.assertIn("frobnicate", altered)
+        self.assertEqual("", verbatim)
+
+    def test_reordered_present_tokens_fall_back_to_whole_strike(self) -> None:
+        # Every token is present in the source individually, but not as written
+        # (a reordering). The phrase is altered, and the autopsy must still show
+        # a strike rather than rendering it all as genuine ink.
+        altered, _, segs = self._kinds("applied as unconstitutional was statute the")
+        self.assertTrue(any(s.kind == "altered" for s in segs))
+        self.assertIn("statute", altered)  # whole-phrase fallback strikes everything
 
 
 if __name__ == "__main__":

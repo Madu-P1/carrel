@@ -92,6 +92,24 @@ class SourceText:
 
 
 @dataclass(frozen=True)
+class QuoteSegment:
+    """One render slice of an altered quote, for the autopsy panel.
+
+    ``kind`` is ``"verbatim"`` (a phrase found in a genuine source, shown in
+    ink), ``"altered"`` (a phrase absent from every confident source: the
+    fabricated words to strike through in oxblood), or ``"neutral"`` (the
+    author's edit marks and connecting prose, never matched). The segments of a
+    result concatenate back to the exact original quote, so the renderer can
+    never drop or reorder a character. Carries only the lawyer's OWN words plus
+    the per-phrase verdict the engine already reached: no source text crosses
+    this boundary, so the zero-egress posture is unchanged.
+    """
+
+    text: str
+    kind: str
+
+
+@dataclass(frozen=True)
 class QuoteCheckResult:
     """Verdict for one quoted span extracted from the draft.
 
@@ -101,12 +119,15 @@ class QuoteCheckResult:
     source available, the run fell past a truncation, or the only candidates
     were partial chunks the run might straddle); the caller maps this to
     could_not_check, NEVER to a flag. ``runs`` is the parsed verbatim runs.
+    ``segments`` is the autopsy tiling of the quote (populated only for an
+    ``altered`` quote; empty otherwise, where the quote renders plainly).
     """
 
     quote: str
     altered: bool
     unplaceable: bool
     runs: tuple[str, ...]
+    segments: tuple[QuoteSegment, ...] = ()
 
 
 def extract_draft_quotes(draft: str) -> list[str]:
@@ -232,6 +253,11 @@ class NormalizedSourcePool:
     norm_confident: tuple[str, ...]
     has_uncertain_source: bool
     has_sources: bool
+    # Case-folded confident-source texts, computed ONCE per pool for the
+    # word-level autopsy (`_word_level_spans`) so the per-token presence test is
+    # case-insensitive (matching the disposition gate's accepted leading-letter
+    # edit) without rebuilding the fold per fabricated phrase.
+    confident_text_cf: tuple[str, ...] = ()
 
 
 def prepare_source_pool(sources: list) -> NormalizedSourcePool:
@@ -248,13 +274,123 @@ def prepare_source_pool(sources: list) -> NormalizedSourcePool:
     norm_confident_list = [
         n for n, s in zip(norm_all_list, usable) if s.complete and not s.truncated and n
     ]
+    # dict.fromkeys dedupes while preserving first-seen order (deterministic).
+    norm_confident = tuple(dict.fromkeys(norm_confident_list))
     return NormalizedSourcePool(
-        # dict.fromkeys dedupes while preserving first-seen order (deterministic).
         norm_all=tuple(dict.fromkeys(norm_all_list)),
-        norm_confident=tuple(dict.fromkeys(norm_confident_list)),
+        norm_confident=norm_confident,
         has_uncertain_source=any((s.truncated or not s.complete) for s in usable),
         has_sources=bool(usable),
+        confident_text_cf=tuple(n.casefold() for n in norm_confident),
     )
+
+
+def _word_level_spans(core: str, pool: NormalizedSourcePool) -> list[tuple[str, str]]:
+    """Decompose a fabricated phrase into word-level (text, kind) spans.
+
+    The phrase is absent from every confident source AS A WHOLE, but most of its
+    words usually ARE genuine (a real quote with a few words spliced in or
+    swapped). Strike only the words the source does not contain at all; the rest
+    stay ``verbatim`` ink. The spans concatenate back to ``core`` exactly.
+
+    Cry-wolf-safe by construction: a token is struck ONLY when its case-folded
+    normalized form is a substring of NO confident source text. Case-folded
+    SUBSTRING membership mirrors the leniency of the disposition gate (substring
+    match plus the accepted leading-letter case edit), so a word the lawyer
+    legitimately capitalized to embed mid-sentence ("Due" for source "due"), an
+    interior case difference, or the "he" left by a "[T]he" bracket-cap is found
+    in the source and never struck. The autopsy can therefore never strike a word
+    the source contains in any form. The cost is the safe direction: a
+    substitution that happens to be a source substring ("constitutional" inside
+    "unconstitutional") is not pinpointed and falls back to the whole-phrase
+    strike below. Two honest fallbacks both strike the whole phrase: no confident
+    source to check against, or a phrase whose every word is present yet absent as
+    written (a reordering/splice) — an altered verdict must always show at least
+    one struck span, never a silently clean autopsy.
+    """
+    tokens = [(m.group(0), m.start(), m.end()) for m in re.finditer(r"\S+", core)]
+    if not tokens or not pool.confident_text_cf:
+        return [(core, "altered")]
+
+    # Case-folded confident-source texts, precomputed once per pool. A token that
+    # normalizes to empty is pure punctuation: neutral, never struck.
+    sources_cf = pool.confident_text_cf
+    kinds: list[str] = []
+    for t, _s, _e in tokens:
+        norm = _RUN_EDGE.sub("", normalize_for_verbatim(t)).casefold()
+        if not norm:
+            kinds.append("neutral")  # punctuation token
+        elif any(norm in text for text in sources_cf):
+            kinds.append("verbatim")
+        else:
+            kinds.append("altered")
+    if "altered" not in kinds:
+        # Every word is present yet the phrase is absent as written (a reordering
+        # or splice): strike the whole phrase, honestly.
+        return [(core, "altered")]
+
+    # Tile `core` exactly. A gap between two tokens is struck only when BOTH
+    # neighbours are struck, so consecutive fabricated words read as one
+    # continuous strike rather than a choppy word-by-word one.
+    parts: list[tuple[str, str]] = []
+    prev_end = 0
+    prev_kind: str | None = None
+    for (_t, s, e), kind in zip(tokens, kinds):
+        if s > prev_end:
+            gap_kind = "altered" if (prev_kind == "altered" and kind == "altered") else "neutral"
+            parts.append((core[prev_end:s], gap_kind))
+        parts.append((core[s:e], kind))
+        prev_end = e
+        prev_kind = kind
+    if prev_end < len(core):
+        parts.append((core[prev_end:], "neutral"))
+
+    merged: list[tuple[str, str]] = []
+    for text, kind in parts:
+        if merged and merged[-1][1] == kind:
+            merged[-1] = (merged[-1][0] + text, kind)
+        else:
+            merged.append((text, kind))
+    return merged
+
+
+def _build_quote_segments(
+    quote: str, decisions: list[tuple[str, bool]], pool: NormalizedSourcePool
+) -> tuple[QuoteSegment, ...]:
+    """Tile the ORIGINAL quote into ordered render segments for the autopsy panel.
+
+    Only called for an ``altered`` quote. Each checked phrase is located in the
+    original text by a forward scan; a ``verbatim`` phrase renders as ink, a
+    fabricated phrase is decomposed to WORD level (`_word_level_spans`) so only
+    the invented words are struck, not the whole sentence. Everything between the
+    checked phrases (the author's edit marks, connecting prose) is ``neutral``.
+    The forward cursor keeps the tiling monotonic, and any gap or trailing
+    remainder is emitted as ``neutral``, so the segments always concatenate back
+    to the exact original quote (locked by a test). A phrase the scan cannot
+    locate (it should always be a substring) is simply skipped: its characters
+    fall into a neutral gap, so the concatenation invariant still holds and the
+    worst case is an under-struck phrase, never a corrupted quote.
+    """
+    segments: list[QuoteSegment] = []
+    cursor = 0
+    for phrase, present in decisions:
+        core = phrase.strip()
+        if not core:
+            continue
+        idx = quote.find(core, cursor)
+        if idx == -1:
+            continue
+        if idx > cursor:
+            segments.append(QuoteSegment(text=quote[cursor:idx], kind="neutral"))
+        if present:
+            segments.append(QuoteSegment(text=core, kind="verbatim"))
+        else:
+            for sub_text, kind in _word_level_spans(core, pool):
+                segments.append(QuoteSegment(text=sub_text, kind=kind))
+        cursor = idx + len(core)
+    if cursor < len(quote):
+        segments.append(QuoteSegment(text=quote[cursor:], kind="neutral"))
+    return tuple(segments)
 
 
 def check_quote_against_pool(quote: str, pool: NormalizedSourcePool) -> QuoteCheckResult:
@@ -269,6 +405,14 @@ def check_quote_against_pool(quote: str, pool: NormalizedSourcePool) -> QuoteChe
     verbatim-present in ANY source. The quote is ``altered`` only if some phrase is
     present in NO source AND no truncated-or-partial source could plausibly contain it;
     in the latter case it degrades to ``unplaceable``.
+
+    Disposition is unchanged from the v1 early-return: evaluating EVERY phrase
+    (rather than returning on the first absent one) is what lets us tile the
+    quote into genuine/fabricated ``segments`` for the autopsy panel, and it is
+    provably equivalent because the confident-source guard
+    (``norm_confident and not has_uncertain_source``) is a pool-level constant,
+    independent of WHICH phrase first failed. The `tests.test_quote_check`
+    parity suite and the frozen held-out cases lock that equivalence.
     """
     runs = tuple(split_runs(quote))
     if not pool.has_sources or not runs:
@@ -283,21 +427,34 @@ def check_quote_against_pool(quote: str, pool: NormalizedSourcePool) -> QuoteChe
                 return True
         return False
 
+    # One pass over every checked phrase, recording presence in document order.
+    # `decisions` holds the ORIGINAL phrase text (for locating it back in the
+    # quote) paired with whether it is verbatim-present in the pool.
+    decisions: list[tuple[str, bool]] = []
     for run in runs:
         for phrase in quoted_subphrases(run):
-            phrase = phrase.strip()
-            if not phrase or not _HAS_ALNUM.search(phrase):
-                continue
-            if _phrase_present(phrase):
-                continue  # found verbatim somewhere: this phrase is clean
-            # Absent from every source. Only call it altered if we have a
-            # confident (complete, untruncated) source it SHOULD have appeared
-            # in and there is no uncertain source that could plausibly contain it.
-            if pool.norm_confident and not pool.has_uncertain_source:
-                return QuoteCheckResult(quote=quote, altered=True, unplaceable=False, runs=runs)
-            return QuoteCheckResult(quote=quote, altered=False, unplaceable=True, runs=runs)
+            stripped = phrase.strip()
+            if not stripped or not _HAS_ALNUM.search(stripped):
+                continue  # vacuous phrase: not a checked unit, no segment
+            decisions.append((phrase, _phrase_present(stripped)))
 
-    return QuoteCheckResult(quote=quote, altered=False, unplaceable=False, runs=runs)
+    any_absent = any(not present for _, present in decisions)
+    confident = bool(pool.norm_confident) and not pool.has_uncertain_source
+    if not any_absent:
+        altered, unplaceable = False, False
+    elif confident:
+        altered, unplaceable = True, False
+    else:
+        altered, unplaceable = False, True
+
+    segments = _build_quote_segments(quote, decisions, pool) if altered else ()
+    return QuoteCheckResult(
+        quote=quote,
+        altered=altered,
+        unplaceable=unplaceable,
+        runs=runs,
+        segments=segments,
+    )
 
 
 def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:

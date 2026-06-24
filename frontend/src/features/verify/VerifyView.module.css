@@ -1328,6 +1328,22 @@
   color: var(--text-primary);
 }
 
+/* The autopsy. A fabricated phrase the engine could not find in any confident
+   source: struck in the single oxblood accent. The strike IS the finding, but
+   the word stays legible so the lawyer reads exactly what was invented. */
+.quoteFabricated {
+  color: var(--verify-flag);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--verify-flag) 60%, transparent);
+  text-decoration-thickness: 2px;
+}
+
+/* The genuine words around a strike: plain ink, no accent, so the fabricated
+   words are the only thing that stands out. */
+.quoteGenuine {
+  color: var(--text-primary);
+}
+
 /* ============================================================
    Cachet PR5b (Direction A): Workspace / Margin / Examination
    The cold record: document body + pinned margin rail + unplaced

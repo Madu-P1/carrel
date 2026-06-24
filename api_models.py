@@ -356,6 +356,25 @@ class VerifySummaryItem(BaseModel):
     unknown: int
 
 
+class VerifyQuoteSegmentItem(BaseModel):
+    """One render slice of an altered quote, for the autopsy panel (Cachet).
+
+    The deterministic quote check decides, phrase by phrase, whether each quoted
+    phrase appears verbatim in the cited source. For an altered quote those
+    decisions tile the lawyer's quote into ordered segments: ``verbatim`` (the
+    genuine words, shown in ink), ``altered`` (the fabricated words the engine
+    could not find in any confident source, struck through in oxblood), and
+    ``neutral`` (the author's edit marks and connecting prose, never matched).
+    The segments concatenate back to the exact quote; they carry no source text,
+    only the lawyer's own words and the per-phrase verdict the engine already
+    reached, so this surfaces detail behind the verdict without weakening the
+    zero-egress posture or changing any disposition.
+    """
+
+    text: str
+    kind: Literal["verbatim", "altered", "neutral"]
+
+
 class VerifyQuoteResultItem(BaseModel):
     """One brief-level draft-quote-verbatim result (Cachet PR4).
 
@@ -371,6 +390,11 @@ class VerifyQuoteResultItem(BaseModel):
     index: int
     quote: str
     status: Literal["verbatim", "altered", "could_not_check"]
+    # Cachet quote autopsy: per-phrase render segments for an altered quote
+    # (empty for verbatim / could_not_check, where the quote renders plainly).
+    # Tiles the lawyer's own quote into genuine vs fabricated words; ships no
+    # source text, so the verdict and the zero-egress posture are untouched.
+    segments: List[VerifyQuoteSegmentItem] = Field(default_factory=list)
 
 
 class VerifyCoverageItem(BaseModel):

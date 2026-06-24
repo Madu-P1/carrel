@@ -5,7 +5,8 @@ import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   briefs as briefsApi,
   type VerifyClaimVerdict,
-  type VerifyQuoteResult
+  type VerifyQuoteResult,
+  type VerifyQuoteSegment
 } from "@/services/api/endpoints";
 
 import { buildCertification, fingerprintDraft } from "./certification";
@@ -441,6 +442,42 @@ interface QuotePanelProps {
 }
 
 /**
+ * The quote autopsy. An altered quote is rendered with its genuine words in ink
+ * and its fabricated words struck through in the single oxblood accent, so the
+ * lawyer sees exactly which words the engine could not find verbatim in any
+ * cited source — the moment an existence-only citation checker passes but Cachet
+ * does not. The segments ARE the per-phrase verdict the deterministic engine
+ * already reached (services.legal.quote_check); they concatenate back to the
+ * exact quote, so this surface adds no claim of its own and ships no source
+ * text. A quote with no segments (a could-not-check refusal, or an older
+ * payload) renders plainly: the strike is reserved for a real, confident flag.
+ */
+function QuoteBody({ quote, segments }: { quote: string; segments?: VerifyQuoteSegment[] }) {
+  if (!segments || segments.length === 0) return <>“{quote}”</>;
+  return (
+    <>
+      “
+      {segments.map((seg, i) => (
+        <span
+          key={`${i}-${seg.kind}`}
+          data-kind={seg.kind}
+          className={
+            seg.kind === "altered"
+              ? styles.quoteFabricated
+              : seg.kind === "verbatim"
+                ? styles.quoteGenuine
+                : undefined
+          }
+        >
+          {seg.text}
+        </span>
+      ))}
+      ”
+    </>
+  );
+}
+
+/**
  * Cachet PR4: brief-level draft-quote-verbatim panel. Lists the quoted passages
  * that need attention (altered or could-not-check); a fully-verbatim quote is
  * the unmarked pass and is not listed. Brief-level: not yet attributed to a
@@ -464,7 +501,9 @@ function QuotePanel({ quotes }: QuotePanelProps) {
             ].join(" ")}
           >
             <span className={styles.quoteStatus}>{quoteStatusLabel(q.status)}</span>
-            <blockquote className={styles.quoteText}>“{q.quote}”</blockquote>
+            <blockquote className={styles.quoteText}>
+              <QuoteBody quote={q.quote} segments={q.segments} />
+            </blockquote>
           </li>
         ))}
       </ul>
