@@ -185,7 +185,20 @@ ADR fixes the contract and the safety invariant, not the signatures:
 
 - A cloud model in the verdict path (breaks the moat).
 - The model as a verdict-maker (it is a labeler only; the deterministic rule decides).
-- Percent (already handled by `_subject_aware_percent`).
+- ~~Percent (already handled by `_subject_aware_percent`).~~ **AMENDED 2026-06-24: percent
+  is NOT handled and is now BROAD-scoped-out.** A red-team fuzz showed `_subject_aware_percent`
+  (and the subject-less value-only fall-through) false-greens 8/8 on capitalized-common-word
+  pseudo-subjects bound by the `_percent_subject` regex ("20% Interest" vs "20% Interest-free";
+  "20% Effective" rate vs "Effective date"; "20% Common" vs "Common shares were cancelled") --
+  blind to negation/polarity/concept-mismatch. The regex binder cannot soundly bind a percent
+  to its subject. Per council (Harvey + Vulcan + adversary + synthesizer, 2026-06-24) percent now
+  mirrors money/duration: a value-MATCH is NEVER affirmed (could-not-check); only a
+  CONTRADICTION (same-subject mismatch, or the value-only mismatch / near-copy catch) is a
+  definite verdict. Affirmation of a percent returns ONLY via the AFM subject labeler, exactly
+  like money/duration. Implemented in `contract_verify.py` (the percent block + the value-only
+  matched-branch guard); held-out fixtures in `.claude/adversary/fixtures/percent-labeled-binding/`
+  and the `PercentBroadScopeOutTests` regression class. (Supersedes the partial subject-less-only
+  scope-out drafted in PR carrel#181, which kept the labeled green these cracks exploit.)
 - Non money/magnitude/duration anchor types.
 
 ## Rollback

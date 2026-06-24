@@ -844,17 +844,41 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
         # or cross-subject-contradict). Subject-less percents return None here and
         # fall through to the unchanged value-only path.
         if anchor_type == "percent":
+            # BROAD percent scope-out (ADR-0013 amendment, 2026-06-24). The deterministic
+            # engine CANNOT bind a percent to its subject: the regex binder
+            # (anchors._PERCENT_SUBJECT) treats ANY capitalized token after the % as the
+            # subject, so it false-greened clearly-unsupported claims on a coincidental
+            # capitalized common word ("20% Interest" vs "20% Interest-free"; "20% Effective"
+            # rate vs "Effective date"; "20% Common" vs "Common shares were cancelled") --
+            # blind to negation, polarity, and concept-mismatch (red-team 2026-06-24,
+            # .claude/adversary/fixtures/percent-labeled-binding/). So a percent value-MATCH
+            # is NEVER affirmed; only a CONTRADICTION is a definite verdict. This narrows the
+            # affirmation, NOT the catch: a same-subject mismatch still contradicts here, and a
+            # subject-LESS percent falls through to the value-only path where its value-MISMATCH
+            # contradiction still fires (its value-MATCH is scoped out below). Affirmation of a
+            # percent returns only via the AFM subject labeler. Routed to the UNCONFIRMED tier
+            # so an unconfirmed percent cannot launder a co-occurring present.
             sa = _subject_aware_percent(claim_hits, clause_hits, where)
             if sa is not None:
                 if sa.disposition == "parametric_contradiction":
                     return sa
-                if sa.disposition == "present":
-                    present_verdict = present_verdict or sa
-                else:
-                    # Percent is non-figure: a percent the clause does not fully confirm
-                    # is an unconfirmed assertion that must outrank a sibling present.
-                    unconfirmed_verdict = unconfirmed_verdict or sa
+                # A subject-confirmed MATCH (was the lone "green") or a subject-silent
+                # not_found both become could-not-check: the binder is not trustworthy
+                # enough to affirm. Unconfirmed tier so it outranks a sibling present.
+                if unconfirmed_verdict is None:
+                    unconfirmed_verdict = ClauseVerdict(
+                        "not_found",
+                        f"The summary states {claim_hits[0].text}; a deterministic check cannot "
+                        "bind a percent to its subject, so a value match is not affirmed and it "
+                        "was not independently verified.",
+                        "percent",
+                        claim_values,
+                        clause_values,
+                    )
                 continue
+            # sa is None: a subject-less percent. Fall through to the value-only path so its
+            # value-MISMATCH contradiction (the catch) still fires; the value-MATCH there is
+            # scoped out to could-not-check (the matched-branch percent guard below).
         if _labeler is not None and anchor_type in ("money", "magnitude", "duration"):
             sa = _subject_aware_amount(
                 claim_hits,
@@ -968,6 +992,22 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                         "cannot confirm it states this obligation, so it was not "
                         "independently verified.",
                         anchor_type,
+                        claim_values,
+                        clause_values,
+                    )
+                continue
+            if anchor_type == "percent":
+                # BROAD percent scope-out (subject-less value-MATCH): never affirmed. The
+                # binder could not bind a subject, so a bare value coincidence is
+                # could-not-check, at the UNCONFIRMED tier (a percent the engine cannot
+                # confirm must not be laundered by a sibling present). The value-MISMATCH
+                # contradiction below is unchanged: BROAD narrows affirmation, not the catch.
+                if unconfirmed_verdict is None:
+                    unconfirmed_verdict = ClauseVerdict(
+                        "not_found",
+                        f"{claim_hits[0].text} appears in {where}, but a deterministic check "
+                        "cannot bind a percent to its subject, so it was not independently verified.",
+                        "percent",
                         claim_values,
                         clause_values,
                     )

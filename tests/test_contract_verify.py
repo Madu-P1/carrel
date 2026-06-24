@@ -253,22 +253,28 @@ class PercentClauseTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("percent", v.anchor_type)
 
-    def test_percent_present_with_hedge_detail(self) -> None:
+    def test_percent_match_is_could_not_check_not_affirmed(self) -> None:
+        # BROAD percent scope-out (2026-06-24): a deterministic percent value-match is
+        # never affirmed (the regex subject-binder false-greens on capitalized
+        # common-word pseudo-subjects, so it cannot ground a green). A matching royalty
+        # rate reads could-not-check, not present. Affirmation returns via the AFM labeler.
         v = verify_claim_against_clause(
             "The royalty is 12.5% of net revenue.",
             "Section 4.1. Licensee shall pay a royalty of 12.5% of net revenue.",
         )
-        self.assertEqual("present", v.disposition)
-        self.assertIn("review the full passage", v.detail)
+        self.assertEqual("not_found", v.disposition)
+        self.assertIn("not independently verified", v.detail)
 
     def test_percent_aligns_across_notations(self) -> None:
-        # "0.5%" in the summary vs "50 bps" in the clause is the same rate; the
-        # basis-point canonical makes the notations compare equal, exactly.
+        # "0.5%" vs "50 bps" is the same rate (the basis-point canonical makes them
+        # compare EQUAL), so it is never a contradiction. Under the BROAD percent
+        # scope-out a value match is not affirmed either: the honest exit is
+        # could-not-check, never present and never a false contradiction.
         v = verify_claim_against_clause(
             "The fee increases by 0.5% for each month of delay.",
             "Section 3. A late charge of 50 bps accrues for each month of delay.",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_percent_not_found_is_the_honest_exit(self) -> None:
         v = verify_claim_against_clause(
@@ -277,15 +283,16 @@ class PercentClauseTests(unittest.TestCase):
         )
         self.assertEqual("not_found", v.disposition)
 
-    def test_dual_notation_of_one_rate_is_present_not_a_refusal(self) -> None:
-        # '0.5% (50 bps)' is ONE rate written twice; equal canonicals collapse
-        # before the multi-value test, so the legal dual-notation convention
-        # reads present instead of an unnecessary could-not-check.
+    def test_dual_notation_of_one_rate_collapses_then_scopes_out(self) -> None:
+        # '0.5% (50 bps)' is ONE rate written twice; equal canonicals still collapse
+        # before the multi-value test, so this is NOT a multi_value refusal. Under the
+        # BROAD percent scope-out the single collapsed rate is then not affirmed:
+        # could-not-check, not present and not multi_value_unverifiable.
         v = verify_claim_against_clause(
             "A late charge of 0.5% (50 bps) accrues monthly.",
             "Section 3. A late charge of 0.5% accrues monthly.",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_two_percents_on_one_side_refuse_to_guess(self) -> None:
         v = verify_claim_against_clause(
@@ -1345,12 +1352,17 @@ class SubjectBoundPercentTests(unittest.TestCase):
         )
         self.assertNotEqual("parametric_contradiction", v.disposition)
 
-    def test_same_subject_match_is_present(self) -> None:  # D2 acceptance
+    def test_same_subject_match_is_could_not_check(self) -> None:  # BROAD scope-out
+        # Pre-BROAD this confirmed same-subject match (10% France vs a clause listing
+        # 10% France) was the lone percent green. A 2026-06-24 fuzz showed the regex
+        # subject-binder false-greens on capitalized common-word pseudo-subjects
+        # ("20% Interest" vs "Interest-free"), so percent is no longer affirmed
+        # deterministically: even a confirmed match reads could-not-check.
         v = verify_claim_against_clause(
             "Allocation key is 10% France.",
             "Allocation key: turnover (10% Italy, 10% France, 10% Spain, 10% Germany).",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_subjectless_percents_still_contradict_by_value(self) -> None:
         # No proper-noun subject on either side -> the value-only path is unchanged,
@@ -1403,14 +1415,16 @@ class SubjectBoundPercentTests(unittest.TestCase):
         )
         self.assertNotEqual("present", v.disposition)
 
-    def test_full_multi_subject_match_is_still_present(self) -> None:
-        # Regression guard for the fix above: when EVERY claim subject is confirmed
-        # (reordered, clause may carry extras), the sentence is still present.
+    def test_full_multi_subject_match_is_could_not_check(self) -> None:
+        # Pre-BROAD, when EVERY claim subject was confirmed the sentence read present.
+        # Under the BROAD percent scope-out even a fully-confirmed multi-subject match is
+        # not affirmed deterministically (the binder cannot be trusted to ground a green);
+        # it reads could-not-check. Affirmation returns only via the AFM subject labeler.
         v = verify_claim_against_clause(
             "Allocation: 10% Italy and 20% France.",
             "Allocation: 20% France, 10% Italy, 30% Spain.",
         )
-        self.assertEqual("present", v.disposition)
+        self.assertEqual("not_found", v.disposition)
 
     def test_non_figure_present_does_not_mask_an_unconfirmed_percent(self) -> None:
         # Cross-type partial match (xhigh review): a governing-law present must NOT
@@ -1423,14 +1437,68 @@ class SubjectBoundPercentTests(unittest.TestCase):
         self.assertNotEqual("present", v.disposition)
 
     def test_figure_scope_out_still_yields_to_a_real_present(self) -> None:
-        # The deliberate counter-case the fix must preserve: a confirmed 50% royalty
-        # in a sentence that also names a (scoped-out) 12-month window still reads
-        # present -- a figure not_found yields to a sibling non-figure present.
+        # The deliberate counter-case the fix must preserve: a figure not_found yields to
+        # a sibling non-figure PRESENT. Percent can no longer be that present (BROAD
+        # scope-out), so the sibling here is a governing-law present, which is still
+        # affirmable -- the scoped-out $500,000 figure must not suppress it.
         v = verify_claim_against_clause(
-            "The royalty is 50% of fees over the prior 12 months.",
-            "Section 9.2. The royalty is 50% of fees over the prior 12 months.",
+            "Governed by New York law; the cap is $500,000.",
+            "Governed by the laws of New York. Liability shall not exceed $500,000.",
         )
         self.assertEqual("present", v.disposition)
+
+
+class PercentBroadScopeOutTests(unittest.TestCase):
+    """BROAD percent scope-out (ADR-0013 amendment, 2026-06-24). The deterministic engine
+    must NEVER affirm (`present`) a percent value-match: the regex subject-binder
+    false-greens on capitalized common-word pseudo-subjects, blind to negation / polarity /
+    concept-mismatch. Affirmation returns only via the AFM subject labeler. These cases are
+    the red-team cracks that motivated the change (held-out: a green here is a P0 regression).
+    The catch is NOT narrowed — contradictions still fire."""
+
+    # Subject-LESS value coincidence + capitalized-common-word "subjects". A green on any
+    # of these is a false green (the claim is clearly unsupported by the source).
+    NEVER_GREEN = [
+        ("France's allocation is 20%.", "The allocation to Italy is 20% of turnover."),
+        (
+            "The discount for early payment is 5%.",
+            "A late-payment penalty of 5% applies to overdue invoices.",
+        ),
+        ("The interest rate is 20% Interest.", "A 20% Interest-free period applies for year one."),
+        ("A 20% Discount is given.", "A 20% Discount is expressly NOT given; a surcharge applies."),
+        ("Tax is 20% Effective.", "The 20% Effective date is January 1."),
+        ("Equity stake is 20% Common.", "20% Common shares were cancelled."),
+        ("Royalties are 20% Net.", "20% Net losses must be absorbed by the Licensee."),
+        ("The bonus is 20% Annual.", "A 20% Annual cap was rejected by the parties."),
+        # A perfectly clean, correctly-subject-bound rate is ALSO not affirmed (scope-out):
+        (
+            "The royalty is 12.5% of net revenue.",
+            "Licensee shall pay a royalty of 12.5% of net revenue.",
+        ),
+    ]
+
+    def test_no_percent_value_match_is_ever_affirmed(self) -> None:
+        for claim, clause in self.NEVER_GREEN:
+            v = verify_claim_against_clause(claim, clause)
+            self.assertNotEqual(
+                "present", v.disposition, f"percent false green not closed: {claim!r} vs {clause!r}"
+            )
+
+    def test_broad_scope_out_does_not_narrow_the_contradiction_catch(self) -> None:
+        # A subject-less percent value MISMATCH still contradicts (the altered-rate catch),
+        # and a same-subject mismatch still contradicts. BROAD removes affirmation, not the catch.
+        self.assertEqual(
+            "parametric_contradiction",
+            verify_claim_against_clause(
+                "The ordinary level is 10%.", "The ordinary level is 20%."
+            ).disposition,
+        )
+        self.assertEqual(
+            "parametric_contradiction",
+            verify_claim_against_clause(
+                "Allocation key is 20% France.", "Allocation key is 10% France."
+            ).disposition,
+        )
 
 
 if __name__ == "__main__":
