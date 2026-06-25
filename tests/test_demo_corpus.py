@@ -201,6 +201,15 @@ class ContractCorpusTests(unittest.TestCase):
         self.assertIn("New York", verdict["detail"])
         self.assertIn("Delaware", verdict["detail"])
 
+    def test_venue_quote_is_present_green(self) -> None:
+        # PR #184 calibration beat: the verbatim venue quote ("the exclusive
+        # jurisdiction of the courts of New York") greens (present) -- the one place
+        # the engine vouches, the calibration that tells the buyer what a refusal
+        # means. Locked so a future anchor change cannot silently turn the on-stage
+        # green beat into a refusal or contradiction (Mythos venue-line-untested).
+        claim = self._verdict_for("exclusive jurisdiction of the courts of New York")
+        self.assertEqual("present", claim["contract_verdict"]["disposition"])
+
     def test_best_efforts_claim_is_untreated(self) -> None:
         # "The vendor must use best efforts to protect confidential information." carries
         # no checkable anchor (the source's defined term is "Confidential Information",

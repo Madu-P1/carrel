@@ -302,7 +302,7 @@ export function VaultView() {
         >
           <input
             type="file"
-            accept=".pdf,.docx,.txt"
+            accept=".pdf,.docx,.txt,.md"
             className={styles.dropzoneInput}
             disabled={!!upload}
             onChange={(e) => void onFiles((e.target as HTMLInputElement).files, name)}
@@ -500,7 +500,7 @@ export function VaultView() {
           <label className={styles.vaultActionCard} data-busy={upload ? "true" : undefined}>
             <input
               type="file"
-              accept=".pdf,.docx,.txt"
+              accept=".pdf,.docx,.txt,.md"
               className={styles.dropzoneInput}
               disabled={!!upload}
               onChange={(e) => void onFiles((e.target as HTMLInputElement).files, DEFAULT_PROJECT)}

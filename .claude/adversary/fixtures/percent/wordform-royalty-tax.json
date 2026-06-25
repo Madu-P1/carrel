@@ -1,0 +1,8 @@
+{
+  "id": "wordform-royalty-tax",
+  "claim": "The royalty is ten percent.",
+  "clause": "The tax is ten percent.",
+  "expected": "could_not_verify",
+  "family": "samevalue-diff-subject",
+  "got": "not_found"
+}

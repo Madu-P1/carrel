@@ -69,3 +69,7 @@ macos-app/Resources/assets.new/
 
 # Mythos report-only ledger (engine writes here; never committed)
 .mythos/
+
+# demo runtime dir + extracted archives (added 2026-06-25 after review)
+data-cachet-demo/
+docs/extracted/*.tar.gz

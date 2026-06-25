@@ -1,0 +1,8 @@
+{
+  "id": "pct-of-x-diffsubj",
+  "claim": "The royalty is 10% of net revenue.",
+  "clause": "The commission is 10% of gross sales.",
+  "expected": "could_not_verify",
+  "family": "samevalue-diff-subject",
+  "got": "not_found"
+}
