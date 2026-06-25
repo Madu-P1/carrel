@@ -939,7 +939,9 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                 multi_value_verdict = ClauseVerdict(
                     "multi_value_unverifiable",
                     (
-                        f"The {anchor_type} values in the summary and {where} cannot be aligned "
+                        f"The {anchor_type} values in the summary "
+                        f"({', '.join(dict.fromkeys(h.text for h in claim_hits))}) and {where} "
+                        f"({', '.join(dict.fromkeys(h.text for h in clause_hits))}) cannot be aligned "
                         "one-to-one deterministically, so this sentence was not independently checked."
                     ),
                     anchor_type,
