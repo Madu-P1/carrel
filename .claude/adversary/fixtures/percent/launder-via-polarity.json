@@ -1,0 +1,8 @@
+{
+  "id": "launder-via-polarity",
+  "claim": "The license is exclusive and the royalty is 10%.",
+  "clause": "The license is exclusive. The tax is 10%.",
+  "expected": "could_not_verify",
+  "family": "laundering",
+  "got": "not_found"
+}

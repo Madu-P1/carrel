@@ -176,3 +176,148 @@ additive, and independently shippable as one draft (the contract is
 - T1 labeled legal corpus (data task).
 - Clean-prose coverage wording (validate with real lawyers first).
 - Any change to the no-green-badge / honest-refusal brand stance (council + Madu).
+
+
+---
+
+## Mythos engine scan (2026-06-22) — services/legal false-green hunt
+Filed by Mythos ACTION mode. 8 fresh-context Opus finders + 4 cross-model (Sonnet) refuters
+over the verify engine. ALL are truth/verdict surfaces -> **[REVIEW]** (drafts for a human/
+council read, NEVER auto-shipped). Ledger: /tmp/mythos-cachet-scan/.mythos/findings-cachet-engine-scan.md
+
+### M1 [REVIEW] (critical) — Caption acronym false-green: fabricated ALL-CAPS initials read as match
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/citations_eyecite.py:228
+- Grounding: repro: caption_match_state(NLR v. JLS, 'National Labor Relations Board v. Jones Laughlin Steel') == 'match' (cross-model refuted, survived)
+- Goal: _acronym_forms emits an initialism for every contiguous word-run of the WHOLE case name; restrict credit to a side's own words.
+- Acceptance: held-out: a fabricated ALL-CAPS-initials caption (NLR v. JLS) on a real reporter number resolves to caption_unconfirmed/mismatch, NOT match; existing caption tests stay green.
+
+### M2 [REVIEW] (critical) — Acronym forms span the v. separator
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/citations_eyecite.py:223
+- Grounding: repro: _acronym_forms keeps 'v' and spans both parties, emitting cross-party forms ('bvj','vjls')
+- Goal: Split the name on the v. separator BEFORE generating acronym forms; never cross it.
+- Acceptance: held-out: no acronym form produced by _acronym_forms contains a token from both parties.
+
+### M3 [REVIEW] (critical) — Case-existence on the tutor path has NO caption cross-check
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/case_verification.py:429
+- Grounding: cite:services/legal/case_verification.py:429+false-green-caption-gate-bypass (cross-model refuted, survived)
+- Goal: The caption gate runs only in deterministic_envelope; the tutor path emits exists=True+case_name from the CourtListener echo with no caption cross-check. Apply the caption gate here too.
+- Acceptance: held-out: a fabricated caption on a real reporter number, via the tutor/case_verification path, yields could-not-confirm, not exists=True.
+
+### M4 [REVIEW] (high) — European-comma money parsed 10x wrong
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/anchors.py:691
+- Grounding: repro: extract_anchors('$1,2 billion') -> $12B (10x); _money_cents naive .replace(',','') vs _MAGNITUDE's parse_grouped_number refusal (cross-model refuted, survived)
+- Goal: Route $-money through parse_grouped_number's European-comma refusal so $1,2 cannot become $12.
+- Acceptance: held-out: '$1,2 billion' refuses / is flagged ambiguous, never canonicalizes to 12e9.
+
+### M5 [REVIEW] (high) — Two-party fabricated caption matches a one-party name
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/citations_eyecite.py:322
+- Grounding: repro: caption_match_state(IBM v. BMC, 'International Business Machines Corporation') == 'match'
+- Goal: Require each populated draft side to match a DISTINCT span of the resolved name.
+- Acceptance: held-out: a two-party draft caption against a single-party resolved name resolves to mismatch.
+
+### M6 [REVIEW] (high) — Date locale ambiguity silently month-first
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/anchors.py:759
+- Grounding: repro: _date_iso('03/04/2024')->2024-03-04 but '13/04/2024'->2024-04-13 (dateutil dayfirst=False)
+- Goal: Refuse N/N/YYYY where both fields <= 12 (ambiguous), or carry the source locale.
+- Acceptance: held-out: an ambiguous DD/MM vs MM/DD date is flagged ambiguous, not silently resolved.
+
+### M7 [REVIEW] (high) — Empty case_name still reads exists=True
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/case_verification.py:430
+- Grounding: repro: status==200 with empty case_name -> CaseVerdict(exists=True, case_name=None)
+- Goal: Treat an empty/None case_name as could-not-confirm.
+- Acceptance: held-out: a 200 response with no case_name yields could-not-confirm, not exists=True.
+
+### M8 [REVIEW] (high) — holding_match trusts the model's supports=True
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/case_verification.py:309
+- Grounding: cite:services/legal/case_verification.py:309+OWASP-LLM09
+- Goal: Gate holding_match on a verbatim-excerpt-in-opinion check before trusting model supports=True.
+- Acceptance: held-out: a model supports=True with no verbatim grounding does NOT set holding_match=True.
+
+### M9 [REVIEW] (high) — CourtListener 200 + empty clusters reads as existing
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/courtlistener.py:266
+- Grounding: repro: _coerce_hit({'status':200,'clusters':[]}) -> exists=True, case_name=None (cross-model refuted, survived)
+- Goal: Require status==200 AND a non-empty cluster before exists=True.
+- Acceptance: held-out: a 200 with clusters:[] yields exists=False/could-not-confirm.
+
+### M10 [REVIEW] (high) — exists = status==200 with no cluster requirement
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/courtlistener.py:128
+- Grounding: cite:services/legal/courtlistener.py:128+CWE-345
+- Goal: Define exists to require a present cluster, not merely a 200.
+- Acceptance: held-out: CitationHit.exists is False when no cluster is present.
+
+### M11 [REVIEW] (high) — Amount partial-confirmation can green (latent)
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/contract_verify.py:733
+- Grounding: cite:services/legal/contract_verify.py:733+partial-confirmation-false-green
+- Goal: Mirror the percent path's all_confirmed gate for amounts (latent today; a future caller trusting the disposition inherits a false green).
+- Acceptance: held-out: a partially-confirmed amount set does not produce a confirmed disposition.
+
+### M12 [REVIEW] (high) — Floating quote rides the co-cite union
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/deterministic_envelope.py:559
+- Grounding: repro: a fabricated quote verbatim in a co-cited opinion rides group_opinions via the floating-phrase fallback (documented accepted residual)
+- Goal: Fail floating phrases toward could-not-check, not the union of every co-cited opinion.
+- Acceptance: held-out: a floating quote whose grounding cite is positionally unclear refuses, not greens.
+
+### M13 [REVIEW] (medium) — Holding window head-clip biases the model
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/case_verification.py:470
+- Grounding: cite:services/legal/case_verification.py:470+holding-window-truncation
+- Goal: Record the 8000-char clip in the verdict so a truncated head can't silently push toward non-False.
+- Acceptance: held-out: the verdict surfaces when the opinion was truncated for the holding check.
+
+### M14 [REVIEW] (medium) — Displayed citation anchored to server echo
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/courtlistener.py:269
+- Grounding: cite:services/legal/courtlistener.py:269+CWE-345
+- Goal: Anchor the displayed citation to the submitted substring, not the server echo.
+- Acceptance: held-out: the surfaced citation string equals the user-submitted span, not the API echo.
+
+### M15 [REVIEW] (medium) — Subject setdefault drops same-subject multi-figure contradiction
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/contract_verify.py:691
+- Grounding: cite:services/legal/contract_verify.py:691+subject-key-collision
+- Goal: Key by figure span, not subject string, so same-subject multi-figure contradictions are not dropped.
+- Acceptance: held-out: two figures under the same subject both reach the contradiction check.
+
+### M16 [REVIEW] (low) — _MIN_KEY_CHARS is dead code
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/align.py:41
+- Grounding: repro: align_claims_to_draft pins 'the statute' as exact despite the _MIN_KEY_CHARS docstring; the constant is never referenced
+- Goal: Enforce _MIN_KEY_CHARS or delete the docstring promise.
+- Acceptance: held-out: a sub-threshold key is not pinned as exact (or the docstring no longer claims a floor).
+
+### M17 [REVIEW] (low) — Money None-canonical not dropped
+- Status: todo
+- Deps: none
+- Source: mythos cachet-engine-scan @ services/legal/anchors.py:855
+- Grounding: cite:services/legal/anchors.py:855+null-canonical-collision
+- Goal: Mirror the date loop's None-drop for money anchors.
+- Acceptance: held-out: a money anchor with a None canonical value is dropped, not collided.
+
