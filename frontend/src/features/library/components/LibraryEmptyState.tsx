@@ -10,7 +10,7 @@ interface LibraryEmptyStateProps {
 
 export function LibraryEmptyState({ onDemoLoaded }: LibraryEmptyStateProps) {
   return (
-    <Card padding="lg">
+    <Card data-testid="library-empty" padding="lg">
       <Stack gap={4}>
         <Stack gap={3}>
           <Badge tone="info">Empty library</Badge>

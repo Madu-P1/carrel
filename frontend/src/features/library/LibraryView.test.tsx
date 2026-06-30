@@ -7,6 +7,18 @@ import {
 } from "../../../tests/support/mockFetch";
 import { LibraryView } from "./LibraryView";
 
+function hangDocuments() {
+  return registerFetchHandler((url, init) => {
+    if (
+      url.pathname === "/api/documents" &&
+      init.method.toUpperCase() === "GET"
+    ) {
+      return new Promise<Response>(() => {}); // never resolves — keeps loading:true for the duration of the test
+    }
+    return undefined;
+  });
+}
+
 function rejectDocuments() {
   return registerFetchHandler((url, init) => {
     if (
@@ -21,6 +33,32 @@ function rejectDocuments() {
     return undefined;
   });
 }
+
+describe("LibraryView — loading state", () => {
+  it("shows a loading indicator while the document fetch is in-flight", async () => {
+    const unregister = hangDocuments();
+    try {
+      render(<LibraryView />);
+      await waitFor(() => {
+        expect(screen.getByTestId("library-loading")).toBeTruthy();
+      });
+      expect(screen.queryByText("No sources yet.")).toBeNull();
+    } finally {
+      unregister();
+    }
+  });
+});
+
+describe("LibraryView — empty state", () => {
+  it("shows specific empty copy when the library returns an empty document list", async () => {
+    // default fetch handler already returns [] for GET /api/documents
+    render(<LibraryView />);
+    await waitFor(() => {
+      expect(screen.getByTestId("library-empty")).toBeTruthy();
+    });
+    expect(screen.getByText("No sources yet.")).toBeTruthy();
+  });
+});
 
 describe("LibraryView — error state", () => {
   it("shows a specific error heading and Retry control when the document fetch rejects", async () => {

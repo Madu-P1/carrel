@@ -27,7 +27,7 @@ function matchesDocument(doc: DocumentRowType, needle: string): boolean {
 
 function LibrarySkeleton() {
   return (
-    <Stack gap={3}>
+    <Stack data-testid="library-loading" gap={3}>
       <Text aria-live="polite" role="status" tone="secondary">
         Loading your documents...
       </Text>

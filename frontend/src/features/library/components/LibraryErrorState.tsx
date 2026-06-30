@@ -7,7 +7,7 @@ interface LibraryErrorStateProps {
 
 export function LibraryErrorState({ error, onRetry }: LibraryErrorStateProps) {
   return (
-    <Card padding="lg">
+    <Card data-testid="library-error" role="alert" padding="lg">
       <Stack gap={3}>
         <Text as="h2" tone="danger" variant="h2" weight="bold">
           Library failed to load
