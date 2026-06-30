@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#120f0d">
+<title>Cachet: Verify before you file</title>
+<meta name="description" content="Cachet is a Mac app that checks every citation, quote, and holding in an AI-drafted brief against the real source, and flags anything it cannot verify.">
+<link rel="canonical" href="https://cachetverify.com/">
+<link rel="icon" href="/assets/brand/web/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/web/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/brand/web/favicon-16.png">
+<link rel="apple-touch-icon" href="/assets/brand/web/apple-touch-icon-180.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://cachetverify.com/">
+<meta property="og:title" content="Cachet: Verify before you file">
+<meta property="og:description" content="A Mac app that checks every citation, quote, and holding in an AI-drafted brief against the real source, and flags anything it cannot verify.">
+<meta property="og:image" content="https://cachetverify.com/assets/og-card-v2.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cachet: Verify before you file">
+<meta name="twitter:description" content="A Mac app that checks an AI-drafted brief against the source, and flags anything it cannot verify.">
+<meta name="twitter:image" content="https://cachetverify.com/assets/og-card-v2.png">
+<script>document.documentElement.classList.add('js');</script>
+<link rel="preload" href="fonts/newsreader-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/bricolage-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="cachet-v2.css">
+</head>
+<body>
+
+  <!-- grain + lamp wash, fixed behind everything -->
+  <div class="stage-grain" aria-hidden="true"></div>
+
+  <header class="nav" id="top">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="Cachet home">
+        <svg class="brand-mark" viewBox="0 0 240 240" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-linecap="butt" stroke-width="20"><path pathLength="1" d="M174.25 86.02 A64 64 0 0 1 80.53 69.56"/><path pathLength="1" d="M64.53 88.00 A64 64 0 0 0 174.25 153.98"/></g></svg>
+        <span class="brand-word">Cachet</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#how" class="nav-link hide-sm">How it works</a>
+        <a href="#trust" class="nav-link hide-sm">Why independent</a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSdl_9xDwCUbzguWHUDgsT6lbwJXuR8Sgfg4SgTl-UU9DtiYkg/viewform?usp=pp_url&amp;entry.107530061=website" class="btn btn-primary btn-sm" target="_blank" rel="noopener">Request access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+  <!-- ============================ HERO: the live examination ============================ -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow mono" data-rise style="--i:0"><span class="dot" aria-hidden="true"></span>For litigators filing AI-assisted briefs</span>
+        <h1 class="hero-h1" data-rise style="--i:1">Check your AI&#8209;drafted brief <em>before&nbsp;you&nbsp;file.</em></h1>
+        <p class="lede" data-rise style="--i:2">Cachet verifies every citation, quote, and holding in the brief against the real source, and flags anything it can&rsquo;t.</p>
+        <div class="actions" data-rise style="--i:3">
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSdl_9xDwCUbzguWHUDgsT6lbwJXuR8Sgfg4SgTl-UU9DtiYkg/viewform?usp=pp_url&amp;entry.107530061=website" class="btn btn-primary" target="_blank" rel="noopener">Request access</a>
+          <a href="#how" class="btn btn-ghost">See how it works</a>
+        </div>
+        <p class="reassure mono" data-rise style="--i:4"><span class="lock" aria-hidden="true"></span>Runs on your Mac.</p>
+      </div>
+
+      <!-- the exhibit: a document being examined in real time -->
+      <div class="exhibit" data-exam data-tilt>
+        <div class="exhibit-lamp" aria-hidden="true"></div>
+        <div class="exhibit-sheet">
+          <div class="sheet-head mono">
+            <span class="file">motion_to_dismiss_draft.docx</span>
+            <span class="tally"><span class="tally-dot" aria-hidden="true"></span><b data-countup="13">0</b>&nbsp;verified<span class="tally-flag" data-flag-tally>1 could not verify</span></span>
+          </div>
+          <div class="scanline" aria-hidden="true"></div>
+          <div class="sheet-body">
+            <p>Plaintiff&rsquo;s reliance on the discovery rule is misplaced. Courts have consistently held that the limitations period begins at the time of injury, not discovery. See <span class="cite" data-cite>Whitfield v. Cranston, 412 U.S. 88 (1973)</span>.</p>
+            <p>Even assuming the doctrine applied, equitable tolling is unavailable absent fraudulent concealment, as the court reasoned in <span class="cite" data-cite data-fabricated>Marlow v. Eastbrook Holdings, 559 F.3d 204 (9th Cir. 2009)</span>.</p>
+          </div>
+          <aside class="exhibit-verdict" data-verdict>
+            <div class="ev-label mono"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v4"/><path d="M12 18h.01"/></svg> Could not verify</div>
+            <div class="ev-head">No such case exists in any reporter.</div>
+            <div class="ev-detail">No <span class="mono">559 F.3d 204</span> matches a 9th Circuit decision by this name. The citation appears fabricated.</div>
+            <div class="ev-source mono">checked against &middot; Reporter index, CourtListener</div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ STAKES BAND ============================ -->
+  <section class="band" aria-labelledby="band-h">
+    <div class="wrap band-inner">
+      <h2 id="band-h" class="band-h" data-rise>Built to be <em>doubted.</em></h2>
+      <p class="band-lede" data-rise style="--i:1">Every verdict points back to the record, so you never have to take Cachet&rsquo;s word for it.</p>
+      <dl class="stats">
+        <div class="stat" data-rise style="--i:2"><dt class="num">3</dt><dd>independent checks on every citation</dd></div>
+        <div class="stat" data-rise style="--i:3"><dt class="num">0</dt><dd>of your work used to train a model</dd></div>
+        <div class="stat" data-rise style="--i:4"><dt class="num">1</dt><dd>verdict you can audit, every time</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ============================ WHAT YOU GET ============================ -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker mono" data-rise>What you get</span>
+        <h2 class="sec-h2" data-rise style="--i:1">One layer between the model <em>and the court.</em></h2>
+      </div>
+      <div class="cards">
+        <article class="card" data-rise>
+          <span class="card-n mono">01</span>
+          <h3 class="card-h">Every citation, checked line by line</h3>
+          <p>Cachet audits the document and shows its work, verdict by verdict.</p>
+          <div class="mini-ledger mono" role="presentation">
+            <div class="ml-row"><span>Whitfield v. Cranston</span><span class="ml-ok">&#10003; verified</span></div>
+            <div class="ml-row"><span>Aldridge v. Penn Mut.</span><span class="ml-ok">&#10003; verified</span></div>
+            <div class="ml-row ml-bad"><span>Marlow v. Eastbrook</span><span class="ml-no">&#10005; no record</span></div>
+          </div>
+        </article>
+        <article class="card" data-rise style="--i:1">
+          <span class="card-n mono">02</span>
+          <h3 class="card-h">The refusal is the feature</h3>
+          <p>When it cannot confirm something, it says so, plainly, rather than guess.</p>
+          <div class="card-verdict">
+            <div class="cv-label mono">&#9888; Could not verify</div>
+            <div class="cv-head">No such case exists in any reporter.</div>
+            <div class="cv-detail">The citation appears fabricated.</div>
+          </div>
+        </article>
+        <article class="card" data-rise style="--i:2">
+          <span class="card-n mono">03</span>
+          <h3 class="card-h">Your document stays put</h3>
+          <p>The file never leaves your machine. Only the text being checked is sent to the model you choose.</p>
+          <div class="card-chip mono"><span class="lock" aria-hidden="true"></span>on your Mac</div>
+        </article>
+        <article class="card" data-rise style="--i:1">
+          <span class="card-n mono">04</span>
+          <h3 class="card-h">Three checks, every time</h3>
+          <ol class="checks mono">
+            <li><span class="qn">01</span> Does the case exist?</li>
+            <li><span class="qn">02</span> Is the quote verbatim?</li>
+            <li><span class="qn">03</span> Does the holding match?</li>
+          </ol>
+        </article>
+        <article class="card" data-rise style="--i:2">
+          <span class="card-n mono">05</span>
+          <h3 class="card-h">It never wrote your brief</h3>
+          <p>A separate layer with one job: confirm, or refuse. It has no draft to defend.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ PIPELINE ============================ -->
+  <section class="section" id="pipeline">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker mono" data-rise>How verification works</span>
+        <h2 class="sec-h2" data-rise style="--i:1">Checked against the <em>record itself.</em></h2>
+        <p class="sec-lede" data-rise style="--i:2">Every authority is pulled from the brief, resolved against primary sources, and judged one claim at a time.</p>
+      </div>
+      <div class="flow" data-rise aria-label="Verification pipeline">
+        <ol class="flow-steps">
+          <li class="flow-step"><span class="fs-n mono">01</span><span class="fs-t">The brief</span></li>
+          <li class="flow-step"><span class="fs-n mono">02</span><span class="fs-t">14 authorities extracted</span></li>
+          <li class="flow-step"><span class="fs-n mono">03</span><span class="fs-t">Resolved against the reporter index, CourtListener, and the cited source</span></li>
+          <li class="flow-step"><span class="fs-n mono">04</span><span class="fs-t">Each claim judged: <span class="fv-ok">verified</span>, or <span class="fv-no">could not verify</span></span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ WHY INDEPENDENT ============================ -->
+  <section class="section" id="trust">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker mono" data-rise>Why independent</span>
+        <h2 class="sec-h2" data-rise style="--i:1">It didn&rsquo;t write your brief, so it has <em>no reason to defend it.</em></h2>
+        <p class="sec-lede" data-rise style="--i:2">The model that drafts a brief is the wrong one to grade it. Cachet is a separate layer with one job: confirm, or refuse.</p>
+      </div>
+      <div class="columns">
+        <div class="col" data-rise><span class="col-n mono">01</span><h3 class="col-h">It does not write your brief</h3><p>Cachet never generates legal argument. It only verifies what already exists, so its judgment is not defending its own draft.</p></div>
+        <div class="col" data-rise style="--i:1"><span class="col-n mono">02</span><h3 class="col-h">Your work stays put</h3><p>Verification runs on your Mac. Your document is never uploaded; only the specific text being checked is sent to the model you choose.</p></div>
+        <div class="col" data-rise style="--i:2"><span class="col-n mono">03</span><h3 class="col-h">Every verdict shows its source</h3><p>Each result points back to the record it was checked against, so you can confirm the confirmation.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ THE REPORT: full ledger ============================ -->
+  <section class="section" id="report">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker mono" data-rise>The report</span>
+        <h2 class="sec-h2" data-rise style="--i:1">Every citation in the brief, <em>checked line by line.</em></h2>
+        <p class="sec-lede" data-rise style="--i:2">Cachet shows its work. What it confirms, it marks; what it cannot confirm, it holds back with a reason you can check yourself.</p>
+      </div>
+      <div class="ledger" data-ledger data-rise>
+        <div class="ledger-head mono">
+          <span>motion_to_dismiss_draft.docx &middot; 14 authorities</span>
+          <span class="ledger-sum"><span><b data-countup="13">0</b> verified</span><span class="warn">1 could not verify</span></span>
+        </div>
+        <div class="lrow ok" data-lrow style="--li:0"><span class="lv mono">&#10003; Verified</span><span class="lc mono">Whitfield v. Cranston, 412 U.S. 88 (1973)</span><span class="ln">Quote matches at p. 94.</span></div>
+        <div class="lrow ok" data-lrow style="--li:1"><span class="lv mono">&#10003; Verified</span><span class="lc mono">Aldridge v. Penn Mut., 88 F.3d 12 (3d Cir. 1996)</span><span class="ln">Holding supports the cited proposition.</span></div>
+        <div class="lrow ok" data-lrow style="--li:2"><span class="lv mono">&#10003; Verified</span><span class="lc mono">In re Saxon, 201 B.R. 510 (Bankr. 1996)</span><span class="ln">Pin cite confirmed.</span></div>
+        <div class="lrow bad" data-lrow data-lrow-flag style="--li:3"><span class="lv mono">&#10005; No record</span><span class="lc mono">Marlow v. Eastbrook Holdings, 559 F.3d 204 (9th Cir. 2009)</span><span class="ln">No case by this name at this citation. Appears fabricated.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ FINAL CTA ============================ -->
+  <section class="cta" id="access">
+    <div class="wrap">
+      <div class="cta-panel" data-rise>
+        <div class="cta-glow" aria-hidden="true"></div>
+        <h2 class="cta-h">Verify before you file.</h2>
+        <p>Cachet is opening to a small group of litigators. Request access and run your next draft through it.</p>
+        <div class="actions">
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSdl_9xDwCUbzguWHUDgsT6lbwJXuR8Sgfg4SgTl-UU9DtiYkg/viewform?usp=pp_url&amp;entry.107530061=website" class="btn btn-on-oxblood" target="_blank" rel="noopener">Request access</a>
+          <a href="#report" class="btn btn-ghost-oxblood">See a sample report</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span class="brand-word footer-brand">Cachet</span>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="#how">How it works</a>
+        <a href="#trust">Why independent</a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSdl_9xDwCUbzguWHUDgsT6lbwJXuR8Sgfg4SgTl-UU9DtiYkg/viewform?usp=pp_url&amp;entry.107530061=website" target="_blank" rel="noopener">Request access</a>
+      </nav>
+      <span class="footer-tag mono">Independent verification for high-stakes AI work.</span>
+    </div>
+  </footer>
+
+  <script src="cachet-v2.js" defer></script>
+  <!-- Vercel Web Analytics (cookieless). Activates on Vercel; 404s harmlessly elsewhere. -->
+  <script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>

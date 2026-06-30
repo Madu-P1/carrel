@@ -152,10 +152,17 @@ const indexCssPath = resolve(distDir, "index.css");
 // for the aria-modal contract), used by the command palette and the examination
 // overlays so role="dialog" aria-modal honors its promise to AT. The hooks live
 // in the design system, statically imported into the entry. ~127.2 KB gz live.
-// Bumped 128 -> 130 KB for the ask/library/reader empty + error + loading state
+// Bumped 128 -> 129 KB for the verify findings carousel: WorkspaceMargin's pinned
+// margin rail became a one-at-a-time FindingsCarousel (a centered card with its
+// error highlighted in the document, advanced by prev/next arrows, Left/Right
+// keys, horizontal wheel, swipe, and dots, sliding on a transform transition).
+// It is statically imported on the verify surface, which CachetApp's static
+// import ships in the Carrel entry too. ~128.2 KB gz live.
+// Bumped 129 -> 130 KB for the ask/library/reader empty + error + loading state
 // coverage: the subject empty-state (Text + Button CTA), the reader empty-content
 // recovery CTA, and the library list states. These live in the Library/Reader/Ask
-// feature views, statically imported into the entry shell. ~128.1 KB gz live.
+// feature views, statically imported into the entry shell. The carousel and the
+// empty-state work land together at ~128.1 KB gz combined.
 const ENTRY_JS_GZIP_BUDGET = 130 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.

@@ -77,10 +77,6 @@
           {
             "type": "command",
             "command": "/Users/madu/.claude/skills/forge/hooks/audit-gate.py"
-          },
-          {
-            "type": "command",
-            "command": "/Users/madu/.claude/skills/forge/hooks/debate-trigger.py"
           }
         ]
       }

@@ -1,0 +1,8 @@
+{
+  "id": "capped-diffsubj",
+  "claim": "The royalty shall be capped at 25%.",
+  "clause": "Liability shall be capped at 25%.",
+  "expected": "could_not_verify",
+  "family": "samevalue-diff-subject",
+  "got": "not_found"
+}

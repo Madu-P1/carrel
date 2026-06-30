@@ -1,0 +1,8 @@
+{
+  "id": "upto-diffsubj",
+  "claim": "The royalty is up to 10%.",
+  "clause": "The tax is up to 10%.",
+  "expected": "could_not_verify",
+  "family": "samevalue-diff-subject",
+  "got": "not_found"
+}

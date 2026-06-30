@@ -12,29 +12,43 @@
 
 :global(html),
 :global(body) {
-  background: #f6f2ea;
+  background: #13100c;
 }
 
 .app {
-  /* Paper/ink register, matched to the scoped verify palette (research §1). */
-  --paper: #f6f2ea;
-  --paper-2: #efe9dd;
-  --sheet: #fbf8f1;
-  --ink-1: #1c1814;
-  --ink-2: #4e463c;
-  --ink-3: #635b4d;
-  --flag: #7a2230;
-  --hair: rgba(28, 24, 20, 0.14);
-  --hair-soft: rgba(28, 24, 20, 0.08);
+  /* 2026-06-17: operator overrode the whole-app-rebrand deferral. The Cachet
+     shell flips from warm paper to the dark "Examination", matched to the scoped
+     verify palette so the lectern input and the verdict read as one warm-ink
+     surface under a desk lamp. The register is unchanged: monochrome surfaces,
+     oxblood (lightened to read on dark) reserved for flags, no green. The --ink-*
+     tokens keep their meaning (the strong mark color: text, fills, the action
+     button) but invert to paper for the dark ground; the action button is now a
+     paper button with ink text (var(--paper)), never the reserved oxblood. */
+  --paper: #13100c;
+  --paper-2: #181410;
+  --sheet: #221c16;
+  --ink-1: #f1e9da;
+  --ink-2: #cabfac;
+  --ink-3: #a4977f;
+  --flag: #cf5b6b;
+  --hair: rgba(241, 233, 218, 0.14);
+  --hair-soft: rgba(241, 233, 218, 0.07);
 
   /* Rebind the design-system accent to ink. The reused primitives (Button,
    * links) default to Carrel's teal accent, which is a brand violation here:
    * Cachet has no green. The only chromatic accent allowed is the oxblood
    * --verify-flag, and that is reserved for flags inside the verify surface. */
   --color-accent: var(--ink-1);
-  --color-accent-hover: #322d27;
+  --color-accent-hover: #fff8ec;
   --accent: var(--ink-1);
-  --accent-pressed: #0f0c0a;
+  --accent-pressed: #d9cfbb;
+  /* The dark re-tone makes --accent (the filled-button background) paper, so the
+     shared design-system Button's label must flip to ink too, mirroring the
+     .verifyScope rebind (VerifyView.module.css). Without this the primary Button
+     outside the verify surface (e.g. the Vault Move-confirm dialog) paints a
+     near-white label on a paper button (~1.17:1, invisible). */
+  --text-inverse: #1c1814;
+  --color-text-inverse: #1c1814;
 
   /* Make the shared design-system primitives (Dialog, Button) wear the Cachet
      register instead of the study-app theme. These must be REDECLARED here, not
@@ -444,7 +458,7 @@
 }
 
 .paletteOptionActive {
-  background: rgba(28, 24, 20, 0.05);
+  background: rgba(241, 233, 218, 0.07);
   color: var(--ink-1);
 }
 

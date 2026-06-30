@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from services.legal.anchors import Anchor, extract_anchors
@@ -209,6 +210,27 @@ class MultiValueTests(unittest.TestCase):
         )
         self.assertEqual("multi_value_unverifiable", v.disposition)
         self.assertEqual("money", v.anchor_type)
+        self.assertIn("not independently checked", v.detail)
+
+    def test_multi_value_refusal_names_a_figure_from_the_statement(self) -> None:
+        # Bar 3 (script/cachet-acceptance.py specificity): a figure scope-out must name at
+        # least one figure from its OWN statement, so the refusal is the gem, never a
+        # content-free boilerplate wall. Mirrors the acceptance check (digit-run overlap).
+        claim = "The liability cap is $1,000,000 with a $50,000 deductible."
+        v = verify_claim_against_clause(
+            claim,
+            "a deductible of $50,000 applies; the aggregate cap shall not exceed $2,000,000",
+        )
+        self.assertEqual("multi_value_unverifiable", v.disposition)
+        claim_nums = set(re.findall(r"\d+", claim))
+        detail_nums = set(re.findall(r"\d+", v.detail))
+        self.assertTrue(
+            claim_nums & detail_nums,
+            f"refusal names no figure from the statement (content-free wall): {v.detail!r}",
+        )
+        # The summary's own figure is surfaced; the honest scope-out phrasing is preserved.
+        self.assertIn("$1,000,000", v.detail)
+        self.assertIn("cannot be aligned", v.detail)
         self.assertIn("not independently checked", v.detail)
 
     def test_multi_value_miss_is_not_a_false_contradiction(self) -> None:
