@@ -36,6 +36,7 @@ import os
 import time
 import uuid
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 
@@ -180,7 +181,8 @@ class OllamaClient:
     def _is_cloud_endpoint(self) -> bool:
         """True when base_url targets Ollama Cloud (ollama.com), which
         requires OLLAMA_API_KEY. Local and self-hosted Ollama do not."""
-        return "ollama.com" in self.base_url.lower()
+        host = (urlparse(self.base_url).hostname or "").lower()
+        return host == "ollama.com" or host.endswith(".ollama.com")
 
     def _auth_headers(self) -> dict[str, str]:
         """Bearer auth for Ollama Cloud. Empty for keyless local Ollama."""

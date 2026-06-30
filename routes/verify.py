@@ -16,8 +16,11 @@ from fastapi.responses import StreamingResponse
 
 import db
 from api_models import VerifyRequest, VerifyResponse
+from app_logging import get_logger
 from services import verify as verify_service
 from services.app_state import fetch_recent_events, log_study_event
+
+LOGGER = get_logger("verify_api")
 
 router = APIRouter()
 
@@ -75,8 +78,9 @@ def verify_stream_endpoint(payload: VerifyRequest) -> StreamingResponse:
                     fetch_recent_events=fetch_recent_events,
                 ):
                     yield f"data: {json.dumps(event)}\n\n"
-        except Exception as exc:  # noqa: BLE001 - surface, don't swallow
-            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+        except Exception:  # noqa: BLE001 - surface, don't swallow
+            LOGGER.exception("verify stream failed")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Verification failed.'})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 
