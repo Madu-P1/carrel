@@ -181,6 +181,12 @@ describe("VerifyResults mid-stream error (invariant #6)", () => {
     expect(screen.queryByText("claim 0")).toBeNull();
     expect(screen.queryByText("claim 1")).toBeNull();
   });
+
+  it("announces the error banner assertively (role=alert) so a reviewer never misses a failure", () => {
+    render(<VerifyResults engine={erroredStreamEngine()} draft="" />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("the verification stream failed");
+  });
 });
 
 describe("CaseVerdictLine register (the sub-line must match the claim-level honesty)", () => {

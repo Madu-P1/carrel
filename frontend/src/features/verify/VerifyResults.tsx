@@ -689,7 +689,16 @@ export function VerifyResults({
       // the fixed Examination drawer instead of underneath it.
       data-exam-open={selectedItem != null ? "true" : undefined}
     >
-      {error ? <div className={styles.errorBanner}>{error}</div> : null}
+      {/* role=alert: a verification failure or refusal ("nothing was marked
+          supported") is the one state a reviewer must never miss, so it is
+          announced assertively. It fires once (error is set once per failed
+          check), so there is no per-cite re-announce risk the streaming
+          indicator below is aria-hidden to avoid. */}
+      {error ? (
+        <div className={styles.errorBanner} role="alert">
+          {error}
+        </div>
+      ) : null}
 
       {hydrating && !response ? (
         // Opening a saved brief is a disk fetch, not a verification. Honest
