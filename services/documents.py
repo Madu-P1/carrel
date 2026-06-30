@@ -544,15 +544,23 @@ def collect_document_concepts(conn: sqlite3.Connection, doc_id: str) -> List[Dic
     return concepts
 
 
-def fetch_documents(conn: sqlite3.Connection) -> List[Dict[str, object]]:
-    rows = conn.execute(
-        """
+def fetch_documents(
+    conn: sqlite3.Connection,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+) -> List[Dict[str, object]]:
+    query = """
         SELECT id, filename, storage_name, subject_name, file_type, upload_date, page_count, status,
                source_kind, source_hash, parser_status, parser_diagnostics, duplicate_of, updated_at, extracted_at
         FROM documents
         ORDER BY subject_name ASC, upload_date DESC
-        """
-    ).fetchall()
+    """
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        query += "\n        LIMIT ? OFFSET ?\n        "
+        params = (limit, offset)
+    rows = conn.execute(query, params).fetchall()
     documents: List[Dict[str, object]] = []
     for row in rows:
         item = dict(row)

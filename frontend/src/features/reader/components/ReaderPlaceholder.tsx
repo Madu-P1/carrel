@@ -4,7 +4,7 @@ import { navigateTo } from "@/app/shell/useAppShell";
 
 import styles from "../ReaderView.module.css";
 
-type PlaceholderReason = "no-doc-selected" | "non-pdf" | "not-found";
+type PlaceholderReason = "no-doc-selected" | "non-pdf" | "not-found" | "empty-content";
 
 interface ReaderPlaceholderProps {
   metadata?: DocumentDetailDocument;
@@ -38,6 +38,14 @@ function copyForReason(reason: PlaceholderReason, metadata?: DocumentDetailDocum
     };
   }
 
+  if (reason === "empty-content") {
+    return {
+      body: "This document was processed but contains no extractable text.",
+      eyebrow: "Empty document",
+      title: "No readable content."
+    };
+  }
+
   return {
     body: "Pick a document from Library to open the new PDF reader shell.",
     eyebrow: "Reader",
@@ -47,10 +55,12 @@ function copyForReason(reason: PlaceholderReason, metadata?: DocumentDetailDocum
 
 export function ReaderPlaceholder({ metadata, reason }: ReaderPlaceholderProps) {
   const copy = copyForReason(reason, metadata);
-  // The "pick a source" CTA makes sense for both no-doc-selected and
-  // not-found — in both cases the fix is to go back and pick. For non-pdf
-  // we leave it off; the user is already looking at a source.
-  const showLibraryAction = reason === "no-doc-selected" || reason === "not-found";
+  // The "pick a source" CTA makes sense for no-doc-selected, not-found, and
+  // empty-content — in all three the fix is to go back and pick another
+  // source. For non-pdf we leave it off; the user is already looking at a
+  // source.
+  const showLibraryAction =
+    reason === "no-doc-selected" || reason === "not-found" || reason === "empty-content";
 
   return (
     <Card className={styles.stateCard} padding="lg">

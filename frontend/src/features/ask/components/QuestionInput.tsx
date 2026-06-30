@@ -21,6 +21,7 @@ export function QuestionInput({
 }: QuestionInputProps) {
   const handleSubmit = (event: JSX.TargetedEvent<HTMLFormElement, Event>) => {
     event.preventDefault();
+    if (!value.trim()) return;
     onSubmit();
   };
 

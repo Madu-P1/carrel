@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 import db
@@ -48,9 +48,12 @@ router = APIRouter()
 
 
 @router.get("/api/documents", response_model=List[DocumentListItem])
-def list_documents() -> List[Dict[str, object]]:
+def list_documents(
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
     with db.get_db() as conn:
-        return fetch_documents(conn)
+        return fetch_documents(conn, limit=limit, offset=offset)
 
 
 @router.get("/api/documents/{doc_id}", response_model=DocumentDetailResponse)

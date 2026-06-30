@@ -1,6 +1,37 @@
 import { act, cleanup } from "@testing-library/preact";
 import { afterEach, beforeEach } from "vitest";
 
+// Node 26 ships an experimental built-in localStorage that is undefined unless
+// --localstorage-file is passed. jsdom provides its own, but under Node 26 the
+// host's undefined global wins. Install a minimal shim before any beforeEach
+// runs so window.localStorage is always a working Storage-like object.
+if (typeof window !== "undefined" && typeof window.localStorage === "undefined") {
+  const _store: Record<string, string> = {};
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem(key: string): string | null {
+        return Object.prototype.hasOwnProperty.call(_store, key) ? _store[key] : null;
+      },
+      setItem(key: string, value: string): void {
+        _store[key] = String(value);
+      },
+      removeItem(key: string): void {
+        delete _store[key];
+      },
+      clear(): void {
+        Object.keys(_store).forEach((k) => { delete _store[k]; });
+      },
+      key(index: number): string | null {
+        return Object.keys(_store)[index] ?? null;
+      },
+      get length(): number {
+        return Object.keys(_store).length;
+      },
+    },
+  });
+}
+
 import { appShell, SHELL_PANEL_WIDTHS } from "../src/app/shell/useAppShell";
 import { resetDocumentsQuery } from "../src/features/library/hooks/useDocumentsQuery";
 import { resetReaderDetailQueries } from "../src/features/reader/hooks/useReaderDetail";
