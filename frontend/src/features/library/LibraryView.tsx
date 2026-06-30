@@ -27,10 +27,15 @@ function matchesDocument(doc: DocumentRowType, needle: string): boolean {
 
 function LibrarySkeleton() {
   return (
-    <div className={styles.skeleton}>
-      <div className={styles.skeletonCard} />
-      <div className={styles.skeletonCard} />
-    </div>
+    <Stack gap={3}>
+      <Text aria-live="polite" role="status" tone="secondary">
+        Loading your documents...
+      </Text>
+      <div className={styles.skeleton}>
+        <div className={styles.skeletonCard} />
+        <div className={styles.skeletonCard} />
+      </div>
+    </Stack>
   );
 }
 

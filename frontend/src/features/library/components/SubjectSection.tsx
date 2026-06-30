@@ -1,7 +1,8 @@
 import { useState } from "preact/hooks";
 
-import { Badge, Button, Input, Stack, Text, toast } from "@/design-system";
+import { Badge, Button, Icon, Input, Stack, Text, toast } from "@/design-system";
 import { navigateTo } from "@/app/shell/useAppShell";
+import { dispatchMenuCommand } from "@/services/native/menu";
 import type { DocumentRow as DocumentRowType } from "@/services/api/endpoints";
 
 import { useDeleteDocument } from "../hooks/useDeleteDocument";
@@ -98,14 +99,30 @@ export function SubjectSection({
             ) : null}
 
             <div className={styles.list}>
-              {documents.map((document) => (
-                <DocumentRow
-                  document={document}
-                  key={document.id}
-                  onDelete={() => setDeleteTarget(document)}
-                  onOpen={() => navigateTo(`/reader/${document.id}`)}
-                />
-              ))}
+              {documents.length === 0 ? (
+                <Stack data-testid="subject-section-empty" gap={3} role="status">
+                  <Text tone="secondary">No documents in this subject yet.</Text>
+                  <div>
+                    <Button
+                      keyHint="⌘I"
+                      leadingIcon={<Icon name="plus" />}
+                      onClick={() => dispatchMenuCommand("file.import")}
+                      variant="secondary"
+                    >
+                      Import a source
+                    </Button>
+                  </div>
+                </Stack>
+              ) : (
+                documents.map((document) => (
+                  <DocumentRow
+                    document={document}
+                    key={document.id}
+                    onDelete={() => setDeleteTarget(document)}
+                    onOpen={() => navigateTo(`/reader/${document.id}`)}
+                  />
+                ))
+              )}
             </div>
           </Stack>
         </div>

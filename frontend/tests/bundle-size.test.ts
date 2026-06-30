@@ -158,7 +158,12 @@ const indexCssPath = resolve(distDir, "index.css");
 // keys, horizontal wheel, swipe, and dots, sliding on a transform transition).
 // It is statically imported on the verify surface, which CachetApp's static
 // import ships in the Carrel entry too. ~128.2 KB gz live.
-const ENTRY_JS_GZIP_BUDGET = 129 * 1024;
+// Bumped 129 -> 130 KB for the ask/library/reader empty + error + loading state
+// coverage: the subject empty-state (Text + Button CTA), the reader empty-content
+// recovery CTA, and the library list states. These live in the Library/Reader/Ask
+// feature views, statically imported into the entry shell. The carousel and the
+// empty-state work land together at ~128.1 KB gz combined.
+const ENTRY_JS_GZIP_BUDGET = 130 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *
