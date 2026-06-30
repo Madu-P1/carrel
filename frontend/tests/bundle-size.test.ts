@@ -152,7 +152,11 @@ const indexCssPath = resolve(distDir, "index.css");
 // for the aria-modal contract), used by the command palette and the examination
 // overlays so role="dialog" aria-modal honors its promise to AT. The hooks live
 // in the design system, statically imported into the entry. ~127.2 KB gz live.
-const ENTRY_JS_GZIP_BUDGET = 128 * 1024;
+// Bumped 128 -> 130 KB for the ask/library/reader empty + error + loading state
+// coverage: the subject empty-state (Text + Button CTA), the reader empty-content
+// recovery CTA, and the library list states. These live in the Library/Reader/Ask
+// feature views, statically imported into the entry shell. ~128.1 KB gz live.
+const ENTRY_JS_GZIP_BUDGET = 130 * 1024;
 
 /** Entry CSS budget — gzipped. Same rule as JS.
  *

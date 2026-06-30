@@ -276,6 +276,14 @@ function ReaderDocumentView({
   const filename = document.filename ?? "Untitled";
   const fileType = document.file_type ?? "FILE";
 
+  // A NON-PDF document with no extractable chunks has nothing to render —
+  // the plain-text view would be blank — so it terminates at the honest
+  // "no readable content" placeholder. A PDF stays viewable even with no
+  // extracted text (you just can't cite it), so it keeps its reader.
+  if (fileType.toLowerCase() !== "pdf" && chunks.length === 0) {
+    return <ReaderPlaceholder metadata={document} reason="empty-content" />;
+  }
+
   // ---- Non-PDF branch: plain-text view with a page-heading block -----
   //
   // Non-PDF sources keep the old hero header because there's no toolbar

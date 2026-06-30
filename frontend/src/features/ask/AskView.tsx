@@ -183,14 +183,18 @@ export function AskView() {
   }, []);
 
   const handleSubmit = async () => {
-    if (question.trim().length > 0) {
-      trackFirstAsk();
-      trackScopedSubmit(scope);
-    }
+    // QuestionInput is the single source of truth for the empty-submit
+    // guard: its form onSubmit returns early on a blank value before ever
+    // calling this handler. We only normalise whitespace here. (The
+    // ?q=&auto=1 deep-link path keeps its own guard since it bypasses
+    // QuestionInput entirely.)
+    const trimmed = question.trim();
+    trackFirstAsk();
+    trackScopedSubmit(scope);
     if (CARDS_MODE) {
-      await cards.submit(question, scopeToCardsParams(scope));
+      await cards.submit(trimmed, scopeToCardsParams(scope));
     } else {
-      await submit(question, scopeToPayload(scope));
+      await submit(trimmed, scopeToPayload(scope));
     }
   };
 
