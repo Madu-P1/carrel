@@ -25,7 +25,7 @@ describe("bundled app.new.html integrity", () => {
 
   test("every <script> body is free of </script substrings", () => {
     const html = readFileSync(bundlePath, "utf8");
-    const blocks = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)];
+    const blocks = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi)];
     const offenders = blocks
       .map((match, index) => ({ index, inner: match[1] }))
       .filter((block) => /<\/script/i.test(block.inner));

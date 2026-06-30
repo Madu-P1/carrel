@@ -154,7 +154,7 @@ if ((bundledHtml.match(/<!doctype html>/gi) ?? []).length !== 1) {
 // This is the only check that actually prevents the HTML parser from closing
 // an inline script early when inlined JS happens to include the literal markup.
 // Catches the root-cause class of bug regardless of how many script tags exist.
-const scriptBlocks = [...bundledHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)];
+const scriptBlocks = [...bundledHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi)];
 const offendingBlockIndex = scriptBlocks.findIndex((match) => /<\/script/i.test(match[1]));
 if (offendingBlockIndex !== -1) {
   throw new Error(
