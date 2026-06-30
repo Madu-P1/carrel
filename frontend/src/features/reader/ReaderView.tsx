@@ -276,11 +276,11 @@ function ReaderDocumentView({
   const filename = document.filename ?? "Untitled";
   const fileType = document.file_type ?? "FILE";
 
-  // A document with no extractable chunks has nothing to render in either
-  // path — the non-PDF text view would be blank and the PDF reader would
-  // show pages with no anchors or evidence. Both terminate at the same
-  // honest "no readable content" placeholder rather than a hollow shell.
-  if (chunks.length === 0) {
+  // A NON-PDF document with no extractable chunks has nothing to render —
+  // the plain-text view would be blank — so it terminates at the honest
+  // "no readable content" placeholder. A PDF stays viewable even with no
+  // extracted text (you just can't cite it), so it keeps its reader.
+  if (fileType.toLowerCase() !== "pdf" && chunks.length === 0) {
     return <ReaderPlaceholder metadata={document} reason="empty-content" />;
   }
 
