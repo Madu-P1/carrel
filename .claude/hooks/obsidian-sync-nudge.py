@@ -49,7 +49,7 @@ def main() -> None:
 
     session = str(data.get("session_id", "") or "default")
     marker = pathlib.Path(tempfile.gettempdir()) / (
-        "obsidian-nudge-" + hashlib.sha1(session.encode()).hexdigest()[:12]
+        "obsidian-nudge-" + hashlib.sha256(session.encode()).hexdigest()[:12]
     )
     if marker.exists():
         allow()

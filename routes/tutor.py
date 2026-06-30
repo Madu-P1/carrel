@@ -23,6 +23,7 @@ from api_models import (
     TutorQueryResponse,
 )
 from ai.providers import get_default_provider
+from app_logging import get_logger
 from services import adaptive_tutor as adaptive_tutor_service
 from services import dialogue as dialogue_service
 from services import mastery_engine
@@ -32,6 +33,8 @@ from services import tutor as tutor_service
 from services.app_state import fetch_recent_events, fetch_workspace_state, log_study_event
 from services.notes import expand as notes_expand_service
 
+
+LOGGER = get_logger("tutor_api")
 
 router = APIRouter()
 
@@ -87,8 +90,9 @@ def tutor_query_stream(payload: TutorStreamRequest) -> StreamingResponse:
                 max_tokens=payload.max_tokens,
             ):
                 yield f"data: {json.dumps({'text': delta})}\n\n"
-        except Exception as exc:  # noqa: BLE001 - surface, don't swallow
-            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        except Exception:  # noqa: BLE001 - surface, don't swallow
+            LOGGER.exception("tutor stream failed")
+            yield f"data: {json.dumps({'error': 'Tutor request failed.'})}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 
