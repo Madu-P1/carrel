@@ -60,6 +60,34 @@ describe("CommandPalette", () => {
     expect(getByRole("combobox").getAttribute("aria-activedescendant")).toBe("cachet-cmd-shelf");
   });
 
+  it("default open state (empty query) lists every command and shows no no-results text", () => {
+    const { getAllByRole, queryByText } = render(
+      <CommandPalette commands={commands()} onClose={() => {}} />
+    );
+    expect(getAllByRole("option").length).toBe(2);
+    expect(queryByText(/No commands match/)).toBeNull();
+  });
+
+  it("shows a query-specific no-results message and no command rows when nothing matches", () => {
+    const { getByRole, queryAllByRole, getByText } = render(
+      <CommandPalette commands={commands()} onClose={() => {}} />
+    );
+    fireEvent.input(getByRole("combobox"), { target: { value: "zzzqqq-nonexistent" } });
+    expect(queryAllByRole("option").length).toBe(0);
+    expect(getByText(/No commands match "zzzqqq-nonexistent"/)).toBeTruthy();
+  });
+
+  it("clears the no-results message once the query matches a command again", () => {
+    const { getByRole, getAllByRole, queryByText } = render(
+      <CommandPalette commands={commands()} onClose={() => {}} />
+    );
+    fireEvent.input(getByRole("combobox"), { target: { value: "shelf" } });
+    const options = getAllByRole("option");
+    expect(options.length).toBe(1);
+    expect(options[0].textContent).toContain("Open the Shelf");
+    expect(queryByText(/No commands match/)).toBeNull();
+  });
+
   it("makes the sibling background inert while open and restores it on close", async () => {
     function Harness() {
       const [open, setOpen] = useState(true);

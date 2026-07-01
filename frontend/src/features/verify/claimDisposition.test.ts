@@ -342,6 +342,156 @@ describe("dispositionForClaim", () => {
     ]);
   });
 
+  test("positive control: verdict 'verified' still maps to supported", () => {
+    const d = dispositionForClaim(card({ verdict: "verified" }));
+    expect(d.kind).toBe("supported");
+  });
+
+  test("positive control: verdict 'unsupported' still maps to claim_unsupported", () => {
+    const d = dispositionForClaim(card({ verdict: "unsupported" }));
+    expect(d.kind).toBe("claim_unsupported");
+  });
+
+  test("positive control: verdict 'unknown' still maps to could_not_check", () => {
+    const d = dispositionForClaim(card({ verdict: "unknown" }));
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("verdict undefined never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: undefined }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("verdict null never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: null }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("verdict empty string never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: "" }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test.each(["supported", "SUPPORTED", "green", "pass", "true", "maybe"])(
+    "unrecognized verdict string %j never renders supported",
+    (bogus) => {
+      const d = dispositionForClaim(card({ verdict: bogus }));
+      expect(d.kind).not.toBe("supported");
+      expect(d.kind).toBe("could_not_check");
+    }
+  );
+
+  test.each([123, true, false])("non-string, non-null verdict %j never renders supported", (bogus) => {
+    const d = dispositionForClaim(card({ verdict: bogus }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("verdict whitespace-only string never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: "   " }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("verdict cased 'VERIFIED' never renders supported (only the exact lowercase literal passes)", () => {
+    const d = dispositionForClaim(card({ verdict: "VERIFIED" }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("a plain-object verdict never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: {} }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("an array verdict never renders supported", () => {
+    const d = dispositionForClaim(card({ verdict: [] }));
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("a bare card object ({}) never renders supported", () => {
+    const d = dispositionForClaim({} as unknown as VerifyClaimVerdict);
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("a malformed card with only verdict: undefined never renders supported", () => {
+    const d = dispositionForClaim({ verdict: undefined } as unknown as VerifyClaimVerdict);
+    expect(d.kind).not.toBe("supported");
+    expect(d.kind).toBe("could_not_check");
+  });
+
+  test("an unknown claim whose text carries a money figure names it verbatim in the refusal", () => {
+    const d = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        claim_text: "The settlement paid the plaintiff $4,500,000 under the consent decree."
+      })
+    );
+    expect(d.kind).toBe("could_not_check");
+    expect(d.detail).toContain("$4,500,000");
+  });
+
+  test("an unknown claim with no figure token keeps the exact pre-existing generic refusal", () => {
+    const d = dispositionForClaim(card({ verdict: "unknown", claim_text: "A statement." }));
+    expect(d.kind).toBe("could_not_check");
+    expect(d.detail).toBe(
+      "Verification could not run. Load the sources this draft relies on, then verify again."
+    );
+  });
+
+  test("naming the figure never changes the disposition kind (zero verdict drift)", () => {
+    const withFigure = dispositionForClaim(
+      card({
+        verdict: "unknown",
+        claim_text: "The settlement paid the plaintiff $4,500,000 under the consent decree."
+      })
+    );
+    const withoutFigure = dispositionForClaim(card({ verdict: "unknown", claim_text: "A statement." }));
+    expect(withFigure.kind).toBe(withoutFigure.kind);
+    expect(withFigure.kind).toBe("could_not_check");
+    expect(withFigure.tier).toBe(withoutFigure.tier);
+    expect(withFigure.tier).toBe("refusal");
+  });
+
+  test("a null card never renders supported and never throws", () => {
+    expect(() => dispositionForClaim(null as unknown as VerifyClaimVerdict)).not.toThrow();
+    const d = dispositionForClaim(null as unknown as VerifyClaimVerdict);
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("an undefined card never renders supported and never throws", () => {
+    expect(() => dispositionForClaim(undefined as unknown as VerifyClaimVerdict)).not.toThrow();
+    const d = dispositionForClaim(undefined as unknown as VerifyClaimVerdict);
+    expect(d.kind).toBe("could_not_check");
+    expect(d.tier).toBe("refusal");
+  });
+
+  test("case_verdicts as a non-array (malformed wire payload) never throws", () => {
+    const d = dispositionForClaim(
+      card({ verdict: "verified", case_verdicts: { bogus: true } as unknown })
+    );
+    expect(d.kind).toBe("supported");
+  });
+
+  test("a batch's verdicts as a non-array never throws and drops the batch's cases", () => {
+    const malformedBatch = { claim_index: 0, ok: true, verdicts: "not-an-array", error_code: null };
+    const d = dispositionForClaim(card({ verdict: "verified", case_verdicts: [malformedBatch] }));
+    expect(d.kind).toBe("supported");
+  });
+
+  test("a null entry inside a verdicts array is skipped, not thrown on", () => {
+    const malformedBatch = { claim_index: 0, ok: true, verdicts: [null, caseItem({ status: 404, exists: false })], error_code: null };
+    const d = dispositionForClaim(card({ verdict: "unsupported", case_verdicts: [malformedBatch] }));
+    expect(d.kind).toBe("citation_not_found");
+  });
+
   test("no disposition detail ever contains a percentage", () => {
     const samples = [
       card({ verdict: "verified" }),

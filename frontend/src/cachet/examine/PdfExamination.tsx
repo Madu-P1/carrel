@@ -32,6 +32,9 @@ interface PdfExaminationProps {
   docId: string;
   page?: number | null;
   quote?: string | null;
+  /** Reports a load failure to the parent, which owns the named-cause
+   *  failure panel and Retry control (DocumentExamination.tsx). */
+  onError?: (message: string) => void;
 }
 
 type AnchorState =
@@ -81,7 +84,7 @@ async function pageTextItems(pdf: PDFDocumentProxy, pageNumber: number): Promise
   return content.items.filter((item): item is TextItem => "str" in item);
 }
 
-export function PdfExamination({ docId, page, quote }: PdfExaminationProps) {
+export function PdfExamination({ docId, page, quote, onError }: PdfExaminationProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -130,6 +133,7 @@ export function PdfExamination({ docId, page, quote }: PdfExaminationProps) {
               ? cause.message
               : "The record could not be opened.";
           setError(message);
+          onError?.(message);
         }
       }
     })();
@@ -142,7 +146,7 @@ export function PdfExamination({ docId, page, quote }: PdfExaminationProps) {
         void task.destroy();
       }
     };
-  }, [docId, page]);
+  }, [docId, page, onError]);
 
   // Locate the cited passage, preferring the cited page.
   useEffect(() => {
@@ -294,14 +298,9 @@ export function PdfExamination({ docId, page, quote }: PdfExaminationProps) {
   }, [currentPage]);
 
   if (error) {
-    return (
-      <div className={styles.paneMessage}>
-        <p className={styles.paneError}>{error}</p>
-        <p className={styles.paneHint}>
-          Reopen the record from the Vault once the engine holds its file again.
-        </p>
-      </div>
-    );
+    // The named-cause failure panel + Retry control render one level up, in
+    // DocumentExamination.tsx, once onError has reported this message.
+    return null;
   }
 
   if (!pdf) {

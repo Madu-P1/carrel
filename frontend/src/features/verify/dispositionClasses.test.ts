@@ -46,4 +46,58 @@ describe("verify class-mapping seam", () => {
     expect(holdingClass("supports")).toBe(styles.caseExists);
     expect(holdingClass(null)).toBe("");
   });
+
+  // Safety invariant: the disposition->class mapping must be total. Any tier
+  // value outside the known DispositionTier enum, and any missing/null/
+  // undefined tier, must render the neutral/refusal badge, never the
+  // verified-looking badgePass — an unrecognized signal was never verified.
+  describe("tierBadgeClass fails safe on any value outside the known enum", () => {
+    test("each known tier still maps to its own existing class (regression lock)", () => {
+      expect(tierBadgeClass("pass")).toBe(styles.badgePass);
+      expect(tierBadgeClass("flag")).toBe(styles.badgeFlag);
+      expect(tierBadgeClass("assistive")).toBe(styles.badgeAssistive);
+      expect(tierBadgeClass("refusal")).toBe(styles.badgeRefusal);
+    });
+
+    test("an unrecognized string tier maps to the neutral refusal class, never the pass class", () => {
+      // @ts-expect-error -- deliberately probing a value outside the DispositionTier enum
+      const result = tierBadgeClass("bogus_future_tier");
+      expect(result).toBe(styles.badgeRefusal);
+      expect(result).not.toBe(styles.badgePass);
+    });
+
+    test("null, undefined, and empty-string tiers all map to the neutral refusal class, never the pass class", () => {
+      for (const bad of [null, undefined, ""]) {
+        // @ts-expect-error -- deliberately probing missing/null/undefined tier values
+        const result = tierBadgeClass(bad);
+        expect(result).toBe(styles.badgeRefusal);
+        expect(result).not.toBe(styles.badgePass);
+      }
+    });
+  });
+
+  describe("holdingClass fails safe on any value outside the known enum", () => {
+    test("each known holding kind still maps to its own existing class (regression lock)", () => {
+      expect(holdingClass("supports")).toBe(styles.caseExists);
+      expect(holdingClass("contradicts")).toBe(styles.holdingAssistive);
+      expect(holdingClass("ambiguous")).toBe(styles.caseAmbiguous);
+      expect(holdingClass("unavailable")).toBe(styles.caseError);
+    });
+
+    test("an unrecognized string kind maps to no class, never the case-exists class", () => {
+      // @ts-expect-error -- deliberately probing a value outside the HoldingKind enum
+      const result = holdingClass("bogus_future_kind");
+      expect(result).toBe("");
+      expect(result).not.toBe(styles.caseExists);
+    });
+
+    test("null and undefined kinds map to no class, never the case-exists class", () => {
+      for (const bad of [null, undefined]) {
+        // @ts-expect-error -- deliberately probing a missing holding kind
+        const result = holdingClass(bad);
+        expect(result).toBe("");
+        expect(result).not.toBe(styles.caseExists);
+      }
+    });
+  });
 });

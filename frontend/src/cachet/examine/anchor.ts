@@ -95,6 +95,9 @@ function isSquashKept(ch: string): boolean {
 /** Normalize a quote into a needle for the given mode. Empty result = nothing
  *  matchable (the caller treats that as no anchor, not as a universal match). */
 export function normalizeQuote(quote: string, mode: MatchMode): string {
+  if (typeof quote !== "string") {
+    return "";
+  }
   const out: string[] = [];
   let pendingSpace = false;
   for (const raw of quote) {
@@ -136,9 +139,11 @@ export function combineItems(items: PdfTextItemLike[], mode: MatchMode): Combine
   const text: string[] = [];
   const pos: CombinedPosition[] = [];
   let pendingSpace = false;
-  items.forEach((item, itemIndex) => {
-    for (let c = 0; c < item.str.length; c += 1) {
-      const ch = foldChar(item.str[c]).toLowerCase();
+  const safeItems = Array.isArray(items) ? items : [];
+  safeItems.forEach((item, itemIndex) => {
+    const str = typeof item?.str === "string" ? item.str : "";
+    for (let c = 0; c < str.length; c += 1) {
+      const ch = foldChar(str[c]).toLowerCase();
       if (isSpaceChar(ch)) {
         pendingSpace = text.length > 0;
         continue;
@@ -154,7 +159,7 @@ export function combineItems(items: PdfTextItemLike[], mode: MatchMode): Combine
       text.push(ch);
       pos.push({ item: itemIndex, char: c });
     }
-    if (item.str.length > 0) {
+    if (str.length > 0) {
       pendingSpace = text.length > 0;
     }
   });
@@ -242,17 +247,32 @@ export function spansToViewportRects(
   viewport: ViewportLike
 ): AnchorRect[] {
   const rects: AnchorRect[] = [];
-  for (const span of spans) {
-    const item = items[span.itemIndex];
-    if (!item || item.str.length === 0 || item.width <= 0) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safeSpans = Array.isArray(spans) ? spans : [];
+  for (const span of safeSpans) {
+    const item = safeItems[span.itemIndex];
+    if (
+      !item ||
+      typeof item.str !== "string" ||
+      item.str.length === 0 ||
+      !(item.width > 0) ||
+      !Number.isFinite(span.startChar) ||
+      !Number.isFinite(span.endChar)
+    ) {
       continue;
     }
-    const x = item.transform[4];
-    const y = item.transform[5];
+    const x = item.transform?.[4];
+    const y = item.transform?.[5];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(item.height)) {
+      continue;
+    }
     const fraction = (n: number) => Math.max(0, Math.min(1, n / item.str.length));
     const x1 = x + fraction(span.startChar) * item.width;
     const x2 = x + fraction(span.endChar) * item.width;
     const projected = viewport.convertToViewportRectangle([x1, y, x2, y + item.height]);
+    if (projected.some((value) => !Number.isFinite(value))) {
+      continue;
+    }
     const left = Math.min(projected[0], projected[2]);
     const top = Math.min(projected[1], projected[3]);
     rects.push({
@@ -295,7 +315,14 @@ export async function findAnchorPage(
     push(start - step);
   }
   for (const page of order) {
-    const items = await getPageItems(page);
+    let items: PdfTextItemLike[];
+    try {
+      items = await getPageItems(page);
+    } catch {
+      // An unreadable page is honestly "no match here," not a reason to
+      // abandon the rest of the document — keep spiralling outward.
+      continue;
+    }
     const match = matchQuoteInItems(quote, items);
     if (match) {
       return { match, page };

@@ -286,11 +286,13 @@ def list_vaults() -> Dict[str, Any]:
 @router.post(
     "/api/vaults",
     response_model=VaultListResponse,
-    responses={400: {"description": "Blank vault name"}},
+    responses={400: {"description": "Blank, traversal-shaped, or over-long vault name"}},
 )
 def create_vault_route(payload: CreateVaultRequest) -> Dict[str, Any]:
     """Create a (possibly empty) vault so records can be filed into it. Returns
-    the full vault list so the caller resyncs in one round trip."""
+    the full vault list so the caller resyncs in one round trip. See
+    services.documents.create_vault for the full validation catalog; every
+    ValueError it raises surfaces here as a 400 with the specific reason."""
     with db.get_db() as conn:
         try:
             create_vault(conn, payload.name)

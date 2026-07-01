@@ -42,6 +42,7 @@ function engineWith(claimVerdicts: any[]): VerifyEngine {
     sealedSeed: null,
     certAtSeed: null,
     hydratedDraft: null,
+    streamInterrupted: false,
     verify: vi.fn(),
     markSealed: vi.fn(),
     cancel: vi.fn()
@@ -164,6 +165,7 @@ describe("VerifyResults mid-stream error (invariant #6)", () => {
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
+      streamInterrupted: false,
       verify: vi.fn(),
       markSealed: vi.fn(),
       cancel: vi.fn()
@@ -221,6 +223,7 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
+      streamInterrupted: false,
       verify: vi.fn(),
       markSealed: vi.fn(),
       cancel: vi.fn()
@@ -275,6 +278,7 @@ describe("VerifyResults streaming announcement (screen-reader honesty)", () => {
       sealedSeed: null,
       certAtSeed: null,
       hydratedDraft: null,
+      streamInterrupted: false,
       verify: vi.fn(),
       markSealed: vi.fn(),
       cancel: vi.fn()
@@ -509,9 +513,13 @@ describe("VerifyResults empty-coverage (anchor-free prose is an honest result, n
     expect(screen.queryByText(/no checkable claims/i)).toBeNull();
   });
 
-  it("does not fabricate a coverage statement when the engine reported no coverage block (LLM path)", () => {
+  it("shows the generic empty-claims state, not a fabricated statement count, when the engine reported no coverage block (LLM path)", () => {
+    // No coverage block means no honest count to quote — but zero claims must
+    // still say so explicitly. A bare blank container here would read as a
+    // silent all-clear to a lawyer watching the run.
     render(<VerifyResults engine={engineNoFindings(null)} draft="" />);
-    expect(screen.queryByText(/no checkable claims/i)).toBeNull();
+    expect(screen.getByText(/no checkable claims found in this document/i)).toBeTruthy();
+    expect(screen.queryByText(/cachet read/i)).toBeNull();
   });
 
   it("does not show the coverage statement on an engine error", () => {
@@ -584,5 +592,268 @@ describe("VerifyResults quote autopsy", () => {
     const { container } = render(<VerifyResults engine={engineWithQuote(noSegments)} draft="" />);
     expect(container.querySelector('[data-kind="altered"]')).toBeNull();
     expect(screen.getByText("Could not check")).toBeTruthy();
+  });
+});
+
+// Three non-success-state invariants for the live Cachet verify UI. A lawyer
+// watching a verification run must never see a misleading state: a silent
+// blank that reads as an all-clear, a definitive "all supported" headline
+// while claims are still arriving, or a crash from one bad entry in the
+// claims array.
+describe("VerifyResults non-success-state invariants", () => {
+  // (a) Zero claims is always an explicit empty state, never a blank container.
+  describe("zero-claim results never render as a silent blank", () => {
+    function engineZeroClaims(
+      coverage: { statements: number; treated: number; untreated: number } | null
+    ): VerifyEngine {
+      const e = engineWith([]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (e.response as any).coverage = coverage;
+      return e;
+    }
+
+    it("no coverage block at all (LLM path): explicit empty state, no all-clear headline", () => {
+      render(<VerifyResults engine={engineZeroClaims(null)} draft="" />);
+      expect(screen.getByText(/no checkable claims found in this document/i)).toBeTruthy();
+      expect(screen.queryByText(/All \d+ statements are supported/i)).toBeNull();
+    });
+
+    it("coverage block present but statements: 0: still an explicit empty state", () => {
+      render(
+        <VerifyResults
+          engine={engineZeroClaims({ statements: 0, treated: 0, untreated: 0 })}
+          draft=""
+        />
+      );
+      const panel = screen.getByText(/no checkable claims found in this document/i);
+      expect(panel).toBeTruthy();
+      expect(screen.queryByText(/All \d+ statements are supported/i)).toBeNull();
+    });
+
+    it("coverage.statements > 0: the detailed coverage panel counts as the explicit empty state", () => {
+      render(
+        <VerifyResults
+          engine={engineZeroClaims({ statements: 4, treated: 0, untreated: 4 })}
+          draft=""
+        />
+      );
+      expect(screen.getByText(/no checkable claims in this draft/i)).toBeTruthy();
+      expect(screen.queryByText(/All \d+ statements are supported/i)).toBeNull();
+    });
+  });
+
+  // (b) An in-progress/streaming result must show an in-progress affordance and
+  // must never show a definitive "all supported" summary for claims still arriving.
+  describe("a streaming result never shows a definitive all-supported summary", () => {
+    function streamingEngine(): VerifyEngine {
+      const skeleton = (claim_index: number) =>
+        ({
+          claim_index,
+          claim_text: `streaming claim ${claim_index}`,
+          verdict: "verified",
+          citations: [],
+          case_verdicts: [],
+          unsupported_reason: null
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }) as any;
+      let s = initialStreamState();
+      s = reduceStreamEvent(s, {
+        type: "claims",
+        claim_verdicts: [skeleton(0), skeleton(1)]
+      });
+      // Only claim 0's cite check has landed; claim 1 is still in flight.
+      s = reduceStreamEvent(s, {
+        type: "cite_verdict",
+        claim_index: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        case_verdict: { claim_index: 0, ok: true, verdicts: [] } as any
+      });
+      return {
+        response: null,
+        stream: s,
+        loading: true,
+        hydrating: false,
+        error: null,
+        sealedSeed: null,
+        certAtSeed: null,
+        hydratedDraft: null,
+        streamInterrupted: false,
+        verify: vi.fn(),
+        markSealed: vi.fn(),
+        cancel: vi.fn()
+      };
+    }
+
+    it("shows a visible in-progress affordance while claims are still arriving", () => {
+      render(<VerifyResults engine={streamingEngine()} draft="" />);
+      expect(screen.getByText(/checking citations/i)).toBeTruthy();
+    });
+
+    it("never renders the definitive 'All N statements are supported' headline mid-stream", () => {
+      render(<VerifyResults engine={streamingEngine()} draft="" />);
+      expect(screen.queryByText(/All \d+ statements are supported/i)).toBeNull();
+    });
+
+    it("never renders a settled verdict summary region while still streaming", () => {
+      const { container } = render(<VerifyResults engine={streamingEngine()} draft="" />);
+      // The settled summary/empty-state panels are response-gated; response is
+      // still null mid-stream, so none of them may appear yet.
+      expect(container.querySelector("[data-empty-coverage]")).toBeNull();
+      expect(container.querySelector("[data-empty-claims]")).toBeNull();
+      expect(screen.queryByText(/need your review|could not be verified against your sources/i)).toBeNull();
+    });
+  });
+
+  // (c) A null or malformed entry in the claims array must be skipped
+  // gracefully and must never throw or crash the component.
+  describe("malformed claim entries are skipped gracefully, never crash the render", () => {
+    const validClaim = {
+      claim_index: 0,
+      claim_text: "claim zero is a normal, well-formed verdict.",
+      verdict: "verified",
+      citations: [],
+      case_verdicts: [],
+      placement: null
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function engineWithRawClaims(claimVerdicts: any[]): VerifyEngine {
+      return {
+        response: {
+          draft_text: "claim zero is a normal, well-formed verdict.",
+          claim_verdicts: claimVerdicts,
+          summary: { total: claimVerdicts.length, verified: 0, unsupported: 0, unknown: 0 },
+          latency_ms: 1,
+          model: "claude-sonnet-4-6",
+          ok: true,
+          error: null,
+          provider: "claude",
+          quote_results: [],
+          unplaced: []
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+        stream: initialStreamState(),
+        loading: false,
+        hydrating: false,
+        error: null,
+        sealedSeed: null,
+        certAtSeed: null,
+        hydratedDraft: null,
+        streamInterrupted: false,
+        verify: vi.fn(),
+        markSealed: vi.fn(),
+        cancel: vi.fn()
+      };
+    }
+
+    it("does not throw when the claims array contains null and undefined entries", () => {
+      const engine = engineWithRawClaims([validClaim, null, undefined, validClaim]);
+      expect(() => render(<VerifyResults engine={engine} draft="" />)).not.toThrow();
+    });
+
+    it("does not throw when the claims array contains a non-object (string) entry", () => {
+      const engine = engineWithRawClaims([validClaim, "not a claim object"]);
+      expect(() => render(<VerifyResults engine={engine} draft="" />)).not.toThrow();
+    });
+
+    it("skips the bad entries and counts only the valid claims toward the result", () => {
+      // Both valid entries are clean "verified" claims with no case verdicts,
+      // so a render that actually skipped the 3 bad entries (rather than,
+      // say, silently dropping a valid one alongside them) settles on exactly
+      // "All 2 statements are supported".
+      const engine = engineWithRawClaims([validClaim, null, undefined, "garbage", validClaim]);
+      render(<VerifyResults engine={engine} draft="" />);
+      expect(
+        screen.getByText("All 2 statements are supported by the sources you provided.")
+      ).toBeTruthy();
+    });
+  });
+});
+
+// T71: honesty-on-screen at the badge level. A run that has not reached a
+// clean, settled, error-free state must never render the affirmative
+// "Supported" badge — the exact failure the round-3 postmortem named as the
+// next false-green target. This block pins the three load-bearing cases: a
+// non-terminal (loading/streaming, no response yet) run, a zero-claims
+// settled run, an errored run, AND the positive control — a genuinely
+// verified claim must still render "Supported", proving the guard does not
+// over-fire into silence.
+describe("VerifyResults — 'Supported' badge honesty (T71)", () => {
+  // A claim whose disposition resolves to the plain "Supported" label: a
+  // "verified" grounding verdict with no citations to check and no presence
+  // hedge (see claimDisposition.ts's final fallthrough). Reused below both as
+  // the positive control and as the payload for the loading/error races,
+  // since the whole point is that the SAME claim must render differently
+  // depending on the run's state, not the claim's own content.
+  const plainSupportedClaim = {
+    claim_index: 0,
+    claim_text: "The agreement's initial term is five years.",
+    verdict: "verified",
+    citations: [],
+    case_verdicts: [],
+    placement: null
+  };
+
+  it("a loading/streaming run with no landed claims renders no 'Supported' badge", () => {
+    const engine: VerifyEngine = {
+      response: null,
+      stream: initialStreamState(),
+      loading: true,
+      hydrating: false,
+      error: null,
+      sealedSeed: null,
+      certAtSeed: null,
+      hydratedDraft: null,
+      streamInterrupted: false,
+      verify: vi.fn(),
+      markSealed: vi.fn(),
+      cancel: vi.fn()
+    };
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(screen.queryByText("Supported")).toBeNull();
+  });
+
+  it("a zero-claims settled result renders no 'Supported' badge", () => {
+    render(<VerifyResults engine={engineWith([])} draft="" />);
+    expect(screen.queryByText("Supported")).toBeNull();
+  });
+
+  it("an errored run (response.error set, claims still attached) renders no 'Supported' badge", () => {
+    // A payload-level error OTHER than the specially-handled
+    // "provider_below_quality_bar" literal used to fall through untouched:
+    // the items-based summary rendered unconditionally on items.length > 0,
+    // with no regard for response.error. This pins the fix.
+    const engine = engineWith([plainSupportedClaim]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (engine.response as any).error = "internal_error";
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(screen.queryByText("Supported")).toBeNull();
+  });
+
+  it("an engine-level stream error (response null) renders no 'Supported' badge", () => {
+    const engine: VerifyEngine = {
+      response: null,
+      stream: initialStreamState(),
+      loading: false,
+      hydrating: false,
+      error: "Verification did not finish. No verdict was produced; nothing was marked supported.",
+      sealedSeed: null,
+      certAtSeed: null,
+      hydratedDraft: null,
+      streamInterrupted: false,
+      verify: vi.fn(),
+      markSealed: vi.fn(),
+      cancel: vi.fn()
+    };
+    render(<VerifyResults engine={engine} draft="" />);
+    expect(screen.queryByText("Supported")).toBeNull();
+  });
+
+  it("a genuinely settled, error-free, non-loading verified claim STILL renders 'Supported' (the guard does not over-fire)", () => {
+    render(<VerifyResults engine={engineWith([plainSupportedClaim])} draft="" />);
+    // "Supported" legitimately appears more than once for a real pass (the
+    // stat-row count and the per-claim badge), so assert presence rather
+    // than a single unique match.
+    expect(screen.getAllByText("Supported").length).toBeGreaterThan(0);
   });
 });

@@ -170,22 +170,31 @@ def save_brief(
     # and branch: UPDATE it (last write wins, id + created_at preserved) when
     # found, INSERT a fresh row otherwise. Different fingerprint => new row.
     existing = conn.execute(
-        "SELECT id FROM briefs WHERE fingerprint = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        "SELECT id, seal_state FROM briefs WHERE fingerprint = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
         (fingerprint,),
     ).fetchone()
 
     now = _now_iso()
     if existing is not None:
         brief_id = existing["id"]
-        conn.execute(
-            """
-            UPDATE briefs
-            SET title = ?, draft = ?, response_json = ?, cert_json = ?,
-                seal_state = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (clean_title, clean_draft, response_blob, cert_blob, state, now, brief_id),
-        )
+        # Seal-immutability: a sealed brief is FROZEN. Once sealed, a later
+        # save on the same fingerprint (which can only be the identical draft,
+        # since the fingerprint IS the draft's SHA-256) must never silently
+        # un-seal it or overwrite its draft/response/cert — the seal is the
+        # integrity attestation. Skip the write and fall through to return the
+        # unchanged sealed summary; never last-write-wins over a seal. A
+        # genuinely edited draft has a different fingerprint and takes the
+        # INSERT path below.
+        if existing["seal_state"] != "sealed":
+            conn.execute(
+                """
+                UPDATE briefs
+                SET title = ?, draft = ?, response_json = ?, cert_json = ?,
+                    seal_state = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (clean_title, clean_draft, response_blob, cert_blob, state, now, brief_id),
+            )
     else:
         brief_id = str(uuid.uuid4())
         conn.execute(

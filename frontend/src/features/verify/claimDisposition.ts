@@ -113,7 +113,11 @@ interface FlatCase {
 }
 
 function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError: boolean } {
-  const batches = card.case_verdicts ?? [];
+  // Array.isArray, not a truthiness/?? check: a version-skewed or malformed
+  // wire payload can carry case_verdicts/verdicts as a non-array (object,
+  // string, number) rather than null/undefined, and a bare `?? []` lets
+  // those through into a `for...of` that then throws.
+  const batches = Array.isArray(card.case_verdicts) ? card.case_verdicts : [];
   const cases: FlatCase[] = [];
   let batchError = false;
   for (const batch of batches) {
@@ -121,7 +125,9 @@ function flattenCases(card: VerifyClaimVerdict): { cases: FlatCase[]; batchError
       batchError = true;
       continue;
     }
-    for (const v of batch.verdicts ?? []) {
+    const verdicts = Array.isArray(batch.verdicts) ? batch.verdicts : [];
+    for (const v of verdicts) {
+      if (!v || typeof v !== "object") continue;
       cases.push({
         status: typeof v.status === "number" ? v.status : 0,
         exists: Boolean(v.exists),
@@ -144,6 +150,39 @@ function reasonText(card: VerifyClaimVerdict): string | null {
   return typeof r === "string" && r.trim() ? r.trim() : null;
 }
 
+// A money, duration, or percent figure, matched verbatim so the refusal copy
+// can name exactly what the reader is looking at rather than a bare "could
+// not verify". Display enrichment only: this never feeds a disposition
+// decision, only the human-readable string attached to one already made.
+const FIGURE_TOKEN =
+  /\$[\d,]+(?:\.\d+)?(?:\s?(?:million|billion|thousand))?|\b\d+(?:\.\d+)?\s?%|\b\d+(?:\.\d+)?\s+(?:days?|weeks?|months?|years?)\b/i;
+
+function extractFigureToken(claimText: string): string | null {
+  const match = FIGURE_TOKEN.exec(claimText);
+  return match ? match[0] : null;
+}
+
+const GENERIC_COULD_NOT_CHECK_DETAIL =
+  "Verification could not run. Load the sources this draft relies on, then verify again.";
+
+/**
+ * The could-not-check detail text. The engine's own reasonText, when present,
+ * always wins (it already carries specific context). Failing that, a figure
+ * token pulled verbatim from the claim text makes the honest refusal name
+ * the specific quantity it could not affirm; with no figure present, the
+ * copy falls back to the original content-free string unchanged.
+ */
+function couldNotCheckDetail(card: VerifyClaimVerdict): string {
+  const reason = reasonText(card);
+  if (reason) return reason;
+  const claimText = typeof card.claim_text === "string" ? card.claim_text : "";
+  const figure = extractFigureToken(claimText);
+  if (figure) {
+    return `Could not confirm the figure "${figure}" in this statement. Load the sources this draft relies on, then verify again.`;
+  }
+  return GENERIC_COULD_NOT_CHECK_DETAIL;
+}
+
 function mk(kind: DispositionKind, label: string, detail: string): ClaimDisposition {
   return { kind, tier: TIER[kind], label, detail };
 }
@@ -155,6 +194,12 @@ function mk(kind: DispositionKind, label: string, detail: string): ClaimDisposit
  * check." Only a fully clean, fully checked claim returns "supported."
  */
 export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition {
+  // A null/undefined card (a malformed stream event, a defensive caller
+  // passing through an unresolved slot) must fail safe to the honest refusal,
+  // never throw and never fall through to a rendered "supported".
+  if (!card || typeof card !== "object") {
+    return mk("could_not_check", "Could not verify", GENERIC_COULD_NOT_CHECK_DETAIL);
+  }
   const { cases, batchError } = flattenCases(card);
 
   // A cited case that does not resolve (404) or is malformed (400) is the
@@ -261,12 +306,16 @@ export function dispositionForClaim(card: VerifyClaimVerdict): ClaimDisposition 
         `A local model ${direction}, for your review. Not a deterministic verification.`
       );
     }
-    return mk(
-      "could_not_check",
-      "Could not verify",
-      reasonText(card) ??
-        "Verification could not run. Load the sources this draft relies on, then verify again."
-    );
+    return mk("could_not_check", "Could not verify", couldNotCheckDetail(card));
+  }
+
+  // Only the exact "verified" literal may proceed to the supported branches
+  // below. Anything else (missing, null, empty, or an unrecognized string —
+  // a malformed payload, a version-skewed wire shape, a future verdict value
+  // this build doesn't know about) must fail safe to the honest refusal
+  // rather than fall through and render as supported.
+  if (card.verdict !== "verified") {
+    return mk("could_not_check", "Could not verify", couldNotCheckDetail(card));
   }
 
   // verdict === "verified": grounded in the user's sources. Downgrade to the

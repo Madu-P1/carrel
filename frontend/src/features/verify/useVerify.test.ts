@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { briefs as briefsApi, verify as verifyApi } from "@/services/api/endpoints";
 
+import { isCardChecking } from "./streamProgress";
 import { createVerifyStore, resetVerifyStore, useVerify } from "./useVerify";
 
 // useVerify is the verification machine both hosts (Carrel's VerifyView and
@@ -36,6 +37,20 @@ const RESPONSE = {
 function streamOf(events: unknown[]) {
   return (async function* () {
     for (const e of events) yield e;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  })() as any;
+}
+
+/** A stream that yields some real events, then THROWS instead of yielding a
+ *  clean end or a `result`. Models any transport-level failure mid-iteration
+ *  (fetch rejecting, `reader.read()` throwing on a dropped connection, or the
+ *  SSE decoder's `JSON.parse` failing on a malformed frame) — from the hook's
+ *  vantage point these are indistinguishable: an exception surfaces out of
+ *  the `for await` loop and must be caught, not an abort. */
+function streamThatThrows(events: unknown[], failure: Error) {
+  return (async function* () {
+    for (const e of events) yield e;
+    throw failure;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })() as any;
 }
@@ -105,6 +120,195 @@ describe("useVerify — the streaming loop", () => {
     expect(mockDraftStream).toHaveBeenCalledTimes(1);
     release();
     await act(() => first);
+    expect(result.current.response).toEqual(RESPONSE);
+  });
+});
+
+// T71: a dropped, errored, or truncated verify stream must never leave a claim
+// the server had not yet returned a final verdict for reading as "verified".
+// `streamInterrupted` is the explicit signal that lets a caller tell a
+// completed run apart from an interrupted one.
+describe("useVerify — T71: streamInterrupted honesty invariant", () => {
+  const CLEAN_CASE_VERDICT = {
+    ok: true,
+    verdicts: [
+      { status: 200, exists: true, holding_match: null, holding_error: null, holding_skipped: true }
+    ]
+  };
+
+  function skeletonCards(indices: number[]) {
+    return indices.map((claim_index) => ({
+      claim_index,
+      text: `claim ${claim_index}`,
+      verdict: "verified",
+      case_verdicts: []
+    }));
+  }
+
+  it("ABORT MID-STREAM: resolved claims keep their verdicts, the in-flight claim is never verified, and streamInterrupted is true", async () => {
+    const CARDS = skeletonCards([0, 1, 2]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockDraftStream.mockImplementation(((_payload: unknown, opts?: { signal?: AbortSignal }): any =>
+      (async function* () {
+        yield { type: "progress", phase: "extracting" };
+        yield { type: "claims", claim_verdicts: CARDS };
+        yield { type: "cite_verdict", claim_index: 0, case_verdict: CLEAN_CASE_VERDICT };
+        yield { type: "cite_verdict", claim_index: 1, case_verdict: CLEAN_CASE_VERDICT };
+        // claim_index 2's cite_verdict never lands: hang until the run is aborted.
+        await new Promise<void>((_resolve, reject) => {
+          const onAbort = () => reject(new DOMException("aborted", "AbortError"));
+          if (opts?.signal?.aborted) {
+            onAbort();
+            return;
+          }
+          opts?.signal?.addEventListener("abort", onAbort);
+        });
+      })()) as never);
+    const { result } = renderHook(() => useVerify());
+    let p!: Promise<void>;
+    act(() => {
+      p = result.current.verify("three claims, one still in flight");
+    });
+    await waitFor(() => expect(result.current.stream.checked.size).toBe(2));
+    act(() => result.current.cancel());
+    await act(() => p);
+
+    // The two claims that already landed a final cite_verdict are unchanged.
+    expect(result.current.stream.checked.has(0)).toBe(true);
+    expect(result.current.stream.checked.has(1)).toBe(true);
+    const card0 = result.current.stream.cards.find((c) => c.claim_index === 0)!;
+    const card1 = result.current.stream.cards.find((c) => c.claim_index === 1)!;
+    expect(isCardChecking(result.current.stream, card0)).toBe(false);
+    expect(isCardChecking(result.current.stream, card1)).toBe(false);
+
+    // The third claim never received a final verdict: it must never read as verified.
+    expect(result.current.stream.checked.has(2)).toBe(false);
+    const card2 = result.current.stream.cards.find((c) => c.claim_index === 2)!;
+    expect(isCardChecking(result.current.stream, card2)).toBe(true);
+
+    expect(result.current.streamInterrupted).toBe(true);
+    expect(result.current.response).toBeNull();
+  });
+
+  it("NETWORK ERROR: a transport failure thrown mid-stream (fetch rejects / reader.read() throws) sets streamInterrupted, and an unchecked claim never reads as verified", async () => {
+    const CARDS = skeletonCards([0, 1]);
+    mockDraftStream.mockReturnValue(
+      streamThatThrows(
+        [
+          { type: "progress", phase: "extracting" },
+          { type: "claims", claim_verdicts: CARDS },
+          { type: "cite_verdict", claim_index: 0, case_verdict: CLEAN_CASE_VERDICT }
+          // claim_index 1 never gets a cite_verdict: the connection drops here.
+        ],
+        new TypeError("network connection lost")
+      )
+    );
+    const { result } = renderHook(() => useVerify());
+    await act(() => result.current.verify("draft"));
+
+    expect(result.current.error).toBe("network connection lost");
+    expect(result.current.response).toBeNull();
+    // The claim that already landed keeps its verdict; the one that didn't
+    // must never read as verified just because the transport died.
+    expect(result.current.stream.checked.has(0)).toBe(true);
+    expect(result.current.stream.checked.has(1)).toBe(false);
+    const card1 = result.current.stream.cards.find((c) => c.claim_index === 1)!;
+    expect(isCardChecking(result.current.stream, card1)).toBe(true);
+    expect(result.current.streamInterrupted).toBe(true);
+  });
+
+  it("TRUNCATION: a stream that ends without a completion event leaves no claim reading as verified, and streamInterrupted is true", async () => {
+    const CARDS = skeletonCards([0, 1]);
+    mockDraftStream.mockReturnValue(
+      streamOf([
+        { type: "progress", phase: "extracting" },
+        { type: "claims", claim_verdicts: CARDS }
+        // No cite_verdict, no result: the stream just closes.
+      ])
+    );
+    const { result } = renderHook(() => useVerify());
+    await act(() => result.current.verify("draft"));
+
+    expect(result.current.stream.checked.size).toBe(0);
+    for (const card of result.current.stream.cards) {
+      expect(isCardChecking(result.current.stream, card)).toBe(true);
+    }
+    expect(result.current.streamInterrupted).toBe(true);
+    expect(result.current.response).toBeNull();
+  });
+
+  it("MALFORMED CHUNK: an unparseable stream frame (JSON.parse failure) sets streamInterrupted, and an unchecked claim never reads as verified", async () => {
+    const CARDS = skeletonCards([0, 1]);
+    mockDraftStream.mockReturnValue(
+      streamThatThrows(
+        [
+          { type: "progress", phase: "extracting" },
+          { type: "claims", claim_verdicts: CARDS },
+          { type: "cite_verdict", claim_index: 0, case_verdict: CLEAN_CASE_VERDICT }
+          // claim_index 1 never gets a cite_verdict: the next frame fails to decode.
+        ],
+        new SyntaxError("Unexpected token in JSON at position 42")
+      )
+    );
+    const { result } = renderHook(() => useVerify());
+    await act(() => result.current.verify("draft"));
+
+    expect(result.current.error).toBe("Unexpected token in JSON at position 42");
+    expect(result.current.response).toBeNull();
+    // The claim that already landed keeps its verdict; the one that didn't
+    // must never read as verified just because the decoder choked.
+    expect(result.current.stream.checked.has(0)).toBe(true);
+    expect(result.current.stream.checked.has(1)).toBe(false);
+    const card1 = result.current.stream.cards.find((c) => c.claim_index === 1)!;
+    expect(isCardChecking(result.current.stream, card1)).toBe(true);
+    expect(result.current.streamInterrupted).toBe(true);
+  });
+
+  it("STREAM ERROR: a surfaced error event sets streamInterrupted, and an unchecked claim never reads as verified", async () => {
+    const CARDS = skeletonCards([0, 1]);
+    mockDraftStream.mockReturnValue(
+      streamOf([
+        { type: "progress", phase: "extracting" },
+        { type: "claims", claim_verdicts: CARDS },
+        { type: "cite_verdict", claim_index: 0, case_verdict: CLEAN_CASE_VERDICT },
+        // claim_index 1 never gets a cite_verdict: the transport fails first.
+        { type: "error", error: "engine failed" }
+      ])
+    );
+    const { result } = renderHook(() => useVerify());
+    await act(() => result.current.verify("draft"));
+
+    expect(result.current.error).toBe("engine failed");
+    expect(result.current.response).toBeNull();
+    // The claim that already landed keeps its verdict; the one that didn't
+    // must never read as verified just because the stream moved past it.
+    expect(result.current.stream.checked.has(0)).toBe(true);
+    expect(result.current.stream.checked.has(1)).toBe(false);
+    const card1 = result.current.stream.cards.find((c) => c.claim_index === 1)!;
+    expect(isCardChecking(result.current.stream, card1)).toBe(true);
+    expect(result.current.streamInterrupted).toBe(true);
+  });
+
+  it("CLEAN COMPLETION: a fully-completed stream settles every verdict and streamInterrupted is false", async () => {
+    const CARDS = skeletonCards([0, 1]);
+    mockDraftStream.mockReturnValue(
+      streamOf([
+        { type: "progress", phase: "extracting" },
+        { type: "claims", claim_verdicts: CARDS },
+        { type: "cite_verdict", claim_index: 0, case_verdict: CLEAN_CASE_VERDICT },
+        { type: "cite_verdict", claim_index: 1, case_verdict: CLEAN_CASE_VERDICT },
+        { type: "result", verify: RESPONSE }
+      ])
+    );
+    const { result } = renderHook(() => useVerify());
+    await act(() => result.current.verify("draft"));
+
+    expect(result.current.stream.checked.has(0)).toBe(true);
+    expect(result.current.stream.checked.has(1)).toBe(true);
+    for (const card of result.current.stream.cards) {
+      expect(isCardChecking(result.current.stream, card)).toBe(false);
+    }
+    expect(result.current.streamInterrupted).toBe(false);
     expect(result.current.response).toEqual(RESPONSE);
   });
 });

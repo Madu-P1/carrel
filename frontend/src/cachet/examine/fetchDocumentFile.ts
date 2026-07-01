@@ -31,5 +31,14 @@ export async function fetchDocumentFile(docId: string): Promise<ArrayBuffer> {
   if (!response.ok) {
     throw new Error(`The record file could not be opened (HTTP ${response.status}).`);
   }
-  return response.arrayBuffer();
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch {
+    throw new Error("The record file could not be read from the engine.");
+  }
+  if (bytes.byteLength === 0) {
+    throw new Error("The original file for this record is empty.");
+  }
+  return bytes;
 }

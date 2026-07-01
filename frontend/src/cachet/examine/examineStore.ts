@@ -24,6 +24,18 @@ export interface ExaminationRequest {
   quote?: string | null;
 }
 
+/** Why the examination pane could not show the record: a network/non-OK
+ *  fetch failure (the bytes never arrived) vs a file type Cachet cannot
+ *  render in place. Kept distinct rather than collapsed into one generic
+ *  message so the failure panel can name the actual cause. */
+export type DocumentLoadFailureCause = "fetch" | "unsupported";
+
+export interface DocumentLoadFailure {
+  cause: DocumentLoadFailureCause;
+  message: string;
+  hint: string;
+}
+
 export const examination = signal<ExaminationRequest | null>(null);
 
 /** True while a DocumentExamination host is mounted (the Cachet shell mounts
