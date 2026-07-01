@@ -370,6 +370,36 @@ describe("VerifyResults stale-draft register", () => {
   });
 });
 
+describe("VerifyResults honesty backstops (O5, O7)", () => {
+  it("O7: a non-provider payload error surfaces an honest failure banner, not a blank surface", () => {
+    const base = engineWith([noRecordClaim]);
+    const engine: VerifyEngine = {
+      ...base,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      response: { ...(base.response as any), error: "weak_coverage" } as any
+    };
+    const { container } = render(<VerifyResults engine={engine} draft="x" />);
+    const banner = container.querySelector('[data-response-error="weak_coverage"]');
+    expect(banner).not.toBeNull();
+    expect(banner?.getAttribute("role")).toBe("alert");
+    expect(banner?.textContent).toMatch(/nothing here is confirmed/i);
+  });
+
+  it("O5: a malformed claim card is dropped safely, but its loss is stated, not silent", () => {
+    const base = engineWith([noRecordClaim]);
+    const engine: VerifyEngine = {
+      ...base,
+      // one valid card + one malformed (null) card the render must not crash on
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      response: { ...(base.response as any), claim_verdicts: [noRecordClaim, null] } as any
+    };
+    const { container } = render(<VerifyResults engine={engine} draft="x" />);
+    const note = container.querySelector("[data-dropped-claims]");
+    expect(note).not.toBeNull();
+    expect(note?.getAttribute("data-dropped-claims")).toBe("1");
+  });
+});
+
 describe("VerifyResults seal records the pair on the engine", () => {
   it("sealing calls engine.markSealed with the cert fingerprint AND its timestamp", async () => {
     // The mutation review proved this wiring was a surviving mutant: deleting

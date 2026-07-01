@@ -239,11 +239,15 @@ export function PdfExamination({ docId, page, quote, onError }: PdfExaminationPr
       try {
         await renderTask.promise;
       } catch (cause) {
+        // O6: a real (non-cancellation) render failure must surface as the
+        // named failure panel, not throw out of this async IIFE and leave a
+        // perpetual "Rendering page N" spinner. A cancellation is a normal
+        // re-render/unmount and is silently ignored.
         const name = (cause as { name?: string } | null)?.name;
-        if (name === "RenderingCancelledException") {
-          return;
+        if (name !== "RenderingCancelledException" && !cancelled) {
+          onError?.("The record's page could not be rendered.");
         }
-        throw cause;
+        return;
       } finally {
         renderTask = null;
       }
@@ -251,22 +255,31 @@ export function PdfExamination({ docId, page, quote, onError }: PdfExaminationPr
         return;
       }
 
-      const content = await pdfPage.getTextContent();
-      const textLayer = new pdfjsLib.TextLayer({
-        container: textLayerRef.current,
-        textContentSource: content,
-        viewport
-      });
-      await textLayer.render();
-      if (cancelled) {
-        return;
-      }
-      setPageRendered(true);
+      try {
+        const content = await pdfPage.getTextContent();
+        const textLayer = new pdfjsLib.TextLayer({
+          container: textLayerRef.current,
+          textContentSource: content,
+          viewport
+        });
+        await textLayer.render();
+        if (cancelled) {
+          return;
+        }
+        setPageRendered(true);
 
-      if (quote) {
-        const items = content.items.filter((entry): entry is TextItem => "str" in entry);
-        const match = matchQuoteInItems(quote, items);
-        setAnchorRects(match ? spansToViewportRects(match.spans, items, viewport) : []);
+        if (quote) {
+          const items = content.items.filter((entry): entry is TextItem => "str" in entry);
+          const match = matchQuoteInItems(quote, items);
+          setAnchorRects(match ? spansToViewportRects(match.spans, items, viewport) : []);
+        }
+      } catch {
+        // O6: text-content / text-layer extraction can also fail; surface it as
+        // the named failure panel rather than an uncaught rejection that leaves
+        // the "Rendering page N" spinner up forever.
+        if (!cancelled) {
+          onError?.("The record's page could not be rendered.");
+        }
       }
     })();
 
@@ -274,7 +287,7 @@ export function PdfExamination({ docId, page, quote, onError }: PdfExaminationPr
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, currentPage, containerWidth, quote]);
+  }, [pdf, currentPage, containerWidth, quote, onError]);
 
   // ← / → page through the record while the overlay is open, but only a bare
   // arrow over the page chrome pages: arrowPageDelta leaves Shift+Arrow and any

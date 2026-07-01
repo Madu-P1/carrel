@@ -636,6 +636,14 @@ export function VerifyResults({
     checkedText !== null && draft.trim() !== "" && draft.trim() !== checkedText.trim();
 
   const cards = (response?.claim_verdicts ?? []).filter(isUsableCard);
+  // O5: malformed cards (null / non-object) are filtered out so the render
+  // stays crash-safe (VerdictCard and dispositionForClaim read properties
+  // straight off the card). But a dropped claim must not vanish SILENTLY —
+  // count the drop so an honest note can state it below. A real deterministic
+  // run ~never emits these; this is a robustness backstop for a malformed or
+  // partial payload, and stating "N could not be read" is more honest than a
+  // claim count that quietly shrinks.
+  const droppedClaimCount = (response?.claim_verdicts?.length ?? 0) - cards.length;
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
   // headline of the surface.
@@ -818,6 +826,18 @@ export function VerifyResults({
 
       {response?.error === "provider_below_quality_bar" ? (
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
+      ) : response?.error ? (
+        // O7: any OTHER payload-level error (weak_coverage, empty_retrieval, an
+        // arbitrary provider string) must surface an honest failure, not
+        // silently blank the results column. The `settled` gate correctly
+        // suppresses every affirmative panel for such a payload, but nothing
+        // else rendered in its place — so a reviewer saw a bare provenance badge
+        // and no verdict. This states the failure plainly. (Effectively dead on
+        // Cachet's deterministic path, which always sets error=null; a real gap
+        // in this shared component off that path.)
+        <div className={styles.errorBanner} role="alert" data-response-error={response.error}>
+          Verification could not be completed, so nothing here is confirmed.
+        </div>
       ) : (
         <>
           {draftStale ? (
@@ -856,6 +876,18 @@ export function VerifyResults({
             <EmptyCoveragePanel statements={examinedStatements} />
           ) : showEmptyClaims ? (
             <EmptyClaimsPanel />
+          ) : null}
+
+          {droppedClaimCount > 0 ? (
+            // O5: malformed claims were dropped from the render for crash-safety.
+            // State it plainly so the claim count never shrinks in silence.
+            <div className={styles.resolveRefusal} role="note" data-dropped-claims={droppedClaimCount}>
+              <p className={styles.resolveRefusalText}>
+                {droppedClaimCount === 1
+                  ? "1 claim could not be read from the result and is not shown."
+                  : `${droppedClaimCount} claims could not be read from the result and are not shown.`}
+              </p>
+            </div>
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (

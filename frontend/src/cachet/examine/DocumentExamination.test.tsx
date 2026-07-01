@@ -191,6 +191,9 @@ describe("DocumentExamination", () => {
     expect(
       screen.getByText(/This record's file type \(xlsx\) cannot be displayed in place\./)
     ).toBeTruthy();
+    // O4: retrying cannot change a file type, so no dead Retry control renders
+    // on the unsupported panel (it stays on transient fetch/render failures).
+    expect(screen.queryByText("Retry")).toBeNull();
   });
 
   it("surfaces a missing original file instead of a blank pane", async () => {

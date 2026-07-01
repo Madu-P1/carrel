@@ -202,13 +202,19 @@ export function DocumentExamination() {
             >
               <p className={styles.paneError}>{failure.message}</p>
               <p className={styles.paneHint}>{failure.hint}</p>
-              <button
-                type="button"
-                className={styles.pageButton}
-                onClick={() => setAttempt((value) => value + 1)}
-              >
-                Retry
-              </button>
+              {/* Retry only where a re-attempt can change the outcome (a
+                  transient fetch/render failure). An "unsupported" file type is
+                  a permanent property of the record, so retrying just re-renders
+                  the identical panel; omit the dead control there. */}
+              {failure.cause !== "unsupported" ? (
+                <button
+                  type="button"
+                  className={styles.pageButton}
+                  onClick={() => setAttempt((value) => value + 1)}
+                >
+                  Retry
+                </button>
+              ) : null}
             </div>
           ) : kind === "pdf" ? (
             <PdfExamination
