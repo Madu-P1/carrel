@@ -177,15 +177,24 @@ def save_brief(
     now = _now_iso()
     if existing is not None:
         brief_id = existing["id"]
-        # Seal-immutability: a sealed brief is FROZEN. Once sealed, a later
-        # save on the same fingerprint (which can only be the identical draft,
-        # since the fingerprint IS the draft's SHA-256) must never silently
-        # un-seal it or overwrite its draft/response/cert — the seal is the
-        # integrity attestation. Skip the write and fall through to return the
-        # unchanged sealed summary; never last-write-wins over a seal. A
-        # genuinely edited draft has a different fingerprint and takes the
-        # INSERT path below.
-        if existing["seal_state"] != "sealed":
+        # Seal-immutability: a sealed brief is FROZEN. The fingerprint pins the
+        # draft (it IS the draft's SHA-256), so the only mutation reachable on
+        # this path is a change of seal_state or cert/response on the SAME
+        # draft. An UN-SEAL (or any non-"sealed" re-save) is refused LOUDLY with
+        # 409 rather than silently dropped: a caller must never believe it
+        # modified a sealed, certified brief. A same-state re-seal is an
+        # idempotent no-op — it never overwrites the sealed draft/cert/response
+        # (so a forged cert on re-seal cannot take) and returns the unchanged
+        # sealed summary. A genuinely edited draft has a different fingerprint
+        # and takes the INSERT path below.
+        if existing["seal_state"] == "sealed":
+            if state != "sealed":
+                raise HTTPException(
+                    status_code=409,
+                    detail="This brief is sealed and cannot be modified or un-sealed.",
+                )
+            # idempotent re-seal: fall through to the read-back + return below.
+        else:
             conn.execute(
                 """
                 UPDATE briefs

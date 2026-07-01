@@ -132,6 +132,30 @@ class BriefsRouteTests(unittest.TestCase):
         resp = self._save(draft="")
         self.assertEqual(resp.status_code, 422, resp.text)
 
+    def test_unsealing_a_sealed_brief_is_refused_409(self) -> None:
+        # Seal-immutability at the HTTP boundary: once sealed, a POST to the
+        # same fingerprint that would un-seal it is refused with 409, and the
+        # brief stays sealed and unchanged.
+        sealed = self._save()  # seal_state defaults to "sealed"
+        self.assertEqual(sealed.status_code, 200, sealed.text)
+        brief_id = sealed.json()["brief"]["id"]
+
+        resp = self._save(seal_state="unsealed", draft="TAMPERED body", response={"x": 1})
+        self.assertEqual(resp.status_code, 409, resp.text)
+
+        detail = self.client.get(f"/api/briefs/{brief_id}").json()
+        self.assertEqual(detail["seal_state"], "sealed")
+        self.assertEqual(detail["draft"], "Motion to Dismiss\n\nBody.")
+        self.assertEqual(detail["response"], SAMPLE_RESPONSE)
+
+    def test_reseal_same_state_is_idempotent_200(self) -> None:
+        # A same-state re-seal (retry) is not a modification: 200, no 409.
+        sealed = self._save()
+        self.assertEqual(sealed.status_code, 200, sealed.text)
+        again = self._save()  # identical, still seal_state="sealed"
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertEqual(again.json()["brief"]["seal_state"], "sealed")
+
     def test_routes_sit_behind_the_local_api_token_gate(self) -> None:
         from fastapi.testclient import TestClient
 

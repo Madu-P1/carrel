@@ -418,49 +418,75 @@ class BriefsServiceTests(unittest.TestCase):
         self.assertEqual(reread_after_unrelated_save["cert"], original_cert)
         self.assertEqual(reread_after_unrelated_save["seal_state"], original_seal_state)
 
-    def test_sealed_brief_cannot_be_silently_unsealed_or_mutated_by_resave(self) -> None:
+    def _seal_a_brief(self, conn):
+        briefs.save_brief(
+            conn,
+            draft="Sealed brief body",
+            fingerprint=HEX64_A,
+            response=SAMPLE_RESPONSE,
+            seal_state="unsealed",
+        )
+        return briefs.save_brief(
+            conn,
+            draft="Sealed brief body",
+            fingerprint=HEX64_A,
+            response=SAMPLE_RESPONSE,
+            cert=SAMPLE_CERT,
+            seal_state="sealed",
+        )
+
+    def test_unsealing_a_sealed_brief_is_refused_with_409_and_leaves_it_unchanged(self) -> None:
         # THE seal-immutability invariant (not merely read-stability, which the
         # get_brief re-read tests already cover): once a brief is sealed, a
-        # later save_brief on the SAME fingerprint must not un-seal it, nor
-        # overwrite its draft / cert / response. The seal is the integrity
-        # attestation; last-write-wins over it would let a sealed, certified
-        # brief be silently altered. Without the save_brief seal guard this
-        # test fails (the row un-seals and the tampered draft wins).
+        # later save_brief on the SAME fingerprint must not un-seal it or
+        # overwrite its draft / cert / response. It is refused LOUDLY (409), not
+        # silently dropped, so a caller can never believe it modified a sealed,
+        # certified brief.
         with db.get_db() as conn:
-            briefs.save_brief(
-                conn,
-                draft="Sealed brief body",
-                fingerprint=HEX64_A,
-                response=SAMPLE_RESPONSE,
-                seal_state="unsealed",
-            )
-            sealed = briefs.save_brief(
-                conn,
-                draft="Sealed brief body",
-                fingerprint=HEX64_A,
-                response=SAMPLE_RESPONSE,
-                cert=SAMPLE_CERT,
-                seal_state="sealed",
-            )
-            # Attempt to un-seal AND tamper via a re-save on the same fingerprint.
-            resave = briefs.save_brief(
-                conn,
-                draft="TAMPERED body",
-                fingerprint=HEX64_A,
-                response={"tampered": True},
-                cert=None,
-                seal_state="unsealed",
-                title="tampered title",
-            )
+            sealed = self._seal_a_brief(conn)
+            with self.assertRaises(HTTPException) as ctx:
+                briefs.save_brief(
+                    conn,
+                    draft="TAMPERED body",
+                    fingerprint=HEX64_A,
+                    response={"tampered": True},
+                    cert=None,
+                    seal_state="unsealed",
+                    title="tampered title",
+                )
+            self.assertEqual(ctx.exception.status_code, 409)
             detail = briefs.get_brief(conn, sealed["id"])
 
-        # The frozen row: same id, still sealed, original draft + cert + response
-        # preserved. The tampering re-save is a no-op over a sealed brief.
-        self.assertEqual(resave["id"], sealed["id"])
-        self.assertEqual(resave["seal_state"], "sealed")
+        # The row is untouched: still sealed, original draft + cert + response.
         assert detail is not None
         self.assertEqual(detail["seal_state"], "sealed")
         self.assertEqual(detail["draft"], "Sealed brief body")
+        self.assertEqual(detail["cert"], SAMPLE_CERT)
+        self.assertEqual(detail["response"], SAMPLE_RESPONSE)
+
+    def test_reseal_is_idempotent_no_op_and_never_overwrites_the_sealed_content(self) -> None:
+        # A same-state re-seal (e.g. a network retry of the original seal POST)
+        # must NOT 409 and must NOT overwrite the sealed content — even if the
+        # retry carries a different (forged) cert. It returns the unchanged
+        # sealed summary.
+        with db.get_db() as conn:
+            sealed = self._seal_a_brief(conn)
+            resave = briefs.save_brief(
+                conn,
+                draft="Sealed brief body",
+                fingerprint=HEX64_A,
+                response={"forged": True},
+                cert={"fingerprint": "b" * 64, "sealed_count": 99},
+                seal_state="sealed",
+                title="renamed",
+            )
+            detail = briefs.get_brief(conn, sealed["id"])
+
+        self.assertEqual(resave["id"], sealed["id"])
+        self.assertEqual(resave["seal_state"], "sealed")
+        assert detail is not None
+        # The original sealed cert/response survive the re-seal; the forged
+        # cert and renamed title did not take.
         self.assertEqual(detail["cert"], SAMPLE_CERT)
         self.assertEqual(detail["response"], SAMPLE_RESPONSE)
 
