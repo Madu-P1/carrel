@@ -142,6 +142,12 @@ additive, and independently shippable as one draft (the contract is
   `test_deterministic_envelope`, `test_contract_verify`, `test_quote_check` stays
   green UNCHANGED; a focused test pins the new shape; zero-egress holds.
 
+### S1 — DONE (59eac7bd2, forge run) — property-style slide/bullet coverage
+- Shipped: `SlideBulletSegmentationTests` in tests/test_legal_sentences.py covers
+  all six bullet glyphs, leading tabs, CRLF/blank-line runs, and the single-line
+  paste as the documented known limitation. 27/27 green. Queue entry was never
+  marked done; reconciled 2026-07-01.
+- Original spec below (kept for the record):
 ### S1 — [AUTO] Property-style coverage for `split_sentences` slide/bullet inputs
 - New tests only, no src change. Acceptance: tests for bullet glyphs (•, -, *, ◦,
   –, —) at line starts, leading tabs, mixed CRLF/blank-line runs, and a no-newline
@@ -226,7 +232,14 @@ council read, NEVER auto-shipped). Ledger: /tmp/mythos-cachet-scan/.mythos/findi
 - Acceptance: held-out: a two-party draft caption against a single-party resolved name resolves to mismatch.
 
 ### M6 [REVIEW] (high) — Date locale ambiguity silently month-first
-- Status: todo
+- Status: DRAFT on branch claude/modest-engelbart-7b2328 (2026-07-01) — awaiting human security read.
+  `_date_iso` now refuses N/N/YYYY where both fields are 1..12 and differ (returns
+  None -> no date anchor); unambiguous (one field >12), equal-field, ISO, and
+  textual forms unaffected. Both-direction fixtures in tests/test_anchors.py.
+  Gate: 504 engine tests + ruff + zero-egress green; forge-rater SHIP
+  (.forge/scores/date-locale-ambiguity-20260701T203050Z.json). anchors.py is a
+  security truth surface -> logged to .claude/logs/operator-followups.jsonl.
+  Original spec below.
 - Deps: none
 - Source: mythos cachet-engine-scan @ services/legal/anchors.py:759
 - Grounding: repro: _date_iso('03/04/2024')->2024-03-04 but '13/04/2024'->2024-04-13 (dateutil dayfirst=False)

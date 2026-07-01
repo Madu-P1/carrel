@@ -754,7 +754,24 @@ def _percent_bps(num_text: str, unit: str) -> Decimal:
     return value * 100
 
 
+# A bare numeric "N/N/YYYY" (also N-N-YYYY, N.N.YYYY, 2-digit year) whose first
+# two fields are both 1..12 and differ is genuinely ambiguous: it could be DD/MM
+# or MM/DD. The source locale is not carried into the anchor, so dateutil's silent
+# month-first default ("03/04/2024" -> March 4) could contradict a source that
+# meant April 3, either false-flagging a faithful date or false-clearing an
+# altered one. Honesty over coverage: refuse rather than mint a locale-dependent
+# canonical value. One field > 12 pins day vs month (unambiguous); equal fields
+# ("03/03") resolve the same either way; ISO ("2024-03-04") and textual
+# ("March 4, 2024") forms never match this shape and are unaffected.
+_AMBIGUOUS_NUMERIC_DATE = re.compile(r"^\s*(\d{1,2})[/.\-](\d{1,2})[/.\-]\d{2,4}\s*$")
+
+
 def _date_iso(text: str) -> str | None:
+    m = _AMBIGUOUS_NUMERIC_DATE.match(text)
+    if m:
+        first, second = int(m.group(1)), int(m.group(2))
+        if first != second and 1 <= first <= 12 and 1 <= second <= 12:
+            return None
     try:
         return date_parser.parse(text, fuzzy=False).date().isoformat()
     except (ValueError, OverflowError):
