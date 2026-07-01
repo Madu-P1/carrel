@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "cachet-fe",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/madu/Desktop/Codex/.claude/worktrees/modest-engelbart-7b2328/frontend && VITE_CACHET_ONLY=true exec /Users/madu/Library/pnpm/bin/node ./node_modules/vite/bin/vite.js --port 5181 --strictPort"],
+      "port": 5181
+    },
+    {
       "name": "cachet",
       "runtimeExecutable": "/Users/madu/Desktop/Codex/.venv/bin/python",
       "runtimeArgs": ["/Users/madu/Desktop/Codex/script/serve-cachet.py"],

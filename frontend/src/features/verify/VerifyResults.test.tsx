@@ -520,7 +520,41 @@ describe("VerifyResults empty-coverage (anchor-free prose is an honest result, n
     (e as any).error = "Verification did not finish.";
     render(<VerifyResults engine={e} draft="" />);
     expect(screen.queryByText(/no checkable claims/i)).toBeNull();
-    expect(screen.getByText(/did not finish/i)).toBeTruthy();
+    // Both the banner's ruling label and the engine message carry the failure;
+    // assert on the alert region as a whole rather than a unique text node.
+    expect(screen.getByRole("alert").textContent).toMatch(/did not finish/i);
+  });
+});
+
+// The failed check's recovery: the banner names one verb-led action and re-runs
+// the same draft through the engine. Voice rule: an error names its concrete
+// recovery, never a bare failure line the user must interpret.
+describe("VerifyResults error recovery action", () => {
+  function erroredEngine(): VerifyEngine {
+    return {
+      ...engineWith([]),
+      response: null,
+      error: "Backend offline"
+    };
+  }
+
+  it("offers Run the check again when a draft is present, and re-verifies it", () => {
+    const engine = erroredEngine();
+    render(<VerifyResults engine={engine} draft="The fund totals $360 million." />);
+    const retry = screen.getByRole("button", { name: /run the check again/i });
+    fireEvent.click(retry);
+    expect(engine.verify).toHaveBeenCalledWith("The fund totals $360 million.");
+  });
+
+  it("withholds the recovery action when there is no draft to re-run", () => {
+    render(<VerifyResults engine={erroredEngine()} draft="   " />);
+    expect(screen.queryByRole("button", { name: /run the check again/i })).toBeNull();
+  });
+
+  it("withholds the recovery action while a re-run is already in flight", () => {
+    const engine = { ...erroredEngine(), loading: true };
+    render(<VerifyResults engine={engine} draft="The fund totals $360 million." />);
+    expect(screen.queryByRole("button", { name: /run the check again/i })).toBeNull();
   });
 });
 

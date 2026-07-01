@@ -32,6 +32,16 @@ import styles from "./cachet.module.css";
  * SM-V1 in spirit: the writing area IS the sheet. We do not promise an outcome
  * here; we set up the honest gap the verdict lands in, right below.
  */
+
+/* The specimen: a litigator-shaped draft with planted defects, so a cold
+ * lectern can be examined in one click instead of opening on a blank void.
+ * Stated plainly as a specimen; the flaws are the point (the refusal and the
+ * flag are what the surface exists to show). Three physical lines so the
+ * sentence splitter reads three statements. */
+const SPECIMEN_DRAFT =
+  'The Supreme Court held that "separate educational facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483 (1954).\n' +
+  "The settlement fund totals $360 million, payable to the class within 30 days of final approval.\n" +
+  "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).";
 export function LecternView() {
   // The draft lives in the shared `liveDraft` signal, not local state, so a paste
   // on the home page survives navigating to the Shelf and back (the route swap
@@ -132,6 +142,9 @@ export function LecternView() {
           <span className={styles.sheetHint}>
             Reads the citations and quotes against the sources you provide
           </span>
+          <kbd className={styles.sheetKbd} title="Command Enter verifies the draft">
+            &#8984;&#9166;
+          </kbd>
           {engine.loading ? (
             // The escape hatch a persistent store makes necessary: loading
             // survives navigation by design, so a hung stream would otherwise
@@ -216,6 +229,22 @@ export function LecternView() {
           <span className={styles.lecternSourceError}>{sourceError}</span>
         ) : null}
       </div>
+
+      {!ready && !hasVerdict ? (
+        // The cold lectern's one-click first move: a specimen with planted
+        // defects, so the first thing a skeptic sees is the surface refusing
+        // and flagging, not a blank void asking for trust up front.
+        <button
+          type="button"
+          className={styles.lecternSpecimen}
+          onClick={() => {
+            liveDraft.value = SPECIMEN_DRAFT;
+            areaRef.current?.focus();
+          }}
+        >
+          Or examine a specimen draft with planted defects
+        </button>
+      ) : null}
 
       <p className={styles.lecternMeta}>Nothing leaves this machine without your say</p>
 

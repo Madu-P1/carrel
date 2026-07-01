@@ -29,5 +29,13 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url))
     }
+  },
+  optimizeDeps: {
+    // The security pin to esbuild 0.28 (package.json pnpm.overrides) breaks
+    // Vite 6's default dev-prebundle target list ("chrome87..." + supported
+    // overrides): 0.28 refuses to lower destructuring for it and the dev
+    // server 500s on every dep. Dev-only knob; the shipped build keeps the
+    // stricter build.target above.
+    esbuildOptions: { target: "esnext" }
   }
 });
