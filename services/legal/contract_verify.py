@@ -1160,6 +1160,15 @@ def adjudicate_clause_candidates(
     on_topic_presents: list[ClauseCandidate] = []
     contradictions: list[ClauseCandidate] = []
     multi_value: ClauseCandidate | None = None
+    # A figure (money/magnitude/duration) whose value WAS located in a clause but is
+    # held at the could-not-check tier by the ADR-0013 scope-out: its verdict already
+    # names the section and the value ("two (2) years appears in Section 12, but ...
+    # not independently verified"). Without surfacing it, that not_found falls through
+    # every bucket below and the claim renders as the generic "no matching passage
+    # found" -- which reads as "the clause is absent" for a value that is verbatim in
+    # the record. Surface it instead, ranked below every affirmative / contradiction /
+    # alignment outcome so a sibling present or catch still wins.
+    located_scope_out: ClauseCandidate | None = None
     for cand in candidates:
         disposition = cand.verdict.disposition
         if disposition == "present":
@@ -1170,6 +1179,13 @@ def adjudicate_clause_candidates(
             contradictions.append(cand)
         elif disposition == "multi_value_unverifiable" and multi_value is None:
             multi_value = cand
+        elif (
+            disposition == "not_found"
+            and located_scope_out is None
+            and cand.verdict.anchor_type in ("money", "magnitude", "duration")
+            and cand.verdict.clause_values
+        ):
+            located_scope_out = cand
 
     # (accusing contradiction, carrier's where-phrase, carrier section,
     #  carrier clause text, carrier's same-type values)
@@ -1270,6 +1286,12 @@ def adjudicate_clause_candidates(
         return chosen.verdict, chosen.section, chosen.clause_text
     if multi_value is not None:
         return multi_value.verdict, multi_value.section, multi_value.clause_text
+    if located_scope_out is not None:
+        return (
+            located_scope_out.verdict,
+            located_scope_out.section,
+            located_scope_out.clause_text,
+        )
     return (
         ClauseVerdict("not_found", "no matching passage found in your loaded sources"),
         None,

@@ -451,6 +451,60 @@ class ClauseAdjudicationTests(unittest.TestCase):
         verdict3, _, _ = adjudicate_clause_candidates([])
         self.assertEqual("not_found", verdict3.disposition)
 
+    @staticmethod
+    def _located_scope_out(section="Section 12"):
+        # A duration whose value WAS located in a clause but is held at the
+        # could-not-check tier by the ADR-0013 figure scope-out: the verdict
+        # already carries the section and the value, exactly as
+        # verify_claim_against_clause emits for a matched figure.
+        return ClauseCandidate(
+            ClauseVerdict(
+                "not_found",
+                "two (2) years appears in Section 12, but a deterministic check "
+                "cannot confirm it states this obligation, so it was not "
+                "independently verified.",
+                "duration",
+                ("730",),
+                ("730",),
+            ),
+            section=section,
+            clause_text="Section 12. Term. ... a term of two (2) years ...",
+            on_topic=True,
+        )
+
+    def test_located_figure_scope_out_is_surfaced_not_buried(self) -> None:
+        # The term-clause gem: a located duration scope-out must surface its
+        # "appears in Section 12 ... not independently verified" message, NOT
+        # collapse to the generic "no matching passage found" (which reads as
+        # "the clause is absent" for a value verbatim in the record). Still
+        # not_found -> could-not-check, never a green.
+        verdict, section, _ = adjudicate_clause_candidates([self._located_scope_out()])
+        self.assertEqual("not_found", verdict.disposition)
+        self.assertEqual("duration", verdict.anchor_type)
+        self.assertIn("appears in Section 12", verdict.detail)
+        self.assertNotIn("no matching passage found", verdict.detail)
+        self.assertEqual("Section 12", section)
+
+    def test_absent_figure_still_reads_no_matching_passage(self) -> None:
+        # Gated on clause_values: a figure whose value is NOT in any clause
+        # (empty clause_values) is genuinely absent and keeps the generic
+        # fallback, so the surfacing never masks a true miss.
+        absent = ClauseCandidate(
+            ClauseVerdict("not_found", "could not locate", "duration", ("730",), ()),
+            section=None,
+            clause_text="Section 5. Unrelated.",
+            on_topic=True,
+        )
+        verdict, _, _ = adjudicate_clause_candidates([absent])
+        self.assertEqual("not_found", verdict.disposition)
+        self.assertIn("no matching passage found", verdict.detail)
+
+    def test_present_outranks_a_located_scope_out(self) -> None:
+        # Precedence: a figure scope-out yields to a sibling present (the
+        # "50% royalty in a 12-month window" rule), so a present still wins.
+        verdict, _, _ = adjudicate_clause_candidates([self._located_scope_out(), self._present()])
+        self.assertEqual("present", verdict.disposition)
+
 
 class GoverningLawClauseTests(unittest.TestCase):
     """Governing law as a parametric type: a falsified choice of law is the
