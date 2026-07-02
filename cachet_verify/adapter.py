@@ -21,6 +21,7 @@ verbatim quotes).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from services.legal.anchors import extract_anchors
@@ -132,35 +133,48 @@ def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | N
     )
 
 
-def _skeleton(text: str) -> str:
-    """The text with every anchor span (legal + residue) masked: the
-    same-fact test. Two sentences with equal skeletons state the same fact,
-    possibly with different figures."""
-    serv_spans = [(a.start, a.end) for a in extract_anchors(text)]
-    res = extract_residue_anchors(text, claimed_spans=serv_spans)
-    spans = sorted(serv_spans + [(a.start, a.end) for a in res])
-    out: list[str] = []
-    last = 0
-    for start, end in spans:
-        out.append(text[last:start])
-        out.append("#")
-        last = end
-    out.append(text[last:])
-    return _normalize(" ".join(out))
+# Function words + verbs of stating that carry no fact identity: shared
+# occurrences of these must not make two sentences "the same fact".
+_TOPIC_STOPWORDS = frozenset(
+    """a an and are as at be been by for from in is it its no not notwithstanding
+    of on or per shall should that the this to under was were will with within
+    would foregoing applicable total totals totaled totalling amount amounts
+    pay payable paid states stated stating""".split()
+)
 
 
-def _same_fact_conflict(claim: str, norm_claim: str, source_texts: list[str]) -> bool:
-    """True when some source sentence states the SAME fact as the claim (equal
-    skeleton) with DIFFERENT figures (unequal normalized text). This is the
-    amended-value shape, the one conflict that must veto every confirmation.
-    A different-fact sentence that merely shares a value is retrieval noise at
-    this seam, not a conflict."""
-    claim_skeleton = _skeleton(claim)
+def _content_tokens(text: str) -> frozenset[str]:
+    """Fact-identity tokens: lowercase alphabetic words minus function words,
+    minus digits (figures are compared by the anchor machinery, not here)."""
+    words = re.findall(r"[a-z]+", text.lower())
+    return frozenset(w for w in words if len(w) >= 3 and w not in _TOPIC_STOPWORDS)
+
+
+def _topical_conflict(claim: str, norm_claim: str, source_texts: list[str]) -> bool:
+    """True when some source sentence CONTRADICTS the claim (a same-type value
+    mismatch, per the engine) AND shares fact-identity vocabulary with it.
+
+    This decides whether the adjudicator's ``conflicting_clauses`` refusal
+    vetoes the confirmation legs. Direction of error is chosen deliberately:
+    ANY shared content token keeps the veto (over-refusal, the safe side); only
+    a contradiction with ZERO topical overlap -- an unrelated figure elsewhere
+    in the document -- is treated as cross-fact noise. A reworded amendment
+    ("the applicable termination fee shall be...") shares its subject nouns
+    with the claim, so it always keeps the veto (mythos batchB-20260702,
+    critical: the earlier skeleton-equality narrowing let a reworded amendment
+    slip past the veto and a verbatim restatement green a contradicted value).
+    """
+    claim_tokens = _content_tokens(claim)
+    if not claim_tokens:
+        return True  # nothing to compare on: keep the veto (refuse)
     for source in source_texts:
         for sentence in split_sentences(source):
             if _normalize(sentence) == norm_claim:
                 continue
-            if _skeleton(sentence) == claim_skeleton:
+            verdict = verify_claim_against_clause(claim, sentence)
+            if verdict.disposition != "parametric_contradiction":
+                continue
+            if claim_tokens & _content_tokens(sentence):
                 return True
     return False
 
@@ -232,15 +246,16 @@ def verify_claim(claim: str, sources: list[SourceInput]) -> Attestation:
     verified_clause = clause_outcome is not None and clause_outcome[0] == "verified"
     # The adjudicator's conflicting_clauses fires whenever ANY candidate
     # carries the claim's value while another contradicts it -- at this seam
-    # every sentence of every source is a candidate, so an unrelated sentence
-    # sharing a money figure manufactures "conflict" noise. The veto is
-    # therefore narrowed to the REAL amended-value shape: a sentence stating
-    # the same fact (equal skeleton) with different figures. Cross-fact noise
-    # abstains instead (the confirmation legs may still speak).
+    # every sentence of every source is a candidate, so an unrelated figure
+    # elsewhere in the document manufactures "conflict" noise. The veto is
+    # kept for every TOPICAL contradiction (any shared fact vocabulary; the
+    # amended-value shape always qualifies, however reworded) and dropped only
+    # for zero-overlap cross-fact noise, so the residual error is over-refusal,
+    # never a green over a contradicted value.
     clause_conflict = (
         clause_outcome is not None
         and clause_outcome[2] == "conflicting_clauses"
-        and _same_fact_conflict(claim, norm_claim, source_texts)
+        and _topical_conflict(claim, norm_claim, source_texts)
     )
     altered_residue = next((o for o in residue_outcomes if o.state == "altered"), None)
     verified_residue = next((o for o in residue_outcomes if o.state == "verified"), None)

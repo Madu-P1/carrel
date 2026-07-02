@@ -37,6 +37,21 @@ class AdjudicatorSwallowTests(unittest.TestCase):
         )
         self.assertEqual("could_not_check", a.state)
 
+    def test_reworded_amendment_conflict_still_vetoes_restatement(self) -> None:
+        # mythos batchB-20260702 (critical), locked: the amendment states the
+        # same fact in DIFFERENT words. The conflict veto must survive the
+        # rewording; a verbatim restatement must not green a contradicted value.
+        claim = "The Company shall pay a termination fee of $5 million."
+        a = verify_claim(
+            claim,
+            [
+                "Notwithstanding the foregoing, the applicable termination fee "
+                "shall be $2 million.",
+                claim,
+            ],
+        )
+        self.assertEqual("could_not_check", a.state)
+
     def test_uncontested_contradiction_still_accuses(self) -> None:
         a = verify_claim(
             "The termination fee is $5 million, payable within 30 days.",
