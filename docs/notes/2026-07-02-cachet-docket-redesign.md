@@ -1,3 +1,5 @@
+> SUPERSEDED 2026-07-02 by the Claude Design handoff (~/Downloads/design_handoff_cachet; applied main d75d409a8: OKLCH neutral + oxblood accent, light/dark). This Docket note is historical.
+
 # Cachet redesign: "The Docket" (2026-07-02)
 
 Ground-up visual reinvention per the operator's redesign brief
