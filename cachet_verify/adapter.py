@@ -17,6 +17,15 @@ purpose: the seam has no retrieval-relevance signal, and without one a bare
 value coincidence must never earn a green (C3) -- confirmations come only from
 the strictly stronger conditions (exact restatement, equal-values near-copy,
 verbatim quotes).
+
+The post-campaign upgrade (mythos final-sweep follow-through): everything
+derivable from the sources alone -- the quote pool, sentence splits, per-
+sentence tokens, digit flags, and anchor extractions -- lives in a
+``SourceIndex`` built ONCE per request. ``attest_draft`` used to rebuild all
+of it per claim (N pool builds, N x M sentence extractions) and the topical-
+conflict check re-ran the engine over the same sentences a second time; both
+redundancies are gone, and the work ceiling is calibrated from measured
+per-pair cost rather than a guess.
 """
 
 from __future__ import annotations
@@ -40,7 +49,7 @@ from services.legal.quote_check import (
 from services.legal.sentences import split_sentences
 
 from .contract import SCHEMA_VERSION, Attestation, CheckResult, attest, combine
-from .residue import ResidueComparison, compare_residue, extract_residue_anchors
+from .residue import ResidueAnchor, ResidueComparison, compare_residue, extract_residue_anchors
 
 _CLAUSE_STATE = {
     "parametric_contradiction": "altered",
@@ -52,17 +61,25 @@ _CLAUSE_STATE = {
 
 SourceInput = str | dict | SourceText
 
-# The clause + residue legs each compare the claim against every source
-# SENTENCE, so a single verify_claim costs O(source_sentences); attest_draft
+# The clause + residue legs compare the claim against every source SENTENCE, so
+# a single verify_claim costs O(source_sentences) engine calls and attest_draft
 # multiplies that by the draft's sentence count. The relevance prefilter blunts
 # this on unrelated prose but NOT on a near-copy document (every sentence shares
-# vocabulary), so a large record wedges the synchronous worker (mythos
-# final-sweep, high: ~150s at 100x100 sentences). This is a hard ceiling on the
-# work a single attestation may attempt: past it the engine REFUSES
-# (could_not_check) rather than block, because a silent multi-minute stall on a
-# trust surface is worse than an honest "too large, split it". A per-request
-# sentence cache would raise this ceiling; that is recorded debt, not done here.
-_MAX_SENTENCE_PAIRS = 20_000
+# vocabulary), and the dominant per-pair cost is INSIDE
+# verify_claim_against_clause (it re-extracts anchors per call), which this seam
+# cannot cache without touching the sealed engine; the SourceIndex removes the
+# source-prep redundancy but not that engine cost. Measured on an M-series
+# machine post-index: ~0.7 ms per relevant pair on a small near-copy doc, rising
+# to ~2 ms at ~3600 pairs (the cross-clause adjudicator is superlinear in
+# candidate count). At the ceiling that is a worst-case near-copy wedge on the
+# order of ~10 s -- bounded, not minutes. Past the ceiling the engine REFUSES
+# (could_not_check) rather than block, because a silent stall on a trust surface
+# is worse than an honest "too large, split it". A wall-clock budget is
+# deliberately NOT used: it would make a verdict machine-speed-dependent and
+# break the determinism the sealed certificate relies on, so the bound is a
+# deterministic pair COUNT. Removing the per-pair engine cost (so the ceiling
+# can rise) is ADR-0014 step-2 work.
+_MAX_SENTENCE_PAIRS = 4_000
 
 
 def _too_large(claim_sentence_count: int, source_sentence_count: int) -> bool:
@@ -110,6 +127,82 @@ def _coerce_sources(sources: Sequence[SourceInput]) -> list[SourceText]:
     return out
 
 
+# Function words + verbs of stating that carry no fact identity: shared
+# occurrences of these must not make two sentences "the same fact".
+_TOPIC_STOPWORDS = frozenset(
+    """a an and are as at be been by for from in is it its no not notwithstanding
+    of on or per shall should that the this to under was were will with within
+    would foregoing applicable total totals totaled totalling amount amounts
+    pay payable paid states stated stating
+    million billion trillion thousand hundred mln bln mn bn mld
+    dollar dollars euro euros usd eur gbp pound percent percentage
+    day days week weeks month months year years annual annually""".split()
+)
+
+
+def _content_tokens(text: str) -> frozenset[str]:
+    """Fact-identity tokens: lowercase alphabetic words minus function words,
+    minus digits (figures are compared by the anchor machinery, not here)."""
+    words = re.findall(r"[a-z]+", text.lower())
+    return frozenset(w for w in words if len(w) >= 3 and w not in _TOPIC_STOPWORDS)
+
+
+@dataclass(frozen=True)
+class _SentenceEntry:
+    """One source sentence with everything the legs need, computed once."""
+
+    text: str
+    normalized: str
+    tokens: frozenset[str]
+    has_digit: bool
+    serv_spans: tuple[tuple[int, int], ...]
+    res_anchors: tuple[ResidueAnchor, ...]
+    all_spans: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class SourceIndex:
+    """Everything derivable from the sources alone, built once per request.
+
+    ``attest_draft`` shares one index across every claim; a bare
+    ``verify_claim`` call builds its own (same behavior, same cost as before
+    for the single-claim path). The index is pure data -- no I/O, no network --
+    so sharing it cannot change any verdict, only skip recomputation. The
+    equivalence suite pins that.
+    """
+
+    records: tuple[SourceText, ...]
+    pool: object  # NormalizedSourcePool (opaque here; owned by quote_check)
+    sentences: tuple[_SentenceEntry, ...]
+
+    @property
+    def sentence_count(self) -> int:
+        return len(self.sentences)
+
+
+def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
+    records = tuple(_coerce_sources(sources))
+    entries: list[_SentenceEntry] = []
+    for record in records:
+        for sentence in split_sentences(record.text):
+            serv_spans = tuple((a.start, a.end) for a in extract_anchors(sentence))
+            res_anchors = tuple(extract_residue_anchors(sentence, claimed_spans=list(serv_spans)))
+            entries.append(
+                _SentenceEntry(
+                    text=sentence,
+                    normalized=_normalize(sentence),
+                    tokens=_content_tokens(sentence),
+                    has_digit=any(ch.isdigit() for ch in sentence),
+                    serv_spans=serv_spans,
+                    res_anchors=res_anchors,
+                    all_spans=serv_spans + tuple((a.start, a.end) for a in res_anchors),
+                )
+            )
+    return SourceIndex(
+        records=records, pool=prepare_source_pool(list(records)), sentences=tuple(entries)
+    )
+
+
 def _quote_checks(claim: str, pool) -> list[CheckResult]:
     checks: list[CheckResult] = []
     for quote in extract_draft_quotes(claim):
@@ -126,7 +219,7 @@ def _quote_checks(claim: str, pool) -> list[CheckResult]:
     return checks
 
 
-def _sentence_relevant(claim_tokens: frozenset[str], sentence: str) -> bool:
+def _sentence_relevant(claim_tokens: frozenset[str], entry: _SentenceEntry) -> bool:
     """Cheap prefilter for the per-sentence engine fan-out (the O(N*M) cost).
 
     A sentence with NO shared fact vocabulary AND NO digit can contribute
@@ -137,40 +230,53 @@ def _sentence_relevant(claim_tokens: frozenset[str], sentence: str) -> bool:
     surface wording ("$5,000,000" for "$5 million") still reaches the
     adjudicator's rule-1 conservatism (mythos batchE-20260702, perf).
     """
-    if any(ch.isdigit() for ch in sentence):
-        return True
-    return bool(claim_tokens & _content_tokens(sentence))
+    return entry.has_digit or bool(claim_tokens & entry.tokens)
 
 
-def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | None:
-    """Run the app's cross-clause adjudicator over every source sentence.
+def _clause_leg(claim: str, index: SourceIndex) -> tuple[str, str, str, bool] | None:
+    """Run the app's cross-clause adjudicator over every indexed sentence.
 
-    Returns (state, detail, disposition) or None when there is nothing to
-    adjudicate. The raw disposition rides along because ``conflicting_clauses``
-    is not a plain abstention: it is the adjudicator KNOWING the sources
-    disagree, and that knowledge must veto every confirmation path (including
-    the exact-restatement rule -- a source that both states and contradicts a
-    claim proves nothing either way).
+    Returns (state, detail, disposition, topical_conflict) or None when there
+    is nothing to adjudicate. The raw disposition rides along because
+    ``conflicting_clauses`` is not a plain abstention: it is the adjudicator
+    KNOWING the sources disagree, and that knowledge must veto every
+    confirmation path (including the exact-restatement rule -- a source that
+    both states and contradicts a claim proves nothing either way).
+
+    ``topical_conflict`` is computed HERE, from the same engine verdicts the
+    candidates are built from (it used to be a second full engine pass over
+    the same sentences): True when any contradiction shares fact vocabulary
+    with the claim. Direction of error unchanged (mythos batchB-20260702,
+    critical): ANY shared content token keeps the veto (over-refusal, the
+    safe side); an empty claim-token set keeps it too; only a contradiction
+    with ZERO topical overlap -- an unrelated figure elsewhere in the document
+    -- is cross-fact noise.
     """
     candidates: list[ClauseCandidate] = []
     claim_tokens = _content_tokens(claim)
-    for source in source_texts:
-        for sentence in split_sentences(source):
-            if not _sentence_relevant(claim_tokens, sentence):
-                continue
-            verdict = verify_claim_against_clause(claim, sentence)
-            candidates.append(
-                ClauseCandidate(
-                    verdict=verdict,
-                    section=None,
-                    clause_text=sentence,
-                    # No retrieval-relevance signal exists at this seam; a bare
-                    # value coincidence must never earn a green (C3), so no
-                    # candidate is marked on-topic. Quote presents are exempt
-                    # inside the adjudicator itself.
-                    on_topic=False,
-                )
+    topical_conflict = not claim_tokens  # nothing to compare on: keep the veto
+    for entry in index.sentences:
+        if not _sentence_relevant(claim_tokens, entry):
+            continue
+        verdict = verify_claim_against_clause(claim, entry.text)
+        if (
+            verdict.disposition == "parametric_contradiction"
+            and claim_tokens
+            and (claim_tokens & entry.tokens)
+        ):
+            topical_conflict = True
+        candidates.append(
+            ClauseCandidate(
+                verdict=verdict,
+                section=None,
+                clause_text=entry.text,
+                # No retrieval-relevance signal exists at this seam; a bare
+                # value coincidence must never earn a green (C3), so no
+                # candidate is marked on-topic. Quote presents are exempt
+                # inside the adjudicator itself.
+                on_topic=False,
             )
+        )
     if not candidates:
         return None
     # Cross-fact noise gate (mythos batchD, floor): a parametric_contradiction
@@ -199,66 +305,22 @@ def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | N
             "the sources carry different figures, but none concern this claim's "
             "subject; nothing on this fact could be checked",
             "not_found",
+            topical_conflict,
         )
     return (
         _CLAUSE_STATE.get(verdict.disposition, "could_not_check"),
         verdict.detail,
         verdict.disposition,
+        topical_conflict,
     )
 
 
-# Function words + verbs of stating that carry no fact identity: shared
-# occurrences of these must not make two sentences "the same fact".
-_TOPIC_STOPWORDS = frozenset(
-    """a an and are as at be been by for from in is it its no not notwithstanding
-    of on or per shall should that the this to under was were will with within
-    would foregoing applicable total totals totaled totalling amount amounts
-    pay payable paid states stated stating
-    million billion trillion thousand hundred mln bln mn bn mld
-    dollar dollars euro euros usd eur gbp pound percent percentage
-    day days week weeks month months year years annual annually""".split()
-)
-
-
-def _content_tokens(text: str) -> frozenset[str]:
-    """Fact-identity tokens: lowercase alphabetic words minus function words,
-    minus digits (figures are compared by the anchor machinery, not here)."""
-    words = re.findall(r"[a-z]+", text.lower())
-    return frozenset(w for w in words if len(w) >= 3 and w not in _TOPIC_STOPWORDS)
-
-
-def _topical_conflict(claim: str, norm_claim: str, source_texts: list[str]) -> bool:
-    """True when some source sentence CONTRADICTS the claim (a same-type value
-    mismatch, per the engine) AND shares fact-identity vocabulary with it.
-
-    This decides whether the adjudicator's ``conflicting_clauses`` refusal
-    vetoes the confirmation legs. Direction of error is chosen deliberately:
-    ANY shared content token keeps the veto (over-refusal, the safe side); only
-    a contradiction with ZERO topical overlap -- an unrelated figure elsewhere
-    in the document -- is treated as cross-fact noise. A reworded amendment
-    ("the applicable termination fee shall be...") shares its subject nouns
-    with the claim, so it always keeps the veto (mythos batchB-20260702,
-    critical: the earlier skeleton-equality narrowing let a reworded amendment
-    slip past the veto and a verbatim restatement green a contradicted value).
-    """
-    claim_tokens = _content_tokens(claim)
-    if not claim_tokens:
-        return True  # nothing to compare on: keep the veto (refuse)
-    for source in source_texts:
-        for sentence in split_sentences(source):
-            if _normalize(sentence) == norm_claim:
-                continue
-            if not _sentence_relevant(claim_tokens, sentence):
-                continue
-            verdict = verify_claim_against_clause(claim, sentence)
-            if verdict.disposition != "parametric_contradiction":
-                continue
-            if claim_tokens & _content_tokens(sentence):
-                return True
-    return False
-
-
-def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
+def verify_claim(
+    claim: str,
+    sources: Sequence[SourceInput],
+    *,
+    index: SourceIndex | None = None,
+) -> Attestation:
     """Attest one claim against sources. Pure, no I/O, no network.
 
     Legs (each participating only when the claim carries its content):
@@ -266,12 +328,14 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
     engine's parametrics under the app's own adjudicator), residue
     (kernel-owned quantities/counts under the near-copy gate), and the
     exact-restatement confirmation.
-    """
-    source_records = _coerce_sources(sources)
-    source_texts = [s.text for s in source_records]
-    pool = prepare_source_pool(source_records)
 
-    checks: list[CheckResult] = list(_quote_checks(claim, pool))
+    ``index`` shares one prebuilt SourceIndex across many claims
+    (attest_draft's path); None builds one for this call.
+    """
+    if index is None:
+        index = build_source_index(sources)
+
+    checks: list[CheckResult] = list(_quote_checks(claim, index.pool))
 
     claim_serv = extract_anchors(claim)
     serv_spans = [(a.start, a.end) for a in claim_serv]
@@ -292,7 +356,7 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
             )
         return attest(checks)
 
-    if not source_records:
+    if not index.records:
         checks.append(
             CheckResult(
                 state="could_not_check",
@@ -304,28 +368,28 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
         return attest(checks)
 
     # Bound the per-claim work: one claim vs every source sentence.
-    source_sentence_count = sum(len(split_sentences(s)) for s in source_texts)
-    if _too_large(1, source_sentence_count):
+    if _too_large(1, index.sentence_count):
         checks.append(_oversize_refusal(claim))
         return attest(checks)
 
-    clause_outcome = _clause_leg(claim, source_texts) if claim_serv else None
+    clause_outcome = _clause_leg(claim, index) if claim_serv else None
 
     residue_outcomes: list[ResidueComparison] = []
     restated = False
-    for source in source_texts:
-        for sentence in split_sentences(source):
-            if norm_claim and _normalize(sentence) == norm_claim:
-                restated = True
-            if claim_res:
-                s_serv_spans = [(a.start, a.end) for a in extract_anchors(sentence)]
-                s_res = extract_residue_anchors(sentence, claimed_spans=s_serv_spans)
-                s_all_spans = s_serv_spans + [(a.start, a.end) for a in s_res]
-                outcome = compare_residue(
-                    claim, claim_res, claim_all_spans, sentence, s_res, s_all_spans
-                )
-                if outcome is not None:
-                    residue_outcomes.append(outcome)
+    for entry in index.sentences:
+        if norm_claim and entry.normalized == norm_claim:
+            restated = True
+        if claim_res:
+            outcome = compare_residue(
+                claim,
+                claim_res,
+                claim_all_spans,
+                entry.text,
+                list(entry.res_anchors),
+                list(entry.all_spans),
+            )
+            if outcome is not None:
+                residue_outcomes.append(outcome)
 
     altered_clause = clause_outcome is not None and clause_outcome[0] == "altered"
     verified_clause = clause_outcome is not None and clause_outcome[0] == "verified"
@@ -340,7 +404,7 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
     clause_conflict = (
         clause_outcome is not None
         and clause_outcome[2] == "conflicting_clauses"
-        and _topical_conflict(claim, norm_claim, source_texts)
+        and clause_outcome[3]
     )
     altered_residue = next((o for o in residue_outcomes if o.state == "altered"), None)
     verified_residue = next((o for o in residue_outcomes if o.state == "verified"), None)
@@ -445,23 +509,28 @@ class DraftAttestation:
 
 def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation:
     """Attest every statement in a draft (sentence-split exactly like the
-    app's verify surface). An empty draft is honestly uncheckable."""
+    app's verify surface). An empty draft is honestly uncheckable.
+
+    The SourceIndex is built ONCE and shared across every claim: the pool,
+    sentence splits, and per-sentence extractions no longer scale with the
+    draft's claim count (the post-campaign upgrade)."""
     sentences = split_sentences(draft)
     if not sentences:
         return DraftAttestation(state="could_not_check")
+    index = build_source_index(sources)
     # Bound the whole-draft work: draft sentences x source sentences. Past the
     # ceiling the draft refuses as one honest could_not_check rather than
     # wedging the caller (mythos final-sweep, high). Guarding here AND in
     # verify_claim means the daemon /attest and /verify surfaces share the
     # bound -- no wire divergence.
-    source_sentence_count = sum(len(split_sentences(s.text)) for s in _coerce_sources(sources))
-    if _too_large(len(sentences), source_sentence_count):
+    if _too_large(len(sentences), index.sentence_count):
         return DraftAttestation(
             state="could_not_check",
             claims=(ClaimAttestation(claim=draft, attestation=attest([_oversize_refusal(draft)])),),
         )
     claims = tuple(
-        ClaimAttestation(claim=s, attestation=verify_claim(s, sources)) for s in sentences
+        ClaimAttestation(claim=s, attestation=verify_claim(s, sources, index=index))
+        for s in sentences
     )
     # Draft-level state: reuse the combine algebra over one synthetic check
     # per claim so the precedence rules stay in ONE place.
