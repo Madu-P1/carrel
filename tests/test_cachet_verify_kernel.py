@@ -98,6 +98,66 @@ class AdapterHonestyTests(unittest.TestCase):
             self.assertTrue(c.provenance)
 
 
+class NearCopyFlipTests(unittest.TestCase):
+    """The anchor-free near-copy leg (nearcopy.py, byte-identical with the
+    companion's copy): negation flips and proper-noun swaps on near-verbatim
+    sentences catch deterministically; verbatim restatement of an anchor-free
+    claim confirms; every guard shape refuses rather than accuses."""
+
+    def test_negation_prefix_flip_is_altered(self) -> None:
+        a = verify_claim(
+            "The auditors found the internal controls were reliable.",
+            ["The auditors found the internal controls were unreliable."],
+        )
+        self.assertEqual("altered", a.state)
+
+    def test_dropped_not_is_altered(self) -> None:
+        a = verify_claim(
+            "The device is approved for pediatric use.",
+            ["The device is not approved for pediatric use."],
+        )
+        self.assertEqual("altered", a.state)
+
+    def test_quoted_source_polarity_flip_is_altered(self) -> None:
+        # The live-smoke miss verbatim (2026-07-02): unquoted paraphrase of a
+        # quoted source sentence with the polarity inverted.
+        a = verify_claim(
+            "The Supreme Court held that separate educational facilities are inherently equal.",
+            [
+                'The Supreme Court held that "separate educational facilities are inherently unequal."'
+            ],
+        )
+        self.assertEqual("altered", a.state)
+
+    def test_anchor_free_restatement_is_verified(self) -> None:
+        s = "The committee approved the revised safety protocol without amendment."
+        a = verify_claim(s, [s])
+        self.assertEqual("verified", a.state)
+
+    def test_synonym_substitution_never_accuses(self) -> None:
+        a = verify_claim(
+            "The results were disappointing this quarter overall.",
+            ["The results were underwhelming this quarter overall."],
+        )
+        self.assertNotEqual("altered", a.state)
+
+    def test_rhetorical_not_only_never_accuses(self) -> None:
+        a = verify_claim(
+            "The committee is not only responsible for oversight of the program.",
+            ["The committee is only responsible for oversight of the program."],
+        )
+        self.assertNotEqual("altered", a.state)
+
+    def test_stated_and_contradicted_refuses(self) -> None:
+        claim = "The auditors found the internal controls were reliable."
+        a = verify_claim(
+            claim,
+            ["The auditors found the internal controls were unreliable.", claim],
+        )
+        self.assertNotEqual("verified", a.state)
+        self.assertNotEqual("altered", a.state)
+
+
 class DaemonPostureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

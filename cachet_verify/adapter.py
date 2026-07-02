@@ -49,6 +49,7 @@ from services.legal.quote_check import (
 from services.legal.sentences import split_sentences
 
 from .contract import SCHEMA_VERSION, Attestation, CheckResult, attest, combine
+from .nearcopy import verify_near_copy_flip
 from .residue import ResidueAnchor, ResidueComparison, compare_residue, extract_residue_anchors
 
 _CLAUSE_STATE = {
@@ -345,6 +346,28 @@ def verify_claim(
     norm_claim = _normalize(claim)
 
     if not claim_serv and not claim_res:
+        # Anchor-free near-copy flip leg (live-smoke gap, 2026-07-02): a claim
+        # with no parametric/residue anchor can still deterministically
+        # contradict a source when a source sentence is token-identical except
+        # for a negation flip or a proper-noun swap — and a verbatim
+        # restatement of an anchor-free claim is confirmable by presence. The
+        # detector carries its own honesty guards (single-run gate,
+        # rhetorical-"not" and abbreviation refusals, the elsewhere demotion,
+        # the stated+contradicted veto) — see nearcopy.py, byte-identical with
+        # the companion's copy. Behind the same oversize bound as every other
+        # per-sentence leg; when the detector abstains, behavior is
+        # byte-identical to before.
+        if index.records and not _too_large(1, index.sentence_count):
+            near = verify_near_copy_flip(claim, "\n".join(record.text for record in index.records))
+            if near is not None:
+                checks.append(
+                    CheckResult(
+                        state=near.state,
+                        provenance="deterministic",
+                        detail=near.detail,
+                        subject=near.subject,
+                    )
+                )
         if not checks:
             checks.append(
                 CheckResult(
