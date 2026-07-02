@@ -122,9 +122,11 @@ export function LecternView() {
     <section className={styles.lectern} data-active={hasVerdict ? "true" : undefined}>
       <CachetMark size={76} strokeWidth={26} className={styles.lecternMark} />
       <h1 className={styles.wordmark}>Cachet</h1>
+      <p className={styles.standing}>The independent attestation layer</p>
       <p className={styles.tagline}>
-        Independent verification for high-stakes drafts. Cachet certifies only what
-        it can trace to the record, and says so plainly when it cannot.
+        Cachet certifies only what it can trace to the record you provide, and says
+        so plainly when it cannot. Every ruling becomes a sealed record you can hand
+        to anyone.
       </p>
 
       <div className={styles.sheet}>
@@ -246,7 +248,20 @@ export function LecternView() {
         </button>
       ) : null}
 
-      <p className={styles.lecternMeta}>Nothing leaves this machine without your say</p>
+      <dl className={styles.lecternSpine} aria-label="What this machine guarantees">
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>On device</dt>
+          <dd className={styles.spineGloss}>The substance never leaves this machine.</dd>
+        </div>
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>Independent</dt>
+          <dd className={styles.spineGloss}>It grades the output, never its own.</dd>
+        </div>
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>Sealed</dt>
+          <dd className={styles.spineGloss}>A record you can hand to anyone.</dd>
+        </div>
+      </dl>
 
       {hasVerdict ? (
         <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>

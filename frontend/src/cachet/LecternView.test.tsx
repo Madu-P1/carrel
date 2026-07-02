@@ -242,6 +242,24 @@ describe("LecternView verdict persistence (the verdict survives unmount-on-nav)"
   });
 });
 
+describe("LecternView attestation-layer identity (north star)", () => {
+  it("names the independent attestation layer and its three guarantees", () => {
+    render(<LecternView />);
+    expect(screen.getByText(/independent attestation layer/i)).toBeTruthy();
+    // The trust spine: the north star made visible. All three stated
+    // guarantees must be present so none can silently drop.
+    const spine = screen.getByLabelText(/what this machine guarantees/i);
+    expect(spine.textContent).toContain("On device");
+    expect(spine.textContent).toContain("Independent");
+    expect(spine.textContent).toContain("Sealed");
+  });
+
+  it("promises the sealed record a third party can be handed", () => {
+    render(<LecternView />);
+    expect(screen.getByText(/sealed record you can hand to anyone/i)).toBeTruthy();
+  });
+});
+
 describe("LecternView specimen affordance (the cold lectern's first move)", () => {
   it("offers a specimen on the cold lectern and fills the sheet on click", () => {
     render(<LecternView />);

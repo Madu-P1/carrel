@@ -226,13 +226,25 @@
   transition: font-size 0.2s ease;
 }
 
+/* The standing: one mono-uppercase line naming what this instrument IS. Sits
+   between the wordmark and the tagline as the register-setting label, the way
+   a filing names its own instrument before its recitals. */
+.standing {
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 16px 0 0;
+}
+
 .tagline {
   font-family: var(--font-serif-body);
   font-size: 18px;
   line-height: 1.65;
   color: var(--ink-2);
   max-width: 53ch;
-  margin: 20px auto 0;
+  margin: 14px auto 0;
 }
 
 /* the well, as a sheet you write on: lighter fresh-sheet tone, one soft lift,
@@ -380,6 +392,58 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-3);
+}
+
+/* The trust spine: the instrument's spec plate. Three stated guarantees on one
+   hairline-ruled row (the north star made visible: on-device, independent,
+   sealed), each a mono-uppercase term over a reading-serif gloss. Quieter than
+   the sheet on purpose - it is what the machine promises, read AFTER the act it
+   invites, never competing with the primary action. */
+.lecternSpine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(616px, 86vw);
+  margin: 40px auto 0;
+  padding: 0;
+  border-top: 1px solid var(--hair-soft);
+  border-bottom: 1px solid var(--hair-soft);
+}
+
+.spineItem {
+  padding: 18px 22px;
+  text-align: left;
+}
+
+.spineItem + .spineItem {
+  border-left: 1px solid var(--hair-soft);
+}
+
+.spineTerm {
+  font-family: var(--font-serif-body);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.spineGloss {
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 620px) {
+  .lecternSpine {
+    grid-template-columns: 1fr;
+  }
+
+  .spineItem + .spineItem {
+    border-left: 0;
+    border-top: 1px solid var(--hair-soft);
+  }
 }
 
 /* ---------- plain views (Sources / Settings scaffolds) ---------- */
