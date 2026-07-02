@@ -157,6 +157,26 @@ class CliGateTests(unittest.TestCase):
         out = self._run("--claim", "The outlook is bright.", "--source", "Numbers here.")
         self.assertEqual(2, out.returncode, out.stderr)
 
+    def test_usage_error_exits_3_never_a_verdict_code(self) -> None:
+        # mythos batchC-20260702: argparse's default exit 2 collided with the
+        # could_not_check verdict code. Usage errors are 3, per the table.
+        self.assertEqual(3, self._run("--bogus").returncode)
+        self.assertEqual(3, self._run().returncode)
+
+    def test_unwritable_certificate_exits_3_never_altered(self) -> None:
+        # mythos batchC-20260702 (critical): an uncaught write error exited 1,
+        # indistinguishable from a caught fabrication for a $?-keyed CI gate.
+        out = self._run(
+            "--claim",
+            "The settlement fund totals $360 million.",
+            "--source",
+            "The settlement fund totals $360 million.",
+            "--certificate",
+            "/nonexistent-dir-for-cachet-test/cert.json",
+        )
+        self.assertEqual(3, out.returncode, out.stderr)
+        self.assertIn("cannot write certificate", out.stderr)
+
     def test_draft_certificate_and_exhibit(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             draft_path = Path(td) / "draft.txt"

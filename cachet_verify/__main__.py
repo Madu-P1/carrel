@@ -6,9 +6,11 @@
         --source-file b.txt --certificate cert.json --exhibit
 
 Exit codes are the gate: 0 = verified, 1 = altered, 2 = could_not_check,
-3 = usage error. A CI pipeline can therefore refuse to ship AI output whose
-attestation is anything but verified -- or, more honestly for most pipelines,
-refuse only on 1 (altered) and route 2 (could_not_check) to a human.
+3 = usage error (bad flags, unreadable/unwritable paths), 4 = internal error.
+A verdict code (0/1/2) is emitted ONLY by a completed engine run; every
+failure of the tool itself lands on 3 or 4, never on a verdict, so a CI
+pipeline keying on $? can never mistake a crash or a disk error for a
+caught fabrication (mythos batchC-20260702).
 """
 
 from __future__ import annotations
@@ -24,8 +26,19 @@ from .certificate import issue_certificate, render_exhibit
 _EXIT = {"verified": 0, "altered": 1, "could_not_check": 2}
 
 
+class _GateParser(argparse.ArgumentParser):
+    """argparse exits 2 on usage errors, which collides with the
+    could_not_check verdict code. Usage errors are 3 per the documented
+    table (mythos batchC-20260702)."""
+
+    def error(self, message: str) -> None:  # noqa: A002 (argparse contract)
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        raise SystemExit(3)
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m cachet_verify", description=__doc__)
+    parser = _GateParser(prog="python -m cachet_verify", description=__doc__)
     what = parser.add_mutually_exclusive_group(required=True)
     what.add_argument("--claim", help="one claim to attest")
     what.add_argument("--draft-file", help="path to a draft; every statement is attested")
@@ -91,8 +104,14 @@ def main(argv: list[str] | None = None) -> int:
         draft, sources, draft_attestation, datetime.now(timezone.utc).isoformat()
     )
     if args.certificate:
-        with open(args.certificate, "w", encoding="utf-8") as f:
-            json.dump(cert, f, indent=2, ensure_ascii=False)
+        try:
+            with open(args.certificate, "w", encoding="utf-8") as f:
+                json.dump(cert, f, indent=2, ensure_ascii=False)
+        except OSError as e:
+            # An I/O failure must never masquerade as a verdict (exit 1 was
+            # the uncaught-exception default, colliding with "altered").
+            print(f"cannot write certificate {args.certificate}: {e}", file=sys.stderr)
+            return 3
         print(f"certificate written to {args.certificate}", file=sys.stderr)
     if args.exhibit:
         print(render_exhibit(cert))
@@ -105,5 +124,17 @@ def main(argv: list[str] | None = None) -> int:
     return _EXIT[cert["state"]]
 
 
+def _entry() -> int:
+    try:
+        return main()
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001 -- the last-resort gate guard
+        import traceback
+
+        traceback.print_exc()
+        return 4
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_entry())
