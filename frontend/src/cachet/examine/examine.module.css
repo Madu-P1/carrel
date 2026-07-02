@@ -12,7 +12,12 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-5);
-  background: rgb(14 14 16 / 72%);
+  /* Liquid Glass scrim (2026-07-02): the desk recedes behind a warm blur
+   * instead of a flat wash; the record panel itself stays opaque (a reading
+   * surface -- glass is chrome, never paper). */
+  background: rgb(14 14 16 / 58%);
+  backdrop-filter: blur(6px) saturate(115%);
+  -webkit-backdrop-filter: blur(6px) saturate(115%);
 }
 
 .panel {

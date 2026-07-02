@@ -65,10 +65,20 @@
      toasts stay green-free. Cachet has no green; the only accent is oxblood. */
   --state-ok: var(--ink-1);
   --color-success: var(--ink-1);
-  --glass-bg-strong: var(--sheet);
-  --glass-bg: var(--sheet);
+  /* Liquid Glass, warm-ink edition (operator directive 2026-07-02). Glass
+     lives ONLY on floating chrome (palette, toasts, overlay scrims, the
+     examination drawer): translucent warm ink over a heavy blur, with the
+     highlight family rebound to paper tones so shared glass primitives
+     (Toast, Tooltip) refract the Examination desk, never Carrel's cool
+     study theme. Reading and verdict surfaces stay still, opaque ink --
+     glass is chrome, trust is paper. */
+  --glass-bg-strong: rgba(34, 28, 22, 0.72);
+  --glass-bg: rgba(24, 20, 16, 0.58);
   --glass-border-strong: var(--hair);
   --glass-border: var(--hair-soft);
+  --glass-highlight: rgba(241, 233, 218, 0.07);
+  --glass-highlight-strong: rgba(241, 233, 218, 0.2);
+  --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
   --color-bg-base: var(--paper);
 
   /* Cold display override (cascades into verify/shelf within Cachet). */
@@ -537,20 +547,38 @@
   justify-content: center;
   align-items: flex-start;
   padding: 13vh 24px 24px;
-  background: rgba(28, 24, 20, 0.26);
+  background: rgba(28, 24, 20, 0.32);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   animation: cachetPaletteIn 120ms ease-out;
 }
 
+/* The palette is the flagship glass surface: the desk stays legible through
+   it, refracted warm. A hairline paper highlight rides the top edge (the desk
+   lamp catching the pane). Falls back to the opaque sheet where
+   backdrop-filter is unavailable, so legibility never depends on the blur. */
 .palettePanel {
   width: min(560px, 92vw);
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  background: var(--sheet);
+  background:
+    linear-gradient(160deg, var(--glass-highlight), transparent 46%),
+    var(--glass-bg-strong);
+  backdrop-filter: blur(26px) saturate(130%);
+  -webkit-backdrop-filter: blur(26px) saturate(130%);
   border: 1px solid var(--hair);
-  border-radius: 4px;
-  box-shadow: 0 24px 60px -28px rgba(28, 24, 20, 0.5);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight-strong),
+    var(--glass-shadow);
   overflow: hidden;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .palettePanel {
+    background: var(--sheet);
+  }
 }
 
 .paletteInput {

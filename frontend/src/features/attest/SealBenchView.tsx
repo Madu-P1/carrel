@@ -1,4 +1,6 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
+
+import { enterRoom } from "@/cachet/roomMotion";
 
 import { AttestationRecord } from "./AttestationRecord";
 import { coerceCertificate, verifySeal, type Certificate } from "./certificate";
@@ -27,6 +29,14 @@ export function SealBenchView() {
   const [raw, setRaw] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resultRef = useRef<HTMLDivElement | null>(null);
+
+  // The ruling settles in when a check lands (user-triggered, WAAPI,
+  // reduced-motion aware) -- the exhibit arrives, it does not pop.
+  const checkedFingerprint = state.kind === "checked" ? state.cert.fingerprint : null;
+  useEffect(() => {
+    if (checkedFingerprint !== null) enterRoom(resultRef.current);
+  }, [checkedFingerprint]);
 
   async function checkText(text: string) {
     if (!text.trim()) {
@@ -107,7 +117,7 @@ export function SealBenchView() {
       ) : null}
 
       {state.kind === "checked" ? (
-        <div className={styles.benchResult}>
+        <div className={styles.benchResult} ref={resultRef}>
           <p
             className={[
               styles.sealVerdict,
