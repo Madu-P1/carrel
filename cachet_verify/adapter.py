@@ -125,7 +125,34 @@ def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | N
             )
     if not candidates:
         return None
-    verdict, _section, _clause = adjudicate_clause_candidates(candidates)
+    # Cross-fact noise gate (mythos batchD, floor): a parametric_contradiction
+    # from a sentence sharing ZERO fact vocabulary with the claim is a
+    # different fact that happens to carry a different figure ("break fee
+    # $3M" vs "marketing budget $7M"). Left in, it either falsely accuses
+    # (when it is the only candidate) or supplies a wrong-clause detail on a
+    # true accusation. Presents / multi-value / not_found candidates all stay:
+    # the carrier logic (rule 1) must keep seeing every sentence.
+    claim_tokens = _content_tokens(claim)
+    filtered = [
+        cand
+        for cand in candidates
+        if not (
+            cand.verdict.disposition == "parametric_contradiction"
+            and claim_tokens
+            and not (claim_tokens & _content_tokens(cand.clause_text or ""))
+        )
+    ]
+    verdict, _section, _clause = adjudicate_clause_candidates(filtered or candidates)
+    if not filtered:
+        # Every candidate was cross-fact contradiction noise: nothing on this
+        # fact exists in the sources, so the honest verdict is a refusal, and
+        # the adjudicator never sees a candidate set that can accuse.
+        return (
+            "could_not_check",
+            "the sources carry different figures, but none concern this claim's "
+            "subject; nothing on this fact could be checked",
+            "not_found",
+        )
     return (
         _CLAUSE_STATE.get(verdict.disposition, "could_not_check"),
         verdict.detail,
@@ -139,7 +166,10 @@ _TOPIC_STOPWORDS = frozenset(
     """a an and are as at be been by for from in is it its no not notwithstanding
     of on or per shall should that the this to under was were will with within
     would foregoing applicable total totals totaled totalling amount amounts
-    pay payable paid states stated stating""".split()
+    pay payable paid states stated stating
+    million billion trillion thousand hundred mln bln mn bn mld
+    dollar dollars euro euros usd eur gbp pound percent percentage
+    day days week weeks month months year years annual annually""".split()
 )
 
 

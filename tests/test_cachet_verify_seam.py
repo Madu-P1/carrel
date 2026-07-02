@@ -59,6 +59,32 @@ class AdjudicatorSwallowTests(unittest.TestCase):
         )
         self.assertEqual("altered", a.state)
 
+    def test_cross_fact_contradiction_never_accuses(self) -> None:
+        # Floor fix (batch D): a different fact carrying a different figure is
+        # not a contradiction of THIS claim. Accusing "break fee $3M" because
+        # a marketing budget is $7M is a false red; the honest verdict refuses.
+        a = verify_claim(
+            "The break fee is $3 million.",
+            ["The marketing budget for the fall campaign is $7 million."],
+        )
+        self.assertEqual("could_not_check", a.state)
+
+    def test_true_accusation_names_the_same_fact_clause(self) -> None:
+        # Evidence quality (batch D): when a same-fact contradiction exists,
+        # the filing-grade detail must cite IT, not a cross-fact figure that
+        # happened to rank earlier.
+        a = verify_claim(
+            "The settlement fund totals $360 million.",
+            [
+                "Net revenue for the third quarter was $2.4 billion.\n"
+                "The settlement fund totals $180 million."
+            ],
+        )
+        self.assertEqual("altered", a.state)
+        detail = next(c.detail for c in a.checks if c.state == "altered")
+        self.assertIn("$180 million", detail)
+        self.assertNotIn("$2.4 billion", detail)
+
     def test_bare_value_coincidence_never_greens(self) -> None:
         # The claim's figure appears in an unrelated sentence. With no
         # relevance signal at this seam, confirming would be a C3 violation;
