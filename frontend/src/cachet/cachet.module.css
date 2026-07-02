@@ -1,54 +1,57 @@
 /*
- * Cachet shell — "The Instrument". A quiet legal frame: a thin left rail and a
- * canvas that carries the document and its verdict. Paper, always; near-zero
- * motion; one grave oxblood reserved for flags (it appears only inside the
- * verify surface, never in this chrome).
+ * Cachet shell — "The Docket" (redesign 2026-07-02, operator brief; thesis in
+ * docs/notes/2026-07-02-cachet-docket-redesign.md). Cachet is the filed
+ * instrument itself, in daylight: cold bond paper, iron-gall blue-black ink,
+ * a typewriter voice for procedure, a reading serif for the document, and
+ * exactly one color in the whole product — the red pen, reserved for
+ * deterministic flags inside the verify surface (never this chrome). The
+ * refusal is the hero: the only reversed-ink object anywhere. Near-zero
+ * motion, no glass — an instrument does not refract.
  *
- * The cold display face (Libre Caslon Display) is rebound here on the shell root
- * via --font-serif, so it cascades into the shared verify/shelf components when
- * they render inside Cachet, while Carrel keeps Instrument Serif. Operator
- * decision 2026-06-02; see docs/notes/cachet-display-font and tokens.css.
+ * The rail is pleading paper's ruled margin: a recessed column closed by a
+ * double rule, carrying the mark, the rooms, and the on-device attestation.
+ *
+ * The display face (Libre Caslon Display) stays rebound on the shell root via
+ * --font-serif (test-pinned in fontsWired.test.ts), now cast as the case
+ * caption: room titles only. Body reading is Charter; everything procedural
+ * (labels, hashes, actions) speaks the global --font-mono.
  */
 
 :global(html),
 :global(body) {
-  background: #13100c;
+  background: #f4f3ee;
 }
 
 .app {
-  /* 2026-06-17: operator overrode the whole-app-rebrand deferral. The Cachet
-     shell flips from warm paper to the dark "Examination", matched to the scoped
-     verify palette so the lectern input and the verdict read as one warm-ink
-     surface under a desk lamp. The register is unchanged: monochrome surfaces,
-     oxblood (lightened to read on dark) reserved for flags, no green. The --ink-*
-     tokens keep their meaning (the strong mark color: text, fills, the action
-     button) but invert to paper for the dark ground; the action button is now a
-     paper button with ink text (var(--paper)), never the reserved oxblood. */
-  --paper: #13100c;
-  --paper-2: #181410;
-  --sheet: #221c16;
-  --ink-1: #f1e9da;
-  --ink-2: #cabfac;
-  --ink-3: #a4977f;
-  --flag: #cf5b6b;
-  --hair: rgba(241, 233, 218, 0.14);
-  --hair-soft: rgba(241, 233, 218, 0.07);
+  /* The Docket palette. --paper is the page ground (cold bond, deliberately
+     not cream), --paper-2 the recessed margin/rail, --sheet the raised
+     document. Ink is iron-gall blue-black in three weights; --flag is the red
+     pen, the product's single color, reserved for deterministic flags. All
+     text/surface pairs clear WCAG AA (see the verifyScope contrast lock). */
+  --paper: #f4f3ee;
+  --paper-2: #efede6;
+  --sheet: #fbfaf7;
+  --ink-1: #1b1e25;
+  --ink-2: #454b57;
+  --ink-3: #5f6572;
+  --flag: #a3242e;
+  --hair: rgba(27, 30, 37, 0.16);
+  --hair-soft: rgba(27, 30, 37, 0.07);
 
   /* Rebind the design-system accent to ink. The reused primitives (Button,
    * links) default to Carrel's teal accent, which is a brand violation here:
    * Cachet has no green. The only chromatic accent allowed is the oxblood
    * --verify-flag, and that is reserved for flags inside the verify surface. */
   --color-accent: var(--ink-1);
-  --color-accent-hover: #fff8ec;
+  --color-accent-hover: #2a2e38;
   --accent: var(--ink-1);
-  --accent-pressed: #d9cfbb;
-  /* The dark re-tone makes --accent (the filled-button background) paper, so the
-     shared design-system Button's label must flip to ink too, mirroring the
-     .verifyScope rebind (VerifyView.module.css). Without this the primary Button
-     outside the verify surface (e.g. the Vault Move-confirm dialog) paints a
-     near-white label on a paper button (~1.17:1, invisible). */
-  --text-inverse: #1c1814;
-  --color-text-inverse: #1c1814;
+  --accent-pressed: #101319;
+  /* The action button is an ink bar with paper text — the strongest object a
+     filed instrument allows itself. --text-inverse must be paper so the shared
+     design-system Button's label reads on the ink fill (mirrors the
+     .verifyScope rebind in VerifyView.module.css). */
+  --text-inverse: #f4f3ee;
+  --color-text-inverse: #f4f3ee;
 
   /* Make the shared design-system primitives (Dialog, Button) wear the Cachet
      register instead of the study-app theme. These must be REDECLARED here, not
@@ -65,20 +68,18 @@
      toasts stay green-free. Cachet has no green; the only accent is oxblood. */
   --state-ok: var(--ink-1);
   --color-success: var(--ink-1);
-  /* Liquid Glass, warm-ink edition (operator directive 2026-07-02). Glass
-     lives ONLY on floating chrome (palette, toasts, overlay scrims, the
-     examination drawer): translucent warm ink over a heavy blur, with the
-     highlight family rebound to paper tones so shared glass primitives
-     (Toast, Tooltip) refract the Examination desk, never Carrel's cool
-     study theme. Reading and verdict surfaces stay still, opaque ink --
-     glass is chrome, trust is paper. */
-  --glass-bg-strong: rgba(34, 28, 22, 0.72);
-  --glass-bg: rgba(24, 20, 16, 0.58);
+  /* No glass in the Docket: an instrument does not refract. The shared
+     --glass-* variable NAMES are kept so glass-consuming primitives (Toast,
+     Tooltip, drawer, palette) keep working, but their VALUES are rebound to
+     near-opaque bond panels with a hard rule and a shallow document shadow.
+     Floating chrome is paper laid over paper, nothing more. */
+  --glass-bg-strong: rgba(251, 250, 247, 0.97);
+  --glass-bg: rgba(251, 250, 247, 0.94);
   --glass-border-strong: var(--hair);
   --glass-border: var(--hair-soft);
-  --glass-highlight: rgba(241, 233, 218, 0.07);
-  --glass-highlight-strong: rgba(241, 233, 218, 0.2);
-  --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+  --glass-highlight: rgba(27, 30, 37, 0.07);
+  --glass-highlight-strong: rgba(27, 30, 37, 0.2);
+  --glass-shadow: 0 24px 60px -24px rgba(27, 30, 37, 0.22);
   --color-bg-base: var(--paper);
 
   /* Cold display override (cascades into verify/shelf within Cachet). */
@@ -100,12 +101,13 @@
   overflow-x: clip;
 }
 
-/* ---------- thin left rail ---------- */
+/* ---------- the ruled margin (pleading paper's left column) ---------- */
 .rail {
   width: 64px;
   flex: 0 0 64px;
   background: var(--paper-2);
-  border-right: 1px solid var(--hair);
+  /* The signature rule: pleading paper closes its margin with a double line. */
+  border-right: 3px double var(--hair);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -282,8 +284,8 @@
      makes the writing surface read as a physical sheet on the dark desk rather
      than a void. Keep it faint; the sheet must stay quieter than the draft. */
   box-shadow:
-    inset 0 1px 0 rgba(241, 233, 218, 0.06),
-    0 16px 40px -20px rgba(0, 0, 0, 0.55);
+    inset 0 1px 0 rgba(27, 30, 37, 0.06),
+    0 16px 40px -20px rgba(27, 30, 37, 0.2);
   padding: 26px 30px 0;
   transition: box-shadow 0.16s ease, border-color 0.16s ease;
 }
@@ -291,8 +293,8 @@
 .sheet:focus-within {
   border-color: var(--hair);
   box-shadow:
-    inset 0 1px 0 rgba(241, 233, 218, 0.08),
-    0 18px 44px -20px rgba(0, 0, 0, 0.62);
+    inset 0 1px 0 rgba(27, 30, 37, 0.08),
+    0 18px 44px -20px rgba(27, 30, 37, 0.3);
 }
 
 .sheetArea {
@@ -547,7 +549,7 @@
   justify-content: center;
   align-items: flex-start;
   padding: 13vh 24px 24px;
-  background: rgba(28, 24, 20, 0.32);
+  background: rgba(27, 30, 37, 0.13);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   animation: cachetPaletteIn 120ms ease-out;
@@ -617,7 +619,7 @@
 }
 
 .paletteOptionActive {
-  background: rgba(241, 233, 218, 0.07);
+  background: rgba(27, 30, 37, 0.07);
   color: var(--ink-1);
 }
 
@@ -705,7 +707,7 @@
 }
 .sourceError {
   margin-top: var(--space-3, 12px);
-  color: var(--flag, #7a2230);
+  color: var(--flag, #8c1e27);
   font-size: 13px;
 }
 
@@ -822,7 +824,7 @@
   color: var(--ink-1);
 }
 .lecternSourceError {
-  color: var(--flag, #7a2230);
+  color: var(--flag, #8c1e27);
   font-size: 13px;
   font-family: var(--font-serif-body);
 }
@@ -935,7 +937,7 @@
 .vaultTitleMark {
   flex: none;
   display: block;
-  filter: drop-shadow(0 3px 5px rgba(40, 12, 18, 0.2));
+  filter: drop-shadow(0 3px 5px rgba(163, 36, 46, 0.12));
 }
 
 /* ---------- action cards (create vault / add a record) ---------- */
@@ -966,7 +968,7 @@
 .vaultActionCard:hover {
   border-color: var(--ink-3);
   background: var(--sheet);
-  box-shadow: 0 6px 18px -14px rgba(28, 24, 20, 0.4);
+  box-shadow: 0 6px 18px -14px rgba(27, 30, 37, 0.16);
 }
 .vaultActionCard[data-busy="true"] {
   cursor: progress;
@@ -1057,7 +1059,7 @@
   border-color: var(--ink-3);
   background: var(--sheet);
   transform: translateY(-2px);
-  box-shadow: 0 14px 30px -20px rgba(28, 24, 20, 0.45);
+  box-shadow: 0 14px 30px -20px rgba(27, 30, 37, 0.18);
 }
 .vaultCardThumb:focus-visible {
   outline: 2px solid var(--ink-1);
@@ -1065,7 +1067,7 @@
 }
 .vaultCardMark {
   display: block;
-  filter: drop-shadow(0 5px 9px rgba(28, 24, 20, 0.22));
+  filter: drop-shadow(0 5px 9px rgba(27, 30, 37, 0.09));
 }
 .vaultCardMeta {
   padding: 13px 4px 0;
@@ -1138,7 +1140,7 @@
 .vaultDetailMark {
   flex: none;
   display: block;
-  filter: drop-shadow(0 2px 3px rgba(28, 24, 20, 0.2));
+  filter: drop-shadow(0 2px 3px rgba(27, 30, 37, 0.08));
 }
 .vaultDetailName {
   flex: 1;

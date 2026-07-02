@@ -36,48 +36,44 @@
   display: none;
 }
 
-/* Scoped token overrides. Applied to the verify root so the whole surface
- * reads as a single sheet of paper on the dark desk. Chromatic energy is
- * reserved for --verify-flag; the functional --accent goes quiet ink, and
- * --text-inverse flips to paper so the ink-filled primary button stays
- * legible. */
-/* 2026-06-17: operator overrode the 2026-05-29 whole-app-rebrand deferral (funnel
- * opening, the verify surface is the validation demo's eyeline). The scoped verify
- * mode is re-toned from warm paper to the dark "Examination": the document is now
- * a warm-ink sheet under a desk lamp, not paper on a desk. The contract is
- * unchanged: surfaces stay monochrome, oxblood (lightened to read on dark) is the
- * single accent and is reserved for flags, no green, and no keyframe motion. The
- * AA lock in verifyScope.test.ts is met by the new values, not relaxed. */
+/* Scoped token overrides — "The Docket" (redesign 2026-07-02; thesis in
+ * docs/notes/2026-07-02-cachet-docket-redesign.md). The verify surface is a
+ * recessed examination tray (--surface-1) on the bond page, with the document
+ * sheets (--surface-2, the brightest value) rising from it. Iron-gall
+ * blue-black ink in three AA-locked weights; the red pen (--verify-flag) is
+ * the product's only color and belongs to deterministic flags alone; the
+ * functional --accent is an ink bar with paper text. The contract is
+ * unchanged: monochrome surfaces, no green, no keyframe motion, and the AA
+ * lock in verifyScope.test.ts is met by the new values, not relaxed. */
 .verifyScope {
-  background: #181410;
+  background: #efede6;
   color: var(--text-primary);
   border-radius: var(--radius-3);
   box-shadow:
-    inset 0 1px 0 rgb(241 233 218 / 6%),
-    0 2px 10px rgb(0 0 0 / 40%),
-    0 30px 70px rgb(0 0 0 / 45%);
+    inset 0 1px 0 rgb(27 30 37 / 7%),
+    0 2px 10px rgb(27 30 37 / 14%),
+    0 30px 70px rgb(27 30 37 / 16%);
 
-  --surface-0: #13100c;
-  --surface-1: #181410;
-  --surface-2: #221c16;
+  --surface-0: #f4f3ee;
+  --surface-1: #efede6;
+  --surface-2: #fbfaf7;
 
-  --text-primary: #f1e9da;
-  --text-secondary: #cabfac;
+  --text-primary: #1b1e25;
+  --text-secondary: #454b57;
   /* AA: clears 4.5:1 on every warm-ink surface at 12px (locked in verifyScope.test.ts). */
-  --text-tertiary: #a4977f;
+  --text-tertiary: #5f6572;
 
-  --hairline: rgb(241 233 218 / 9%);
+  --hairline: rgb(27 30 37 / 12%);
 
-  /* The functional accent inverts for the dark desk: the ink-filled primary
-   * button becomes a paper button with ink text, so an action never wears the
-   * oxblood the flag reserves. */
-  --accent: #f1e9da;
-  --accent-hover: #fff8ec;
-  --text-inverse: #1c1814;
+  /* The functional accent: an ink bar with paper text — the strongest object
+   * a filed instrument allows itself. An action never wears the red pen. */
+  --accent: #1b1e25;
+  --accent-hover: #2a2e38;
+  --text-inverse: #f4f3ee;
 
-  /* The single grave accent: a proofreader's oxblood, lightened so it reads on
-   * the dark desk, flags only. */
-  --verify-flag: #cf5b6b;
+  /* The red pen: a barrister's correction red, deterministic flags only.
+   * "It is the red pen, not the pen." */
+  --verify-flag: #a3242e;
 
   /* No green on the verify surface, even from shared primitives: Badge's
    * success tone (ProvenanceBadge, claude provider) resolves --color-success
@@ -283,19 +279,21 @@
   gap: var(--space-3);
 }
 
-/* Ordering cue: flags carry an oxblood left edge, the honest refusal a quiet
- * ink edge, so the not-confirmed set reads first. */
+/* Ordering cue (the Docket): flags carry the red pen's edge; the honest
+ * refusal carries a DOUBLE ink rule — the heaviest edge in the set, with zero
+ * chroma, because the withholding deserves more presence than a pass and more
+ * gravity than an alarm (invariant 2). */
 .verdictCard[data-tier="flag"] {
   border-left: 2px solid var(--verify-flag);
 }
 
 .verdictCard[data-tier="refusal"] {
-  border-left: 2px solid var(--text-tertiary);
+  border-left: 3px double var(--text-primary);
 }
 
 /* Assistive: an AI judgment about a real source (a holding / proposition
  * match), not a deterministic fact. Rendered "in pencil", a quiet dotted ink
- * edge that reads "for your review", never the confident oxblood of a hard
+ * edge that reads "for your review", never the confident red pen of a hard
  * flag. A false-confident holding shown as a flag ends careers. */
 .verdictCard[data-tier="assistive"] {
   border-left: 2px dotted var(--text-tertiary);
@@ -321,8 +319,8 @@
 }
 
 /* "supported" is the quiet, unmarked default; the absence of a flag is the
- * pass. Flags wear the single oxblood accent; the refusal is grave but neutral
- * ink, never an accusation. No green VERIFIED badge by design. */
+ * pass. Flags wear the red pen — the product's only color; the refusal wears
+ * the registrar's stamp. No green VERIFIED badge by design. */
 .badgePass {
   background: var(--surface-1);
   color: var(--text-secondary);
@@ -335,19 +333,26 @@
   border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
 }
 
-/* Assistive badge: a dotted, achromatic "pencil" pill. Distinct from the
- * oxblood flag (no chromatic accent) and from the refusal (a dotted border,
- * not solid): a provisional note for the lawyer's review, not a verdict. */
+/* Assistive badge: a pencil note among stamps. Lowercase italic mono — a
+ * different KIND of thing from the uppercase deterministic register, so an AI
+ * judgment can never be dressed as a hard fact (invariant 4). */
 .badgeAssistive {
   background: transparent;
   color: var(--text-primary);
   border: 1px dotted var(--text-tertiary);
+  text-transform: none;
+  font-style: italic;
+  font-weight: 400;
 }
 
+/* The registrar's stamp: the ONLY reversed-ink object in the product. Paper
+ * small caps on solid ink — maximum typographic gravity, zero chroma. The
+ * refusal is the hero (invariant 2): deliberate, trustworthy withholding. */
 .badgeRefusal {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border: 1px solid var(--hairline);
+  background: var(--text-primary);
+  color: var(--surface-1);
+  border: 1px solid var(--text-primary);
+  letter-spacing: 0.09em;
 }
 
 /* Streaming-only: a claim whose case check is still in flight. Quiet ink, no
@@ -657,13 +662,13 @@
      Save buttons and left litigators unable to find the way out. A bordered pill
      in primary ink reads unmistakably as the close control. */
   color: var(--text-primary);
-  border: 1px solid var(--border-default, rgba(28, 25, 23, 0.24));
+  border: 1px solid var(--border-default, rgba(27, 30, 37, 0.1));
   border-radius: 6px;
 }
 
 .inspectorClose:hover {
   color: var(--text-primary);
-  background: var(--surface-hover, rgba(28, 25, 23, 0.06));
+  background: var(--surface-hover, rgba(27, 30, 37, 0.05));
 }
 
 .inspectorClose:focus-visible {
@@ -806,7 +811,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: rgb(14 14 16 / 72%);
+  background: rgb(27 30 37 / 30%);
 }
 
 .sourcePanel {
@@ -949,7 +954,7 @@
      let underlying content (the provenance badge) bleed through behind the
      toolbar controls; aria-modal already makes the background inert, so the
      glimpse bought nothing and collided with the Close / Save actions. */
-  background: rgb(14 14 16);
+  background: rgb(231 229 222);
 }
 
 .certToolbar {
@@ -1931,7 +1936,7 @@
   backdrop-filter: blur(28px) saturate(120%);
   -webkit-backdrop-filter: blur(28px) saturate(120%);
   border-left: 1px solid var(--hairline);
-  box-shadow: -18px 0 40px rgb(40 30 18 / 10%);
+  box-shadow: -18px 0 40px rgb(27 30 37 / 7%);
   transform: translateX(100%);
   /* visibility:hidden when closed removes the offscreen drawer (and its Close
      button) from the tab order, resolving the focusable-inside-aria-hidden
