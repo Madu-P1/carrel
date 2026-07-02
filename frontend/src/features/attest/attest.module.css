@@ -75,6 +75,7 @@
   text-decoration-color: var(--hair);
   text-underline-offset: 4px;
   cursor: pointer;
+  transition: color 0.12s ease;
 }
 
 .benchFile:hover {

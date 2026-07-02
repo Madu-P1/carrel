@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { ErrorBoundary, ToastHost } from "@/design-system";
 import { appShell, navigateTo, pathnameFromRoute } from "@/app/shell/useAppShell";
@@ -9,6 +9,7 @@ import { ShelfView } from "@/features/shelf/ShelfView";
 
 import { CommandPalette } from "./CommandPalette";
 import { buildCommands } from "./commands";
+import { enterRoom } from "./roomMotion";
 import { CachetRail } from "./CachetRail";
 import { DocumentExamination } from "./examine/DocumentExamination";
 import { LecternView } from "./LecternView";
@@ -89,6 +90,9 @@ export function CachetApp() {
   const route = appShell.currentRoute.value;
   const path = pathnameFromRoute(route);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const canvasRef = useRef<HTMLElement | null>(null);
+  const roomRef = useRef<HTMLDivElement | null>(null);
+  const prevPath = useRef<string | null>(null);
 
   // SM-V7: ⌘K (or Ctrl+K) opens the command spine from anywhere in the shell.
   useEffect(() => {
@@ -102,11 +106,39 @@ export function CachetApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Room handoff: the canvas persists across the unmount-on-nav route swap, so
+  // without this a room opens scrolled to wherever the LAST room left off and
+  // focus stays on a control that no longer exists. On every path change:
+  // scroll home, settle the new room in (WAAPI, reduced-motion aware), and move
+  // focus to the canvas so keyboard and screen-reader users land where the eye
+  // does. The room is a `key`ed wrapper (roomRef), so it is a single stable
+  // element per route that the room's own internal re-renders never replace,
+  // which the entrance animation needs to target reliably. Skipped on first
+  // paint (never steal the initial focus).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Only on a genuine route CHANGE, never on the initial mount (prevPath is
+    // null then) and never on a re-render that leaves the path unchanged. A
+    // path-comparison guard is correct even when the initial route settles over
+    // more than one render, which a simple first-paint flag mis-handled.
+    const changed = prevPath.current !== null && prevPath.current !== path;
+    prevPath.current = path;
+    if (!changed) return;
+    canvas.scrollTop = 0;
+    enterRoom(roomRef.current);
+    canvas.focus?.({ preventScroll: true });
+  }, [path]);
+
   return (
     <div className={styles.app}>
       <CachetRail currentPath={path} />
-      <main className={styles.canvas}>
-        <ErrorBoundary resetKey={route}>{renderRoute(route)}</ErrorBoundary>
+      <main className={styles.canvas} ref={canvasRef} tabIndex={-1}>
+        <ErrorBoundary resetKey={route}>
+          <div key={path} ref={roomRef} className={styles.room}>
+            {renderRoute(route)}
+          </div>
+        </ErrorBoundary>
       </main>
       {paletteOpen ? (
         <CommandPalette

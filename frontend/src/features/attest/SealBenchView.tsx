@@ -26,9 +26,9 @@ export function SealBenchView() {
   const [state, setState] = useState<BenchState>({ kind: "empty" });
   const [raw, setRaw] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function checkText(text: string) {
-    setRaw(text);
     if (!text.trim()) {
       setState({ kind: "empty" });
       return;
@@ -48,10 +48,23 @@ export function SealBenchView() {
     setState({ kind: "checked", cert, intact: await verifySeal(cert) });
   }
 
+  function onType(text: string) {
+    // The textarea echoes instantly; the parse + digest settles 140ms behind
+    // the last keystroke so typing into a large pasted record never stutters.
+    setRaw(text);
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      void checkText(text);
+    }, 140);
+  }
+
   async function onFile(files: FileList | null | undefined) {
     const file = files && files[0];
     if (!file) return;
-    await checkText(await file.text());
+    const text = await file.text();
+    setRaw(text);
+    await checkText(text);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -73,7 +86,7 @@ export function SealBenchView() {
           placeholder="Paste a certificate (the JSON a Cachet surface issued)"
           aria-label="Certificate to check"
           spellcheck={false}
-          onInput={(e) => void checkText((e.target as HTMLTextAreaElement).value)}
+          onInput={(e) => onType((e.target as HTMLTextAreaElement).value)}
         />
         <label className={styles.benchFile}>
           <input

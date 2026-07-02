@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useModalDialog } from "@/design-system";
 
 import { filterCommands, type Command } from "./commands";
+import { enterPanel } from "./roomMotion";
 import styles from "./cachet.module.css";
 
 /**
@@ -29,6 +30,13 @@ export function CommandPalette({
   // restoring focus to the opener. The combobox navigates by aria-activedescendant,
   // so the trap with one focusable simply keeps focus on the input.
   const scrimRef = useModalDialog<HTMLDivElement>(true);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // The arrival settle (Raycast cadence): WAAPI so reduced-motion is consulted
+  // at open time; the combobox is interactive from the first frame either way.
+  useEffect(() => {
+    enterPanel(panelRef.current);
+  }, []);
 
   const results = useMemo(() => filterCommands(commands, query), [commands, query]);
   // Keep the active index in range as the result set shrinks while typing.
@@ -82,6 +90,7 @@ export function CommandPalette({
       }}
     >
       <div
+        ref={panelRef}
         className={styles.palettePanel}
         role="dialog"
         aria-modal="true"
