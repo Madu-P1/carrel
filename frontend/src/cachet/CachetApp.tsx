@@ -12,6 +12,7 @@ import { buildCommands } from "./commands";
 import { CachetRail } from "./CachetRail";
 import { DocumentExamination } from "./examine/DocumentExamination";
 import { LecternView } from "./LecternView";
+import { SealBenchView } from "@/features/attest/SealBenchView";
 import { VaultView } from "./VaultView";
 import { SettingsView } from "./SettingsView";
 import styles from "./cachet.module.css";
@@ -67,6 +68,9 @@ function renderRoute(route: string) {
     // which is the lectern.
     const briefId = briefFromRoute(route);
     return briefId ? <BriefReader briefId={briefId} /> : <LecternView />;
+  }
+  if (path.startsWith("/bench")) {
+    return <SealBenchView />;
   }
   if (path.startsWith("/shelf")) {
     return <ShelfView />;

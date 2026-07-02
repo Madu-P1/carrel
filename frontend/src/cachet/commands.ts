@@ -57,6 +57,7 @@ export function buildCommands(path: string, close: () => void): Command[] {
   commands.push(
     { id: "new", title: "New verification", hint: "Lectern", keywords: "paste draft start home", run: go("/") },
     { id: "go-verify", title: "Go to Verify", keywords: "draft examine", run: go("/verify") },
+    { id: "go-bench", title: "Open the Seal Bench", hint: "Check a record", keywords: "certificate seal verify offline companion", run: go("/bench") },
     { id: "go-shelf", title: "Open the Shelf", hint: "Sealed briefs", keywords: "saved record history", run: go("/shelf") },
     { id: "go-vault", title: "Open the Vault", keywords: "record material vault folder sources", run: go("/vault") },
     { id: "go-settings", title: "Open Settings", keywords: "key preferences", run: go("/settings") }
