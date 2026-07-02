@@ -134,6 +134,20 @@ _QUANTITY = re.compile(
 _GROUPED_COUNT = re.compile(r"\b\d{1,3}(?:,\d{3})+\b")
 _PLAIN_COUNT = re.compile(r"\b\d{4,9}\b")
 
+# EU-format ambiguity guards (adversarial battery, batch F). "1.000" is one
+# thousand in Frankfurt and exactly one in Boston; "1,5" is one-and-a-half in
+# Paris and a stray comma in New York. A deterministic engine must not pick a
+# locale: dot-grouped numbers refuse, and a number token that is really the
+# TAIL of a larger EU-decimal ("5" inside "1,5") must not anchor at all.
+_DOT_GROUPED = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
+_NUMBER_TAIL = re.compile(r"\d[.,]$")
+
+
+def _ambiguous_number(text: str, start: int, num: str) -> bool:
+    if _DOT_GROUPED.match(num):
+        return True
+    return bool(_NUMBER_TAIL.match(text[max(0, start - 2) : start]))
+
 
 @dataclass(frozen=True)
 class ResidueAnchor:
@@ -171,6 +185,8 @@ def extract_residue_anchors(
     for m in _QUANTITY.finditer(text):
         if not free(m.start(), m.end()):
             continue
+        if _ambiguous_number(text, m.start("num"), m.group("num")):
+            continue
         dimension, factor = _UNIT_TABLE[m.group("unit").lower()]
         anchors.append(
             ResidueAnchor(
@@ -189,6 +205,8 @@ def extract_residue_anchors(
             if not free(m.start(), m.end()):
                 continue
             if pattern is _PLAIN_COUNT and _year_shaped(m.group(0)):
+                continue
+            if _ambiguous_number(text, m.start(), m.group(0)):
                 continue
             anchors.append(
                 ResidueAnchor(
