@@ -8,7 +8,7 @@ The kernel adapter (cachet_verify: legal-engine parametrics + kernel residue det
 - **False greens: 0** (floor: 0)
 - **False accusations: 0** (floor: 0)
 - Faithful confirmed: 5/5
-- Honest refusal on uncheckable/blind-spot cases: 4/4
+- Honest refusal on uncheckable/blind-spot cases: 5/5
 
 ## Per-case results
 
@@ -34,6 +34,7 @@ The kernel adapter (cachet_verify: legal-engine parametrics + kernel residue det
 | P2 | operations | altered | flagged | `altered` | grouped-count drift: CLOSED by the kernel residue detector, batch A |
 | G1 | operations | uncheckable | refused | `could_not_check` | ratio notation is NOT an anchored type yet: documented gap, must refuse |
 | G2 | medical | uncheckable | refused | `could_not_check` | word-form frequency is NOT an anchored type yet: documented gap, must refuse |
+| G4 | finance | uncheckable | refused | `could_not_check` | synonym-subject alteration (fine/penalty): the token gate cannot tell it from a cross-fact figure without reopening the break-fee false accusation (mythos batchD, refuted). Deliberate over-refusal; documented gap. |
 | G3 | medical | uncheckable | refused | `could_not_check` | temperature units are NOT anchored yet (unit ambiguity risk): documented gap |
 | Q1 | journalism | altered | flagged | `altered` | quote with a swapped tail: invented words attributed to a speaker |
 | Q2 | journalism | faithful | supported | `verified` | verbatim quoted phrase |

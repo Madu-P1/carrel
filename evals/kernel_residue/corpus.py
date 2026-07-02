@@ -201,6 +201,19 @@ CASES: list[Case] = [
         note="word-form frequency is NOT an anchored type yet: documented gap, must refuse",
     ),
     Case(
+        id="G4",
+        domain="finance",
+        kind="clause",
+        truth="uncheckable",
+        claim="The fine was $5 million.",
+        source="The penalty was $8 million.",
+        note=(
+            "synonym-subject alteration (fine/penalty): the token gate cannot tell it "
+            "from a cross-fact figure without reopening the break-fee false accusation "
+            "(mythos batchD, refuted). Deliberate over-refusal; documented gap."
+        ),
+    ),
+    Case(
         id="G3",
         domain="medical",
         kind="clause",
