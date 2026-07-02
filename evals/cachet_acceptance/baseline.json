@@ -1,0 +1,45 @@
+{
+  "catastrophic_errors": [],
+  "corpora": [
+    {
+      "definite": 1,
+      "definite_rate": 0.125,
+      "name": "corpus",
+      "total": 8
+    },
+    {
+      "definite": 4,
+      "definite_rate": 0.307692,
+      "name": "contract_corpus",
+      "total": 13
+    },
+    {
+      "definite": 0,
+      "definite_rate": 0.0,
+      "name": "collision_corpus",
+      "total": 387
+    },
+    {
+      "definite": 0,
+      "definite_rate": 0.0,
+      "name": "injection_corpus",
+      "total": 130
+    },
+    {
+      "definite": 2,
+      "definite_rate": 0.5,
+      "name": "polarity_collision_corpus",
+      "total": 4
+    },
+    {
+      "definite": 22,
+      "definite_rate": 0.333333,
+      "name": "recall_corpus",
+      "total": 66
+    }
+  ],
+  "totals": {
+    "false_accusations": 0,
+    "false_greens": 0
+  }
+}

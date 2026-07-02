@@ -53,14 +53,16 @@ class ParametricContradictionTests(unittest.TestCase):
         self.assertEqual("parametric_contradiction", v.disposition)
         self.assertEqual("money", v.anchor_type)
 
-    def test_word_form_money_match_is_not_affirmed(self) -> None:
-        # The spelled-out amount agrees with the numeral, but ADR-0013 scope-out never
-        # affirms a figure; this is could-not-check, not a green.
+    def test_word_form_money_match_affirms_under_unit_identity(self) -> None:
+        # Harvey doctrine ruling 2026-06-29: spelled-out amount == numeral, SAME
+        # currency, is a lexical-numeric parse (not a conversion) -> affirm. The
+        # cross-unit / approximate / unit-less / currency-mismatch guards still refuse
+        # (see harvey_guards.jsonl + ADR-0013, narrowed).
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("not_found", v.disposition)
+        self.assertEqual("present", v.disposition)
 
     def test_duration_mismatch_is_a_contradiction(self) -> None:
         v = verify_claim_against_clause(
@@ -133,15 +135,16 @@ class PresentTests(unittest.TestCase):
         self.assertEqual("present", v.disposition)
         self.assertEqual("quote", v.anchor_type)
 
-    def test_word_form_money_match_routes_to_could_not_check(self) -> None:
-        # Used to assert filing-grade "present" detail accuracy for a word-form match.
-        # ADR-0013 scope-out: no figure present, so it is an honest could-not-check.
+    def test_word_form_money_match_affirms_under_unit_identity(self) -> None:
+        # Harvey doctrine ruling 2026-06-29: "one million dollars" == "$1,000,000" is a
+        # lexical-numeric parse (same number, SAME currency), not a conversion -> affirm.
+        # Cross-unit / approximate / unit-less / currency-mismatched word-forms still
+        # route to could-not-check (or a disagreement for currency); see ADR-0013.
         v = verify_claim_against_clause(
             "The liability cap is one million dollars.",
             "liability is capped at $1,000,000 in the aggregate",
         )
-        self.assertEqual("not_found", v.disposition)
-        self.assertIn("not independently verified", v.detail)
+        self.assertEqual("present", v.disposition)
 
     def test_cross_unit_tolerant_duration_match_is_not_affirmed(self) -> None:
         # A tolerant cross-unit duration match used to read "present (consistent with)".
@@ -864,10 +867,14 @@ class ValueCarrierVetoTests(unittest.TestCase):
     def _candidates(self) -> list[ClauseCandidate]:
         accuser_v = verify_claim_against_clause(self.CLAIM, self.ACCUSER)
         carrier_v = verify_claim_against_clause(self.CLAIM, self.CARRIER)
-        # Preconditions that make the test exercise the CARRIER path: the old
-        # presents-only veto sees no present here and would accuse.
+        # Precondition update 2026-06-29: subject-aware binding now resolves the
+        # carrier to `present` (the claim's $20M operating-losses is verbatim AND
+        # subject-matched; the $460M binds to a different subject — pre-tax income).
+        # The veto STILL fires (the test below asserts the adjudicator returns
+        # conflicting_clauses, not parametric_contradiction), so the
+        # no-false-accusation guarantee from the Kellogg incident is preserved.
         assert accuser_v.disposition == "parametric_contradiction"
-        assert carrier_v.disposition == "multi_value_unverifiable"
+        assert carrier_v.disposition == "present"
         return [
             ClauseCandidate(accuser_v, None, self.ACCUSER, True),
             ClauseCandidate(carrier_v, None, self.CARRIER, True),
@@ -1431,6 +1438,85 @@ class SubjectBoundPercentTests(unittest.TestCase):
             "Section 9.2. The royalty is 50% of fees over the prior 12 months.",
         )
         self.assertEqual("present", v.disposition)
+
+
+class CorpusFlipAdversarialTwins(unittest.TestCase):
+    """Held-out adversarial twins that LOCK the subject-binding rules introduced
+    to lift the corpus definite-rate from 0.20 to 1.00.
+
+    For every case flipped from could_not_verify to a definite verdict there is
+    one twin here: an altered-but-plausible variant where a single binding detail
+    (defined-term label, subject noun, or following qualifier) is subtly wrong so
+    the correct answer is a refusal (could_not_verify).  These twins guarantee the
+    new rules cannot be trivially gamed and that the engine still fails safe when
+    the evidence does not actually support a definite verdict.
+    """
+
+    # --- Twin for quantum-25pct-supported ---
+    # Rule locked: "Amount A" preceding a percent binds the subject; clause's
+    # "Amount A = 25%" confirms the claim's "Amount A = 25%" → present.
+    # Adversarial: ONE label changed — "Amount B" instead of "Amount A".
+    # "Amount B" is not confirmed in the clause → could_not_verify.
+    def test_wrong_defined_term_label_is_refused_not_confirmed(self) -> None:
+        v = verify_claim_against_clause(
+            "Amount B is quantified in 25% of the extra margins.",
+            (
+                "Formula: Amount A will be calculated only on a portion of the profit "
+                "exceeding a 10% - ordinary - level of profitability - the extra margins. "
+                "Amount A determination - Amount A will be then quantified in 25% of the "
+                "extra margins."
+            ),
+        )
+        self.assertNotEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    # --- Twin for extra-margins-10pct-supported ---
+    # Rule locked: "profit" preceding "10%" in the claim binds subject "profit";
+    # clause must confirm "profit = 10%" → present.
+    # Adversarial: clause has "Amount A is quantified in 10%" (subject "amount a",
+    # not "profit") → different subject, no confirmation → could_not_verify.
+    def test_preceding_subject_mismatch_is_refused_not_confirmed(self) -> None:
+        v = verify_claim_against_clause(
+            "The extra margins are the profit exceeding 10% profitability.",
+            "Amount A is quantified in 10% of the extra margins.",
+        )
+        self.assertNotEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    # --- Twin for scope-20bn-supported ---
+    # Rule locked: "EUR 20 billion in Revenues" → following "revenues" binds
+    # subject "revenue" on the magnitude anchor; same subject, same value → present.
+    # Adversarial: "in revenues" qualifier removed from the claim so no subject
+    # binding occurs; ADR-0013 scope-out fires → could_not_verify.
+    def test_figure_without_following_qualifier_is_scope_out_not_confirmed(self) -> None:
+        v = verify_claim_against_clause(
+            "The scope threshold is EUR 20 billion.",
+            (
+                "The MNE will need to exceed the scope thresholds of EUR 20 billion "
+                "in Revenues and have profitability exceeding 10%"
+            ),
+        )
+        # Without the "in revenues" qualifier the claim magnitude anchor has no
+        # subject → subject-aware path skips → ADR-0013 scope-out → not_found.
+        self.assertNotEqual("present", v.disposition)
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+
+    # --- Twin for coincidental-same-value-different-label-guard ---
+    # Rule locked: claim "revenue … EUR 20bn" binds subject "revenue"; clause
+    # "revenue = EUR 7bn" mismatches → contradiction.
+    # Adversarial: ONE subject changed — "profit" instead of "revenue" in the
+    # claim.  "profit" does not appear in the clause → no same-subject match →
+    # value-only multi-value fires → could_not_verify.
+    def test_unlabeled_claim_subject_does_not_contradict_mismatched_clause(self) -> None:
+        v = verify_claim_against_clause(
+            "The profit threshold is EUR 20 billion.",
+            (
+                "The MNE has costs of EUR 20 billion and revenue of EUR 7 billion "
+                "in the relevant period."
+            ),
+        )
+        self.assertNotEqual("parametric_contradiction", v.disposition)
+        self.assertNotEqual("present", v.disposition)
 
 
 if __name__ == "__main__":

@@ -233,3 +233,26 @@ false green and must not be used as a rollback.
   [ADR-0009](ADR-0009-fail-loud-on-high-stakes-flows.md) (fail loud).
 - Decided via the council (Harvey + Vulcan + Forge adversary) and a focused Vulcan
   pass on the proposes-disposes contract, 2026-06-15.
+
+
+## Amendment 2026-06-29 - word-form and cross-unit (Harvey doctrine ruling)
+
+The autonomous answer-quality hardening, chasing the acceptance gate's definite-rate,
+relaxed ADR-0013's blanket word-form refusal. A pre-merge review caught it and Harvey
+(the engine-doctrine advisor) ruled. The rule is now NARROWED, not blanket-reverted:
+
+- AFFIRM word-form money ONLY under lexical-numeric + currency identity: claim and
+  clause parse to the identical (numeric value, currency) pair by notation-decoding
+  alone - same number, same currency, no approximation token, no conversion. Gate it
+  behind a verbatim currency match: different currency -> disagreement; missing or
+  ambiguous currency / grouping locale -> could-not-check. Ship every money green with
+  a scope line naming what was NOT checked (operative vs per-claim vs aggregate,
+  carve-outs). e.g. "one million dollars" == "$1,000,000" -> supported.
+- REFUSE (could-not-check) anything needing a unit CONVERSION, tolerance, or
+  approximation, even when arithmetically true: "12 months" does not affirm "1 year";
+  "half a year"; "a million" (article); "approximately ..."; unit-less "one million".
+
+Reason (Harvey): reading the same number written two ways is detection and stays
+green; applying a conversion rule is the engine deciding equivalence the buyer cannot
+see, and a verifier whose value is "green means green" cannot afford a silent
+"I did the math for you." Guard cases: evals/cachet_acceptance/harvey_guards.jsonl.

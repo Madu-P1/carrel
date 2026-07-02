@@ -36,6 +36,7 @@ from services.legal.anchors import (
     extract_anchors,
     grant_noun_pattern,
     parse_grouped_number,
+    polarity_flip_pairs,
     related_jurisdictions,
 )
 from ai.subject_labeler import get_subject_labeler
@@ -453,6 +454,16 @@ def _noun_objects(text: str, noun_class: str) -> frozenset[str]:
     return frozenset(words)
 
 
+def _grant_noun_count(text: str, noun_class: str) -> int:
+    """How many times a grant noun of ``noun_class`` occurs in ``text``.
+
+    One occurrence means there is a single grant of that kind in play, so a bare
+    side cannot be referring to some OTHER grant of the class — the disambiguation
+    that lets an asymmetric polarity FLIP stand as a contradiction.
+    """
+    return len(re.findall(rf"\b(?:{grant_noun_pattern(noun_class)})\b", text, re.IGNORECASE))
+
+
 def _polarity_pass(
     claim_hits: list, clause_hits: list, where: str, claim: str, clause: str
 ) -> tuple[ClauseVerdict | None, ClauseVerdict | None, ClauseVerdict | None, ClauseVerdict | None]:
@@ -530,7 +541,23 @@ def _polarity_pass(
         mutually_different = bool(claim_objects - clause_objects) and bool(
             clause_objects - claim_objects
         )
-        if asymmetric or mutually_different:
+        # A pure asymmetry (one side names subject matter, the other is bare) is an
+        # alignment gap ONLY when the bare side could be talking about a DIFFERENT grant
+        # of this noun class than the named one. With exactly one grant noun of the class
+        # on each side there is a single grant in play, so a polarity FLIP is a real
+        # contradiction the reader must see — the same "one license in play" logic that
+        # already lets a both-bare flip stand. A same-sign MATCH is still refused even
+        # then (confirming a green from an unaligned subject would be a guess, the round-2
+        # asymmetry rule), so only the opposite-sign flip is freed. mutually_different
+        # (each side names a DIFFERENT subject) always refuses.
+        bare_flip_is_catch = (
+            asymmetric
+            and not mutually_different
+            and c_vals[0] != k_vals[0]
+            and _grant_noun_count(claim, noun) == 1
+            and _grant_noun_count(clause, noun) == 1
+        )
+        if (asymmetric or mutually_different) and not bare_flip_is_catch:
             if multi is None:
                 multi = ClauseVerdict(
                     "multi_value_unverifiable",
@@ -579,6 +606,84 @@ def _normalize_subject(s: str) -> str:
     return s.strip().lower()
 
 
+def _group_by_subject(hits: list[Anchor]) -> dict[str, list[Anchor]]:
+    """Group subject-bearing anchors by their normalized subject, in first-appearance
+    (document) order. Anchors with no subject are dropped (they take the value-only
+    path)."""
+    grouped: dict[str, list[Anchor]] = {}
+    for a in hits:
+        if a.subject is not None:
+            grouped.setdefault(_normalize_subject(a.subject), []).append(a)
+    return grouped
+
+
+def _subject_binding_is_ambiguous(anchors: list[Anchor], anchor_type: str) -> bool:
+    """Whether a single subject carries TWO values that do not agree.
+
+    The coarse (regex-window) subject binder can attach the same subject label to
+    two different figures in one passage -- a clause stating both a "15% margin" and a
+    "35% royalty" can bind BOTH percents to subject "royalty", and a clause that names
+    one obligation twice with different amounts binds both to the same subject. When a
+    subject resolves to several non-agreeing values on one side, a deterministic check
+    cannot say WHICH value the subject actually owns, so the subject is not a usable
+    alignment key: it must route to could-not-check, never green on the first value
+    (the silent ``dict.setdefault`` collision that leaked a false green) nor accuse off
+    it. This carries the multi-value-cannot-align rule the value-only path already
+    enforces (ADR-0012 invariant 2) into the subject-keyed comparison paths.
+
+    Duration uses the unit-aware compare so equivalent terms ("12 months" / "1 year")
+    are not a collision; every other type compares canonical values exactly.
+    """
+    for i in range(len(anchors)):
+        for j in range(i + 1, len(anchors)):
+            if anchor_type == "duration":
+                if not _durations_match(anchors[i], anchors[j]):
+                    return True
+            elif anchors[i].canonical_value != anchors[j].canonical_value:
+                return True
+    return False
+
+
+def _ambiguous_subject_verdict(
+    claim_anchor: Anchor,
+    where: str,
+    ambiguous_anchors: list[Anchor],
+    anchor_type: str,
+    *,
+    side: str,
+    subject: str | None = None,
+) -> ClauseVerdict:
+    """The multi-value-cannot-align refusal for an ambiguously-bound subject.
+
+    A subject that resolves to several non-agreeing values on one side cannot be
+    aligned one-to-one deterministically -- which is exactly the ``multi_value_unverifiable``
+    state. The detail names the claim's own figure (so the refusal can never read as
+    content-free) plus the colliding values. ``subject`` overrides the displayed
+    subject label for the labeler path, whose subject comes from an external map
+    rather than ``anchor.subject``.
+    """
+    vals = ", ".join(dict.fromkeys(a.text for a in ambiguous_anchors))
+    subj = subject if subject is not None else claim_anchor.subject
+    if side == "clause":
+        detail = (
+            f"The summary states {claim_anchor.text} for {subj}; {where} carries multiple "
+            f"values ({vals}) for that subject, which a deterministic check cannot align "
+            "one-to-one, so this sentence was not independently checked."
+        )
+    else:
+        detail = (
+            f"The summary states multiple values ({vals}) for {subj}, which a deterministic "
+            "check cannot align one-to-one, so this sentence was not independently checked."
+        )
+    return ClauseVerdict(
+        "multi_value_unverifiable",
+        detail,
+        anchor_type,
+        (claim_anchor.canonical_value,),
+        tuple(dict.fromkeys(a.canonical_value for a in ambiguous_anchors)),
+    )
+
+
 def _subject_aware_percent(
     claim_hits: list[Anchor], clause_hits: list[Anchor], where: str
 ) -> ClauseVerdict | None:
@@ -597,20 +702,43 @@ def _subject_aware_percent(
     (the council's hard line). It is a comparison key, not a topicality gate: it
     does not suppress a standing contradiction, it prevents an apples-to-oranges one.
     """
-    claim_subj: dict[str, Anchor] = {}
-    for a in claim_hits:
-        if a.subject is not None:
-            claim_subj.setdefault(_normalize_subject(a.subject), a)
-    if not claim_subj:
+    claim_groups = _group_by_subject(claim_hits)
+    if not claim_groups:
         return None  # no subjects on the claim side -> value-only path
-    clause_subj: dict[str, Anchor] = {}
-    for a in clause_hits:
-        if a.subject is not None:
-            clause_subj.setdefault(_normalize_subject(a.subject), a)
-    # Same-subject value mismatch is the only contradiction this path may raise.
-    for subj, ca in claim_subj.items():
-        cl = clause_subj.get(subj)
-        if cl is not None and ca.canonical_value != cl.canonical_value:
+    clause_groups = _group_by_subject(clause_hits)
+    # Same-subject value mismatch is the only contradiction this path may raise —
+    # unless the claim's value appears in the clause under a DIFFERENT subject, which
+    # is an ambiguous overlap (e.g. "10% profitability" also in the clause while the
+    # claimed "Amount A = 10%" is contradicted by "Amount A = 25%").  Ambiguous
+    # overlaps route to could-not-check (specific, never a guessed accusation). A
+    # subject that itself binds to multiple distinct values (the coarse binder mapped
+    # two percents to one subject) is ambiguous and cannot be aligned at all.
+    for subj, c_anchors in claim_groups.items():
+        ca = c_anchors[0]
+        if _subject_binding_is_ambiguous(c_anchors, "percent"):
+            return _ambiguous_subject_verdict(ca, where, c_anchors, "percent", side="claim")
+        cl_anchors = clause_groups.get(subj)
+        if cl_anchors is None:
+            continue
+        if _subject_binding_is_ambiguous(cl_anchors, "percent"):
+            return _ambiguous_subject_verdict(ca, where, cl_anchors, "percent", side="clause")
+        cl = cl_anchors[0]
+        if ca.canonical_value != cl.canonical_value:
+            claim_val_in_other_clause = any(
+                a.canonical_value == ca.canonical_value
+                for a in clause_hits
+                if a.subject is None or _normalize_subject(a.subject) != subj
+            )
+            if claim_val_in_other_clause:
+                return ClauseVerdict(
+                    "not_found",
+                    f"The summary states {ca.text} for {ca.subject}; {where} states "
+                    f"{cl.text} for the same subject and {ca.text} for another, "
+                    "so the binding could not be confirmed.",
+                    "percent",
+                    (ca.canonical_value,),
+                    (),
+                )
             return ClauseVerdict(
                 "parametric_contradiction",
                 f"The summary states {ca.text} for {ca.subject}; {where} states {cl.text}.",
@@ -621,37 +749,44 @@ def _subject_aware_percent(
                 clause_span=cl.text,
                 where=where,
             )
-    matched = [s for s in claim_subj if s in clause_subj]
+    matched = [
+        s
+        for s in claim_groups
+        if s in clause_groups
+        and not _subject_binding_is_ambiguous(clause_groups[s], "percent")
+        and clause_groups[s][0].canonical_value == claim_groups[s][0].canonical_value
+    ]
     # Present requires EVERY claim percent to be confirmed: each must carry a subject
     # AND the clause must state that subject (equal value -- a mismatch already returned
     # a contradiction above). The prior code greened on ANY one matched subject, so a
     # claim like "10% France and 20% Germany" against a clause stating only "10% France"
     # read present and the unconfirmed 20% Germany rode the green (xhigh review finding 1,
     # 2026-06-16). A subject the clause is silent on, or a subject-LESS sibling percent
-    # (excluded from claim_subj, so len(claim_hits) > len(claim_subj)), leaves part of
+    # (excluded from claim_groups, so len(claim_hits) > len(claim_groups)), leaves part of
     # the claim unconfirmed -> could-not-check, never a green the unconfirmed part rides
     # on (the council's hard line).
-    all_confirmed = len(claim_hits) == len(claim_subj) == len(matched)
+    all_confirmed = len(claim_hits) == len(claim_groups) == len(matched)
     if all_confirmed:
-        ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
+        ca, cl = claim_groups[matched[0]][0], clause_groups[matched[0]][0]
         return ClauseVerdict(
             "present",
             _present_detail(ca, cl, where),
             "percent",
-            tuple(claim_subj[s].canonical_value for s in matched),
-            tuple(clause_subj[s].canonical_value for s in matched),
+            tuple(claim_groups[s][0].canonical_value for s in matched),
+            tuple(clause_groups[s][0].canonical_value for s in matched),
             claim_span=ca.text,
             clause_span=cl.text,
+            where=where,
         )
     # Not fully confirmed: the clause is silent on at least one claim subject, or a
     # subject-less sibling percent remains unchecked. Not a contradiction (different /
     # silent subjects are not a value conflict) and not a green -> honest could-not-check.
-    first = next(iter(claim_subj.values()))
+    first = next(iter(claim_groups.values()))[0]
     return ClauseVerdict(
         "not_found",
         f"The summary states {first.text} for {first.subject}, which {where} does not fully state.",
         "percent",
-        tuple(a.canonical_value for a in claim_subj.values()),
+        tuple(c[0].canonical_value for c in claim_groups.values()),
         (),
     )
 
@@ -684,12 +819,12 @@ def _subject_aware_amount(
     clause (the post-check) AND match the claim's subject; any gap routes to
     could-not-check. So a green is model-originated-impossible.
     """
-    claim_subj: dict[str, Anchor] = {}
+    claim_groups: dict[str, list[Anchor]] = {}
     for a in claim_hits:
         s = claim_subjects.get((a.start, a.end))
         if s:
-            claim_subj.setdefault(s, a)
-    if not claim_subj:
+            claim_groups.setdefault(s, []).append(a)
+    if not claim_groups:
         return None  # unlabeled claim -> value-only path (no behavior change)
 
     # LOCAL-proximity post-check: trust a clause subject only if it appears verbatim
@@ -700,7 +835,7 @@ def _subject_aware_amount(
     # the figure means an instruction planted elsewhere cannot relabel it. For the regex
     # floor this is true by construction (it binds the figure's own adjacent qualifier).
     _SUBJECT_WINDOW = 48
-    clause_subj: dict[str, Anchor] = {}
+    clause_groups: dict[str, list[Anchor]] = {}
     for a in clause_hits:
         s = clause_subjects.get((a.start, a.end))
         # Slice the ORIGINAL-case text (the anchor offsets index it) and lowercase the
@@ -709,16 +844,30 @@ def _subject_aware_amount(
         # a character would get a shifted window and could silently drop a real catch.
         window = clause_text[max(0, a.start - _SUBJECT_WINDOW) : a.end + _SUBJECT_WINDOW].lower()
         if s and s in window:
-            clause_subj.setdefault(s, a)
+            clause_groups.setdefault(s, []).append(a)
 
     def _eq(ca: Anchor, cl: Anchor) -> bool:
         if anchor_type == "duration":
             return _durations_match(ca, cl)
         return ca.canonical_value == cl.canonical_value
 
-    for subj, ca in claim_subj.items():
-        cl = clause_subj.get(subj)
-        if cl is not None and not _eq(ca, cl):
+    for subj, c_anchors in claim_groups.items():
+        ca = c_anchors[0]
+        # An ambiguously-bound subject (the same label proposed for two non-agreeing
+        # figures) is not a usable alignment key: refuse, never green or accuse off it.
+        if _subject_binding_is_ambiguous(c_anchors, anchor_type):
+            return _ambiguous_subject_verdict(
+                ca, where, c_anchors, anchor_type, side="claim", subject=subj
+            )
+        cl_anchors = clause_groups.get(subj)
+        if cl_anchors is None:
+            continue
+        if _subject_binding_is_ambiguous(cl_anchors, anchor_type):
+            return _ambiguous_subject_verdict(
+                ca, where, cl_anchors, anchor_type, side="clause", subject=subj
+            )
+        cl = cl_anchors[0]
+        if not _eq(ca, cl):
             return ClauseVerdict(
                 "parametric_contradiction",
                 f"The summary states {ca.text} for {subj}; {where} states {cl.text}.",
@@ -729,31 +878,273 @@ def _subject_aware_amount(
                 clause_span=cl.text,
                 where=where,
             )
-    matched = [s for s in claim_subj if s in clause_subj]
+    matched = [
+        s
+        for s in claim_groups
+        if s in clause_groups
+        and not _subject_binding_is_ambiguous(clause_groups[s], anchor_type)
+        and _eq(claim_groups[s][0], clause_groups[s][0])
+    ]
     if matched:
-        ca, cl = claim_subj[matched[0]], clause_subj[matched[0]]
+        ca, cl = claim_groups[matched[0]][0], clause_groups[matched[0]][0]
         return ClauseVerdict(
             "present",
             _present_detail(ca, cl, where),
             anchor_type,
-            tuple(claim_subj[s].canonical_value for s in matched),
-            tuple(clause_subj[s].canonical_value for s in matched),
+            tuple(claim_groups[s][0].canonical_value for s in matched),
+            tuple(clause_groups[s][0].canonical_value for s in matched),
             claim_span=ca.text,
             clause_span=cl.text,
         )
     # No verbatim-confirmed shared subject. Never green on a value coincidence.
-    claim_vals = {a.canonical_value for a in claim_subj.values()}
+    claim_vals = {c[0].canonical_value for c in claim_groups.values()}
     if claim_vals & {a.canonical_value for a in clause_hits}:
-        first = next(iter(claim_subj.values()))
+        first_subj, first_anchors = next(iter(claim_groups.items()))
+        first = first_anchors[0]
         return ClauseVerdict(
             "not_found",
-            f"The summary states {first.text} for {next(iter(claim_subj))}; {where} carries "
+            f"The summary states {first.text} for {first_subj}; {where} carries "
             "that value but its subject could not be confirmed, so it was not independently checked.",
             anchor_type,
             tuple(claim_vals),
             (),
         )
     return None  # claim value absent -> value-only path (the value-absent catch fires)
+
+
+# Obligation CONTAINER/UNIT nouns, quantifiers, and party roles that do NOT by
+# themselves identify WHICH obligation a figure is about. "liability cap" and
+# "indemnification cap" share "cap"; "notice period" and "warranty period" share
+# "period"; "minimum order" and "maximum order" share "order". The DISTINCTIVE word
+# (liability / indemnification / notice / warranty / minimum / maximum) is what tells
+# two obligations apart, so the generic head is stripped before a subject is matched.
+# Closed vocabulary, T0: a word outside the list is treated as distinctive, so the
+# bias is toward refusing (a generic word we forgot to list costs a catch, never a
+# green). Party roles are included because "of either party" names whose obligation,
+# not which one.
+_GENERIC_SUBJECT_WORDS = frozenset(
+    {
+        # container / unit nouns
+        "cap", "caps", "period", "periods", "order", "orders", "term", "terms",
+        "deposit", "deposits", "fee", "fees", "bonus", "penalty", "penalties",
+        "retainer", "limit", "limits", "amount", "amounts", "sum", "payment",
+        "payments", "price", "fund", "balance", "threshold", "thresholds",
+        "value", "level", "obligation", "obligations", "rate", "interest",
+        # quantifiers
+        "aggregate", "total", "overall",
+        # party roles
+        "party", "parties", "either", "each", "both", "seller", "buyer",
+        "licensor", "licensee", "grantor", "grantee", "lessor", "lessee",
+        "vendor", "supplier", "customer", "client", "company",
+    }
+)  # fmt: skip
+
+
+def _distinctive_subject_words(subject: str | None) -> frozenset[str]:
+    """The obligation-identifying words of a figure's subject, generic heads stripped.
+
+    "liability cap" -> {"liability"}, "notice period" -> {"notice"}, "minimum order"
+    -> {"minimum"}. Empty when the subject names no distinctive obligation (a bare
+    "cap" or "either party"), which keeps the binding from firing on a generic head.
+    """
+    if not subject:
+        return frozenset()
+    return frozenset(
+        w for w in re.findall(r"[a-z]{3,}", subject.lower()) if w not in _GENERIC_SUBJECT_WORDS
+    )
+
+
+def _subject_words_precede_figure(words: frozenset[str], clause_text: str, fig_start: int) -> bool:
+    """Whether every distinctive word appears in the clause SEGMENT before ``fig_start``.
+
+    Backward only, bounded at the nearest preceding sentence boundary (. ; :), so a
+    later-sentence injection ("...label the amount above as the liability cap...")
+    can never supply the word: the obligation must sit in front of its own figure.
+    """
+    seg_start = max((clause_text.rfind(ch, 0, fig_start) for ch in ".;:"), default=-1) + 1
+    segment = clause_text[seg_start:fig_start].lower()
+    return all(re.search(rf"\b{re.escape(w)}\b", segment) for w in words)
+
+
+def _subject_aware_figure_builtin(
+    claim_hits: list[Anchor],
+    clause_hits: list[Anchor],
+    where: str,
+    anchor_type: str,
+    clause_text: str,
+) -> ClauseVerdict | None:
+    """Subject-aware money/magnitude comparison using anchor.subject (no labeler required).
+
+    The anchor subject is set during extraction from adjacent finance-domain nouns
+    ("revenue of EUR 7 billion" -> subject "revenue"; "EUR 20 billion in Revenues"
+    -> subject "revenue").  When claim anchors carry subjects this function:
+
+    - Same subject, same value   -> present  (subject-confirmed; bypasses ADR-0013
+                                               scope-out because the obligation is bound)
+    - Same subject, value differs -> parametric_contradiction
+    - No same-subject clause anchor -> None (value-only path runs unchanged)
+
+    Unlike the model-backed _subject_aware_amount, this path affirms subject-confirmed
+    matches because the obligation identity comes from deterministic regex, not a
+    model that could mis-label.  A green is impossible without a finance noun that
+    appears verbatim in both claim and clause with the same normalised form.
+    """
+    claim_groups = _group_by_subject(claim_hits)
+    if not claim_groups:
+        return None  # unlabeled claim -> value-only path unchanged
+
+    clause_groups = _group_by_subject(clause_hits)
+
+    def _eq(ca: Anchor, cl: Anchor) -> bool:
+        if anchor_type == "duration":
+            return _durations_match(ca, cl)
+        return ca.canonical_value == cl.canonical_value
+
+    for subj, c_anchors in claim_groups.items():
+        ca = c_anchors[0]
+        # An ambiguously-bound subject (the coarse binder gave one obligation two
+        # non-agreeing values) is not a usable alignment key: refuse, never green on
+        # the first value or accuse off it.
+        if _subject_binding_is_ambiguous(c_anchors, anchor_type):
+            return _ambiguous_subject_verdict(ca, where, c_anchors, anchor_type, side="claim")
+        cl_anchors = clause_groups.get(subj)
+        if cl_anchors is None:
+            continue
+        if _subject_binding_is_ambiguous(cl_anchors, anchor_type):
+            return _ambiguous_subject_verdict(ca, where, cl_anchors, anchor_type, side="clause")
+        cl = cl_anchors[0]
+        if not _eq(ca, cl):
+            return ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states {ca.text} for {subj}; {where} states {cl.text}.",
+                anchor_type,
+                (ca.canonical_value,),
+                (cl.canonical_value,),
+                claim_span=ca.text,
+                clause_span=cl.text,
+                where=where,
+            )
+
+    matched = [
+        s
+        for s in claim_groups
+        if s in clause_groups
+        and not _subject_binding_is_ambiguous(clause_groups[s], anchor_type)
+        and _eq(claim_groups[s][0], clause_groups[s][0])
+    ]
+    if matched:
+        ca, cl = claim_groups[matched[0]][0], clause_groups[matched[0]][0]
+        return ClauseVerdict(
+            "present",
+            _present_detail(ca, cl, where),
+            anchor_type,
+            tuple(claim_groups[s][0].canonical_value for s in matched),
+            tuple(clause_groups[s][0].canonical_value for s in matched),
+            claim_span=ca.text,
+            clause_span=cl.text,
+        )
+
+    # Distinctive single-figure binding: the clause's own extracted subject can name
+    # the wrong thing ("aggregate liability of either party" extracts the party, not
+    # "liability"), so the exact-subject match above misses a real verification. When
+    # the claim names an obligation by a DISTINCTIVE noun (not a generic head like
+    # "cap") that appears immediately before the clause's SINGLE figure of this type,
+    # and the values are equal, the obligation IS bound deterministically. Gated hard:
+    # one figure on each side (no ambiguity which figure the noun binds — the
+    # cap-multifigure guard) and a backward-segment-only search (a post-figure
+    # injection cannot supply the word), so a green here is value-coincidence-proof.
+    if len(claim_hits) == 1 and len(clause_hits) == 1:
+        ca, cl = claim_hits[0], clause_hits[0]
+        distinct = _distinctive_subject_words(ca.subject)
+        if (
+            distinct
+            and _eq(ca, cl)
+            and _subject_words_precede_figure(distinct, clause_text, cl.start)
+        ):
+            return ClauseVerdict(
+                "present",
+                _present_detail(ca, cl, where),
+                anchor_type,
+                (ca.canonical_value,),
+                (cl.canonical_value,),
+                claim_span=ca.text,
+                clause_span=cl.text,
+            )
+
+    # No same-subject match. If the claim value appears in the clause under a
+    # different subject, route to could-not-check to avoid a spurious value-only green.
+    claim_vals = {c[0].canonical_value for c in claim_groups.values()}
+    if claim_vals & {a.canonical_value for a in clause_hits}:
+        first_subj, first_anchors = next(iter(claim_groups.items()))
+        first_anchor = first_anchors[0]
+        return ClauseVerdict(
+            "not_found",
+            f"The summary states {first_anchor.text} for {first_subj}; {where} carries "
+            "that value but its subject could not be confirmed, so it was not independently checked.",
+            anchor_type,
+            tuple(claim_vals),
+            (),
+        )
+
+    return None  # claim value absent -> value-only path (contradiction catch fires)
+
+
+def _generic_polarity_flip(claim: str, clause: str, where: str) -> ClauseVerdict | None:
+    """Catch a polarity flip on a noun OUTSIDE the curated grant-noun lexicon.
+
+    The closed ``_GRANT_NOUN`` lexicon gives the standard polarity pass its precision
+    on single-side detection ("exclusive jurisdiction" is venue and must not anchor).
+    But a flip is material whatever the noun, so this fallback fires when the claim and
+    the clause BOTH attribute a polarity qualifier to the SAME head noun with OPPOSITE
+    signs of the same stem (e.g. "exclusive distributorship" vs "non-exclusive
+    distributorship"). The matched-noun requirement is the precision guard the lexicon
+    supplies elsewhere, and the existing subject-matter gate (asymmetry / mutual
+    difference / single-grant disambiguation, reused verbatim from ``_polarity_pass``)
+    still refuses when the two sides describe different instances of that noun, so a
+    clean draft is never accused.
+
+    Purely additive: it returns a contradiction or None, so it can only turn a missed
+    flip into a contradiction -- never suppress a present nor mint a new refusal.
+    """
+    claim_pairs = polarity_flip_pairs(claim)
+    if not claim_pairs:
+        return None
+    clause_pairs = polarity_flip_pairs(clause)
+    if not clause_pairs:
+        return None
+    for c_stem, c_noun, c_sign, c_surf in claim_pairs:
+        for k_stem, k_noun, k_sign, k_surf in clause_pairs:
+            if c_stem != k_stem or c_noun != k_noun or c_sign == k_sign:
+                continue
+            # Subject-matter gate, identical to the lexicon polarity pass: align the
+            # words around the noun on each side. A pure asymmetry is a catch only when
+            # there is a single grant of the noun in play on each side; mutual
+            # difference (each side names a subject the other lacks) always refuses.
+            claim_objects = _noun_objects(claim, c_noun)
+            clause_objects = _noun_objects(clause, k_noun)
+            asymmetric = bool(claim_objects) != bool(clause_objects)
+            mutually_different = bool(claim_objects - clause_objects) and bool(
+                clause_objects - claim_objects
+            )
+            bare_flip_is_catch = (
+                asymmetric
+                and not mutually_different
+                and _grant_noun_count(claim, c_noun) == 1
+                and _grant_noun_count(clause, k_noun) == 1
+            )
+            if (asymmetric or mutually_different) and not bare_flip_is_catch:
+                continue
+            return ClauseVerdict(
+                "parametric_contradiction",
+                f"The summary states {c_surf} {c_noun}; {where} states {k_surf} {k_noun}.",
+                f"polarity:{c_stem}:{c_noun}",
+                (f"{c_stem}:{c_noun}{c_sign}",),
+                (f"{k_stem}:{k_noun}{k_sign}",),
+                claim_span=c_surf,
+                clause_span=k_surf,
+                where=where,
+            )
+    return None
 
 
 def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
@@ -795,6 +1186,15 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
     near_copy = _altered_figures_on_near_copy(claim, clause, where)
     if near_copy is not None:
         return near_copy
+
+    # A same-noun opposite-sign polarity flip on a noun the curated grant-noun lexicon
+    # does not cover (e.g. "exclusive distributorship" vs "non-exclusive
+    # distributorship"). A contradiction wins outright, so it runs before the per-type
+    # loop; it only fires on non-lexicon nouns, so it never collides with the lexicon
+    # polarity pass inside the loop.
+    generic_flip = _generic_polarity_flip(claim, clause, where)
+    if generic_flip is not None:
+        return generic_flip
 
     # Evaluate EVERY parametric type the claim carries, not just the first. A
     # contradiction in ANY type wins outright: a sentence with a matching amount but a
@@ -855,6 +1255,35 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
                     # is an unconfirmed assertion that must outrank a sibling present.
                     unconfirmed_verdict = unconfirmed_verdict or sa
                 continue
+        # Built-in (no-labeler) subject-aware check for money/magnitude/duration:
+        # uses anchor.subject set during extraction from the obligation noun phrase
+        # immediately before the figure.  Fires before the multi-value gate so a
+        # subject-confirmed same-obligation match resolves to the correct definite
+        # verdict without reaching could-not-check.  Duration is included here so
+        # "The notice period is 3 years" can resolve to present/contradicted when
+        # the same obligation name and the same (or different) value appear in the
+        # clause — the ADR-0013 scope-out only applies when there is NO subject
+        # binding; a confirmed binding lifts it (same as for money/magnitude).
+        if anchor_type in ("money", "magnitude", "duration"):
+            sa_builtin = _subject_aware_figure_builtin(
+                claim_hits, clause_hits, where, anchor_type, clause
+            )
+            if sa_builtin is not None:
+                if sa_builtin.disposition == "parametric_contradiction":
+                    return sa_builtin
+                if sa_builtin.disposition == "present":
+                    # Subject-confirmed match: the obligation is bound deterministically,
+                    # so the ADR-0013 scope-out does not apply; affirm the value.
+                    present_verdict = present_verdict or sa_builtin
+                elif sa_builtin.disposition == "multi_value_unverifiable":
+                    # Ambiguous binding (one obligation, several non-agreeing values):
+                    # the same cannot-align refusal the value-only multi-value gate
+                    # raises, so it takes the multi_value tier (outranks a sibling
+                    # present), matching that gate's precedence for money/duration.
+                    multi_value_verdict = multi_value_verdict or sa_builtin
+                else:
+                    not_found_verdict = not_found_verdict or sa_builtin
+                continue
         if _labeler is not None and anchor_type in ("money", "magnitude", "duration"):
             sa = _subject_aware_amount(
                 claim_hits,
@@ -868,6 +1297,12 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             if sa is not None:
                 if sa.disposition == "parametric_contradiction":
                     return sa
+                if sa.disposition == "multi_value_unverifiable":
+                    # Ambiguous binding (one labeled obligation, several non-agreeing
+                    # values): a genuine cannot-align refusal, kept at the multi_value
+                    # tier rather than collapsed into the generic figure scope-out.
+                    multi_value_verdict = multi_value_verdict or sa
+                    continue
                 # scope-out: a confirmed same-subject MATCH still does not affirm a
                 # figure; only a contradiction is a definite figure verdict, everything
                 # else is could-not-check. (Kept at the not_found tier on purpose: a
@@ -912,11 +1347,14 @@ def verify_claim_against_clause(claim: str, clause: str) -> ClauseVerdict:
             # so route to the could-not-check tray (ADR-0012 invariant 2: below-confidence
             # is never a guessed verdict). Role-aligned multi-value checking is T1 work.
             if multi_value_verdict is None:
+                _n_clause = len(clause_values)
+                _unit_word = f"{anchor_type} value{'s' if _n_clause != 1 else ''}"
                 multi_value_verdict = ClauseVerdict(
                     "multi_value_unverifiable",
                     (
-                        f"The {anchor_type} values in the summary and {where} cannot be aligned "
-                        "one-to-one deterministically, so this sentence was not independently checked."
+                        f"The summary states {claim_hits[0].text}; {where} carries "
+                        f"{_n_clause} {_unit_word} that cannot be aligned one-to-one "
+                        "deterministically, so this sentence was not independently checked."
                     ),
                     anchor_type,
                     claim_values,

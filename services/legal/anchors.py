@@ -320,6 +320,51 @@ def _polarity_anchors(text: str) -> list[Anchor]:
     return anchors
 
 
+# Generic (non-lexicon) attributive polarity+noun detector. The curated _GRANT_NOUN
+# list gives PRECISION for single-side detection ("exclusive jurisdiction" is venue and
+# must not anchor). But a polarity flip on the SAME head noun across a summary and its
+# source ("exclusive distributorship" vs "non-exclusive distributorship") is a real,
+# material contradiction whatever the noun -- there the matched-noun requirement is the
+# precision guard the lexicon supplies elsewhere. This detector surfaces those qualifier
+# -> noun pairs; the contract path only ever turns them into a contradiction when BOTH
+# sides carry the SAME noun with OPPOSITE signs and the subject matter aligns, so a lone
+# generic match is inert (never a false green, never an unmatched accusation).
+_POLARITY_GENERIC = re.compile(
+    rf"\b(?P<tok>{_POLARITY_TOKEN})\b"
+    rf"(?:[,\s]+{_POLARITY_GAP_WORD}\b){{0,6}}"
+    rf"[,\s]+(?P<noun>[A-Za-z][A-Za-z-]{{2,}})\b",
+    re.IGNORECASE,
+)
+
+
+def polarity_flip_pairs(text: str) -> list[tuple[str, str, str, str]]:
+    """Attributive ``(stem, noun, sign, surface)`` polarity pairs whose noun is
+    OUTSIDE the curated grant-noun lexicon.
+
+    ``sign`` is ``"+"`` (affirmative) or ``"-"`` (negated form). Lexicon nouns are
+    skipped (the standard :func:`_polarity_anchors` pass owns them); a scope negation
+    earlier in the segment refuses the pair (the same guard the standard pass uses).
+    Used by the contract path to catch a same-noun opposite-sign flip on a noun the
+    closed grant-noun list does not cover, keyed on the relation between the two
+    sides rather than on any particular noun.
+    """
+    pairs: list[tuple[str, str, str, str]] = []
+    seen: set[int] = set()
+    for m in _POLARITY_GENERIC.finditer(text):
+        if m.start("tok") in seen:
+            continue
+        noun = m.group("noun").lower()
+        if noun in GRANT_NOUN_WORDS or noun in POLARITY_VOCAB:
+            continue
+        segment_start = max(text.rfind(ch, 0, m.start("tok")) for ch in ".;:") + 1
+        if _POLARITY_SCOPE_NEG.search(text[segment_start : m.start("tok")]):
+            continue
+        canonical = _POLARITY_CANON[m.group("tok").lower()]  # "{stem}{+|-}"
+        seen.add(m.start("tok"))
+        pairs.append((canonical[:-1], noun, canonical[-1], m.group("tok")))
+    return pairs
+
+
 # --- Party-name detector (canonical_value None). Two T0 sub-patterns. Real NER
 # for un-aliased names is T1 and off (per the design doc), so the entity branch is
 # a best-effort T0 heuristic with two inherent capitalized-word limits, both
@@ -641,6 +686,182 @@ def _percent_subject(span: str, end: int) -> str | None:
     return m.group(1) if m else None
 
 
+# Finance-domain nouns and defined terms (e.g. "Amount A") that may label a
+# figure's obligation subject in preceding or following context.  The pattern
+# intentionally excludes generic words like "figure", "amount" (unlabelled),
+# "threshold", and "scope" that do not reliably identify a unique obligation.
+# Plural forms are listed explicitly so the normalisation table is complete.
+_PRECEDING_SUBJ_FINANCE = re.compile(
+    r"\bAmount\s+[A-Z]\b"
+    r"|\b(?:costs?|revenues?|profit(?:ability)?|income|royalt(?:y|ies))\b",
+    re.IGNORECASE,
+)
+
+# Map plural / variant surface forms to a canonical singular key so "costs of"
+# and "cost" compare equal after normalisation.
+_FINANCE_NOUN_NORMALIZE: dict[str, str] = {
+    "revenues": "revenue",
+    "costs": "cost",
+    "royalties": "royalty",
+}
+
+
+def _finance_noun_preceding_subject(span: str, start: int, window: int = 60) -> str | None:
+    """Last finance-domain noun (or defined term) in the *preceding* window, or None.
+
+    Looks backward from ``start`` up to ``window`` characters.  Returns the
+    subject as a lower-cased, singular-normalised string so it compares
+    correctly against ``_normalize_subject`` in contract_verify.
+    """
+    preceding = span[max(0, start - window) : start]
+    matches = list(_PRECEDING_SUBJ_FINANCE.finditer(preceding))
+    if not matches:
+        return None
+    raw = matches[-1].group(0).strip().lower()
+    return _FINANCE_NOUN_NORMALIZE.get(raw, raw)
+
+
+def _finance_noun_following_subject(span: str, end: int, window: int = 30) -> str | None:
+    """First finance-domain noun in the *following* window, or None.
+
+    Used as a fallback for figures whose label appears after them
+    (e.g. "EUR 20 billion in Revenues").
+    """
+    following = span[end : end + window]
+    m = _PRECEDING_SUBJ_FINANCE.search(following)
+    if not m:
+        return None
+    raw = m.group(0).strip().lower()
+    return _FINANCE_NOUN_NORMALIZE.get(raw, raw)
+
+
+# Function words that are NOT obligation-name content: articles, auxiliaries,
+# prepositions, conjunctions, negators, and contract verbs whose bare form
+# appears only between an obligation name and its figure.  These stop the
+# backwards content-word walk in _obligation_noun_preceding_subject so they
+# cannot become part of a subject key.
+_OBLIGATION_FUNC = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "shall",
+        "will",
+        "may",
+        "must",
+        "can",
+        "could",
+        "would",
+        "should",
+        "to",
+        "of",
+        "for",
+        "in",
+        "on",
+        "at",
+        "by",
+        "with",
+        "per",
+        "and",
+        "or",
+        "but",
+        "as",
+        "nor",
+        "so",
+        "yet",
+        "both",
+        "not",
+        "no",
+        "do",
+        "does",
+        "did",
+        "has",
+        "have",
+        "had",
+        "that",
+        "this",
+        "these",
+        "those",
+        "its",
+        "their",
+        "our",
+        "your",
+        "his",
+        "her",
+        "exceed",
+        "continue",
+        "remain",
+        "maintain",
+        "pursuant",
+        "aggregate",
+        "total",
+        "hereto",
+        "hereunder",
+        "such",
+        "each",
+        "any",
+        "all",
+        "payable",
+        "applicable",
+        "due",
+        "beyond",
+        "under",
+        "during",
+        "until",
+        "from",
+        "up",
+    }
+)
+
+
+def _obligation_noun_preceding_subject(span: str, start: int, window: int = 80) -> str | None:
+    """Last 2-4 word lowercase noun phrase in the preceding window.
+
+    Deterministically binds a money or duration figure to its obligation
+    subject (e.g. "liability cap", "notice period", "signing bonus") using
+    only the text immediately before the figure.  Two content words are
+    required: a single word is too ambiguous to form a binding, and a
+    mis-bound subject can only produce a could-not-check, never a false
+    verdict.
+
+    Locality guarantee: the 80-character bound means injection text placed
+    AFTER the figure (the common attack form) cannot influence the subject.
+    Injection text placed before the figure is still locality-bound: the
+    closest noun phrase (the true obligation name) wins, because a stopword
+    ('the', 'is', etc.) that naturally precedes the obligation noun acts as
+    a boundary and the backwards walk stops there.
+
+    Only lowercase ASCII letters are captured, so proper nouns and
+    defined terms (capitalized, handled by the alias-table path) are
+    intentionally excluded.
+    """
+    preceding = span[max(0, start - window) : start]
+    words = re.findall(r"\b([a-z]{2,})\b", preceding)
+    # Trim trailing function words that are not part of an obligation name.
+    while words and words[-1] in _OBLIGATION_FUNC:
+        words.pop()
+    if not words:
+        return None
+    # Walk backwards collecting the contiguous content-word run; stop at the
+    # first function word encountered so "of either party" never bleeds into
+    # "aggregate liability of either party" and returns only "either party".
+    content: list[str] = []
+    for w in reversed(words):
+        if w in _OBLIGATION_FUNC:
+            break
+        content.insert(0, w)
+        if len(content) >= 4:
+            break
+    return " ".join(content) if len(content) >= 2 else None
+
+
 _MONEY_SCALE = {
     "thousand": 1_000,
     "k": 1_000,
@@ -852,7 +1073,12 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
         anchors.append(Anchor("quote", text, start, end))
     money_spans: list[tuple[int, int]] = []
     for m in _MONEY.finditer(span):
-        anchors.append(Anchor("money", m.group(0), m.start(), m.end(), _money_cents(m.group(0))))
+        _mon_subj = _obligation_noun_preceding_subject(span, m.start())
+        anchors.append(
+            Anchor(
+                "money", m.group(0), m.start(), m.end(), _money_cents(m.group(0)), subject=_mon_subj
+            )
+        )
         money_spans.append((m.start(), m.end()))
     for m in _MONEY_WORD.finditer(span):
         if _NUMBER_WORD_BEFORE.search(span[: m.start()]):
@@ -861,7 +1087,8 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # rather than mint a wrong canonical value.
             continue
         cents = _money_word_cents(m.group("unit"), m.group("hundred"), m.group("scale"))
-        anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents))
+        _mon_subj = _obligation_noun_preceding_subject(span, m.start())
+        anchors.append(Anchor("money", m.group(0), m.start(), m.end(), cents, subject=_mon_subj))
         money_spans.append((m.start(), m.end()))
     for m in _MAGNITUDE.finditer(span):
         # "$5 billion" is owned by _MONEY (collected above); skip a magnitude that
@@ -873,11 +1100,29 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # An ambiguous comma-decimal ("1,2 billion"): refuse the anchor rather
             # than mint a 10x-wrong value that would false-flag against the source.
             continue
-        anchors.append(Anchor("magnitude", m.group(0), m.start(), m.end(), units))
+        # Bind the obligation subject from adjacent text so the subject-aware
+        # comparison can distinguish "revenue of EUR 7 billion" from "costs of
+        # EUR 20 billion" without the model-backed labeler.  Preceding context
+        # is preferred ("costs of EUR 20 billion"); "EUR 20 billion in Revenues"
+        # uses the following window as a fallback.
+        _mag_subj = _finance_noun_preceding_subject(
+            span, m.start()
+        ) or _finance_noun_following_subject(span, m.end())
+        anchors.append(
+            Anchor("magnitude", m.group(0), m.start(), m.end(), units, subject=_mag_subj)
+        )
     for m in _DURATION.finditer(span):
         num = int(m.group("paren") or m.group("num"))
+        _dur_subj = _obligation_noun_preceding_subject(span, m.start())
         anchors.append(
-            Anchor("duration", m.group(0), m.start(), m.end(), _duration_days(num, m.group("unit")))
+            Anchor(
+                "duration",
+                m.group(0),
+                m.start(),
+                m.end(),
+                _duration_days(num, m.group("unit")),
+                subject=_dur_subj,
+            )
         )
     for m in _DATE.finditer(span):
         iso = _date_iso(m.group(0))
@@ -890,6 +1135,13 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
             # The top end of a worded/spaced range ("between 5 and 10%"):
             # refuse the anchor rather than collapse a range to one endpoint.
             continue
+        # Prefer the following proper-noun subject ("10% France"); fall back to
+        # the preceding finance-domain noun ("profit exceeding 10%", "Amount A
+        # is quantified in 25%").  Either form feeds _subject_aware_percent in
+        # contract_verify for subject-bound comparison (D2/D3).
+        _pct_subj = _percent_subject(span, m.end()) or _finance_noun_preceding_subject(
+            span, m.start()
+        )
         anchors.append(
             Anchor(
                 "percent",
@@ -897,7 +1149,7 @@ def extract_anchors(span: str, *, alias_table: dict[str, str] | None = None) -> 
                 m.start(),
                 m.end(),
                 _percent_bps(m.group("num"), m.group("unit")),
-                subject=_percent_subject(span, m.end()),
+                subject=_pct_subj,
             )
         )
     for m in _SECTION.finditer(span):
