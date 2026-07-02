@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import unittest
 
-from services.legal.anchors import Anchor, build_alias_table, extract_anchors, has_anchor
+from services.legal.anchors import (
+    Anchor,
+    _date_iso,
+    build_alias_table,
+    extract_anchors,
+    has_anchor,
+)
 
 
 def _types(span: str) -> list[str]:
@@ -258,6 +264,25 @@ class DateAnchorTests(unittest.TestCase):
         # Date-shaped but impossible values must not become anchors.
         self.assertEqual([], [a for a in extract_anchors("2024-13-45") if a.type == "date"])
         self.assertEqual([], [a for a in extract_anchors("February 30, 2024") if a.type == "date"])
+
+    def test_ambiguous_numeric_date_is_refused(self) -> None:
+        # M6: a bare N/N/YYYY whose first two fields are both 1..12 and differ
+        # could be DD/MM or MM/DD. The source locale is not carried, so refuse
+        # rather than silently guess month-first (honesty over coverage).
+        for ambiguous in ("03/04/2024", "3/4/24", "11.12.2023", "05-06-2022"):
+            self.assertIsNone(_date_iso(ambiguous), ambiguous)
+        # End to end: the ambiguous slash date yields no date anchor at all.
+        self.assertEqual([], [a for a in extract_anchors("03/04/2024") if a.type == "date"])
+
+    def test_unambiguous_numeric_date_still_resolves(self) -> None:
+        # One field > 12 pins day vs month, so the date is unambiguous and still
+        # canonicalizes; equal fields ("03/03") read the same either way.
+        self.assertEqual("2024-04-13", _date_iso("13/04/2024"))
+        self.assertEqual("2024-12-25", _date_iso("25/12/2024"))
+        self.assertEqual("2024-03-03", _date_iso("03/03/2024"))
+        # ISO and textual forms never match the ambiguous shape and are unaffected.
+        self.assertEqual("2024-03-11", _date_iso("2024-03-11"))
+        self.assertEqual("2024-03-11", _date_iso("March 11, 2024"))
 
 
 class SectionAnchorTests(unittest.TestCase):

@@ -242,6 +242,45 @@ describe("LecternView verdict persistence (the verdict survives unmount-on-nav)"
   });
 });
 
+describe("LecternView attestation-layer identity (north star)", () => {
+  it("names the independent attestation layer and its three guarantees", () => {
+    render(<LecternView />);
+    expect(screen.getByText(/independent attestation layer/i)).toBeTruthy();
+    // The trust spine: the north star made visible. All three stated
+    // guarantees must be present so none can silently drop.
+    const spine = screen.getByLabelText(/what this machine guarantees/i);
+    expect(spine.textContent).toContain("On device");
+    expect(spine.textContent).toContain("Independent");
+    expect(spine.textContent).toContain("Sealed");
+  });
+
+  it("promises the sealed record a third party can be handed", () => {
+    render(<LecternView />);
+    expect(screen.getByText(/sealed record you can hand to anyone/i)).toBeTruthy();
+  });
+});
+
+describe("LecternView specimen affordance (the cold lectern's first move)", () => {
+  it("offers a specimen on the cold lectern and fills the sheet on click", () => {
+    render(<LecternView />);
+    const specimen = screen.getByRole("button", { name: /examine a specimen draft/i });
+    fireEvent.click(specimen);
+    const ta = screen.getByLabelText("Draft to verify") as HTMLTextAreaElement;
+    expect(ta.value).toContain("Brown v. Board of Education");
+    // The specimen is a demo of the flags, so it must carry a planted defect.
+    expect(ta.value).toContain("Vandelay");
+    // Loading the specimen never runs the check by itself: verifying stays the
+    // human's explicit act.
+    expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+
+  it("withholds the specimen once a draft is present", () => {
+    liveDraft.value = "A real draft the user pasted.";
+    render(<LecternView />);
+    expect(screen.queryByRole("button", { name: /examine a specimen draft/i })).toBeNull();
+  });
+});
+
 describe("LecternView draft persistence (shared liveDraft)", () => {
   it("seeds the textarea from the persisted liveDraft on mount", () => {
     liveDraft.value = "A draft pasted earlier, before visiting the Shelf.";

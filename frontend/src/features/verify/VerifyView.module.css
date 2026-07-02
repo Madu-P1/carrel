@@ -504,13 +504,57 @@
   line-height: 1.4;
 }
 
+/* A failed check in the examination register: a mono uppercase ruling line,
+   the cause in reading serif, and one verb-led recovery. Structured presence,
+   not a whisper in a void; the reviewer must never miss that no verdict exists. */
 .errorBanner {
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-2);
   border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
   background: color-mix(in srgb, var(--verify-flag) 8%, transparent);
-  color: var(--verify-flag);
+}
+
+.errorLabel {
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--verify-flag);
+}
+
+.errorBody {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.errorRetry {
+  margin-top: var(--space-1);
+  padding: 6px 16px;
+  border: 1px solid var(--text-primary);
+  border-radius: 2px;
+  background: transparent;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.errorRetry:hover {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+}
+
+.errorRetry:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
 }
 
 /* PR2: one-click-to-source. When a statement is selected, the verdict list and
@@ -1802,7 +1846,15 @@
   right: 0;
   bottom: 0;
   width: min(520px, 88vw);
-  background: var(--surface-2);
+  /* Liquid Glass (2026-07-02, operator directive): the drawer is window
+     furniture sliding OVER the document, so it wears warm translucent glass;
+     the document refracts through it instead of vanishing behind a slab. The
+     84% floor keeps the checks legible whatever sits behind; @supports below
+     falls back to the opaque surface where backdrop-filter is unavailable
+     (file:// WKWebView supports it; the fallback is for everything else). */
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+  backdrop-filter: blur(28px) saturate(120%);
+  -webkit-backdrop-filter: blur(28px) saturate(120%);
   border-left: 1px solid var(--hairline);
   box-shadow: -18px 0 40px rgb(40 30 18 / 10%);
   transform: translateX(100%);
@@ -1819,6 +1871,12 @@
   display: flex;
   flex-direction: column;
 }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .exam {
+    background: var(--surface-2);
+  }
+}
+
 .examOpen {
   transform: translateX(0);
   visibility: visible;

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "kernel_version": "0.1.0",
+  "issued_at": "2026-07-02T09:00:00+00:00",
+  "draft_sha256": "030cdf7e772df55c25b24a01fbe68b71df0bd96d70d57c37edc22287b438eadd",
+  "source_sha256s": [
+    "0f6cd40306e4fe4ff4c28fee7c3227e638a3d489fca8a0115f698ccee787adb1"
+  ],
+  "state": "altered",
+  "claims": [
+    {
+      "claim": "The Supreme Court held that \"separate educational facilities are inherently unequal.\" Brown v. Board of Education, 347 U.S. 483 (1954).",
+      "state": "verified",
+      "checks": [
+        {
+          "state": "verified",
+          "provenance": "deterministic",
+          "detail": "quote is verbatim in a source",
+          "subject": "separate educational facilities are inherently unequal."
+        },
+        {
+          "state": "verified",
+          "provenance": "deterministic",
+          "detail": "The quoted language \"separate educational facilities are inherently unequal.\" appears verbatim in the loaded source; review the full passage for context.",
+          "subject": "The Supreme Court held that \"separate educational facilities are inherently unequal.\" Brown v. Board of Education, 347 U.S. 483 (1954)."
+        }
+      ]
+    },
+    {
+      "claim": "The settlement fund totals $360 million, payable to the class within 30 days of final approval.",
+      "state": "altered",
+      "checks": [
+        {
+          "state": "altered",
+          "provenance": "deterministic",
+          "detail": "The summary states $360 million; the loaded source states $180 million.",
+          "subject": "The settlement fund totals $360 million, payable to the class within 30 days of final approval."
+        }
+      ]
+    },
+    {
+      "claim": "Momentum remains strong across the portfolio.",
+      "state": "could_not_check",
+      "checks": [
+        {
+          "state": "could_not_check",
+          "provenance": "deterministic",
+          "detail": "no deterministically checkable content in this claim",
+          "subject": "Momentum remains strong across the portfolio."
+        }
+      ]
+    }
+  ],
+  "fingerprint": "14a5d642406d1df7dc98a13f03d5af1ab481330c49ecf54eff69d8d3aad036e4"
+}

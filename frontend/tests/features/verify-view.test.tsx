@@ -359,8 +359,11 @@ test("a dropped stream (no result event) never reads as a pass and surfaces a fi
 
   await submitDraft("two statements");
 
-  // The finish error is surfaced (errors are not swallowed).
-  expect(await screen.findByText(/did not finish/i)).toBeDefined();
+  // The finish error is surfaced (errors are not swallowed). Both the banner's
+  // ruling label and the engine message carry the phrase, so assert on the
+  // alert region rather than a unique text node.
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toMatch(/did not finish/i);
   // Nothing was waved through as supported.
   expect(screen.queryByText("Supported")).toBeNull();
   expect(screen.queryByText(/statements are supported/i)).toBeNull();

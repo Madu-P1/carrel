@@ -32,6 +32,16 @@ import styles from "./cachet.module.css";
  * SM-V1 in spirit: the writing area IS the sheet. We do not promise an outcome
  * here; we set up the honest gap the verdict lands in, right below.
  */
+
+/* The specimen: a litigator-shaped draft with planted defects, so a cold
+ * lectern can be examined in one click instead of opening on a blank void.
+ * Stated plainly as a specimen; the flaws are the point (the refusal and the
+ * flag are what the surface exists to show). Three physical lines so the
+ * sentence splitter reads three statements. */
+const SPECIMEN_DRAFT =
+  'The Supreme Court held that "separate educational facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483 (1954).\n' +
+  "The settlement fund totals $360 million, payable to the class within 30 days of final approval.\n" +
+  "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).";
 export function LecternView() {
   // The draft lives in the shared `liveDraft` signal, not local state, so a paste
   // on the home page survives navigating to the Shelf and back (the route swap
@@ -112,9 +122,11 @@ export function LecternView() {
     <section className={styles.lectern} data-active={hasVerdict ? "true" : undefined}>
       <CachetMark size={76} strokeWidth={26} className={styles.lecternMark} />
       <h1 className={styles.wordmark}>Cachet</h1>
+      <p className={styles.standing}>The independent attestation layer</p>
       <p className={styles.tagline}>
-        Independent verification for high-stakes drafts. Cachet certifies only what
-        it can trace to the record, and says so plainly when it cannot.
+        Cachet certifies only what it can trace to the record you provide, and says
+        so plainly when it cannot. Every ruling becomes a sealed record you can hand
+        to anyone.
       </p>
 
       <div className={styles.sheet}>
@@ -132,6 +144,9 @@ export function LecternView() {
           <span className={styles.sheetHint}>
             Reads the citations and quotes against the sources you provide
           </span>
+          <kbd className={styles.sheetKbd} title="Command Enter verifies the draft">
+            &#8984;&#9166;
+          </kbd>
           {engine.loading ? (
             // The escape hatch a persistent store makes necessary: loading
             // survives navigation by design, so a hung stream would otherwise
@@ -217,7 +232,36 @@ export function LecternView() {
         ) : null}
       </div>
 
-      <p className={styles.lecternMeta}>Nothing leaves this machine without your say</p>
+      {!ready && !hasVerdict ? (
+        // The cold lectern's one-click first move: a specimen with planted
+        // defects, so the first thing a skeptic sees is the surface refusing
+        // and flagging, not a blank void asking for trust up front.
+        <button
+          type="button"
+          className={styles.lecternSpecimen}
+          onClick={() => {
+            liveDraft.value = SPECIMEN_DRAFT;
+            areaRef.current?.focus();
+          }}
+        >
+          Or examine a specimen draft with planted defects
+        </button>
+      ) : null}
+
+      <dl className={styles.lecternSpine} aria-label="What this machine guarantees">
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>On device</dt>
+          <dd className={styles.spineGloss}>The substance never leaves this machine.</dd>
+        </div>
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>Independent</dt>
+          <dd className={styles.spineGloss}>It grades the output, never its own.</dd>
+        </div>
+        <div className={styles.spineItem}>
+          <dt className={styles.spineTerm}>Sealed</dt>
+          <dd className={styles.spineGloss}>A record you can hand to anyone.</dd>
+        </div>
+      </dl>
 
       {hasVerdict ? (
         <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>

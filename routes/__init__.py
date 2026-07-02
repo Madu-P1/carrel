@@ -1,3 +1,4 @@
+from routes.attest import register_attest_routes
 from routes.briefs import register_briefs_routes
 from routes.calendar import register_calendar_routes
 from routes.documents import register_document_routes
@@ -21,6 +22,8 @@ def register_routes(app) -> None:
     # Carrel V2 Stage 1 — Verify-mode endpoint over the existing
     # grounded-tutor engine. See services/verify.py + ADR-0006.
     register_verify_routes(app)
+    # ADR-0015 — sealed attestation certificates over the extracted kernel.
+    register_attest_routes(app)
     # Cachet PR6 — Shelf persistence (saved briefs) over services.briefs.
     register_briefs_routes(app)
     register_evidence_routes(app)

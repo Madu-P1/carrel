@@ -696,7 +696,17 @@ export function VerifyResults({
           indicator below is aria-hidden to avoid. */}
       {error ? (
         <div className={styles.errorBanner} role="alert">
-          {error}
+          <span className={styles.errorLabel}>The check did not finish</span>
+          <p className={styles.errorBody}>{error}</p>
+          {draft.trim() && !loading ? (
+            <button
+              type="button"
+              className={styles.errorRetry}
+              onClick={() => void engine.verify(draft)}
+            >
+              Run the check again
+            </button>
+          ) : null}
         </div>
       ) : null}
 

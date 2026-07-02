@@ -65,10 +65,20 @@
      toasts stay green-free. Cachet has no green; the only accent is oxblood. */
   --state-ok: var(--ink-1);
   --color-success: var(--ink-1);
-  --glass-bg-strong: var(--sheet);
-  --glass-bg: var(--sheet);
+  /* Liquid Glass, warm-ink edition (operator directive 2026-07-02). Glass
+     lives ONLY on floating chrome (palette, toasts, overlay scrims, the
+     examination drawer): translucent warm ink over a heavy blur, with the
+     highlight family rebound to paper tones so shared glass primitives
+     (Toast, Tooltip) refract the Examination desk, never Carrel's cool
+     study theme. Reading and verdict surfaces stay still, opaque ink --
+     glass is chrome, trust is paper. */
+  --glass-bg-strong: rgba(34, 28, 22, 0.72);
+  --glass-bg: rgba(24, 20, 16, 0.58);
   --glass-border-strong: var(--hair);
   --glass-border: var(--hair-soft);
+  --glass-highlight: rgba(241, 233, 218, 0.07);
+  --glass-highlight-strong: rgba(241, 233, 218, 0.2);
+  --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
   --color-bg-base: var(--paper);
 
   /* Cold display override (cascades into verify/shelf within Cachet). */
@@ -116,6 +126,7 @@
   color: var(--ink-1);
   cursor: pointer;
   border-radius: 3px;
+  transition: color 0.12s ease, opacity 0.12s ease;
 }
 
 .railGroup {
@@ -194,6 +205,17 @@
   overflow-y: auto;
 }
 
+/* The room: a stable, keyed passthrough wrapper the shell animates on entry.
+   Transparent to layout (a flex column that fills the canvas) so a room that
+   centers itself (the lectern's flex:1) is unaffected. */
+.room {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ---------- lectern (the landing title page) ---------- */
 .lectern {
   flex: 1;
@@ -226,13 +248,25 @@
   transition: font-size 0.2s ease;
 }
 
+/* The standing: one mono-uppercase line naming what this instrument IS. Sits
+   between the wordmark and the tagline as the register-setting label, the way
+   a filing names its own instrument before its recitals. */
+.standing {
+  font-family: var(--font-serif-body);
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 16px 0 0;
+}
+
 .tagline {
   font-family: var(--font-serif-body);
   font-size: 18px;
   line-height: 1.65;
   color: var(--ink-2);
   max-width: 53ch;
-  margin: 20px auto 0;
+  margin: 14px auto 0;
 }
 
 /* the well, as a sheet you write on: lighter fresh-sheet tone, one soft lift,
@@ -244,14 +278,21 @@
   background: var(--sheet);
   border: 1px solid var(--hair-soft);
   border-radius: 3px;
-  box-shadow: 0 12px 32px -20px rgba(28, 24, 20, 0.32);
+  /* The inset top light is the desk lamp catching the sheet's edge: it is what
+     makes the writing surface read as a physical sheet on the dark desk rather
+     than a void. Keep it faint; the sheet must stay quieter than the draft. */
+  box-shadow:
+    inset 0 1px 0 rgba(241, 233, 218, 0.06),
+    0 16px 40px -20px rgba(0, 0, 0, 0.55);
   padding: 26px 30px 0;
   transition: box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
 .sheet:focus-within {
   border-color: var(--hair);
-  box-shadow: 0 14px 36px -20px rgba(28, 24, 20, 0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(241, 233, 218, 0.08),
+    0 18px 44px -20px rgba(0, 0, 0, 0.62);
 }
 
 .sheetArea {
@@ -290,26 +331,32 @@
   letter-spacing: 0.01em;
 }
 
+/* The primary action of the whole product. Per the 2026-06-17 re-tone contract
+   the action button is a paper fill with ink text; a transparent outline here
+   read as a tertiary control at the exact moment the demo asks for commitment.
+   Filled at rest when enabled; the outline register is the disabled state. */
 .sheetGo {
   flex: 0 0 auto;
   font-family: var(--font-serif-body);
   font-size: 14px;
   letter-spacing: 0.03em;
-  color: var(--ink-1);
+  color: var(--paper);
   border: 1px solid var(--ink-1);
   border-radius: 2px;
-  padding: 7px 20px;
-  background: transparent;
+  padding: 8px 24px;
+  background: var(--ink-1);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
 }
 
 .sheetGo:hover:not(:disabled) {
-  background: var(--ink-1);
-  color: var(--paper);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 .sheetGo:disabled {
+  background: transparent;
+  color: var(--ink-1);
   opacity: 0.38;
   cursor: not-allowed;
 }
@@ -319,6 +366,47 @@
   outline-offset: 2px;
 }
 
+/* The quiet keyboard chord beside the action: keyboard-first, whispered. */
+.sheetKbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  border: 1px solid var(--hair-soft);
+  border-radius: 3px;
+  padding: 3px 6px;
+  user-select: none;
+}
+
+/* The specimen affordance: the cold lectern's one-click first move. A quiet
+   text control, never competing with Verify; it disappears once a draft is
+   present. */
+.lecternSpecimen {
+  margin-top: 14px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-decoration-color: var(--hair);
+  text-underline-offset: 4px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.lecternSpecimen:hover {
+  color: var(--ink-1);
+}
+
+.lecternSpecimen:focus-visible {
+  outline: 2px solid var(--ink-1);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .lecternMeta {
   margin-top: 30px;
   font-family: var(--font-serif-body);
@@ -326,6 +414,58 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-3);
+}
+
+/* The trust spine: the instrument's spec plate. Three stated guarantees on one
+   hairline-ruled row (the north star made visible: on-device, independent,
+   sealed), each a mono-uppercase term over a reading-serif gloss. Quieter than
+   the sheet on purpose - it is what the machine promises, read AFTER the act it
+   invites, never competing with the primary action. */
+.lecternSpine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(616px, 86vw);
+  margin: 40px auto 0;
+  padding: 0;
+  border-top: 1px solid var(--hair-soft);
+  border-bottom: 1px solid var(--hair-soft);
+}
+
+.spineItem {
+  padding: 18px 22px;
+  text-align: left;
+}
+
+.spineItem + .spineItem {
+  border-left: 1px solid var(--hair-soft);
+}
+
+.spineTerm {
+  font-family: var(--font-serif-body);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.spineGloss {
+  font-family: var(--font-serif-body);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 620px) {
+  .lecternSpine {
+    grid-template-columns: 1fr;
+  }
+
+  .spineItem + .spineItem {
+    border-left: 0;
+    border-top: 1px solid var(--hair-soft);
+  }
 }
 
 /* ---------- plain views (Sources / Settings scaffolds) ---------- */
@@ -407,20 +547,38 @@
   justify-content: center;
   align-items: flex-start;
   padding: 13vh 24px 24px;
-  background: rgba(28, 24, 20, 0.26);
+  background: rgba(28, 24, 20, 0.32);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   animation: cachetPaletteIn 120ms ease-out;
 }
 
+/* The palette is the flagship glass surface: the desk stays legible through
+   it, refracted warm. A hairline paper highlight rides the top edge (the desk
+   lamp catching the pane). Falls back to the opaque sheet where
+   backdrop-filter is unavailable, so legibility never depends on the blur. */
 .palettePanel {
   width: min(560px, 92vw);
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  background: var(--sheet);
+  background:
+    linear-gradient(160deg, var(--glass-highlight), transparent 46%),
+    var(--glass-bg-strong);
+  backdrop-filter: blur(26px) saturate(130%);
+  -webkit-backdrop-filter: blur(26px) saturate(130%);
   border: 1px solid var(--hair);
-  border-radius: 4px;
-  box-shadow: 0 24px 60px -28px rgba(28, 24, 20, 0.5);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight-strong),
+    var(--glass-shadow);
   overflow: hidden;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .palettePanel {
+    background: var(--sheet);
+  }
 }
 
 .paletteInput {
@@ -455,6 +613,7 @@
   border-radius: 3px;
   cursor: pointer;
   color: var(--ink-2);
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
 .paletteOptionActive {
@@ -751,6 +910,7 @@
   font-size: 13px;
   color: var(--ink-3);
   cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 .vaultCreateCancel:hover {
   color: var(--ink-1);
@@ -1188,6 +1348,7 @@
   text-underline-offset: 3px;
   cursor: pointer;
   padding: 0;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 .sourceClearActive:hover {
   color: var(--ink-1);

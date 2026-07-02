@@ -40,6 +40,16 @@ const SOURCES_ICON = (
   </svg>
 );
 
+// The Seal Bench: a wax-seal disc with a check stroke. It reads as the place a
+// sealed record is brought to be checked, distinct from the document glyphs.
+const SEAL_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <circle cx="12" cy="10" r="6" />
+    <path d="M9.3 10l2 2 3.4-3.6" />
+    <path d="M8.6 15.2l-1.6 4 5-2 5 2-1.6-4" />
+  </svg>
+);
+
 const SETTINGS_ICON = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
     <path d="M4 8.5h16M4 15.5h16" />
@@ -50,6 +60,7 @@ const SETTINGS_ICON = (
 
 const MAIN_ITEMS: RailItem[] = [
   { key: "verify", label: "Verify", path: "/", icon: VERIFY_ICON },
+  { key: "bench", label: "Seal Bench", path: "/bench", icon: SEAL_ICON },
   { key: "shelf", label: "Shelf", path: "/shelf", icon: SHELF_ICON },
   { key: "vault", label: "Vault", path: "/vault", icon: SOURCES_ICON }
 ];

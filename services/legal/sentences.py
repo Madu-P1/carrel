@@ -77,8 +77,11 @@ _ABBREVIATIONS = {
 # aware lookahead (eyecite spans start at the reporter, not the party name), which
 # is not yet built. See docs/notes on the unit-of-grounding limitation.
 _BOUNDARY = re.compile(
-    r"[.!?]+(?:"
-    r"(?P<ws_nl>[ \t]*[\r\n]+\s*)"  # hard line break: a boundary at any next-char case
+    # The (?<![.!?]) run-boundary guard + possessive quantifiers keep the scan
+    # linear on adversarial punctuation floods (CodeQL py/polynomial-redos,
+    # PR #194): a boundary may only start at the head of a terminator run.
+    r"(?<![.!?])[.!?]++(?:"
+    r"(?P<ws_nl>[ \t]*+[\r\n]+\s*)"  # hard line break: a boundary at any next-char case
     r"|(?P<ws_inline>\s+)(?=[\"'(\[]?[A-Z0-9])"  # same line: next opens with a cap/digit
     r")"
 )

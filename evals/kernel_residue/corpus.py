@@ -1,0 +1,265 @@
+"""The non-legal parity corpus (ADR-0015, trigger #3).
+
+Realistic AI-output fabrication shapes from five non-legal domains. Altered
+cases are near-verbatim copies of the source with one drifted figure -- the
+canonical LLM hallucination shape the engine already catches in legal drafts.
+Uncheckable cases are the honest-refusal control group: semantic claims or
+figure types the residue does not anchor (drug dosages, bare counts, physical
+units), included deliberately so the report documents the residue's blind
+spots instead of hiding them.
+"""
+
+from __future__ import annotations
+
+from .harness import Case
+
+CASES: list[Case] = [
+    # ---------------- finance (earnings summary vs filing) ----------------
+    Case(
+        id="F1",
+        domain="finance",
+        kind="clause",
+        truth="altered",
+        claim="Net revenue for the third quarter was $4.2 billion, an increase of 6% year over year.",
+        source="Net revenue for the third quarter was $2.4 billion, an increase of 6% year over year.",
+        note="transposed money figure on a near-verbatim sentence",
+    ),
+    Case(
+        id="F2",
+        domain="finance",
+        kind="clause",
+        truth="faithful",
+        claim="Net revenue for the third quarter was $2.4 billion, an increase of 6% year over year.",
+        source="Net revenue for the third quarter was $2.4 billion, an increase of 6% year over year.",
+        note="faithful restatement, both figures intact",
+    ),
+    Case(
+        id="F3",
+        domain="finance",
+        kind="clause",
+        truth="altered",
+        claim="Gross margin improved to 64% in the quarter, driven by services mix.",
+        source="Gross margin improved to 46% in the quarter, driven by services mix.",
+        note="digit-swapped percent on a near-verbatim sentence",
+    ),
+    Case(
+        id="F4",
+        domain="finance",
+        kind="clause",
+        truth="uncheckable",
+        claim="The company is well positioned for durable long-term growth.",
+        source="The board approved the restructuring plan in the third quarter.",
+        note="pure semantic claim, no anchor: must refuse, never rule",
+    ),
+    Case(
+        id="F5",
+        domain="finance",
+        kind="clause",
+        truth="altered",
+        claim="Extra margins of 60 billion are to be allocated to the participating markets.",
+        source="Extra margins of 20 billion are to be allocated to the participating markets.",
+        note="magnitude alteration, EU-finance shape (the live BIM catch, non-legal framing)",
+    ),
+    # ---------------- consulting (deck vs data-room document) ----------------
+    Case(
+        id="C1",
+        domain="consulting",
+        kind="clause",
+        truth="altered",
+        claim="The addressable market is estimated at 3 billion euro across the region.",
+        source="The addressable market is estimated at 300 million euro across the region.",
+        note="10x magnitude drift (million -> billion)",
+    ),
+    Case(
+        id="C2",
+        domain="consulting",
+        kind="clause",
+        truth="faithful",
+        claim="The transformation program runs for 18 months across three waves.",
+        source="The transformation program runs for 18 months across three waves.",
+        note="faithful duration",
+    ),
+    Case(
+        id="C3",
+        domain="consulting",
+        kind="clause",
+        truth="altered",
+        claim="The transformation program runs for 8 months across three waves.",
+        source="The transformation program runs for 18 months across three waves.",
+        note="dropped-digit duration drift",
+    ),
+    Case(
+        id="C4",
+        domain="consulting",
+        kind="clause",
+        truth="altered",
+        claim="The plant produces 620 tons of resin per day.",
+        source="The plant produces 120 tons of resin per day.",
+        note="physical-unit drift (tons): CLOSED by the kernel residue detector, batch A",
+    ),
+    # ---------------- medical (discharge note vs chart) ----------------
+    Case(
+        id="M1",
+        domain="medical",
+        kind="clause",
+        truth="altered",
+        claim="Started on atorvastatin 50 mg nightly at discharge.",
+        source="Started on atorvastatin 5 mg nightly at discharge.",
+        note="drug-dosage drift (mg): the highest-stakes blind spot, CLOSED in batch A",
+    ),
+    Case(
+        id="M2",
+        domain="medical",
+        kind="clause",
+        truth="altered",
+        claim="Completed a course of amoxicillin for 14 days before readmission.",
+        source="Completed a course of amoxicillin for 7 days before readmission.",
+        note="duration drift in a clinical narrative",
+    ),
+    Case(
+        id="M3",
+        domain="medical",
+        kind="clause",
+        truth="faithful",
+        claim="Ejection fraction measured at 55% on the follow-up echocardiogram.",
+        source="Ejection fraction measured at 55% on the follow-up echocardiogram.",
+        note="faithful clinical percent",
+    ),
+    Case(
+        id="M4",
+        domain="medical",
+        kind="clause",
+        truth="altered",
+        claim="Follow-up appointment scheduled for March 1, 2026 with cardiology.",
+        source="Follow-up appointment scheduled for March 11, 2026 with cardiology.",
+        note="date drift (textual, unambiguous form)",
+    ),
+    # ---------------- tax (memo vs source document) ----------------
+    Case(
+        id="T1",
+        domain="tax",
+        kind="clause",
+        truth="altered",
+        claim="The de minimis safe harbor permits deducting items up to $25,000 per invoice.",
+        source="The de minimis safe harbor permits deducting items up to $2,500 per invoice.",
+        note="order-of-magnitude money drift on a threshold",
+    ),
+    Case(
+        id="T2",
+        domain="tax",
+        kind="clause",
+        truth="faithful",
+        claim="The de minimis safe harbor permits deducting items up to $2,500 per invoice.",
+        source="The de minimis safe harbor permits deducting items up to $2,500 per invoice.",
+        note="faithful threshold",
+    ),
+    Case(
+        id="T3",
+        domain="tax",
+        kind="clause",
+        truth="altered",
+        claim="The penalty equals 2% of the underpayment attributable to negligence.",
+        source="The penalty equals 20% of the underpayment attributable to negligence.",
+        note="dropped-zero percent drift",
+    ),
+    # ---------------- operations / procurement ----------------
+    Case(
+        id="P1",
+        domain="operations",
+        kind="clause",
+        truth="altered",
+        claim="The unit price is fixed at $18.75 for the initial order, payable within 45 days.",
+        source="The unit price is fixed at $18.75 for the initial order, payable within 30 days.",
+        note="payment-terms duration drift beside a faithful price",
+    ),
+    Case(
+        id="P2",
+        domain="operations",
+        kind="clause",
+        truth="altered",
+        claim="Headcount reached 2,140 at year end.",
+        source="Headcount reached 1,240 at year end.",
+        note="grouped-count drift: CLOSED by the kernel residue detector, batch A",
+    ),
+    # ------- the NEXT documented blind spots (honest refusal, not silence) -------
+    Case(
+        id="G1",
+        domain="operations",
+        kind="clause",
+        truth="uncheckable",
+        claim="The blend uses a 3:1 ratio of resin to filler.",
+        source="The blend uses a 2:1 ratio of resin to filler.",
+        note="ratio notation is NOT an anchored type yet: documented gap, must refuse",
+    ),
+    Case(
+        id="G2",
+        domain="medical",
+        kind="clause",
+        truth="uncheckable",
+        claim="Take the medication three times daily with meals.",
+        source="Take the medication twice daily with meals.",
+        note="word-form frequency is NOT an anchored type yet: documented gap, must refuse",
+    ),
+    Case(
+        id="G4",
+        domain="finance",
+        kind="clause",
+        truth="uncheckable",
+        claim="The fine was $5 million.",
+        source="The penalty was $8 million.",
+        note=(
+            "synonym-subject alteration (fine/penalty): the token gate cannot tell it "
+            "from a cross-fact figure without reopening the break-fee false accusation "
+            "(mythos batchD, refuted). Deliberate over-refusal; documented gap."
+        ),
+    ),
+    Case(
+        id="G3",
+        domain="medical",
+        kind="clause",
+        truth="uncheckable",
+        claim="Presented with a fever of 39.5°C on admission.",
+        source="Presented with a fever of 38.5°C on admission.",
+        note="temperature units are NOT anchored yet (unit ambiguity risk): documented gap",
+    ),
+    # ---------------- journalism / PR (article quote vs transcript) ----------------
+    Case(
+        id="Q1",
+        domain="journalism",
+        kind="quote",
+        truth="altered",
+        claim='"We expect to close the acquisition by the end of the year"',
+        source=(
+            "CEO remarks, prepared transcript: We expect to close the acquisition by the "
+            "end of the second quarter, subject to regulatory approval. We will not comment "
+            "further while the review is pending."
+        ),
+        note="quote with a swapped tail: invented words attributed to a speaker",
+    ),
+    Case(
+        id="Q2",
+        domain="journalism",
+        kind="quote",
+        truth="faithful",
+        claim='"subject to regulatory approval"',
+        source=(
+            "CEO remarks, prepared transcript: We expect to close the acquisition by the "
+            "end of the second quarter, subject to regulatory approval. We will not comment "
+            "further while the review is pending."
+        ),
+        note="verbatim quoted phrase",
+    ),
+    Case(
+        id="Q3",
+        domain="journalism",
+        kind="quote",
+        truth="altered",
+        claim='"the merger will create ten thousand new jobs"',
+        source=(
+            "CEO remarks, prepared transcript: We expect to close the acquisition by the "
+            "end of the second quarter, subject to regulatory approval. We will not comment "
+            "further while the review is pending."
+        ),
+        note="wholly fabricated quote, nothing close in the source",
+    ),
+]
