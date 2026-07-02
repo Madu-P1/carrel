@@ -89,6 +89,63 @@ class DocumentVaultsRouteTests(unittest.TestCase):
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertIn("Occupied", self.client.get("/api/vaults").json()["vaults"])
 
+    def test_delete_of_a_never_registered_vault_is_404_not_a_crash(self) -> None:
+        response = self.client.delete("/api/vaults", params={"name": "Never Existed"})
+        self.assertEqual(response.status_code, 404, response.text)
+
+    def test_create_rejects_a_whitespace_only_name_with_400(self) -> None:
+        response = self.client.post("/api/vaults", json={"name": "   "})
+        self.assertEqual(response.status_code, 400, response.text)
+
+    def test_create_rejects_a_traversal_sequence_with_400(self) -> None:
+        response = self.client.post("/api/vaults", json={"name": "../etc"})
+        self.assertEqual(response.status_code, 400, response.text)
+
+    def test_create_rejects_a_leading_dot_with_400(self) -> None:
+        response = self.client.post("/api/vaults", json={"name": ".hidden"})
+        self.assertEqual(response.status_code, 400, response.text)
+
+    def test_create_rejects_an_over_long_name(self) -> None:
+        # CreateVaultRequest.name caps at 120 chars; FastAPI/Pydantic rejects
+        # this before it ever reaches create_vault, with a 422 (still a clear
+        # 4xx, never a 500).
+        response = self.client.post("/api/vaults", json={"name": "x" * 121})
+        self.assertEqual(response.status_code, 422, response.text)
+
+    def test_create_list_delete_happy_path_round_trip(self) -> None:
+        name = "Roundtrip Matter"
+        created = self.client.post("/api/vaults", json={"name": name})
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertIn(name, created.json()["vaults"])
+
+        listed = self.client.get("/api/vaults")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertIn(name, listed.json()["vaults"])
+
+        deleted = self.client.delete("/api/vaults", params={"name": name})
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertEqual(deleted.json(), {"deleted": True})
+        self.assertNotIn(name, self.client.get("/api/vaults").json()["vaults"])
+
+    def test_list_vaults_is_a_well_formed_empty_result_when_none_exist(self) -> None:
+        response = self.client.get("/api/vaults")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"vaults": []})
+
+    def test_create_of_a_duplicate_name_is_idempotent_not_an_error(self) -> None:
+        # Duplicate create is a deliberate no-op (see create_vault's docstring),
+        # never a 500 and never a blank body: the second call answers 200 with
+        # the same well-formed vault list, not a new entry and not a crash.
+        name = "Repeat Matter"
+        first = self.client.post("/api/vaults", json={"name": name})
+        self.assertEqual(first.status_code, 200, first.text)
+        second = self.client.post("/api/vaults", json={"name": name})
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(
+            [v for v in second.json()["vaults"] if v == name],
+            [name],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

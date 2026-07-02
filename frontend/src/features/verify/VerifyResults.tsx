@@ -24,6 +24,8 @@ import styles from "./VerifyView.module.css";
 
 export function tierBadgeClass(tier: ClaimDisposition["tier"]): string {
   switch (tier) {
+    case "pass":
+      return styles.badgePass;
     case "flag":
       return styles.badgeFlag;
     case "assistive":
@@ -31,7 +33,12 @@ export function tierBadgeClass(tier: ClaimDisposition["tier"]): string {
     case "refusal":
       return styles.badgeRefusal;
     default:
-      return styles.badgePass;
+      // Any value outside the known DispositionTier enum — a version-skewed
+      // wire shape, a future tier this build doesn't know, or null/undefined
+      // slipping past the type system — must fail safe to the honest-refusal
+      // class. It must never fall through to badgePass: an unrecognized
+      // value was never actually verified.
+      return styles.badgeRefusal;
   }
 }
 
@@ -426,6 +433,22 @@ function EmptyCoveragePanel({ statements }: { statements: number }) {
   );
 }
 
+/**
+ * The zero-finding state for paths that carry no `coverage` block (the LLM
+ * path, or a deterministic run with coverage.statements === 0). Without this,
+ * a settled, error-free result with zero claim cards rendered nothing at all
+ * here — a blank container a lawyer could misread as a silent all-clear.
+ * Generic by design: it makes no claim about how many statements were read,
+ * since that count is exactly what's missing on this path.
+ */
+function EmptyClaimsPanel() {
+  return (
+    <div className={styles.summary} role="status" aria-live="polite" data-empty-claims="true">
+      <p className={styles.summaryHeadline}>No checkable claims found in this document.</p>
+    </div>
+  );
+}
+
 function quoteStatusLabel(status: VerifyQuoteResult["status"]): string {
   switch (status) {
     case "altered":
@@ -516,6 +539,16 @@ function QuotePanel({ quotes }: QuotePanelProps) {
 }
 
 /**
+ * A null/undefined/non-object entry in claim_verdicts or a streamed claims
+ * batch (a malformed payload, a dropped SSE frame) must not crash the verdict
+ * render: dispositionForClaim and the card body both read properties straight
+ * off `card`, which throws on null/undefined rather than failing safe.
+ */
+function isUsableCard(card: unknown): card is VerifyClaimVerdict {
+  return typeof card === "object" && card !== null;
+}
+
+/**
  * The verdict surface: everything downstream of "the engine has something to
  * show". It renders the streaming progress, the live skeleton, and the settled
  * verdict tree (summary, quote panel, per-claim cards, the document margin, the
@@ -602,7 +635,15 @@ export function VerifyResults({
   const draftStale =
     checkedText !== null && draft.trim() !== "" && draft.trim() !== checkedText.trim();
 
-  const cards = (response?.claim_verdicts ?? []) as VerifyClaimVerdict[];
+  const cards = (response?.claim_verdicts ?? []).filter(isUsableCard);
+  // O5: malformed cards (null / non-object) are filtered out so the render
+  // stays crash-safe (VerdictCard and dispositionForClaim read properties
+  // straight off the card). But a dropped claim must not vanish SILENTLY —
+  // count the drop so an honest note can state it below. A real deterministic
+  // run ~never emits these; this is a robustness backstop for a malformed or
+  // partial payload, and stating "N could not be read" is more honest than a
+  // claim count that quietly shrinks.
+  const droppedClaimCount = (response?.claim_verdicts?.length ?? 0) - cards.length;
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
   // headline of the surface.
@@ -611,15 +652,34 @@ export function VerifyResults({
     .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
+  // T71: a run is only "settled" once it has a response AND carries no error
+  // at either level: the stream/engine `error`, or a payload-level
+  // `response.error` — e.g. a degraded-provider result other than the
+  // specially-handled "provider_below_quality_bar" literal (the outer
+  // ternary below routes that one case to its own banner). `!!response`
+  // alone was the only gate on the items-based summary, the save/export
+  // actions, and the WorkspaceMargin's inline marks, so any OTHER
+  // response.error value fell through unfiltered and could still render a
+  // "Supported" badge on top of a failure. `verify()` only ever assigns
+  // `response` the fully-settled `result` payload (never a partial one), so
+  // `!!response` on its own already carries the "run has genuinely finished"
+  // guarantee for the non-error case — `loading` is deliberately NOT part of
+  // this gate, since it can lag `response` by one microtask of bookkeeping
+  // cleanup and gating on it produced a transient blackout of already-final
+  // content. Every affirmative panel below reads `settled` so an errored
+  // response can never flash a badge on top of it.
+  const settled = !!response && !error && !response.error;
   // The zero-finding state: a settled deterministic verdict that produced no
   // cards (every statement was anchor-free). The engine still reports how many
   // statements it read in `coverage`, so surface an honest coverage statement
-  // instead of rendering the draft back in silence. Scoped to a clean run
-  // (no engine error, no payload error): a genuine failure already adds an
-  // engine-failure card (items > 0) or shows the error banner.
+  // instead of rendering the draft back in silence.
   const examinedStatements = response?.coverage?.statements ?? 0;
-  const showEmptyCoverage =
-    !!response && !error && !response.error && items.length === 0 && examinedStatements > 0;
+  const showEmptyCoverage = settled && items.length === 0 && examinedStatements > 0;
+  // The generic zero-claims fallback: any settled, error-free result with no
+  // claim cards and no usable coverage count (the LLM path carries no
+  // coverage block at all; a deterministic run can also report 0 statements
+  // read). Without this branch the result rendered as a blank container.
+  const showEmptyClaims = settled && items.length === 0 && !showEmptyCoverage;
   const certModel = certAt && response ? buildCertification(response, certAt, draft) : null;
   // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
   // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
@@ -669,6 +729,7 @@ export function VerifyResults({
   const liveItems =
     streaming && stream.cards.length > 0
       ? stream.cards
+          .filter(isUsableCard)
           .map((card) => ({ card, disposition: dispositionForClaim(card) }))
           .sort(
             (a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]
@@ -775,6 +836,18 @@ export function VerifyResults({
 
       {response?.error === "provider_below_quality_bar" ? (
         <ProviderQualityGateBanner provider={response.provider ?? ""} surface="verification" />
+      ) : response?.error ? (
+        // O7: any OTHER payload-level error (weak_coverage, empty_retrieval, an
+        // arbitrary provider string) must surface an honest failure, not
+        // silently blank the results column. The `settled` gate correctly
+        // suppresses every affirmative panel for such a payload, but nothing
+        // else rendered in its place — so a reviewer saw a bare provenance badge
+        // and no verdict. This states the failure plainly. (Effectively dead on
+        // Cachet's deterministic path, which always sets error=null; a real gap
+        // in this shared component off that path.)
+        <div className={styles.errorBanner} role="alert" data-response-error={response.error}>
+          Verification could not be completed, so nothing here is confirmed.
+        </div>
       ) : (
         <>
           {draftStale ? (
@@ -804,13 +877,27 @@ export function VerifyResults({
             </div>
           ) : null}
 
-          {items.length > 0 ? (
+          {settled && items.length > 0 ? (
             <VerifyVerdictSummary
               dispositions={items.map((it) => it.disposition)}
               coverage={response?.coverage ?? null}
             />
           ) : showEmptyCoverage ? (
             <EmptyCoveragePanel statements={examinedStatements} />
+          ) : showEmptyClaims ? (
+            <EmptyClaimsPanel />
+          ) : null}
+
+          {droppedClaimCount > 0 ? (
+            // O5: malformed claims were dropped from the render for crash-safety.
+            // State it plainly so the claim count never shrinks in silence.
+            <div className={styles.resolveRefusal} role="note" data-dropped-claims={droppedClaimCount}>
+              <p className={styles.resolveRefusalText}>
+                {droppedClaimCount === 1
+                  ? "1 claim could not be read from the result and is not shown."
+                  : `${droppedClaimCount} claims could not be read from the result and are not shown.`}
+              </p>
+            </div>
           ) : null}
 
           {onResolve && resolvableRefusals > 0 ? (
@@ -831,7 +918,7 @@ export function VerifyResults({
 
           <QuotePanel quotes={quoteResults} />
 
-          {items.length > 0 ? (
+          {settled && items.length > 0 ? (
             <div className={styles.resultActions}>
               {!isSealed ? (
                 <button
@@ -852,15 +939,16 @@ export function VerifyResults({
             </div>
           ) : null}
 
-          {response ? (
+          {settled ? (
             // Render the draft as the document either way. With claim cards it shows
             // their inline marks and margin notes; with none (a clean prose draft where
             // every sentence is untreated) it shows the draft as plain text, no marks and
             // no "could not verify" message. Untreated prose is not a finding, so it just
-            // reads back as the draft (mirrors main #155). A genuine engine error still
-            // surfaces above via the error banner.
+            // reads back as the draft (mirrors main #155). Gated on `settled` (not just
+            // `response`): the inline marks are the same "Supported" claim as the summary
+            // badge, so a non-terminal or errored response must not render them either.
             <WorkspaceMargin
-              draftText={response.draft_text ?? draft}
+              draftText={response?.draft_text ?? draft}
               cards={cards}
               examined={selected}
               onExamine={(idx) => setSelected(selected === idx ? null : idx)}
@@ -869,7 +957,7 @@ export function VerifyResults({
         </>
       )}
 
-      {response && items.length > 0 ? (
+      {settled && items.length > 0 ? (
         <ExaminationDrawer
           card={selectedItem?.card ?? null}
           open={selectedItem != null}

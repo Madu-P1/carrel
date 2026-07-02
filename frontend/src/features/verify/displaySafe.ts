@@ -48,6 +48,55 @@ const NON_PRINTABLE_PATTERN = new RegExp(
   "gu"
 );
 
-export function displaySafe(text: string): string {
-  return text.replace(NON_PRINTABLE_PATTERN, REPLACEMENT);
+// Claim/source text reaches this module from parsed API responses and pasted
+// documents, so it cannot be trusted to already be a well-formed string: a
+// malformed verdict payload can hand this null, a number, an object, or an
+// unbounded blob. None of that may throw or fall through to the DOM untouched.
+const MAX_DISPLAY_LENGTH = 50_000;
+
+// Matches a whole HTML/XML-like tag (<script>, </script>, <img onerror=...>)
+// so it can be neutralized without touching a lone "<"/">" used as a
+// less-than/greater-than sign in ordinary legal or financial prose — the
+// render path puts this text in a JSX text child (never innerHTML), so
+// entity-escaping every "<"/">"/"&" would corrupt that prose on screen
+// instead of making it safer.
+const HTML_TAG_PATTERN = /<\/?[a-zA-Z!][^>]*>/g;
+
+// The explicit "there is genuinely no value here" token for this module. A
+// type-degenerate input (a malformed payload handing this null, undefined, or
+// a non-finite number) must never collapse to the empty string: a blank cell
+// in the lectern UI reads as a clean, affirmative result to a lawyer, when in
+// truth nothing was there to check. Exported so callers/tests can compare
+// against it instead of the literal glyph.
+export const NEUTRAL_PLACEHOLDER = "—"; // em dash — unambiguous "no value", not a word
+
+function toDisplayString(value: unknown): string {
+  // Real string content — including an empty or whitespace-only string — is
+  // returned verbatim, never substituted. WorkspaceMargin.tsx applies
+  // displaySafe() per-character to slices of the lawyer's own draft_text
+  // (e.g. the single space between two adjacent claim spans is a genuine,
+  // common text segment); swapping that for NEUTRAL_PLACEHOLDER would inject
+  // a visible artifact into the rendered draft and break the 1-to-1,
+  // length-preserving contract documented above that keeps claim-span
+  // offsets aligned. Only non-string, type-degenerate input gets the
+  // placeholder treatment below.
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return NEUTRAL_PLACEHOLDER;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : NEUTRAL_PLACEHOLDER;
+  }
+  if (typeof value === "boolean") return String(value);
+  // BigInt and Symbol both support the global String() coercion path without
+  // throwing (String(symbol) is spec-cased to allow what template-literal/`+`
+  // coercion of a symbol would otherwise throw on). Anything else reaching
+  // here (object, array, function, ...) skips string coercion entirely rather
+  // than risking a hostile toString()/valueOf() — the empty string is the
+  // deliberate safe fallback for that whole non-primitive bucket.
+  if (typeof value === "bigint" || typeof value === "symbol") return String(value);
+  return "";
+}
+
+export function displaySafe(text: unknown): string {
+  const bounded = toDisplayString(text).slice(0, MAX_DISPLAY_LENGTH);
+  return bounded.replace(NON_PRINTABLE_PATTERN, REPLACEMENT).replace(HTML_TAG_PATTERN, REPLACEMENT);
 }

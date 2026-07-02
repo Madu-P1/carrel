@@ -54,13 +54,23 @@ interface PlacedSpan {
  *  deterministically. Exported for direct unit testing of the overlap rule. */
 export function placedSpans(draftLength: number, cards: VerifyClaimVerdict[]): PlacedSpan[] {
   const candidates: PlacedSpan[] = [];
-  cards.forEach((card, i) => {
+  const list = Array.isArray(cards) ? cards : [];
+  list.forEach((card, i) => {
+    if (!card || typeof card !== "object") return;
     const placement = card.placement;
     if (!placement || !placement.placed) return;
     const start = placement.char_start;
     const end = placement.char_end;
     if (typeof start !== "number" || typeof end !== "number") return;
-    // Guard against malformed ranges: must be in-bounds and non-empty.
+    // Guard against malformed ranges: must be finite, in-bounds, and non-empty.
+    // (Relational comparisons against NaN are always false, so an explicit
+    // finiteness check is required — NaN would otherwise slip past the bounds
+    // check below and corrupt the cursor downstream in segmentDraft.)
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    // Out-of-range offsets are DROPPED, not clamped: clamping would render a
+    // highlight boundary the engine never actually computed — exactly the
+    // fabricated-span behavior this module's contract forbids (see file
+    // header). The claim is still visible elsewhere (verdict list / tray).
     if (start < 0 || end > draftLength || start >= end) return;
     const method: PlacementMethod = placement.method === "fuzzy" ? "fuzzy" : "exact";
     const claimIndex = typeof card.claim_index === "number" ? card.claim_index : i;
@@ -179,7 +189,7 @@ export function paragraphsFromSegments(segments: DocumentSegment[]): DocumentSeg
     if (current.length > 0) paragraphs.push(current);
     current = [];
   };
-  for (const seg of segments) {
+  for (const seg of Array.isArray(segments) ? segments : []) {
     if (seg.kind === "text" && /\n\s*\n/.test(seg.text)) {
       const parts = seg.text.split(/\n\s*\n/);
       parts.forEach((part, idx) => {

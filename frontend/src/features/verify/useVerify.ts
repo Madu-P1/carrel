@@ -49,6 +49,15 @@ export interface VerifyEngine {
   /** The draft text of the last hydrated brief, or null on the live flow. The
    *  host seeds its composer (editable in VerifyView, read-only in the reader). */
   hydratedDraft: string | null;
+  /** True when the most recent verify run did NOT settle on a `result` event:
+   *  dropped mid-stream (network abort/error) or truncated (the stream closed
+   *  without its completion sentinel). False on a fresh, idle, or fully
+   *  completed run. Any claim the server had not yet returned a final verdict
+   *  for when a run is interrupted is never displayed as verified (see
+   *  `isCardChecking`/`stream.checked` in streamProgress.ts); this flag lets a
+   *  caller additionally distinguish a completed run from an interrupted one
+   *  without inferring it from `error` being non-null. T71. */
+  streamInterrupted: boolean;
   verify: (text: string) => Promise<void>;
   /** Record a LIVE seal (the human clicked Set the seal) on the engine, so a
    *  persistent-store host still hides the quiet unsealed Save after a remount.
@@ -76,6 +85,7 @@ export interface VerifyStore {
   sealedSeed: Signal<string | null>;
   certAtSeed: Signal<string | null>;
   hydratedDraft: Signal<string | null>;
+  streamInterrupted: Signal<boolean>;
   /** The in-flight check's controller. A plain mutable slot, not a signal:
    *  nothing renders from it. Lives in the store so an in-flight check stays
    *  supersedable across a host remount. */
@@ -92,6 +102,7 @@ export function createVerifyStore(): VerifyStore {
     sealedSeed: signal<string | null>(null),
     certAtSeed: signal<string | null>(null),
     hydratedDraft: signal<string | null>(null),
+    streamInterrupted: signal(false),
     abort: { current: null }
   };
 }
@@ -109,6 +120,7 @@ export function resetVerifyStore(store: VerifyStore): void {
   store.sealedSeed.value = null;
   store.certAtSeed.value = null;
   store.hydratedDraft.value = null;
+  store.streamInterrupted.value = false;
 }
 
 export function useVerify(
@@ -169,6 +181,7 @@ export function useVerify(
     store.loading.value = true;
     store.error.value = null;
     store.response.value = null;
+    store.streamInterrupted.value = false;
     // A fresh check is a NEW verification: drop any reopened brief's stored seal
     // and date so the fresh result can never export the prior brief's seal or
     // timestamp (the seeds survive only an untouched re-export of that brief).
@@ -202,7 +215,7 @@ export function useVerify(
         store.response.value = null;
       }
     } finally {
-      // Ownership-guarded, BOTH writes: a superseded check (cancelled via
+      // Ownership-guarded, ALL writes: a superseded check (cancelled via
       // resetVerifyStore, with a successor already streaming) must not clear
       // the successor's loading flag as its own loop unwinds — that would drop
       // the "Verifying…" chrome mid-check and reopen the loading guard to a
@@ -210,6 +223,12 @@ export function useVerify(
       if (store.abort.current === controller) {
         store.abort.current = null;
         store.loading.value = false;
+        // Interrupted iff this run never reached the settled "done" phase —
+        // dropped mid-stream (network abort/error, surfaced error event) or
+        // truncated (loop exhausted with no `result`). A clean completion is
+        // the only path that lands on "done", so this is false exactly when
+        // every claim the server intended to verdict actually got one.
+        store.streamInterrupted.value = live.phase !== "done";
       }
     }
   };
@@ -223,6 +242,7 @@ export function useVerify(
     sealedSeed: store.sealedSeed.value,
     certAtSeed: store.certAtSeed.value,
     hydratedDraft: store.hydratedDraft.value,
+    streamInterrupted: store.streamInterrupted.value,
     verify,
     markSealed: (fingerprint: string, generatedAtISO: string) => {
       store.sealedSeed.value = fingerprint;

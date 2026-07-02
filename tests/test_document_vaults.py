@@ -60,6 +60,17 @@ class DocumentVaultsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             create_vault(self.conn, "   ")
 
+    def test_traversal_segment_rejected_but_dotted_caption_survives(self) -> None:
+        # '..' is rejected only as a path SEGMENT (the delete-route traversal
+        # risk), not as a raw substring, so a real caption with an ellipsis or
+        # trailing dots survives while an actual traversal is refused.
+        for legit in ("Estate of Smith, et al...", "Acme v. Beta ...continued", "Version 2.1..2.3"):
+            # Must not raise; returns a non-empty canonical name.
+            self.assertTrue(create_vault(self.conn, legit))
+        for traversal in ("..", "../secrets", "vault/../etc", "a\\..\\b"):
+            with self.assertRaises(ValueError):
+                create_vault(self.conn, traversal)
+
     def test_delete_forgets_an_empty_vault_but_refuses_one_that_holds_records(self) -> None:
         create_vault(self.conn, "Empty")
         self.assertTrue(delete_vault(self.conn, "Empty"))
@@ -116,6 +127,56 @@ class DocumentVaultsTest(unittest.TestCase):
         # registered and holds nothing; the route now answers 404.
         with self.assertRaises(LookupError):
             delete_vault(self.conn, "Never Existed")
+
+    def test_create_rejects_an_empty_string_name(self) -> None:
+        with self.assertRaises(ValueError):
+            create_vault(self.conn, "")
+
+    def test_create_rejects_a_traversal_sequence(self) -> None:
+        with self.assertRaises(ValueError):
+            create_vault(self.conn, "..")
+        with self.assertRaises(ValueError):
+            create_vault(self.conn, "Case/../../etc")
+
+    def test_create_rejects_a_leading_dot(self) -> None:
+        with self.assertRaises(ValueError):
+            create_vault(self.conn, ".hidden")
+
+    def test_create_rejects_a_name_over_the_length_bound(self) -> None:
+        from services.documents import VAULT_NAME_MAX_LENGTH
+
+        with self.assertRaises(ValueError):
+            create_vault(self.conn, "x" * (VAULT_NAME_MAX_LENGTH + 1))
+        # The bound itself is still accepted.
+        at_bound = "x" * VAULT_NAME_MAX_LENGTH
+        self.assertEqual(create_vault(self.conn, at_bound), at_bound)
+
+    def test_create_permits_a_slash_because_vault_names_are_not_filesystem_paths(self) -> None:
+        # 'Apex / Northwind' is a real consolidated-case caption, not a path
+        # traversal attempt; document_vaults.name is a DB column, never a path
+        # segment. Locks the deliberate decision NOT to reject '/' or '\'.
+        name = "Apex / Northwind"
+        self.assertEqual(create_vault(self.conn, name), name)
+        self.assertIn(name, list_vault_names(self.conn))
+
+    def test_create_still_treats_a_duplicate_name_as_idempotent_not_an_error(self) -> None:
+        # create_vault is documented as idempotent on an existing name; the
+        # new validation must not turn that into a rejection.
+        self.assertEqual(create_vault(self.conn, "Repeat"), "Repeat")
+        self.assertEqual(create_vault(self.conn, "Repeat"), "Repeat")
+        self.assertEqual([v for v in list_vault_names(self.conn) if v == "Repeat"], ["Repeat"])
+
+    def test_create_list_delete_happy_path_round_trip(self) -> None:
+        name = "Roundtrip Matter"
+        self.assertEqual(create_vault(self.conn, name), name)
+        self.assertIn(name, list_vault_names(self.conn))
+        self.assertTrue(delete_vault(self.conn, name))
+        self.assertNotIn(name, list_vault_names(self.conn))
+
+    def test_list_vault_names_is_a_well_formed_empty_list_when_none_exist(self) -> None:
+        # No registry rows, no filed documents: the union is empty, not None
+        # and not an error, so the UI can render an empty state cleanly.
+        self.assertEqual(list_vault_names(self.conn), [])
 
 
 if __name__ == "__main__":

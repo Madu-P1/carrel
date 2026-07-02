@@ -170,22 +170,40 @@ def save_brief(
     # and branch: UPDATE it (last write wins, id + created_at preserved) when
     # found, INSERT a fresh row otherwise. Different fingerprint => new row.
     existing = conn.execute(
-        "SELECT id FROM briefs WHERE fingerprint = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        "SELECT id, seal_state FROM briefs WHERE fingerprint = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
         (fingerprint,),
     ).fetchone()
 
     now = _now_iso()
     if existing is not None:
         brief_id = existing["id"]
-        conn.execute(
-            """
-            UPDATE briefs
-            SET title = ?, draft = ?, response_json = ?, cert_json = ?,
-                seal_state = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (clean_title, clean_draft, response_blob, cert_blob, state, now, brief_id),
-        )
+        # Seal-immutability: a sealed brief is FROZEN. The fingerprint pins the
+        # draft (it IS the draft's SHA-256), so the only mutation reachable on
+        # this path is a change of seal_state or cert/response on the SAME
+        # draft. An UN-SEAL (or any non-"sealed" re-save) is refused LOUDLY with
+        # 409 rather than silently dropped: a caller must never believe it
+        # modified a sealed, certified brief. A same-state re-seal is an
+        # idempotent no-op — it never overwrites the sealed draft/cert/response
+        # (so a forged cert on re-seal cannot take) and returns the unchanged
+        # sealed summary. A genuinely edited draft has a different fingerprint
+        # and takes the INSERT path below.
+        if existing["seal_state"] == "sealed":
+            if state != "sealed":
+                raise HTTPException(
+                    status_code=409,
+                    detail="This brief is sealed and cannot be modified or un-sealed.",
+                )
+            # idempotent re-seal: fall through to the read-back + return below.
+        else:
+            conn.execute(
+                """
+                UPDATE briefs
+                SET title = ?, draft = ?, response_json = ?, cert_json = ?,
+                    seal_state = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (clean_title, clean_draft, response_blob, cert_blob, state, now, brief_id),
+            )
     else:
         brief_id = str(uuid.uuid4())
         conn.execute(

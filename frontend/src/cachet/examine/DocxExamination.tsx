@@ -24,6 +24,9 @@ interface DocxExaminationProps {
   docId: string;
   kind: "docx" | "txt";
   quote?: string | null;
+  /** Reports a load failure to the parent, which owns the named-cause
+   *  failure panel and Retry control (DocumentExamination.tsx). */
+  onError?: (message: string) => void;
 }
 
 type AnchorState = "none" | "searching" | "found" | "absent";
@@ -34,17 +37,15 @@ function prefersReducedMotion(): boolean {
     : false;
 }
 
-export function DocxExamination({ docId, kind, quote }: DocxExaminationProps) {
+export function DocxExamination({ docId, kind, quote, onError }: DocxExaminationProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<AnchorState>(quote ? "searching" : "none");
 
   useEffect(() => {
     let disposed = false;
     setStatus("loading");
-    setError(null);
     setAnchor(quote ? "searching" : "none");
 
     void (async () => {
@@ -79,19 +80,22 @@ export function DocxExamination({ docId, kind, quote }: DocxExaminationProps) {
           if (marks && marks.length > 0) {
             setAnchor("found");
             const behavior = prefersReducedMotion() ? "auto" : "smooth";
-            marks[0].scrollIntoView({ behavior, block: "center" });
+            // Optional: jsdom (tests) has no scrollIntoView at all, and a
+            // missing/no-op implementation must never be misread as the
+            // record's bytes having failed to load.
+            marks[0].scrollIntoView?.({ behavior, block: "center" });
           } else {
             setAnchor("absent");
           }
         }
       } catch (cause) {
         if (!disposed) {
-          setStatus("error");
-          setError(
+          const message =
             cause instanceof Error && cause.message
               ? cause.message
-              : "The record could not be opened."
-          );
+              : "The record could not be opened.";
+          setStatus("error");
+          onError?.(message);
         }
       }
     })();
@@ -99,7 +103,13 @@ export function DocxExamination({ docId, kind, quote }: DocxExaminationProps) {
     return () => {
       disposed = true;
     };
-  }, [docId, kind, quote]);
+  }, [docId, kind, quote, onError]);
+
+  if (status === "error") {
+    // The named-cause failure panel + Retry control render one level up, in
+    // DocumentExamination.tsx, once onError has reported this message.
+    return null;
+  }
 
   return (
     <div className={styles.docxPane}>
@@ -116,14 +126,6 @@ export function DocxExamination({ docId, kind, quote }: DocxExaminationProps) {
               </span>
             )}
           </span>
-        </div>
-      ) : null}
-      {status === "error" ? (
-        <div className={styles.paneMessage}>
-          <p className={styles.paneError}>{error}</p>
-          <p className={styles.paneHint}>
-            Reopen the record from the Vault once the engine holds its file again.
-          </p>
         </div>
       ) : null}
       {status === "loading" ? (

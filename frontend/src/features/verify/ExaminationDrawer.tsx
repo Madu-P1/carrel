@@ -14,10 +14,10 @@
  */
 import { useEffect, useRef } from "preact/hooks";
 
-import { useInert } from "@/design-system";
+import { Spinner, useInert } from "@/design-system";
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
-import { dispositionForClaim } from "./claimDisposition";
+import { dispositionForClaim, type ClaimDisposition } from "./claimDisposition";
 import { SourceInspectorBody } from "./SourceInspector";
 import styles from "./VerifyView.module.css";
 
@@ -153,13 +153,61 @@ export function checksFor(card: VerifyClaimVerdict): CheckRow[] {
   ];
 }
 
+/**
+ * Every non-happy path the drawer body can be in, collapsed into one
+ * discriminated union so the render side is an exhaustive switch instead of
+ * independent booleans that can drift out of sync. "malformed" is reached
+ * when checksFor/dispositionForClaim throw on a card whose shape doesn't
+ * match what they assume (a truncated stream, a version-skewed payload) —
+ * caught here so a bad property access downstream never blanks or crashes
+ * the whole verify view.
+ *
+ * Exported for direct unit testing (ExaminationDrawer.test.tsx), same
+ * rationale as checksFor above.
+ */
+export type ExamState =
+  | { kind: "loading" }
+  | { kind: "load-error"; message: string }
+  | { kind: "empty" }
+  | { kind: "malformed" }
+  | { kind: "ready"; card: VerifyClaimVerdict; checks: CheckRow[]; disposition: ClaimDisposition };
+
+export function deriveExamState(
+  card: VerifyClaimVerdict | null,
+  loading: boolean,
+  loadError: string | null
+): ExamState {
+  if (loading) return { kind: "loading" };
+  if (loadError) return { kind: "load-error", message: loadError };
+  if (!card) return { kind: "empty" };
+  try {
+    return { kind: "ready", card, checks: checksFor(card), disposition: dispositionForClaim(card) };
+  } catch {
+    return { kind: "malformed" };
+  }
+}
+
 interface ExaminationDrawerProps {
   card: VerifyClaimVerdict | null;
   open: boolean;
   onClose: () => void;
+  /** True while the source document behind this claim is still being
+   * fetched. Renders an explicit loading affordance instead of a blank
+   * drawer body; takes precedence over every other state. */
+  loading?: boolean;
+  /** Set when fetching the source (or its highlights) failed, or a stream
+   * backing it dropped. Renders an explicit failure state and must never be
+   * confused with a completed examination. */
+  loadError?: string | null;
 }
 
-export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProps) {
+export function ExaminationDrawer({
+  card,
+  open,
+  onClose,
+  loading = false,
+  loadError = null
+}: ExaminationDrawerProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   // The drawer stays mounted and slides; while closed it must be inert so its
@@ -191,8 +239,7 @@ export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProp
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const checks = card ? checksFor(card) : [];
-  const disposition = card ? dispositionForClaim(card) : null;
+  const examState = deriveExamState(card, loading, loadError);
 
   return (
     <aside
@@ -208,12 +255,40 @@ export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProp
           Close
         </button>
       </header>
-      {card ? (
+      {examState.kind === "loading" ? (
         <div className={styles.examBody}>
-          <p className={styles.examClaim}>{card.claim_text}</p>
+          <div className={styles.sourceLoading} role="status">
+            <Spinner size={16} />
+            <span>Loading the source…</span>
+          </div>
+        </div>
+      ) : examState.kind === "load-error" ? (
+        <div className={styles.examBody}>
+          <p className={styles.errorBanner} role="alert">
+            The source could not be loaded.
+          </p>
+          <p className={styles.sourceMuted}>{examState.message}</p>
+        </div>
+      ) : examState.kind === "empty" ? (
+        <div className={styles.examBody} role="status">
+          <p className={styles.sourceMuted}>No source to examine.</p>
+          <p className={styles.sourceMuted}>Select a claim to open its examination.</p>
+        </div>
+      ) : examState.kind === "malformed" ? (
+        <div className={styles.examBody}>
+          <p className={styles.errorBanner} role="alert">
+            This source could not be displayed.
+          </p>
+          <p className={styles.sourceMuted}>
+            The record returned data in a shape this drawer did not expect.
+          </p>
+        </div>
+      ) : (
+        <div className={styles.examBody}>
+          <p className={styles.examClaim}>{examState.card.claim_text}</p>
           <section className={styles.checks} aria-label="The four checks">
             <h3 className={styles.checksLabel}>Four checks, shown separately</h3>
-            {checks.map((ck) => (
+            {examState.checks.map((ck) => (
               <div key={ck.name} className={styles.check} data-state={ck.state}>
                 <span className={styles.checkMark} aria-hidden="true" />
                 <div>
@@ -226,9 +301,9 @@ export function ExaminationDrawer({ card, open, onClose }: ExaminationDrawerProp
               </div>
             ))}
           </section>
-          {disposition ? <SourceInspectorBody card={card} disposition={disposition} /> : null}
+          <SourceInspectorBody card={examState.card} disposition={examState.disposition} />
         </div>
-      ) : null}
+      )}
     </aside>
   );
 }

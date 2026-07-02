@@ -831,14 +831,43 @@ def _existing_vault_spelling(conn: sqlite3.Connection, normalized: str) -> Optio
     return row["subject_name"] if row else None
 
 
+VAULT_NAME_MAX_LENGTH = 120
+# Matches CreateVaultRequest.name's Pydantic bound (api_models.py): the name is
+# persisted, listed, sorted, and rendered as a folder title, so an unbounded
+# string is a local-DoS lever, not a vault name. Enforced here too so a direct
+# caller of create_vault (bypassing the route) gets the same guard.
+
+
 def create_vault(conn: sqlite3.Connection, name: str) -> str:
     """Register a (possibly empty) vault so it persists before its first record.
     Idempotent and case-insensitive: registering an existing name (in any casing)
     is a no-op that returns the existing spelling. Returns the canonical name.
-    Raises ValueError on a blank name (rather than silently defaulting it to
-    'General', which would create a vault the user did not name)."""
+
+    Raises ValueError on:
+      - a blank name (rather than silently defaulting it to 'General', which
+        would create a vault the user did not name)
+      - a name containing '..' or starting with '.' (dotfile/traversal-shaped;
+        never a legitimate case caption)
+      - a name longer than VAULT_NAME_MAX_LENGTH
+
+    A bare '/' or '\\' is deliberately NOT rejected: vault names are free-text
+    case captions stored as a document_vaults.name column, never a filesystem
+    path segment (see delete_vault_route's query-param handling), and real
+    captions legitimately contain a slash (e.g. 'Apex / Northwind' — locked by
+    test_slash_named_vault_round_trips_create_and_delete)."""
     if not name or not name.strip():
         raise ValueError("A vault needs a name.")
+    stripped = name.strip()
+    # Reject '..' only as a path SEGMENT (the traversal risk in
+    # delete_vault_route's path handling), not as a raw substring: a real
+    # caption legitimately contains '..' inside a token (e.g. 'Estate of
+    # Smith, et al...') and must survive.
+    if any(seg == ".." for seg in stripped.replace("\\", "/").split("/")):
+        raise ValueError("A vault name can't contain a '..' path segment.")
+    if stripped.startswith("."):
+        raise ValueError("A vault name can't start with '.'.")
+    if len(stripped) > VAULT_NAME_MAX_LENGTH:
+        raise ValueError(f"A vault name can't be longer than {VAULT_NAME_MAX_LENGTH} characters.")
     normalized = normalize_subject_name(name)
     canonical = _existing_vault_spelling(conn, normalized) or normalized
     conn.execute("INSERT OR IGNORE INTO document_vaults (name) VALUES (?)", (canonical,))

@@ -191,6 +191,9 @@ describe("DocumentExamination", () => {
     expect(
       screen.getByText(/This record's file type \(xlsx\) cannot be displayed in place\./)
     ).toBeTruthy();
+    // O4: retrying cannot change a file type, so no dead Retry control renders
+    // on the unsupported panel (it stays on transient fetch/render failures).
+    expect(screen.queryByText("Retry")).toBeNull();
   });
 
   it("surfaces a missing original file instead of a blank pane", async () => {
@@ -326,5 +329,56 @@ describe("DocumentExamination — focus, inert, and paging", () => {
     expect(document.activeElement).toBe(close);
 
     outside.remove();
+  });
+});
+
+describe("DocumentExamination — load failure", () => {
+  afterEach(() => {
+    act(() => {
+      closeExamination();
+    });
+  });
+
+  it("names a network/non-OK fetch load failure, offers Retry, and Retry re-invokes the load", async () => {
+    // fetchDocumentFile's GET is mocked to fail (HTTP 500, a non-OK response)
+    // on the first call and succeed on the second, so Retry can be proven to
+    // actually re-invoke the load rather than just hide the panel.
+    let attempts = 0;
+    registerFetchHandler((url, init) => {
+      if (url.pathname === "/api/documents/doc-err/file" && init.method.toUpperCase() === "GET") {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response("server exploded", { status: 500 });
+        }
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      }
+      return undefined;
+    });
+
+    render(<DocumentExamination />);
+    act(() => {
+      openExamination({ docId: "doc-err", filename: "broken.docx", fileType: "docx" });
+    });
+
+    await screen.findByRole("dialog", { name: /Examining broken\.docx/ });
+
+    // Named-cause copy: a fetch/non-OK failure, not the generic-message
+    // collapse and not the unsupported-file-type copy.
+    const failure = await screen.findByRole("alert");
+    expect(failure.textContent).toContain("The record file could not be opened (HTTP 500).");
+    expect(failure.textContent).not.toContain("cannot be displayed in place");
+    expect(failure.getAttribute("data-cachet-load-failure")).toBe("fetch");
+
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(attempts).toBe(1);
+
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(attempts).toBe(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
   });
 });

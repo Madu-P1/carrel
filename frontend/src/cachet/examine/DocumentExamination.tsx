@@ -20,7 +20,12 @@ import { documents } from "@/services/api/endpoints";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
 import { DocxExamination } from "./DocxExamination";
-import { closeExamination, examination, examinationHostMounted } from "./examineStore";
+import {
+  closeExamination,
+  examination,
+  examinationHostMounted,
+  type DocumentLoadFailure
+} from "./examineStore";
 import { PdfExamination } from "./PdfExamination";
 import styles from "./examine.module.css";
 
@@ -44,6 +49,13 @@ export function DocumentExamination() {
   const request = examination.value;
   const [resolvedType, setResolvedType] = useState<string | null>(null);
   const [resolveFailed, setResolveFailed] = useState(false);
+  // Set by PdfExamination/DocxExamination's onError once their own bytes
+  // fetch fails; cleared (along with resolveFailed) on every retry below.
+  const [paneError, setPaneError] = useState<string | null>(null);
+  // Bumped on Retry. Drives the type-resolution effect below AND is used as
+  // the pane's `key`, so a retry remounts PdfExamination/DocxExamination and
+  // genuinely re-runs its load effect rather than just hiding the panel.
+  const [attempt, setAttempt] = useState(0);
 
   const docId = request?.docId ?? null;
   const knownType = request?.fileType ?? null;
@@ -71,6 +83,7 @@ export function DocumentExamination() {
   useEffect(() => {
     setResolvedType(null);
     setResolveFailed(false);
+    setPaneError(null);
     if (!docId || knownType) {
       return;
     }
@@ -90,7 +103,10 @@ export function DocumentExamination() {
     return () => {
       disposed = true;
     };
-  }, [docId, knownType]);
+    // attempt is intentionally a dependency: bumping it (Retry) re-runs this
+    // resolution AND clears resolveFailed/paneError, even when the file type
+    // was already known and this effect otherwise no-ops.
+  }, [docId, knownType, attempt]);
 
   // Escape closes THIS layer only. Capture phase + stopImmediatePropagation:
   // the Examination drawer (and the passage overlay) also close on Escape via
@@ -122,6 +138,30 @@ export function DocumentExamination() {
   const kind = fileType !== null ? paneKindFor(fileType) : null;
   const locator = request.page ? `p. ${request.page}` : null;
 
+  // Named-cause failure, checked in priority order: a pane-reported bytes
+  // fetch failure, then a failed type resolution (also a fetch), then a file
+  // type Cachet does not attempt to render. Never collapsed into one generic
+  // message — each cause keeps its own copy and hint.
+  const failure: DocumentLoadFailure | null = paneError
+    ? {
+        cause: "fetch",
+        message: paneError,
+        hint: "Reopen the record from the Vault once the engine holds its file again."
+      }
+    : resolveFailed
+      ? {
+          cause: "fetch",
+          message: "The record's details could not be loaded.",
+          hint: "Check that the engine is running, then reopen it."
+        }
+      : kind === "unsupported"
+        ? {
+            cause: "unsupported",
+            message: `This record's file type (${fileType || "unknown"}) cannot be displayed in place.`,
+            hint: "The verification itself is unaffected; the engine checked the record's extracted text."
+          }
+        : null;
+
   return (
     <div
       ref={scrimRef}
@@ -151,25 +191,47 @@ export function DocumentExamination() {
           </button>
         </header>
         <div className={styles.panelBody}>
-          {kind === "pdf" ? (
-            <PdfExamination docId={request.docId} page={request.page} quote={request.quote} />
+          {failure ? (
+            // role=alert: a load failure is the one state a lawyer must never
+            // be left looking at silently — announced assertively, same
+            // convention as the verify failure banner.
+            <div
+              className={styles.paneMessage}
+              role="alert"
+              data-cachet-load-failure={failure.cause}
+            >
+              <p className={styles.paneError}>{failure.message}</p>
+              <p className={styles.paneHint}>{failure.hint}</p>
+              {/* Retry only where a re-attempt can change the outcome (a
+                  transient fetch/render failure). An "unsupported" file type is
+                  a permanent property of the record, so retrying just re-renders
+                  the identical panel; omit the dead control there. */}
+              {failure.cause !== "unsupported" ? (
+                <button
+                  type="button"
+                  className={styles.pageButton}
+                  onClick={() => setAttempt((value) => value + 1)}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          ) : kind === "pdf" ? (
+            <PdfExamination
+              key={attempt}
+              docId={request.docId}
+              page={request.page}
+              quote={request.quote}
+              onError={setPaneError}
+            />
           ) : kind === "docx" || kind === "txt" ? (
-            <DocxExamination docId={request.docId} kind={kind} quote={request.quote} />
-          ) : kind === "unsupported" ? (
-            <div className={styles.paneMessage}>
-              <p className={styles.paneError}>
-                This record's file type ({fileType || "unknown"}) cannot be displayed in place.
-              </p>
-              <p className={styles.paneHint}>
-                The verification itself is unaffected; the engine checked the record's extracted
-                text.
-              </p>
-            </div>
-          ) : resolveFailed ? (
-            <div className={styles.paneMessage}>
-              <p className={styles.paneError}>The record's details could not be loaded.</p>
-              <p className={styles.paneHint}>Check that the engine is running, then reopen it.</p>
-            </div>
+            <DocxExamination
+              key={attempt}
+              docId={request.docId}
+              kind={kind}
+              quote={request.quote}
+              onError={setPaneError}
+            />
           ) : (
             <div className={styles.paneMessage}>
               <Spinner size={16} />

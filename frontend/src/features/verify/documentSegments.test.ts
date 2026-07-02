@@ -5,6 +5,7 @@ import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 import {
   highlightRuns,
   paragraphsFromSegments,
+  placedSpans,
   segmentDraft,
   type ClaimSegment,
   type DocumentSegment
@@ -221,5 +222,237 @@ describe("paragraphsFromSegments", () => {
     const paras = paragraphsFromSegments(segs);
     expect(paras).toHaveLength(2);
     expect(paras[1].some((s) => s.kind === "claim")).toBe(true);
+  });
+});
+
+// Robustness invariant (T-lectern-segments): no malformed, empty, or null
+// document/segment input may make this module throw, emit overlapping
+// segments, emit out-of-order segments, or emit a segment whose offsets fall
+// outside the source text. An empty list is always a valid result. Every test
+// below is named for the input category it locks.
+describe("robustness invariant — malformed/empty/null input never throws, overlaps, reorders, or goes out of bounds", () => {
+  function assertWellFormed(spans: Array<{ start: number; end: number }>, textLength: number) {
+    let lastEnd = 0;
+    for (const span of spans) {
+      expect(span.start).toBeGreaterThanOrEqual(0);
+      expect(span.end).toBeLessThanOrEqual(textLength);
+      expect(span.start).toBeLessThan(span.end);
+      expect(span.start).toBeGreaterThanOrEqual(lastEnd); // ascending, non-overlapping
+      lastEnd = span.end;
+    }
+  }
+
+  it("(a) empty document text yields no segments, no throw", () => {
+    expect(() => segmentDraft("", [card(0, { start: 0, end: 5 })])).not.toThrow();
+    expect(segmentDraft("", [card(0, { start: 0, end: 5 })])).toEqual([]);
+  });
+
+  it("(a) zero draftLength in placedSpans yields no spans, no throw", () => {
+    expect(() => placedSpans(0, [card(0, { start: 0, end: 5 })])).not.toThrow();
+    expect(placedSpans(0, [card(0, { start: 0, end: 5 })])).toEqual([]);
+  });
+
+  it("(b) zero-length text body with a non-empty claims array yields no segments", () => {
+    const segs = segmentDraft("", [card(0, { start: 0, end: 1 }), card(1, { start: 2, end: 3 })]);
+    expect(segs).toEqual([]);
+  });
+
+  it("(c) null cards passed to segmentDraft does not throw and falls back to plain text", () => {
+    expect(() => segmentDraft(DRAFT, null as unknown as VerifyClaimVerdict[])).not.toThrow();
+    expect(segmentDraft(DRAFT, null as unknown as VerifyClaimVerdict[])).toEqual([
+      { kind: "text", text: DRAFT }
+    ]);
+  });
+
+  it("(c) undefined cards passed to segmentDraft does not throw and falls back to plain text", () => {
+    expect(() => segmentDraft(DRAFT, undefined as unknown as VerifyClaimVerdict[])).not.toThrow();
+    expect(segmentDraft(DRAFT, undefined as unknown as VerifyClaimVerdict[])).toEqual([
+      { kind: "text", text: DRAFT }
+    ]);
+  });
+
+  it("(c) null cards passed directly to placedSpans does not throw and yields no spans", () => {
+    expect(() => placedSpans(DRAFT.length, null as unknown as VerifyClaimVerdict[])).not.toThrow();
+    expect(placedSpans(DRAFT.length, null as unknown as VerifyClaimVerdict[])).toEqual([]);
+  });
+
+  it("(c) undefined cards passed directly to placedSpans does not throw and yields no spans", () => {
+    expect(() => placedSpans(DRAFT.length, undefined as unknown as VerifyClaimVerdict[])).not.toThrow();
+    expect(placedSpans(DRAFT.length, undefined as unknown as VerifyClaimVerdict[])).toEqual([]);
+  });
+
+  it("(c) null segments passed to paragraphsFromSegments does not throw and yields no paragraphs", () => {
+    expect(() => paragraphsFromSegments(null as unknown as DocumentSegment[])).not.toThrow();
+    expect(paragraphsFromSegments(null as unknown as DocumentSegment[])).toEqual([]);
+  });
+
+  it("(c) undefined segments passed to paragraphsFromSegments does not throw and yields no paragraphs", () => {
+    expect(() => paragraphsFromSegments(undefined as unknown as DocumentSegment[])).not.toThrow();
+    expect(paragraphsFromSegments(undefined as unknown as DocumentSegment[])).toEqual([]);
+  });
+
+  it("(d) empty claims array is a valid passthrough (single text segment, no throw)", () => {
+    expect(() => segmentDraft(DRAFT, [])).not.toThrow();
+    expect(segmentDraft(DRAFT, [])).toEqual([{ kind: "text", text: DRAFT }]);
+  });
+
+  it("(d) empty segments array passed to paragraphsFromSegments yields no paragraphs", () => {
+    expect(paragraphsFromSegments([])).toEqual([]);
+  });
+
+  it("(e) NaN char_end does not throw and does not silently drop the remainder of the draft", () => {
+    // Regression for a real defect: NaN end bypassed the relational bounds
+    // guard (all comparisons against NaN are false), got kept as a span, and
+    // corrupted the cursor so every char after it vanished from the output.
+    const cards = [card(0, { start: 0, end: NaN })];
+    expect(() => segmentDraft(DRAFT, cards)).not.toThrow();
+    const segs = segmentDraft(DRAFT, cards);
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT);
+    expect(claimSegs(segs)).toHaveLength(0);
+  });
+
+  it("(e) NaN char_start does not throw and does not corrupt the span list", () => {
+    const cards = [card(0, { start: NaN, end: 18 })];
+    expect(() => segmentDraft(DRAFT, cards)).not.toThrow();
+    const segs = segmentDraft(DRAFT, cards);
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT);
+    expect(claimSegs(segs)).toHaveLength(0);
+  });
+
+  it("(e) Infinity offsets are treated as out-of-bounds and dropped, never throw", () => {
+    const cards = [card(0, { start: 0, end: Infinity }), card(1, { start: -Infinity, end: 5 })];
+    expect(() => segmentDraft(DRAFT, cards)).not.toThrow();
+    expect(claimSegs(segmentDraft(DRAFT, cards))).toHaveLength(0);
+  });
+
+  it("(e) malformed offsets passed directly to placedSpans never produce a span (none are valid)", () => {
+    const cards = [
+      card(0, { start: -1, end: 5 }), // negative
+      card(1, { start: 5, end: 5 }), // empty
+      card(2, { start: 10, end: 8 }), // inverted
+      card(3, { start: 0, end: 9999 }), // past end
+      card(4, { start: NaN, end: 10 }), // NaN start
+      card(5, { start: 0, end: NaN }) // NaN end
+    ];
+    const spans = placedSpans(DRAFT.length, cards);
+    assertWellFormed(spans, DRAFT.length);
+    expect(spans).toEqual([]);
+  });
+
+  it("(f) overlapping ranges resolve to a non-overlapping, in-bounds, ordered span list", () => {
+    const cards = [
+      card(0, { start: 0, end: 18 }),
+      card(1, { start: 6, end: 30 }), // overlaps claim 0
+      card(2, { start: 41, end: 60 })
+    ];
+    const spans = placedSpans(DRAFT.length, cards);
+    assertWellFormed(spans, DRAFT.length);
+  });
+
+  it("(g) shuffled/out-of-order input still yields ascending, non-overlapping placedSpans", () => {
+    const cards = [
+      card(2, { start: 41, end: 60 }),
+      card(0, { start: 0, end: 18 }),
+      card(1, { start: 20, end: 39 })
+    ];
+    const spans = placedSpans(DRAFT.length, cards);
+    assertWellFormed(spans, DRAFT.length);
+    expect(spans.map((s) => s.claimIndex)).toEqual([0, 1, 2]);
+  });
+
+  it("(h) single-character text with a [0,1) span segments correctly with no off-by-one throw", () => {
+    const text = "A";
+    const cards = [card(0, { start: 0, end: 1 })];
+    expect(() => segmentDraft(text, cards)).not.toThrow();
+    expect(segmentDraft(text, cards)).toEqual([
+      { kind: "claim", text: "A", claimIndex: 0, tier: "flag", method: "exact" }
+    ]);
+  });
+
+  it("(h) single-character text with no claims yields a single one-character text segment", () => {
+    expect(segmentDraft("A", [])).toEqual([{ kind: "text", text: "A" }]);
+  });
+
+  it("(1) whitespace-only source text yields a single well-formed segment, no throw", () => {
+    const whitespace = "   \n  ";
+    expect(() => segmentDraft(whitespace, [])).not.toThrow();
+    expect(segmentDraft(whitespace, [])).toEqual([{ kind: "text", text: whitespace }]);
+  });
+
+  it("(3) an anchor past the end of the source is dropped, not clamped — no fabricated highlight boundary", () => {
+    // A clamped span would highlight text the engine never actually placed
+    // there; dropping preserves the "never invent a span" contract and
+    // leaves the claim visible elsewhere (verdict list / tray).
+    const cards = [card(0, { start: 0, end: DRAFT.length + 500 })];
+    const segs = segmentDraft(DRAFT, cards);
+    expect(claimSegs(segs)).toHaveLength(0);
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT);
+  });
+
+  it("(4) a reversed anchor (end before start) is dropped, never inverted into a negative-length span", () => {
+    const cards = [card(0, { start: 30, end: 5 })];
+    expect(() => placedSpans(DRAFT.length, cards)).not.toThrow();
+    expect(placedSpans(DRAFT.length, cards)).toEqual([]);
+  });
+
+  it("(5) two anchors starting at the exact same offset resolve deterministically (longer wins)", () => {
+    const cards = [
+      card(0, { start: 0, end: 10 }),
+      card(1, { start: 0, end: 18 }) // same start, longer — wins per the documented tie-break
+    ];
+    const spans = placedSpans(DRAFT.length, cards);
+    expect(spans).toHaveLength(1);
+    expect(spans[0].claimIndex).toBe(1);
+    expect(spans[0].end).toBe(18);
+  });
+
+  it("(7) a placed anchor with null char_start/char_end is unusable and falls back to plain text, no throw", () => {
+    const malformed: VerifyClaimVerdict = {
+      ...card(0),
+      placement: { placed: true, method: "exact", char_start: null, char_end: null }
+    };
+    expect(() => segmentDraft(DRAFT, [malformed])).not.toThrow();
+    const segs = segmentDraft(DRAFT, [malformed]);
+    expect(claimSegs(segs)).toHaveLength(0);
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT);
+  });
+
+  it("(7) a placed anchor with an undefined char_end is unusable and falls back to plain text, no throw", () => {
+    const malformed: VerifyClaimVerdict = {
+      ...card(0),
+      placement: { placed: true, method: "exact", char_start: 0 }
+    };
+    expect(() => segmentDraft(DRAFT, [malformed])).not.toThrow();
+    expect(claimSegs(segmentDraft(DRAFT, [malformed]))).toHaveLength(0);
+  });
+
+  it("(8) an anchor landing mid-surrogate-pair slices on code-unit boundaries without corrupting adjacent text", () => {
+    // "\u{1F600}" is a surrogate pair (2 UTF-16 code units). An anchor ending
+    // between the high and low surrogate still must not throw or lose text.
+    const text = "Alpha \u{1F600} Beta";
+    const emojiIndex = text.indexOf("\u{1F600}"); // code-unit index of the high surrogate
+    const cards = [card(0, { start: 0, end: emojiIndex + 1 })]; // ends mid-surrogate
+    expect(() => segmentDraft(text, cards)).not.toThrow();
+    const segs = segmentDraft(text, cards);
+    expect(segs.map((s) => s.text).join("")).toBe(text); // lossless regardless of the split
+  });
+
+  it("(bonus) a null entry in the cards array is skipped, not thrown on", () => {
+    const cards = [null, card(0, { start: 0, end: 18 })] as unknown as VerifyClaimVerdict[];
+    expect(() => segmentDraft(DRAFT, cards)).not.toThrow();
+    const segs = segmentDraft(DRAFT, cards);
+    expect(claimSegs(segs)).toHaveLength(1);
+    expect(segs.map((s) => s.text).join("")).toBe(DRAFT);
+  });
+
+  it("(regression) known-good two-claim placement output is unchanged by the added guards", () => {
+    const cards = [card(0, { start: 0, end: 18 }), card(1, { start: 41, end: 60 })];
+    const segs = segmentDraft(DRAFT, cards);
+    expect(segs).toEqual([
+      { kind: "claim", text: DRAFT.slice(0, 18), claimIndex: 0, tier: "flag", method: "exact" },
+      { kind: "text", text: DRAFT.slice(18, 41) },
+      { kind: "claim", text: DRAFT.slice(41, 60), claimIndex: 1, tier: "flag", method: "exact" },
+      { kind: "text", text: DRAFT.slice(60) }
+    ]);
   });
 });

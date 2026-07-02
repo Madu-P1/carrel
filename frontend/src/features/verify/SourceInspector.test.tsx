@@ -7,7 +7,7 @@ import {
   type VerifyClaimVerdict
 } from "@/services/api/endpoints";
 
-import { SourceInspectorBody } from "./SourceInspector";
+import { SourceInspector, SourceInspectorBody } from "./SourceInspector";
 import type { ClaimDisposition } from "./claimDisposition";
 
 // C1: "Open in source" opens the cited passage as an overlay (not a route, which
@@ -77,6 +77,28 @@ function resolution() {
     text_offset_start: 0,
     text_offset_end: QUOTE.length
   };
+}
+
+// Citation with no stored snippet, so there is nothing to fall back to when
+// the live resolve is unavailable or comes back empty.
+function cardWithBareCitation(): VerifyClaimVerdict {
+  return {
+    claim_index: 0,
+    claim_text: "Some claim about liability.",
+    verdict: "verified",
+    citations: [
+      {
+        document_id: "doc-1",
+        node_id: 42,
+        document_name: "Master Services Agreement",
+        snippet: "",
+        content: "",
+        page_num: 7,
+        section: "§4.2"
+      }
+    ],
+    case_verdicts: []
+  } as unknown as VerifyClaimVerdict;
 }
 
 afterEach(() => {
@@ -179,5 +201,100 @@ describe("SourcePassageOverlay (open in source)", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByLabelText("Close source passage")).toBeNull());
     expect(document.activeElement).toBe(openBtn);
+  });
+});
+
+// C3: the cited-source lookup (evidence.resolve) is its own fetch cycle with
+// four states — loading, error, no-match, and a resolved match — and the
+// honesty invariant applies to it directly: error and no-match must never
+// carry the same "located" affordance (the location-kind badge) as a real
+// match.
+describe("CitationSource (evidence.resolve fetch states)", () => {
+  it("LOADING: shows a distinct loading affordance, never stale or final content", async () => {
+    mockResolve.mockImplementation(() => new Promise(() => {}));
+
+    render(<SourceInspectorBody card={cardWithCitation()} disposition={DISPOSITION} />);
+
+    expect(await screen.findByText("Resolving the cited span…")).toBeTruthy();
+    expect(screen.queryByText("Exact span")).toBeNull();
+    expect(screen.queryByText("Approximate passage")).toBeNull();
+    expect(screen.queryByText("No matching source span found.")).toBeNull();
+    expect(screen.queryByText(`“${QUOTE}”`)).toBeNull();
+  });
+
+  it("ERROR (with a stored snippet): shows the fallback quote but never the located-match badge", async () => {
+    mockResolve.mockRejectedValue(new Error("network error"));
+
+    render(<SourceInspectorBody card={cardWithCitation()} disposition={DISPOSITION} />);
+
+    expect(
+      await screen.findByText("Showed the stored snippet; live resolve failed.")
+    ).toBeTruthy();
+    // The honesty invariant: an error must never wear the same success badge
+    // a resolved match gets.
+    expect(screen.queryByText("Exact span")).toBeNull();
+    expect(screen.queryByText("Approximate passage")).toBeNull();
+    expect(screen.queryByText("No matching source span found.")).toBeNull();
+  });
+
+  it("ERROR (no stored snippet): states the source could not be resolved, never falls through to the no-match copy", async () => {
+    mockResolve.mockRejectedValue(new Error("network error"));
+
+    render(<SourceInspectorBody card={cardWithBareCitation()} disposition={DISPOSITION} />);
+
+    expect(await screen.findByText("This source could not be resolved.")).toBeTruthy();
+    expect(screen.queryByText("Showed the stored snippet; live resolve failed.")).toBeNull();
+    expect(screen.queryByText("No matching source span found.")).toBeNull();
+    expect(screen.queryByText("Exact span")).toBeNull();
+    expect(screen.queryByText("Approximate passage")).toBeNull();
+  });
+
+  it("NO-MATCH: source resolved but carried no citable text — explicit no-match state, never the located badge", async () => {
+    mockResolve.mockResolvedValue({ ...resolution(), quote_text: "" });
+
+    render(<SourceInspectorBody card={cardWithBareCitation()} disposition={DISPOSITION} />);
+
+    expect(await screen.findByText("No matching source span found.")).toBeTruthy();
+    expect(
+      screen.getByText("The cited span could not be read from this source.")
+    ).toBeTruthy();
+    // The honesty invariant: a resolved-but-empty result must never wear the
+    // located-match badge either.
+    expect(screen.queryByText("Exact span")).toBeNull();
+    expect(screen.queryByText("Approximate passage")).toBeNull();
+  });
+
+  it("HAPPY PATH: a resolved match shows the quote and the located badge (the positive control the honesty tests diff against)", async () => {
+    mockResolve.mockResolvedValue(resolution());
+
+    render(<SourceInspectorBody card={cardWithCitation()} disposition={DISPOSITION} />);
+
+    expect(await screen.findByText(`“${QUOTE}”`)).toBeTruthy();
+    expect(screen.getByText("Exact span")).toBeTruthy();
+    expect(screen.queryByText("No matching source span found.")).toBeNull();
+    expect(screen.queryByText("This source could not be resolved.")).toBeNull();
+    expect(screen.queryByText("Showed the stored snippet; live resolve failed.")).toBeNull();
+  });
+});
+
+// C2: no source loaded — nothing is selected yet, or no document is anchored.
+// The panel must say so explicitly instead of rendering an empty/broken-looking shell.
+describe("SourceInspector (no source loaded)", () => {
+  it("shows the 'No source loaded' empty state when no claim is selected", () => {
+    render(<SourceInspector card={null} disposition={null} onClose={() => {}} />);
+
+    expect(screen.getByText("No source loaded")).toBeTruthy();
+    expect(
+      screen.getByText("Select a claim or anchor a document in the Vault to inspect its source.")
+    ).toBeTruthy();
+  });
+
+  it("does not show the 'No source loaded' empty state when a source is provided", () => {
+    mockResolve.mockResolvedValue(resolution());
+    const card = cardWithCitation();
+    render(<SourceInspector card={card} disposition={DISPOSITION} onClose={() => {}} />);
+
+    expect(screen.queryByText("No source loaded")).toBeNull();
+    expect(screen.getByText(card.claim_text)).toBeTruthy();
   });
 });

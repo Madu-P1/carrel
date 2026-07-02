@@ -115,7 +115,11 @@ export function CommandPalette({
         />
         <div className={styles.paletteList} role="listbox" id="cachet-cmd-list" ref={listRef}>
           {results.length === 0 ? (
-            <p className={styles.paletteEmpty}>No command matches.</p>
+            query ? (
+              <p className={styles.paletteEmpty}>No commands match "{query}"</p>
+            ) : (
+              <p className={styles.paletteEmpty}>No command matches.</p>
+            )
           ) : (
             results.map((cmd, i) => (
               <div

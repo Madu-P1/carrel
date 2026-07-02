@@ -155,10 +155,9 @@ export function VaultView() {
   }
   const allVaults = projectChoices.map((name) => ({ name, items: byVault.get(name) ?? [] }));
   // Hide an EMPTY default ("General") once another vault exists, so the grid is not
-  // cluttered by an always-present empty default; keep it when nothing else exists.
-  const vaults = allVaults.filter(
-    (v) => v.items.length > 0 || v.name !== DEFAULT_PROJECT || allVaults.length === 1
-  );
+  // cluttered by an always-present empty default. When it is the only vault and holds
+  // nothing, the explicit empty state below covers the "no vaults yet" case.
+  const vaults = allVaults.filter((v) => v.items.length > 0 || v.name !== DEFAULT_PROJECT);
   const q = query.trim().toLowerCase();
   const shownVaults = q ? vaults.filter((v) => v.name.toLowerCase().includes(q)) : vaults;
   const openItems = openVault ? (byVault.get(openVault) ?? []) : [];
@@ -568,11 +567,26 @@ export function VaultView() {
         </div>
 
         {docs === null ? (
-          <p className={styles.sourceLibraryNote}>Loading your vaults…</p>
-        ) : shownVaults.length === 0 ? (
-          <p className={styles.sourceLibraryNote}>
-            {q ? "No vaults match that search." : "No vaults yet. Create one above."}
+          <p className={styles.sourceLibraryNote} data-testid="vault-list-loading">
+            Loading vaults…
           </p>
+        ) : loadError ? (
+          <div className={styles.sourceError} role="alert" data-testid="vault-list-error">
+            <p className={styles.vaultEmpty}>Couldn't load your vaults.</p>
+            <p>{loadError}</p>
+            <Button variant="ghost" onClick={() => void refreshSources()}>
+              Try again
+            </Button>
+          </div>
+        ) : shownVaults.length === 0 ? (
+          q ? (
+            <p className={styles.sourceLibraryNote}>No vaults match that search.</p>
+          ) : (
+            <div className={styles.sourceLibraryNote} data-testid="vault-list-empty">
+              <p className={styles.vaultEmpty}>No vaults yet</p>
+              <p>Create a vault to organize the documents you verify.</p>
+            </div>
+          )
         ) : (
           <div className={styles.vaultGrid}>
             {shownVaults.map((vault) => {
@@ -612,11 +626,6 @@ export function VaultView() {
             })}
           </div>
         )}
-        {loadError ? (
-          <p className={styles.sourceError} role="alert">
-            {loadError}
-          </p>
-        ) : null}
       </>
     );
   }

@@ -2,14 +2,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { navigateTo } from "@/app/shell/useAppShell";
-import { verify as verifyApi } from "@/services/api/endpoints";
+import { documents as documentsApi, verify as verifyApi } from "@/services/api/endpoints";
 
 import { resetVerifyStore } from "@/features/verify/useVerify";
 
 import { LecternView } from "./LecternView";
 import { liveDraft } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
-import { loadedSource } from "./source";
+import { loadedSource, sourceDocs, sourcesError } from "./source";
 
 // The lectern is the verify surface: verifying runs the check in place and the
 // verdict unfolds beneath the sheet, so navigateTo must NOT fire (the operator's
@@ -35,11 +35,20 @@ const mockDraftStream = vi.mocked(verifyApi.draftStream);
 afterEach(() => {
   liveDraft.value = "";
   loadedSource.value = null;
+  // sourceDocs/sourcesError are also module-scoped (refreshSources' target);
+  // reset them so one test's record-library state or load error never leaks
+  // into the next.
+  sourceDocs.value = null;
+  sourcesError.value = null;
   // The lectern's engine state is module-scoped ON PURPOSE (it survives
   // unmount-on-nav); tests reset it so one test's verdict never leaks into
   // the next.
   resetVerifyStore(lecternVerify);
   vi.clearAllMocks();
+  // clearAllMocks resets call history, not queued return values: an earlier
+  // test's mockResolvedValue/mockRejectedValue on documents.list would
+  // otherwise leak into every test that runs after it in this file.
+  vi.mocked(documentsApi.list).mockResolvedValue([]);
 });
 
 const VERIFY_RESPONSE = {
@@ -305,5 +314,91 @@ describe("LecternView draft persistence (shared liveDraft)", () => {
     expect((screen.getByLabelText("Draft to verify") as HTMLTextAreaElement).value).toBe(
       "The NDA term is three years, not five."
     );
+  });
+});
+
+// The lectern is Cachet's first frame: none of these paths may leave it blank
+// or throw. Each case below asserts the specific explicit text a lawyer would
+// actually see, not just "did not crash".
+describe("LecternView non-happy-path safety (the lectern never blanks or throws)", () => {
+  it("MISSING DATA: shows an explicit empty-state prompt before any draft is verified", () => {
+    render(<LecternView />);
+    expect(screen.getByText(/Nothing to examine yet/)).toBeTruthy();
+    // The rest of the lectern is still present too — this is not a blank page.
+    expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
+  });
+
+  it("IN-FLIGHT LOAD: shows an explicit loading affordance while a check is running", async () => {
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        // Never resolves for the life of this test — a hung in-flight check.
+        // The yield below is unreachable for the test's duration; it exists
+        // only so this stays a well-formed generator.
+        await new Promise(() => {});
+        yield { type: "result", verify: VERIFY_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    expect(await screen.findByText("Verifying…")).toBeTruthy();
+    expect(await screen.findByText(/Reading the draft and extracting claims/)).toBeTruthy();
+  });
+
+  it("NETWORK/STREAM ERROR: a dropped verify stream resolves to an explicit error, never a stale success", async () => {
+    // The stream emits a couple of progress events, then closes with no
+    // `result` event at all (dropped/truncated mid-flight): useVerify's
+    // honest fallback must surface, never a silent "done" and never a
+    // leftover verdict.
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "progress", phase: "extracting" };
+        yield { type: "claims", claim_verdicts: [] };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    fireEvent.click(screen.getByText("Verify"));
+    expect(await screen.findByText(/Verification did not finish/)).toBeTruthy();
+    expect(screen.queryByText(/All \d+ statements are supported/)).toBeNull();
+  });
+
+  it("NETWORK/STREAM ERROR: a failed record-library fetch shows an explicit load-failure message", async () => {
+    // Once, not persistently: this must not leak a rejected record-library
+    // fetch into any test that runs afterward.
+    vi.mocked(
+      (await import("@/services/api/endpoints")).documents.list
+    ).mockRejectedValueOnce(new Error("The record library is unreachable."));
+    render(<LecternView />);
+    expect(await screen.findByText("The record library is unreachable.")).toBeTruthy();
+    // The dropzone stays usable even while the library failed to load.
+    expect(
+      screen.getByText("Add the record to check against: a contract, PDF, or Word file")
+    ).toBeTruthy();
+  });
+
+  it("MALFORMED RESPONSE: an unexpected wire shape renders an explicit error, not a crash", async () => {
+    const MALFORMED_RESPONSE = {
+      ...VERIFY_RESPONSE,
+      // The backend returned a non-array shape for claim_verdicts; VerifyResults
+      // calls `.filter` on it directly with no type guard at this boundary.
+      claim_verdicts: 42
+    };
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield { type: "result", verify: MALFORMED_RESPONSE };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    liveDraft.value = "The NDA term is three years.";
+    render(<LecternView />);
+    // Rendering (and the click below) must not throw out of the test.
+    fireEvent.click(screen.getByText("Verify"));
+    expect(await screen.findByText(/could not be displayed/)).toBeTruthy();
+    // The crash is scoped to the verdict area — the rest of the lectern survives.
+    expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Cachet" })).toBeTruthy();
   });
 });

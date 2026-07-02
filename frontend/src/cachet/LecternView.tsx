@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
+import { ErrorBoundary } from "@/design-system";
 import { VerifyResults } from "@/features/verify/VerifyResults";
 import { useVerify } from "@/features/verify/useVerify";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
@@ -15,6 +16,7 @@ import {
   refreshSources,
   setActiveRecord,
   sourceDocs,
+  sourcesError,
   sourceUpload,
   uploadSource
 } from "./source";
@@ -56,6 +58,10 @@ export function LecternView() {
   const source = loadedSource.value;
   const upload = sourceUpload.value;
   const docs = sourceDocs.value;
+  // Non-blocking load error for the record library (refreshSources' fetch):
+  // surfaced here so a failed library fetch on the primary landing surface is
+  // never silent — the dropzone still works even while this is shown.
+  const docsError = sourcesError.value;
   const [sourceError, setSourceError] = useState<string | null>(null);
 
   // The module-scope store makes the verdict survive the shell's
@@ -227,6 +233,11 @@ export function LecternView() {
             </label>
           </>
         )}
+        {docsError ? (
+          <span className={styles.lecternSourceError} role="alert">
+            {docsError}
+          </span>
+        ) : null}
         {sourceError ? (
           <span className={styles.lecternSourceError}>{sourceError}</span>
         ) : null}
@@ -264,19 +275,41 @@ export function LecternView() {
       </dl>
 
       {hasVerdict ? (
-        <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
-          <VerifyResults
-            engine={engine}
-            draft={draft}
-            // The refusal CTA says "could not be checked without the records
-            // they rely on" — true only when nothing is attached. With a
-            // record loaded and consulted (a conflict refusal, a value the
-            // record lacks), pointing at the Vault would overclaim the cause,
-            // so the CTA is withheld.
-            onResolve={source ? undefined : () => navigateTo("/vault")}
-          />
-        </div>
-      ) : null}
+        // A malformed/unexpected wire shape (missing or mistyped fields) must
+        // not blank the whole lectern — the mark, sheet, and record picker
+        // above stay usable even if the verdict tree itself can't render.
+        // Keyed on engine.response so a fresh verify (which nulls it, then
+        // sets a new object) always clears a prior crash.
+        <ErrorBoundary
+          resetKey={engine.response}
+          fallback={() => (
+            <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
+              <p className={styles.lecternSourceError} role="alert">
+                The verification result could not be displayed. Nothing here has been verified —
+                verify the draft again.
+              </p>
+            </div>
+          )}
+        >
+          <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
+            <VerifyResults
+              engine={engine}
+              draft={draft}
+              // The refusal CTA says "could not be checked without the records
+              // they rely on" — true only when nothing is attached. With a
+              // record loaded and consulted (a conflict refusal, a value the
+              // record lacks), pointing at the Vault would overclaim the cause,
+              // so the CTA is withheld.
+              onResolve={source ? undefined : () => navigateTo("/vault")}
+            />
+          </div>
+        </ErrorBoundary>
+      ) : (
+        <p className={styles.lecternMeta} data-lectern-empty="true">
+          Nothing to examine yet. Paste a draft above and press Verify to check it against your
+          sources.
+        </p>
+      )}
     </section>
   );
 }

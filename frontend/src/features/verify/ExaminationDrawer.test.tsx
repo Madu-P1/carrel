@@ -207,3 +207,66 @@ describe("ExaminationDrawer — focus + inert", () => {
     expect(openAside?.hasAttribute("aria-hidden")).toBe(false);
   });
 });
+
+// The lawyer opens this drawer at the exact moment scrutiny peaks. Every
+// non-happy path must render explicit, human-readable text — never a blank
+// panel, and never a state that could read as a completed, honest examination
+// when it wasn't one.
+describe("ExaminationDrawer — non-happy-path states", () => {
+  it("(1) missing data: no card selected renders an explicit 'no source' message, not a blank body", () => {
+    expect(() =>
+      render(<ExaminationDrawer card={null} open onClose={() => {}} />)
+    ).not.toThrow();
+    expect(screen.getByText("No source to examine.")).toBeTruthy();
+    expect(screen.getByText(/Select a claim to open its examination/i)).toBeTruthy();
+  });
+
+  it("(2) in-flight load: loading renders an explicit labeled loading affordance, not a blank body", () => {
+    expect(() =>
+      render(<ExaminationDrawer card={null} open loading onClose={() => {}} />)
+    ).not.toThrow();
+    // The Spinner primitive also carries role="status" for its own a11y
+    // label, so assert on the visible text rather than a single-role query.
+    expect(screen.getByText("Loading the source…")).toBeTruthy();
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+  });
+
+  it("(3) network/stream error: a load failure renders an explicit failure state, never a completed examination", () => {
+    expect(() =>
+      render(
+        <ExaminationDrawer
+          card={null}
+          open
+          loadError="The connection to the document service was lost."
+          onClose={() => {}}
+        />
+      )
+    ).not.toThrow();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/could not be loaded/i);
+    expect(
+      screen.getByText("The connection to the document service was lost.")
+    ).toBeTruthy();
+    // Must not also render the four-checks section as if the claim were examined.
+    expect(screen.queryByText("Four checks, shown separately")).toBeNull();
+  });
+
+  it("(4) malformed response: a card with an unexpected shape renders an explicit error instead of throwing", () => {
+    const malformedCard = {
+      claim_index: 0,
+      claim_text: "A claim carrying a malformed payload.",
+      verdict: "verified",
+      citations: [],
+      // case_verdicts is expected to be an array; a truncated/version-skewed
+      // payload can hand this component an object instead, which breaks the
+      // .flatMap access inside checksFor/dispositionForClaim.
+      case_verdicts: {}
+    } as unknown as VerifyClaimVerdict;
+
+    expect(() =>
+      render(<ExaminationDrawer card={malformedCard} open onClose={() => {}} />)
+    ).not.toThrow();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/could not be displayed/i);
+  });
+});

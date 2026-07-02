@@ -273,10 +273,14 @@ function CitationSource({ citation }: { citation: Citation }) {
         <p className={styles.sourceMuted}>The cited span could not be read from this source.</p>
       )}
       <div className={styles.sourceFoot}>
-        {status === "ok" && resolved ? (
+        {status === "ok" && resolved && quote ? (
           <span className={styles.sourceLocKind}>{locationLabel(resolved.location_kind)}</span>
         ) : status === "error" ? (
-          <span className={styles.sourceLocKind}>Showed the stored snippet; live resolve failed.</span>
+          <span className={styles.sourceLocKind}>
+            {quote ? "Showed the stored snippet; live resolve failed." : "This source could not be resolved."}
+          </span>
+        ) : status === "ok" ? (
+          <span className={styles.sourceLocKind}>No matching source span found.</span>
         ) : (
           <span />
         )}
@@ -346,8 +350,8 @@ function CaseSource({ verdict }: { verdict: CaseVerdict }) {
 }
 
 interface SourceInspectorProps {
-  card: VerifyClaimVerdict;
-  disposition: ClaimDisposition;
+  card: VerifyClaimVerdict | null;
+  disposition: ClaimDisposition | null;
   onClose: () => void;
 }
 
@@ -405,8 +409,12 @@ export function SourceInspectorBody({
  * The right-hand source panel: the cited source beside the claim. Land on the
  * exact span, not a top-of-document guess. The make-or-break interaction for a
  * litigator, who lives or dies on getting to the page.
+ *
+ * card/disposition are nullable: nothing is selected yet, or no document is
+ * anchored. That is not an error and must not render a blank panel — say so.
  */
 export function SourceInspector({ card, disposition, onClose }: SourceInspectorProps) {
+  const hasSource = card != null && disposition != null;
   return (
     <aside className={styles.inspector} aria-label="Source for the selected statement">
       <header className={styles.inspectorHead}>
@@ -420,8 +428,19 @@ export function SourceInspector({ card, disposition, onClose }: SourceInspectorP
           Close
         </button>
       </header>
-      <p className={styles.inspectorClaim}>{card.claim_text}</p>
-      <SourceInspectorBody card={card} disposition={disposition} />
+      {hasSource ? (
+        <>
+          <p className={styles.inspectorClaim}>{card.claim_text}</p>
+          <SourceInspectorBody card={card} disposition={disposition} />
+        </>
+      ) : (
+        <div className={styles.sourceMuted} role="status">
+          <p className={styles.sourceMuted}>No source loaded</p>
+          <p className={styles.sourceMuted}>
+            Select a claim or anchor a document in the Vault to inspect its source.
+          </p>
+        </div>
+      )}
     </aside>
   );
 }

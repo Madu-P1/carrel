@@ -103,15 +103,26 @@ export function reduceStreamEvent(
  * the final result settles. Index is the claim_index, which the backend emits
  * on every card and every cite_verdict so the two align.
  *
- * Returns false once the stream is done: at that point the settled `result`
- * governs. On "error" an UN-checked card stays checking: the skeleton carries
- * the grounding verdict with no case verdicts, so releasing it would render
- * "Supported" for a claim whose cite check never ran (invariant #6). The hosts
- * also unmount the live list on error; this is defense in depth for any render
- * path that still holds the cards.
+ * Fail-closed by allow-list, not deny-list: "done" (a cleanly-settled
+ * `result` landed) is the ONLY phase that releases a card, checked here
+ * first. Every other phase — "checking", "error", "idle", "extracting", the
+ * unused "claims", or any phase this union gains later — falls through to
+ * the checked-set test below and defaults to `true` (still checking) unless
+ * that specific card's cite_verdict actually landed. A deny-list of
+ * "checking"/"error" would silently permit release on any phase it forgot to
+ * name (e.g. a dropped/aborted/in-flight stream stuck on "idle" or
+ * "extracting"); this can't, because nothing is releasable until "done".
+ *
+ * On "error" a card whose cite_verdict already landed before the failure
+ * still releases: that reflects real received data, not a guess. An
+ * UN-checked card stays checking: the skeleton carries the grounding verdict
+ * with no case verdicts, so releasing it would render "Supported" for a claim
+ * whose cite check never ran (invariant #6). The hosts also unmount the live
+ * list on error; this is defense in depth for any render path that still
+ * holds the cards.
  */
 export function isCardChecking(state: VerifyStreamState, card: VerifyClaimVerdict): boolean {
-  if (state.phase !== "checking" && state.phase !== "error") return false;
+  if (state.phase === "done") return false;
   const index = card.claim_index;
   // Without a claim_index the card can never be matched to a cite_verdict;
   // hold it as checking rather than release it to its skeleton disposition.

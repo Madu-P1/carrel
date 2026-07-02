@@ -35,6 +35,17 @@ const viewport: ViewportLike = {
   }
 };
 
+// A viewport that returns a FINITE rect regardless of input, so the downstream
+// `projected.some(!isFinite)` backstop in spansToViewportRects can never fire.
+// With the shared `viewport` above, a NaN offset/transform propagates into
+// `projected` and the backstop catches it — so the malformed-input tests below
+// would still pass even if a per-guard finiteness check were deleted. Under
+// this stub, ONLY the per-guard checks can produce [], so a test that asserts
+// [] here truly pins that guard: delete it and an unclamped span pushes a rect.
+const finiteViewport: ViewportLike = {
+  convertToViewportRectangle: () => [0, 0, 10, 10]
+};
+
 describe("normalizeQuote", () => {
   it("collapses whitespace and folds curly quotes and dashes", () => {
     expect(normalizeQuote("The  “Term”\n shall — apply", "spaces")).toBe(
@@ -108,6 +119,66 @@ describe("matchQuoteInItems", () => {
     expect(matchQuoteInItems("", items)).toBeNull();
     expect(matchQuoteInItems("   \n ", items)).toBeNull();
   });
+
+  it("returns null for a partial match (prefix matches, full quote does not)", () => {
+    const items = [item("the party shall pay the fee within thirty days")];
+    expect(matchQuoteInItems("the party shall pay the fee within ninety days", items)).toBeNull();
+  });
+
+  it("returns null for a quote far longer than the entire document", () => {
+    const items = [item("short doc")];
+    const hostileQuote = "this passage does not exist and ".repeat(200);
+    expect(() => matchQuoteInItems(hostileQuote, items)).not.toThrow();
+    expect(matchQuoteInItems(hostileQuote, items)).toBeNull();
+  });
+
+  it("matches unicode content verbatim when truly present", () => {
+    const items = [item("the cafe resume was na\u00efve about the outcome")];
+    const match = matchQuoteInItems("cafe resume was na\u00efve", items);
+    expect(match).not.toBeNull();
+  });
+
+  it("does not throw and returns null for unicode/control content with no real match", () => {
+    const items = [item("plain ascii content only")];
+    // Built via String.fromCharCode so the SOURCE file carries no literal NUL
+    // byte (which makes git treat this file as binary). The runtime string is
+    // identical: NUL, SOH, zero-width space, RTL override, plus non-Latin text.
+    const hostileInput =
+      String.fromCharCode(0x00, 0x01) + " café " + String.fromCharCode(0x200b) + " 한국어 " + String.fromCharCode(0x202e) + " evil";
+    expect(() => matchQuoteInItems(hostileInput, items)).not.toThrow();
+    expect(matchQuoteInItems(hostileInput, items)).toBeNull();
+  });
+
+  it("does not throw when the document (items) is malformed", () => {
+    // @ts-expect-error hostile runtime input — not a real PdfTextItemLike[]
+    expect(() => matchQuoteInItems("anything", null)).not.toThrow();
+    // @ts-expect-error hostile runtime input
+    expect(matchQuoteInItems("anything", null)).toBeNull();
+    // @ts-expect-error hostile runtime input — item missing str
+    const malformedItems: PdfTextItemLike[] = [{ transform: [1, 0, 0, 1, 0, 0], width: 10, height: 10 }];
+    expect(() => matchQuoteInItems("anything", malformedItems)).not.toThrow();
+  });
+
+  it("does not throw for a null/undefined quote", () => {
+    const items = [item("some content")];
+    // @ts-expect-error hostile runtime input
+    expect(() => matchQuoteInItems(null, items)).not.toThrow();
+    // @ts-expect-error hostile runtime input
+    expect(matchQuoteInItems(null, items)).toBeNull();
+    // @ts-expect-error hostile runtime input
+    expect(() => matchQuoteInItems(undefined, items)).not.toThrow();
+  });
+});
+
+describe("normalizeQuote hostile input", () => {
+  it("does not throw and returns empty string for a non-string quote", () => {
+    // @ts-expect-error hostile runtime input
+    expect(() => normalizeQuote(null, "spaces")).not.toThrow();
+    // @ts-expect-error hostile runtime input
+    expect(normalizeQuote(null, "spaces")).toBe("");
+    // @ts-expect-error hostile runtime input
+    expect(normalizeQuote(undefined, "squash")).toBe("");
+  });
 });
 
 describe("spansToViewportRects", () => {
@@ -149,6 +220,144 @@ describe("spansToViewportRects", () => {
       []
     );
   });
+
+  function expectWellFormed(rects: ReturnType<typeof spansToViewportRects>) {
+    for (const rect of rects) {
+      expect(Number.isFinite(rect.left)).toBe(true);
+      expect(Number.isFinite(rect.top)).toBe(true);
+      expect(Number.isFinite(rect.width)).toBe(true);
+      expect(Number.isFinite(rect.height)).toBe(true);
+      expect(rect.width).toBeGreaterThanOrEqual(0);
+      expect(rect.height).toBeGreaterThanOrEqual(0);
+    }
+  }
+
+  it("clamps a negative start offset instead of throwing or fabricating", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects([{ itemIndex: 0, startChar: -5, endChar: 5 }], items, viewport);
+    expectWellFormed(rects);
+    expect(rects).toHaveLength(1);
+    // startChar clamps to 0: x = 100 + 0 = 100, scaled x2 => 200.
+    expect(rects[0].left).toBeCloseTo(200);
+  });
+
+  it("clamps a start/end beyond the item length instead of throwing or fabricating", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects([{ itemIndex: 0, startChar: 3, endChar: 9999 }], items, viewport);
+    expectWellFormed(rects);
+    expect(rects).toHaveLength(1);
+    // endChar clamps to item length (10): x = 100 + 100 = 200, scaled x2 => 400.
+    expect(rects[0].left + rects[0].width).toBeCloseTo(400);
+  });
+
+  it("handles an inverted span (end < start) without throwing or fabricating a negative size", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects([{ itemIndex: 0, startChar: 8, endChar: 2 }], items, viewport);
+    expectWellFormed(rects);
+    expect(rects).toHaveLength(1);
+  });
+
+  it("handles a zero-length span (start === end) without throwing", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects([{ itemIndex: 0, startChar: 4, endChar: 4 }], items, viewport);
+    expectWellFormed(rects);
+    expect(rects).toHaveLength(1);
+    expect(rects[0].width).toBeCloseTo(0);
+  });
+
+  it("ignores a non-integer offset without throwing or fabricating", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects(
+      [{ itemIndex: 0, startChar: 2.7, endChar: 5.3 }],
+      items,
+      viewport
+    );
+    expectWellFormed(rects);
+  });
+
+  it("skips an out-of-bounds itemIndex (negative or beyond the items array)", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects(
+      [
+        { itemIndex: -1, startChar: 0, endChar: 5 },
+        { itemIndex: 5, startChar: 0, endChar: 5 }
+      ],
+      items,
+      viewport
+    );
+    expect(rects).toEqual([]);
+  });
+
+  it("skips a span with non-finite offsets (NaN/Infinity) rather than fabricating a rect", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects(
+      [{ itemIndex: 0, startChar: NaN, endChar: Infinity }],
+      items,
+      viewport
+    );
+    expect(rects).toEqual([]);
+  });
+
+  it("skips an item with a malformed (truncated) transform instead of fabricating a NaN rect", () => {
+    const malformed: PdfTextItemLike = {
+      str: "hello",
+      transform: [12, 0, 0, 12], // missing e/f baseline origin
+      width: 30,
+      height: 10
+    };
+    const rects = spansToViewportRects([{ itemIndex: 0, startChar: 0, endChar: 5 }], [malformed], viewport);
+    expect(rects).toEqual([]);
+  });
+
+  it("isolates the offset-finiteness guard (holds even when projection stays finite)", () => {
+    // Under finiteViewport the backstop cannot fire, so the empty result can
+    // only come from the `!Number.isFinite(startChar/endChar)` guard itself.
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    const rects = spansToViewportRects(
+      [{ itemIndex: 0, startChar: NaN, endChar: Infinity }],
+      items,
+      finiteViewport
+    );
+    expect(rects).toEqual([]);
+  });
+
+  it("isolates the transform-finiteness guard (holds even when projection stays finite)", () => {
+    // A truncated transform leaves x/y undefined; only the
+    // `!Number.isFinite(x/y/height)` guard can skip it here, since finiteViewport
+    // would otherwise project it to a (wrong but finite) rect the backstop keeps.
+    const malformed: PdfTextItemLike = {
+      str: "hello",
+      transform: [12, 0, 0, 12], // missing e/f baseline origin -> x/y undefined
+      width: 30,
+      height: 10
+    };
+    const rects = spansToViewportRects(
+      [{ itemIndex: 0, startChar: 0, endChar: 5 }],
+      [malformed],
+      finiteViewport
+    );
+    expect(rects).toEqual([]);
+  });
+
+  it("does not throw when items or spans are absent (hostile runtime input)", () => {
+    const items = [item("0123456789", { x: 100, y: 700, width: 100, height: 10 })];
+    // @ts-expect-error hostile runtime input
+    expect(() => spansToViewportRects(null, items, viewport)).not.toThrow();
+    // @ts-expect-error hostile runtime input
+    expect(spansToViewportRects(null, items, viewport)).toEqual([]);
+    // @ts-expect-error hostile runtime input
+    expect(() => spansToViewportRects([{ itemIndex: 0, startChar: 0, endChar: 5 }], null, viewport)).not.toThrow();
+  });
+
+  it("still resolves a genuinely matching span to the correct rect (happy-path non-regression)", () => {
+    const items = [item("the cap is ninety-nine percent", { x: 0, y: 700, width: 186, height: 12 })];
+    const match = matchQuoteInItems("ninety-nine percent", items);
+    expect(match).not.toBeNull();
+    const rects = spansToViewportRects(match!.spans, items, viewport);
+    expect(rects).toHaveLength(1);
+    expectWellFormed(rects);
+    expect(rects[0].width).toBeGreaterThan(0);
+  });
 });
 
 describe("mergeLineRects", () => {
@@ -160,6 +369,11 @@ describe("mergeLineRects", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].left).toBe(10);
     expect(merged[0].width).toBe(90);
+  });
+
+  it("does not throw on an empty rect list", () => {
+    expect(() => mergeLineRects([])).not.toThrow();
+    expect(mergeLineRects([])).toEqual([]);
   });
 });
 
@@ -189,5 +403,27 @@ describe("findAnchorPage", () => {
   it("returns null when the quote is nowhere in the document", async () => {
     const found = await findAnchorPage(getItems, 3, "language that is absent", 1);
     expect(found).toBeNull();
+  });
+
+  it("skips an unreadable page instead of aborting the whole search", async () => {
+    const flakyGetItems = async (page: number) => {
+      if (page === 1) {
+        throw new Error("page 1 is corrupted and cannot be parsed");
+      }
+      return pages[page] ?? [];
+    };
+    const found = await findAnchorPage(flakyGetItems, 3, "the cited passage", 1);
+    expect(found?.page).toBe(2);
+  });
+
+  it("returns null rather than rejecting when every page is unreadable", async () => {
+    const alwaysFails = async (): Promise<PdfTextItemLike[]> => {
+      throw new Error("not parseable");
+    };
+    await expect(findAnchorPage(alwaysFails, 3, "the cited passage", 1)).resolves.toBeNull();
+  });
+
+  it("does not throw for an empty document (zero pages)", async () => {
+    await expect(findAnchorPage(getItems, 0, "anything", 1)).resolves.toBeNull();
   });
 });

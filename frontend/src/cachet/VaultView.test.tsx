@@ -103,6 +103,61 @@ describe("VaultView grid", () => {
     expect(screen.queryByText("general")).toBeNull();
   });
 
+  it("renders a loading state while vaults are loading", async () => {
+    let resolveList!: (rows: DocumentRow[]) => void;
+    mockList.mockReturnValue(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      })
+    );
+    render(<VaultView />);
+    expect(screen.getByTestId("vault-list-loading")).toBeTruthy();
+    expect(screen.getByText("Loading vaults…")).toBeTruthy();
+    resolveList([]);
+    await waitFor(() => expect(screen.queryByTestId("vault-list-loading")).toBeNull());
+  });
+
+  it("renders an empty state with a create prompt when there are zero vaults", async () => {
+    mockList.mockResolvedValue([]);
+    render(<VaultView />);
+    expect(await screen.findByText("No vaults yet")).toBeTruthy();
+    expect(
+      screen.getByText("Create a vault to organize the documents you verify.")
+    ).toBeTruthy();
+  });
+
+  it("shows empty-state guidance when a search matches no vaults", async () => {
+    mockList.mockResolvedValue([
+      row({ id: "a", filename: "MSA.pdf", subject_name: "Apex v. Northwind" })
+    ]);
+    render(<VaultView />);
+    await screen.findByText("Apex v. Northwind");
+    fireEvent.input(screen.getByLabelText("Search vaults"), { target: { value: "nonexistent" } });
+    expect(await screen.findByText("No vaults match that search.")).toBeTruthy();
+  });
+
+  it("renders an error state with a Try again button when the vault load fails", async () => {
+    mockList.mockRejectedValueOnce(new Error("The network is unreachable."));
+    render(<VaultView />);
+    const alert = await screen.findByTestId("vault-list-error");
+    expect(within(alert).getByText("Couldn't load your vaults.")).toBeTruthy();
+    expect(within(alert).getByRole("button", { name: /try again/i })).toBeTruthy();
+  });
+
+  it("re-triggers the vault load when Try again is clicked", async () => {
+    mockList.mockRejectedValueOnce(new Error("The network is unreachable."));
+    render(<VaultView />);
+    const alert = await screen.findByTestId("vault-list-error");
+
+    mockList.mockResolvedValueOnce([
+      row({ id: "a", filename: "MSA.pdf", subject_name: "Apex v. Northwind" })
+    ]);
+    fireEvent.click(within(alert).getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+    await screen.findByText("Apex v. Northwind");
+    expect(screen.queryByTestId("vault-list-error")).toBeNull();
+  });
+
   it("filters the grid by the search box", async () => {
     mockList.mockResolvedValue([
       row({ id: "a", filename: "MSA.pdf", subject_name: "Apex v. Northwind" }),
