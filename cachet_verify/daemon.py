@@ -47,6 +47,11 @@ class AttestationHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _error(self, status: int, code: str, message: str) -> None:
+        # Stable error taxonomy (additive-only, like the rest of the wire):
+        # embedders branch on `error.code`, never on message text (Hyrum).
+        self._respond(status, {"error": {"code": code, "message": message}})
+
     def _authorized(self) -> bool:
         supplied = self.headers.get("X-Cachet-Token", "")
         expected = getattr(self.server, "token", "")
@@ -54,17 +59,20 @@ class AttestationHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 (http.server contract)
         if self.path != "/verify":
-            self._respond(404, {"error": "unknown path"})
+            self._error(404, "not_found", "unknown path; POST /verify")
             return
         if not self._authorized():
-            self._respond(401, {"error": "missing or invalid token"})
+            self._error(401, "unauthorized", "missing or invalid X-Cachet-Token")
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if length <= 0 or length > _MAX_BODY_BYTES:
-            self._respond(400, {"error": "body required (max 2 MiB)"})
+        if length <= 0:
+            self._error(400, "bad_request", "a JSON body is required")
+            return
+        if length > _MAX_BODY_BYTES:
+            self._error(413, "payload_too_large", "body exceeds 2 MiB")
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -72,9 +80,11 @@ class AttestationHandler(BaseHTTPRequestHandler):
             sources = payload["sources"]
             if not isinstance(claim, str) or not isinstance(sources, list):
                 raise TypeError
-            sources = [s for s in sources if isinstance(s, str)]
+            # Strings and {text, truncated?, complete?} records both pass
+            # through; the adapter's _coerce_sources owns the normalization.
+            sources = [s for s in sources if isinstance(s, (str, dict))]
         except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
-            self._respond(400, {"error": "expected {claim: str, sources: [str]}"})
+            self._error(400, "bad_request", "expected {claim: str, sources: [str | {text}]}")
             return
 
         attestation = verify_claim(claim, sources)
@@ -96,8 +106,14 @@ class AttestationHandler(BaseHTTPRequestHandler):
         )
 
     def do_GET(self) -> None:  # noqa: N802 (http.server contract)
-        # The contract is POST-only; a GET must not leak anything.
-        self._respond(405, {"error": "POST /verify"})
+        if self.path == "/health":
+            # Liveness for embedders and process supervisors. Carries nothing
+            # but the schema version; no token required because no content of
+            # any kind is exposed.
+            self._respond(200, {"ok": True, "schema_version": SCHEMA_VERSION})
+            return
+        # Everything else is POST-only; a GET must not leak anything.
+        self._error(405, "method_not_allowed", "POST /verify (GET /health for liveness)")
 
     def log_message(self, *_args) -> None:
         # Never log request content: a claim may carry privileged text.
