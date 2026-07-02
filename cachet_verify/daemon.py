@@ -27,9 +27,12 @@ from __future__ import annotations
 import hmac
 import json
 import threading
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable
 
 from .adapter import verify_claim
+from .certificate import attest_and_issue
 from .contract import SCHEMA_VERSION
 
 _MAX_BODY_BYTES = 2 * 1024 * 1024  # a draft, not an archive
@@ -58,8 +61,8 @@ class AttestationHandler(BaseHTTPRequestHandler):
         return bool(expected) and hmac.compare_digest(supplied, expected)
 
     def do_POST(self) -> None:  # noqa: N802 (http.server contract)
-        if self.path != "/verify":
-            self._error(404, "not_found", "unknown path; POST /verify")
+        if self.path not in ("/verify", "/attest"):
+            self._error(404, "not_found", "unknown path; POST /verify or /attest")
             return
         if not self._authorized():
             self._error(401, "unauthorized", "missing or invalid X-Cachet-Token")
@@ -76,7 +79,8 @@ class AttestationHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            claim = payload["claim"]
+            # /verify takes `claim`; /attest takes `draft` (a whole document).
+            claim = payload["draft"] if self.path == "/attest" else payload["claim"]
             sources = payload["sources"]
             if not isinstance(claim, str) or not isinstance(sources, list):
                 raise TypeError
@@ -85,6 +89,14 @@ class AttestationHandler(BaseHTTPRequestHandler):
             sources = [s for s in sources if isinstance(s, (str, dict))]
         except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError):
             self._error(400, "bad_request", "expected {claim: str, sources: [str | {text}]}")
+            return
+
+        if self.path == "/attest":
+            # The certificate endpoint: seals a whole draft. The clock is the
+            # server's injected `now` so issuance is deterministic under test.
+            now = getattr(self.server, "now", None)
+            issued_at = now() if now else datetime.now(timezone.utc).isoformat()
+            self._respond(200, attest_and_issue(claim, sources, issued_at))
             return
 
         attestation = verify_claim(claim, sources)
@@ -123,13 +135,20 @@ class AttestationHandler(BaseHTTPRequestHandler):
 class AttestationDaemon:
     """Owns the loopback server. ``port=0`` picks an ephemeral port (tests)."""
 
-    def __init__(self, token: str, port: int = 0, host: str = "127.0.0.1") -> None:
+    def __init__(
+        self,
+        token: str,
+        port: int = 0,
+        host: str = "127.0.0.1",
+        now: Callable[[], str] | None = None,
+    ) -> None:
         if host != "127.0.0.1":
             raise ValueError("the attestation daemon binds loopback only")
         if not token:
             raise ValueError("a non-empty token is required")
         self._server = ThreadingHTTPServer((host, port), AttestationHandler)
         self._server.token = token  # type: ignore[attr-defined]
+        self._server.now = now  # type: ignore[attr-defined]
         self._thread: threading.Thread | None = None
 
     @property
