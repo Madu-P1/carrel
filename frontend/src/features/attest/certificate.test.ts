@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import companionCert from "./__fixtures__/companion-issued-cert.json";
 import specimenCert from "./__fixtures__/specimen-cert.json";
 import {
   canonicalJson,
@@ -22,6 +23,28 @@ const cert = specimenCert as unknown as Certificate;
 function clone(): Certificate {
   return JSON.parse(JSON.stringify(cert)) as Certificate;
 }
+
+describe("the connector: the app accepts a COMPANION-issued record", () => {
+  // companion-issued-cert.json was sealed by the ambient companion's OWN
+  // implementation (cachet_companion.verify.certificate, a separate repo). The
+  // Seal Bench's verifier accepting it byte-for-byte IS the connector: a record
+  // from the ambient surface is checkable in the deliberate app, offline.
+  const cc = companionCert as unknown as Certificate;
+
+  it("verifies a companion-issued seal", async () => {
+    expect(await verifySeal(cc)).toBe(true);
+  });
+
+  it("detects tampering in a companion-issued record", async () => {
+    const forged = JSON.parse(JSON.stringify(cc)) as Certificate;
+    forged.issued_at = "1999-01-01T00:00:00+00:00";
+    expect(await verifySeal(forged)).toBe(false);
+  });
+
+  it("coerces a companion cert as a genuine certificate", () => {
+    expect(coerceCertificate(cc).cert).not.toBeNull();
+  });
+});
 
 describe("cross-language seal conformance (Python-issued fixture)", () => {
   it("verifies the kernel-issued seal byte-for-byte", async () => {
