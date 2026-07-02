@@ -36,54 +36,97 @@
   display: none;
 }
 
-/* Scoped token overrides — "The Docket" (redesign 2026-07-02; thesis in
- * docs/notes/2026-07-02-cachet-docket-redesign.md). The verify surface is a
- * recessed examination tray (--surface-1) on the bond page, with the document
- * sheets (--surface-2, the brightest value) rising from it. Iron-gall
- * blue-black ink in three AA-locked weights; the red pen (--verify-flag) is
- * the product's only color and belongs to deterministic flags alone; the
- * functional --accent is an ink bar with paper text. The contract is
- * unchanged: monochrome surfaces, no green, no keyframe motion, and the AA
- * lock in verifyScope.test.ts is met by the new values, not relaxed. */
+/* Scoped token overrides — Claude Design handoff (2026-07-02; README +
+ * Cachet.dc.html). The verify surface is a sunken examination tray
+ * (--surface-1) on the app canvas, with document sheets (--surface-2, the
+ * brightest value) rising from it. Cool OKLCH neutral ramp (hue 262) in exact
+ * sRGB hex so the AA lock still parses. Two distinct chromatic tokens: the
+ * OXBLOOD --accent (actions + the assistive tier) and the vivid DANGER
+ * --verify-flag (deterministic flags only) — they must never share a
+ * treatment. No keyframe motion; AA is met by the new values, not relaxed. */
 .verifyScope {
-  background: #efede6;
+  background: #eff1f4;
   color: var(--text-primary);
   border-radius: var(--radius-3);
   box-shadow:
-    inset 0 1px 0 rgb(27 30 37 / 7%),
-    0 2px 10px rgb(27 30 37 / 14%),
-    0 30px 70px rgb(27 30 37 / 16%);
+    inset 0 1px 0 rgb(27 30 37 / 5%),
+    0 2px 10px rgb(27 30 37 / 8%),
+    0 30px 70px rgb(27 30 37 / 12%);
 
-  --surface-0: #f4f3ee;
-  --surface-1: #efede6;
-  --surface-2: #fbfaf7;
+  --surface-0: #f6f7fa;
+  --surface-1: #eff1f4;
+  --surface-2: #fcfdfe;
+  --surface-hover: #eff1f4;
+  --surface-active: #e7e9ed;
 
-  --text-primary: #1b1e25;
-  --text-secondary: #454b57;
-  /* AA: clears 4.5:1 on every warm-ink surface at 12px (locked in verifyScope.test.ts). */
-  --text-tertiary: #5f6572;
+  --text-primary: #181c22;
+  --text-secondary: #454951;
+  /* AA: clears 4.5:1 on every surface at 12px (locked in verifyScope.test.ts). */
+  --text-tertiary: #5f646d;
+  --text-faint: #a1a5ad;
 
   --hairline: rgb(27 30 37 / 12%);
+  --border-strong: #c9ccd2;
 
-  /* The functional accent: an ink bar with paper text — the strongest object
-   * a filed instrument allows itself. An action never wears the red pen. */
-  --accent: #1b1e25;
-  --accent-hover: #2a2e38;
-  --text-inverse: #f4f3ee;
+  /* Oxblood accent (hue 22): actions, active states, and the assistive tier.
+   * Muted so it can never masquerade as the vivid danger flag. */
+  --accent: #7c2529;
+  --accent-hover: #67141b;
+  --accent-text: #86262b;
+  --accent-subtle: #ffeae8;
+  --text-inverse: #fafcff;
 
-  /* The red pen: a barrister's correction red, deterministic flags only.
-   * "It is the red pen, not the pen." */
-  --verify-flag: #a3242e;
+  /* The danger red (hue 27): confident deterministic flags only. Vivid and
+   * high-chroma, the opposite treatment from the muted oxblood assistive. */
+  --verify-flag: #c20c18;
+  --danger-text: #c20c18;
+  --danger-subtle: #ffeae7;
 
   /* No green on the verify surface, even from shared primitives: Badge's
    * success tone (ProvenanceBadge, claude provider) resolves --color-success
-   * from the global theme unless rebound here. Ink, same as the Cachet shell's
-   * neutralization (cachet.module.css). */
+   * from the global theme unless rebound here. */
   --color-success: var(--text-primary);
 
-  /* A reading serif for document body (Instrument Serif stays display-only,
-   * per DESIGN.md). Charter/Georgia carry legal-document gravity. */
-  --font-serif-body: Charter, "Charter BT", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  /* Reading serif for document body. Newsreader (self-hosted) is the handoff
+   * target; Charter/Georgia carry the same legal-document register until it
+   * lands. */
+  --font-serif-body: Newsreader, Charter, "Charter BT", "Iowan Old Style", Georgia, "Times New Roman", serif;
+}
+
+/* Dark mode (handoff): the verify tray on the deep plate. Depth comes from
+   lighter surfaces; oxblood and danger lift to hold their contrast. */
+:global(html[data-theme="dark"]) .verifyScope {
+  background: #0b0e14;
+  box-shadow:
+    inset 0 1px 0 rgb(246 247 250 / 4%),
+    0 2px 10px rgb(0 0 0 / 40%),
+    0 30px 70px rgb(0 0 0 / 50%);
+
+  --surface-0: #05060a;
+  --surface-1: #0b0e14;
+  --surface-2: #181c22;
+  --surface-hover: #181c22;
+  --surface-active: #2b2f36;
+
+  --text-primary: #f6f7fa;
+  --text-secondary: #c9ccd2;
+  --text-tertiary: #a1a5ad;
+  --text-faint: #7c8189;
+
+  --hairline: rgb(246 247 250 / 12%);
+  --border-strong: #44484f;
+
+  --accent: #c34f4d;
+  --accent-hover: #d8625e;
+  --accent-text: #fa8882;
+  --accent-subtle: #5e2120;
+  --text-inverse: #fafcff;
+
+  --verify-flag: #f36358;
+  --danger-text: #ff7a6e;
+  --danger-subtle: #5a2520;
+
+  --color-success: var(--text-primary);
 }
 
 .header {
@@ -283,20 +326,29 @@
  * refusal carries a DOUBLE ink rule — the heaviest edge in the set, with zero
  * chroma, because the withholding deserves more presence than a pass and more
  * gravity than an alarm (invariant 2). */
+/* The four tier edges, per the handoff tier table. Each must read as a
+ * different KIND of thing (invariant 4). */
+.verdictCard[data-tier="pass"] {
+  border-left: 2px solid var(--border-strong);
+}
+
 .verdictCard[data-tier="flag"] {
   border-left: 2px solid var(--verify-flag);
 }
 
+/* The refusal is the hero (invariant 2): the heaviest edge in the set, a 3px
+ * solid ink rule, zero chroma — more presence than a pass, more gravity than
+ * an alarm. */
 .verdictCard[data-tier="refusal"] {
-  border-left: 3px double var(--text-primary);
+  border-left: 3px solid var(--text-primary);
 }
 
 /* Assistive: an AI judgment about a real source (a holding / proposition
- * match), not a deterministic fact. Rendered "in pencil", a quiet dotted ink
- * edge that reads "for your review", never the confident red pen of a hard
- * flag. A false-confident holding shown as a flag ends careers. */
+ * match), not a deterministic fact. Dotted OXBLOOD "for your review" — muted
+ * and dotted so it can never masquerade as the vivid solid danger flag. A
+ * false-confident holding shown as a flag ends careers. */
 .verdictCard[data-tier="assistive"] {
-  border-left: 2px dotted var(--text-tertiary);
+  border-left: 2px dotted var(--accent);
 }
 
 .verdictHeader {
@@ -333,26 +385,23 @@
   border: 1px solid color-mix(in srgb, var(--verify-flag) 38%, transparent);
 }
 
-/* Assistive badge: a pencil note among stamps. Lowercase italic mono — a
- * different KIND of thing from the uppercase deterministic register, so an AI
- * judgment can never be dressed as a hard fact (invariant 4). */
+/* Assistive chip: an oxblood-subtle "for your review" note — a different KIND
+ * of thing from the vivid danger flag (invariant 4). Dotted border keeps the
+ * softness; the muted oxblood can never read as a hard deterministic fact. */
 .badgeAssistive {
-  background: transparent;
-  color: var(--text-primary);
-  border: 1px dotted var(--text-tertiary);
-  text-transform: none;
-  font-style: italic;
-  font-weight: 400;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border: 1px dotted var(--accent);
 }
 
-/* The registrar's stamp: the ONLY reversed-ink object in the product. Paper
- * small caps on solid ink — maximum typographic gravity, zero chroma. The
- * refusal is the hero (invariant 2): deliberate, trustworthy withholding. */
+/* The refusal chip: bordered ink, semibold — heavier than a pass, but zero
+ * chroma. The withholding is the hero (invariant 2); it earns weight, not an
+ * alarm color. */
 .badgeRefusal {
-  background: var(--text-primary);
-  color: var(--surface-1);
+  background: var(--surface-1);
+  color: var(--text-primary);
   border: 1px solid var(--text-primary);
-  letter-spacing: 0.09em;
+  font-weight: 700;
 }
 
 /* Streaming-only: a claim whose case check is still in flight. Quiet ink, no
@@ -1540,25 +1589,28 @@
 .claimMark[data-tier="pass"]:hover {
   text-decoration-color: var(--hairline);
 }
-/* deterministic flag: the confident oxblood underline (a struck mark). */
+/* deterministic flag: a confident solid DANGER underline (a struck mark). */
 .markFlag {
   text-decoration: underline;
-  text-decoration-color: var(--oxblood-line);
+  text-decoration-color: var(--verify-flag);
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
-/* assistive: a dotted pencil query, achromatic, never oxblood. */
+/* assistive: a dotted OXBLOOD pencil query — muted, never the vivid solid
+ * danger of a hard flag (invariant 4). */
 .markAssistive {
   text-decoration: underline dotted;
-  text-decoration-color: var(--text-tertiary);
-  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
   text-underline-offset: 3px;
 }
-/* refusal: a composed ink bracket, not an accusation. */
+/* refusal: the heaviest inline mark — a 3px double ink rule, zero chroma. It
+ * carries more presence than a pass and is never an accusation (invariant 2). */
 .markRefusal {
-  box-shadow: -3px 0 0 var(--text-tertiary);
-  padding-left: 8px;
-  margin-left: -11px;
+  text-decoration: underline double;
+  text-decoration-color: var(--text-primary);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 4px;
 }
 /* fuzzy (approximate) placement: a wavy underline says "near-identical span",
    so the loud mark never implies the tool found the verbatim bytes. */
@@ -1588,14 +1640,11 @@
    without a second color entering the palette. Inherits the surrounding
    oxblood; never green, never a badge. */
 .markToken {
-  background: color-mix(in srgb, var(--verify-flag) 14%, transparent);
-  color: inherit;
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+  font-weight: 500;
   border-radius: 2px;
-  padding: 0 1px;
-  text-decoration: underline;
-  text-decoration-color: var(--verify-flag);
-  text-decoration-thickness: 2.5px;
-  text-underline-offset: 3px;
+  padding: 0 2px;
 }
 
 /* The findings carousel: one finding card centered at a time. Advancing slides

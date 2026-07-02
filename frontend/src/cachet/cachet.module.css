@@ -1,25 +1,23 @@
 /*
- * Cachet shell — "The Docket" (redesign 2026-07-02, operator brief; thesis in
- * docs/notes/2026-07-02-cachet-docket-redesign.md). Cachet is the filed
- * instrument itself, in daylight: cold bond paper, iron-gall blue-black ink,
- * a typewriter voice for procedure, a reading serif for the document, and
- * exactly one color in the whole product — the red pen, reserved for
- * deterministic flags inside the verify surface (never this chrome). The
- * refusal is the hero: the only reversed-ink object anywhere. Near-zero
- * motion, no glass — an instrument does not refract.
- *
- * The rail is pleading paper's ruled margin: a recessed column closed by a
- * double rule, carrying the mark, the rooms, and the on-device attestation.
+ * Cachet shell — the Claude Design handoff ("filed court instrument"), applied
+ * 2026-07-02 (README + Cachet.dc.html in ~/Downloads/design_handoff_cachet;
+ * supersedes the interim Docket pass). A cool OKLCH neutral ramp (hue 262,
+ * converted to exact sRGB hex so the AA-contrast lock still parses) with a
+ * muted OXBLOOD accent (hue 22) for actions and the assistive tier, kept
+ * deliberately distinct from a vivid DANGER red (hue 27) reserved for
+ * deterministic flags. Light and dark are the same tokens under
+ * html[data-theme]. The four verdict tiers must always read as different KINDS
+ * of thing (README tier table): pass unmarked, flag danger-solid, assistive
+ * oxblood-dotted, refusal ink double-rule (the hero).
  *
  * The display face (Libre Caslon Display) stays rebound on the shell root via
- * --font-serif (test-pinned in fontsWired.test.ts), now cast as the case
- * caption: room titles only. Body reading is Charter; everything procedural
- * (labels, hashes, actions) speaks the global --font-mono.
+ * --font-serif (test-pinned in fontsWired.test.ts). Self-hosting the handoff's
+ * Newsreader / Hanken Grotesk / JetBrains Mono trio is a sequenced follow-on.
  */
 
 :global(html),
 :global(body) {
-  background: #f4f3ee;
+  background: #f6f7fa;
 }
 
 .app {
@@ -28,30 +26,42 @@
      document. Ink is iron-gall blue-black in three weights; --flag is the red
      pen, the product's single color, reserved for deterministic flags. All
      text/surface pairs clear WCAG AA (see the verifyScope contrast lock). */
-  --paper: #f4f3ee;
-  --paper-2: #efede6;
-  --sheet: #fbfaf7;
-  --ink-1: #1b1e25;
-  --ink-2: #454b57;
-  --ink-3: #5f6572;
-  --flag: #a3242e;
-  --hair: rgba(27, 30, 37, 0.16);
-  --hair-soft: rgba(27, 30, 37, 0.07);
+  --paper: #f6f7fa; /* --bg */
+  --paper-2: #eff1f4; /* --surface-sunken */
+  --sheet: #fcfdfe; /* --surface */
+  --ink-1: #181c22; /* --text-primary */
+  --ink-2: #454951; /* --text-secondary */
+  --ink-3: #5f646d; /* --text-muted */
+  --text-faint: #a1a5ad;
+  --flag: #c20c18; /* --danger */
+  --hair: rgba(27, 30, 37, 0.16); /* --border */
+  --hair-soft: rgba(27, 30, 37, 0.07); /* --border-subtle */
+  --border-strong: #c9ccd2;
+  --surface-hover: #eff1f4;
+  --surface-active: #e7e9ed;
+  --danger: #c20c18;
+  --danger-text: #c20c18;
+  --danger-subtle: #ffeae7;
 
-  /* Rebind the design-system accent to ink. The reused primitives (Button,
-   * links) default to Carrel's teal accent, which is a brand violation here:
-   * Cachet has no green. The only chromatic accent allowed is the oxblood
-   * --verify-flag, and that is reserved for flags inside the verify surface. */
-  --color-accent: var(--ink-1);
-  --color-accent-hover: #2a2e38;
-  --accent: var(--ink-1);
-  --accent-pressed: #101319;
+  /* The accent is oxblood (hue 22): actions, active nav, the assistive tier.
+   * Muted on purpose so it never reads as the vivid danger flag (README §color
+   * note — flags and assistive judgments must stay visually unequal). */
+  --accent: #7c2529;
+  --color-accent: #7c2529;
+  --color-accent-hover: #67141b;
+  --accent-hover: #67141b;
+  --accent-pressed: #520d13;
+  --accent-active: #520d13;
+  --accent-text: #86262b;
+  --accent-subtle: #ffeae8;
+  --accent-border: #f3c4c1;
+  --focus-ring: #972d32;
   /* The action button is an ink bar with paper text — the strongest object a
      filed instrument allows itself. --text-inverse must be paper so the shared
      design-system Button's label reads on the ink fill (mirrors the
      .verifyScope rebind in VerifyView.module.css). */
-  --text-inverse: #f4f3ee;
-  --color-text-inverse: #f4f3ee;
+  --text-inverse: #f6f7fa;
+  --color-text-inverse: #f6f7fa;
 
   /* Make the shared design-system primitives (Dialog, Button) wear the Cachet
      register instead of the study-app theme. These must be REDECLARED here, not
@@ -60,7 +70,7 @@
      this scope unless re-declared. Without this block a confirm dialog shows a
      green focus ring and a generic-red button, both brand violations (no green;
      oxblood is the only danger accent). */
-  --shadow-focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink-1);
+  --shadow-focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--focus-ring);
   --color-danger: var(--flag);
   /* The success toast (move/delete confirmations) colors its border + icon from
      --state-ok, which is green at :root and is NOT covered by the --color-accent
@@ -73,8 +83,8 @@
      Tooltip, drawer, palette) keep working, but their VALUES are rebound to
      near-opaque bond panels with a hard rule and a shallow document shadow.
      Floating chrome is paper laid over paper, nothing more. */
-  --glass-bg-strong: rgba(251, 250, 247, 0.97);
-  --glass-bg: rgba(251, 250, 247, 0.94);
+  --glass-bg-strong: rgba(252, 253, 254, 0.97);
+  --glass-bg: rgba(252, 253, 254, 0.94);
   --glass-border-strong: var(--hair);
   --glass-border: var(--hair-soft);
   --glass-highlight: rgba(27, 30, 37, 0.07);
@@ -99,6 +109,53 @@
      rather than handing the browser a horizontal scroll range that focus or
      rubber-banding can shift the document into (clipped-column class). */
   overflow-x: clip;
+}
+
+/* Dark mode (handoff): the same tokens under html[data-theme="dark"]. Depth
+   comes from lighter surfaces, not heavier shadow. Oxblood and danger lift in
+   lightness+chroma to hold contrast on the deep plate. */
+:global(html[data-theme="dark"]) .app {
+  --paper: #05060a;
+  --paper-2: #020306;
+  --sheet: #0b0e14;
+  --ink-1: #f6f7fa;
+  --ink-2: #c9ccd2;
+  --ink-3: #a1a5ad;
+  --text-faint: #7c8189;
+  --flag: #f36358;
+  --danger: #f36358;
+  --danger-text: #ff7a6e;
+  --danger-subtle: #5a2520;
+  --hair: rgba(246, 247, 250, 0.14);
+  --hair-soft: rgba(246, 247, 250, 0.07);
+  --border-strong: #44484f;
+  --surface-hover: #181c22;
+  --surface-active: #2b2f36;
+  --accent: #c34f4d;
+  --color-accent: #c34f4d;
+  --color-accent-hover: #d8625e;
+  --accent-hover: #d8625e;
+  --accent-pressed: #e97873;
+  --accent-active: #e97873;
+  --accent-text: #fa8882;
+  --accent-subtle: #5e2120;
+  --accent-border: #893130;
+  --focus-ring: #ca5553;
+  --text-inverse: #fafcff;
+  --color-text-inverse: #fafcff;
+  --shadow-focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--focus-ring);
+  --glass-bg-strong: rgba(11, 14, 20, 0.92);
+  --glass-bg: rgba(11, 14, 20, 0.86);
+  --glass-highlight: rgba(246, 247, 250, 0.06);
+  --glass-highlight-strong: rgba(246, 247, 250, 0.16);
+  --glass-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+  background: var(--paper);
+  color: var(--ink-1);
+}
+
+:global(html[data-theme="dark"]),
+:global(html[data-theme="dark"]) :global(body) {
+  background: #05060a;
 }
 
 /* ---------- the ruled margin (pleading paper's left column) ---------- */
@@ -181,7 +238,7 @@
   top: 12px;
   bottom: 12px;
   width: 2px;
-  background: var(--ink-1);
+  background: var(--accent);
 }
 
 .railMark:focus-visible,
@@ -342,11 +399,11 @@
   font-family: var(--font-serif-body);
   font-size: 14px;
   letter-spacing: 0.03em;
-  color: var(--paper);
-  border: 1px solid var(--ink-1);
-  border-radius: 2px;
+  color: var(--text-inverse);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
   padding: 8px 24px;
-  background: var(--ink-1);
+  background: var(--accent);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
 }
@@ -707,7 +764,7 @@
 }
 .sourceError {
   margin-top: var(--space-3, 12px);
-  color: var(--flag, #8c1e27);
+  color: var(--flag, #a30a14);
   font-size: 13px;
 }
 
@@ -766,7 +823,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--ink-1);
+  background: var(--accent);
 }
 /* The loaded record's name doubles as the way to open it: a lawyer confirms
  * the right document is on the bench by looking at it, not by trusting the
@@ -824,7 +881,7 @@
   color: var(--ink-1);
 }
 .lecternSourceError {
-  color: var(--flag, #8c1e27);
+  color: var(--flag, #a30a14);
   font-size: 13px;
   font-family: var(--font-serif-body);
 }
@@ -892,7 +949,7 @@
   font-family: var(--font-serif-body);
   font-size: 14px;
   color: var(--paper);
-  background: var(--ink-1);
+  background: var(--accent);
   border: 1px solid var(--ink-1);
   border-radius: 2px;
   padding: 8px 18px;
