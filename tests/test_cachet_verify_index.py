@@ -23,6 +23,24 @@ class IndexEquivalenceTests(unittest.TestCase):
             without = verify_claim(case.claim, [case.source])
             self.assertEqual(without, with_index, case.id)
 
+    def test_multi_source_flattening_matches_single_source_equivalent(self) -> None:
+        # mythos (low): the refactor flattens the old nested per-source loops
+        # into one index.sentences list. Guard that two sentences split across
+        # TWO sources verify identically to the same two in one source, and
+        # that both match the per-call path -- the flattening must not reorder
+        # or drop a sentence in a way that moves a verdict.
+        one = ["Net revenue was $2.4 billion.\nThe fund totals $180 million."]
+        two = ["Net revenue was $2.4 billion.", "The fund totals $180 million."]
+        for claim in (
+            "The fund totals $360 million.",
+            "Net revenue was $2.4 billion.",
+            "The fund totals $180 million.",
+        ):
+            v_one = verify_claim(claim, one)
+            v_two = verify_claim(claim, two)
+            self.assertEqual(v_one.state, v_two.state, claim)
+            self.assertEqual(v_two, verify_claim(claim, two, index=build_source_index(two)), claim)
+
     def test_shared_index_across_claims_matches_fresh_indexes(self) -> None:
         sources = [
             "Net revenue for the third quarter was $2.4 billion.\n"

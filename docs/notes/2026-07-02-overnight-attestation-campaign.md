@@ -86,11 +86,32 @@ could_not_check when a co-located DIFFERENT anchor matched (a dropped
 RED, the batch-A residue leg colliding with the batch-B conflict rule);
 (2) the batch-E byte caps did not bound the superlinear sentence-pair
 fan-out, so a near-copy document wedged the sync worker ~150s. Both
-fixed: same-fact-only disagreement veto, and a 20k-pair ceiling that
+fixed: same-fact-only disagreement veto, and a sentence-pair ceiling that
 refuses over wedging (inherited by both surfaces, closing a
-wire-divergence finding too). Two lows fixed (ISO issued_at, stale
+wire-divergence finding too; the ceiling was first set at 20k, then
+recalibrated to 4,000 in the SourceIndex follow-through below once
+per-pair cost was measured). Two lows fixed (ISO issued_at, stale
 benchmark doc); issued_at backdating refuted.* Delivered: this log, the
 full chain green (899 backend + 855 frontend), the draft PR.
+
+## Follow-through — SourceIndex (bounded → reduced)
+
+The final-sweep DoS finding was *bounded* by the pair ceiling but the
+redundant work was still there. Fixed properly: a `SourceIndex` computes the
+sentence splits, per-sentence tokens/digit-flags, anchor extractions, and the
+quote pool ONCE per request and shares them across every claim (attest_draft
+rebuilt all of it per claim before); the topical-conflict veto folded into the
+clause pass instead of re-running the engine a second time over the same
+sentences. attest_draft on the 25-claim corpus draft: 147 → 87 ms; real
+product path 1.64x vs per-claim rebuild. Verdict-equivalence pinned (indexed
+vs per-call byte-identical on the whole corpus; a fresh Mythos finder's
+20k-input differential fuzz found zero divergences). The ceiling was
+recalibrated to `_MAX_SENTENCE_PAIRS = 4_000` against the MEASURED per-pair
+cost (~0.7–2 ms, rising with size), and a wall-clock budget was rejected on
+purpose: it would make a verdict machine-speed-dependent and break the
+determinism the certificate relies on, so the bound stays a deterministic pair
+count. Mythos review of the upgrade: 0 correctness/security findings, 2 lows
+fixed (multi-source equivalence test, this note's ceiling number).
 
 ## Final delivery state
 
