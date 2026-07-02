@@ -65,6 +65,19 @@ class AttestRouteTests(unittest.TestCase):
         resp = _client().post("/api/attest", json={"sources": "nope"})
         self.assertEqual(422, resp.status_code)
 
+    def test_oversized_draft_is_rejected(self) -> None:
+        # mythos batchE-20260702: the engine fan-out is superlinear, so the
+        # route caps its inputs like the daemon caps its body.
+        resp = _client().post("/api/attest", json={"draft": "x" * 100_001, "sources": SOURCES})
+        self.assertEqual(422, resp.status_code)
+
+    def test_oversized_sources_are_rejected(self) -> None:
+        resp = _client().post(
+            "/api/attest",
+            json={"draft": "The fee is $5 million.", "sources": ["y" * 1_100_000] * 2},
+        )
+        self.assertEqual(413, resp.status_code)
+
 
 if __name__ == "__main__":
     unittest.main()

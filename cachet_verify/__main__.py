@@ -62,11 +62,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.conformance is not None:
+        import json as _json
+
         from .adapter import verify_claim as _vc
         from .conformance import DEFAULT_CORPUS, load_corpus, run_conformance
 
         corpus_path = args.conformance or DEFAULT_CORPUS
-        report = run_conformance(lambda c, s: _vc(c, s).state, load_corpus(corpus_path))
+        try:
+            cases = load_corpus(corpus_path)
+        except (OSError, ValueError, KeyError, _json.JSONDecodeError) as e:
+            print(f"cannot load corpus {corpus_path}: {e}", file=sys.stderr)
+            return 3
+        report = run_conformance(lambda c, s: _vc(c, s).state, cases)
         print(f"cases: {report.total}")
         print(f"conformant: {report.conformant}")
         print(f"catch: {report.altered_caught}/{report.altered_total}")

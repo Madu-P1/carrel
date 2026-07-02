@@ -98,6 +98,22 @@ def _quote_checks(claim: str, pool) -> list[CheckResult]:
     return checks
 
 
+def _sentence_relevant(claim_tokens: frozenset[str], sentence: str) -> bool:
+    """Cheap prefilter for the per-sentence engine fan-out (the O(N*M) cost).
+
+    A sentence with NO shared fact vocabulary AND NO digit can contribute
+    nothing the pipeline keeps: it cannot carry the claim's value (values are
+    digit-bearing), and any contradiction it produced would be zero-overlap
+    cross-fact noise the filter discards anyway. Digit-bearing sentences are
+    ALWAYS kept, whatever their vocabulary, so a value carrier with different
+    surface wording ("$5,000,000" for "$5 million") still reaches the
+    adjudicator's rule-1 conservatism (mythos batchE-20260702, perf).
+    """
+    if any(ch.isdigit() for ch in sentence):
+        return True
+    return bool(claim_tokens & _content_tokens(sentence))
+
+
 def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | None:
     """Run the app's cross-clause adjudicator over every source sentence.
 
@@ -109,8 +125,11 @@ def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | N
     claim proves nothing either way).
     """
     candidates: list[ClauseCandidate] = []
+    claim_tokens = _content_tokens(claim)
     for source in source_texts:
         for sentence in split_sentences(source):
+            if not _sentence_relevant(claim_tokens, sentence):
+                continue
             verdict = verify_claim_against_clause(claim, sentence)
             candidates.append(
                 ClauseCandidate(
@@ -133,7 +152,6 @@ def _clause_leg(claim: str, source_texts: list[str]) -> tuple[str, str, str] | N
     # (when it is the only candidate) or supplies a wrong-clause detail on a
     # true accusation. Presents / multi-value / not_found candidates all stay:
     # the carrier logic (rule 1) must keep seeing every sentence.
-    claim_tokens = _content_tokens(claim)
     filtered = [
         cand
         for cand in candidates
@@ -201,6 +219,8 @@ def _topical_conflict(claim: str, norm_claim: str, source_texts: list[str]) -> b
     for source in source_texts:
         for sentence in split_sentences(source):
             if _normalize(sentence) == norm_claim:
+                continue
+            if not _sentence_relevant(claim_tokens, sentence):
                 continue
             verdict = verify_claim_against_clause(claim, sentence)
             if verdict.disposition != "parametric_contradiction":

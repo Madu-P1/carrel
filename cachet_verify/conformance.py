@@ -124,6 +124,15 @@ def run_conformance(verify_fn: VerifyFn, cases: Iterable[ConformanceCase]) -> Co
                 violations.append(
                     f"{case.id}: uncheckable case must refuse, returned {state!r} (floor 3)"
                 )
+    # A conformance claim requires the floors to have actually been
+    # exercised: an empty corpus (or one missing a truth class) proves
+    # nothing, and a vacuous pass would let a truncated corpus certify a
+    # broken distribution (mythos batchE-20260702, high).
+    for truth, (total, _) in tallies.items():
+        if total == 0:
+            violations.append(
+                f"corpus exercises no {truth} cases; conformance cannot be claimed vacuously"
+            )
     return ConformanceReport(
         total=len(outcomes),
         violations=tuple(violations),

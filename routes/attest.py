@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app_logging import get_logger
@@ -33,10 +33,13 @@ class AttestSourceModel(BaseModel):
 
 
 class AttestRequest(BaseModel):
-    draft: str
+    # Caps mirror the kernel daemon's 2 MiB posture (mythos batchE-20260702:
+    # the engine's sentence-pair fan-out is superlinear, so an unbounded body
+    # can wedge the sync worker for minutes on a KB-scale crafted draft).
+    draft: str = Field(max_length=100_000)
     # Raw strings or {text, truncated, complete} records; mirrors the kernel
     # daemon's wire contract.
-    sources: list[str | AttestSourceModel] = Field(default_factory=list)
+    sources: list[str | AttestSourceModel] = Field(default_factory=list, max_length=20)
     # Optional caller-supplied issuance timestamp (ISO-8601) for deterministic
     # certificates under test; the live path omits it and gets the server
     # clock, recorded verbatim in the sealed body.
@@ -46,6 +49,14 @@ class AttestRequest(BaseModel):
 def register_attest_routes(app) -> None:
     @router.post("/api/attest")
     def attest(request: AttestRequest) -> dict:
+        total_source_chars = sum(
+            len(s) if isinstance(s, str) else len(s.text) for s in request.sources
+        )
+        if total_source_chars > 2_000_000:
+            raise HTTPException(
+                status_code=413,
+                detail="sources exceed 2 MiB; attach fewer or smaller records",
+            )
         issued_at = request.issued_at or datetime.now(timezone.utc).isoformat()
         sources = [
             s

@@ -65,6 +65,15 @@ class FloorSemanticsTests(unittest.TestCase):
         self.assertTrue(report.conformant)
         self.assertEqual(0.0, report.catch_rate)
 
+    def test_vacuous_pass_is_refused(self) -> None:
+        # mythos batchE-20260702 (high), locked: a zero-case (or truth-class-
+        # missing) corpus proves nothing and must NOT read as conformant.
+        empty = run_conformance(lambda c, s: "verified", [])
+        self.assertFalse(empty.conformant)
+        self.assertTrue(any("vacuous" in v for v in empty.violations))
+        one_class = run_conformance(lambda c, s: "could_not_check", [self.CASES[2]])
+        self.assertFalse(one_class.conformant)
+
 
 class KernelConformanceTests(unittest.TestCase):
     @classmethod
