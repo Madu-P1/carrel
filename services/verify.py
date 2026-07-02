@@ -125,6 +125,11 @@ class VerifyResult:
     # would overstate what the engine knows. The UI and the certification
     # render this so "checked" never silently implies "checked everything".
     coverage: Dict[str, int] | None = None
+    # Cachet SI-5: document-level structural-integrity findings from the
+    # deterministic engine ({kind, disposition, detail, span, start, end, target}).
+    # Draft-level, sibling to quote_results; empty on the LLM path and whenever the
+    # engine surfaced nothing.
+    structural_findings: tuple[Dict[str, Any], ...] = ()
 
 
 def _verify_framed_question(draft: str) -> str:
@@ -590,6 +595,7 @@ def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
         "quote_results": list(result.quote_results),
         "unplaced": list(result.unplaced),
         "coverage": dict(result.coverage) if result.coverage is not None else None,
+        "structural_findings": [dict(f) for f in result.structural_findings],
     }
 
 
@@ -607,6 +613,7 @@ def _verify_result_from_envelope(
     unsupported_spans = envelope.get("unsupported_spans") or []
     model_name = str(envelope.get("model") or envelope.get("answer_model") or "")
     engine_error = envelope.get("error")
+    structural_findings = tuple(envelope.get("structural_findings") or [])
 
     # Coverage honesty: the deterministic envelope emits exactly one claim per
     # draft sentence, so its claims ARE the denominator. Count them here, before
@@ -735,6 +742,7 @@ def _verify_result_from_envelope(
         # card, so it must never appear in the unplaced tray.
         unplaced=tuple(i for i in unplaced_local if i in treated_indices),
         coverage=coverage,
+        structural_findings=structural_findings,
     )
 
 

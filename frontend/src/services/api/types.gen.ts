@@ -2534,6 +2534,35 @@ export interface components {
              */
             mode: string;
         };
+        /**
+         * StructuralFindingItem
+         * @description One intra-document structural-integrity finding (Cachet SI-1/SI-2/SI-3).
+         *
+         *     Document-level (not per-claim): a defined-term-unused FLAGGED catch, or a
+         *     dangling-cross-reference / internal-contradiction COULD_NOT_CHECK review
+         *     prompt. `disposition` is "flagged" or "could_not_check"; there is no
+         *     green/verified state (the honest-refusal stance). `target` is the normalized
+         *     referent (a section number or the term).
+         */
+        StructuralFindingItem: {
+            /** Kind */
+            kind: string;
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "flagged" | "could_not_check";
+            /** Detail */
+            detail: string;
+            /** Span */
+            span: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Target */
+            target?: string | null;
+        };
         /** StudyEventRequest */
         StudyEventRequest: {
             /** Event Type */
@@ -3058,6 +3087,8 @@ export interface components {
             /** Unplaced */
             unplaced?: number[];
             coverage?: components["schemas"]["VerifyCoverageItem"] | null;
+            /** Structural Findings */
+            structural_findings?: components["schemas"]["StructuralFindingItem"][];
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {

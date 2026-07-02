@@ -25,6 +25,8 @@ export type VerifyCaseVerdictBatch = NonNullable<VerifyClaimVerdict["case_verdic
 export type VerifyQuoteResult = NonNullable<VerifyResponse["quote_results"]>[number];
 /** One render slice of an altered quote's autopsy tiling (Cachet quote autopsy). */
 export type VerifyQuoteSegment = NonNullable<VerifyQuoteResult["segments"]>[number];
+/** One document-level structural-integrity finding (Cachet SI-5). */
+export type VerifyStructuralFinding = NonNullable<VerifyResponse["structural_findings"]>[number];
 
 /** Cachet PR6 — Shelf persistence (saved briefs). */
 export type BriefSaveRequest = components["schemas"]["BriefSaveRequest"];

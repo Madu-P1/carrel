@@ -19,6 +19,50 @@ class SplitSentencesTests(unittest.TestCase):
     def test_single_sentence_is_returned_whole(self) -> None:
         self.assertEqual(["One sentence only."], split_sentences("One sentence only."))
 
+    def test_section_heading_period_is_not_a_sentence_boundary(self) -> None:
+        # "Section 1. Definitions" is a heading: the period numbers it, so the
+        # heading and its title stay one statement (no orphaned "Section 1." mark).
+        out = split_sentences("Section 1. Definitions\nSection 2. Term\nSection 3. Payment")
+        self.assertEqual(["Section 1. Definitions", "Section 2. Term", "Section 3. Payment"], out)
+
+    def test_single_section_heading_line_is_one_statement(self) -> None:
+        self.assertEqual(
+            ["Section 4.2 Indemnification"], split_sentences("Section 4.2 Indemnification")
+        )
+
+    def test_article_roman_heading_stays_whole(self) -> None:
+        self.assertEqual(["Article IV. Scope"], split_sentences("Article IV. Scope"))
+
+    def test_midsentence_section_reference_still_splits(self) -> None:
+        # The guard must NOT merge real sentences: a section reference at a sentence
+        # END (a longer segment, not a bare heading) still terminates normally.
+        out = split_sentences("We rely on Section 4. It controls the dispute.")
+        self.assertEqual(["We rely on Section 4.", "It controls the dispute."], out)
+
+    def test_section_heading_with_separate_title_and_body(self) -> None:
+        # "Section 5. Indemnification. The parties..." -> heading+title is one unit
+        # (the enumerator does not split), the body sentence is its own.
+        out = split_sentences("Section 5. Indemnification. The parties shall indemnify.")
+        self.assertEqual(["Section 5. Indemnification.", "The parties shall indemnify."], out)
+
+    def test_headings_do_not_break_softwrap_quote_pooling(self) -> None:
+        # mythos corr-1: a leading section heading must not corrupt the whole-draft
+        # logical split, so a later soft-wrapped quote still POOLS into one logical
+        # sentence (its two physical-line segments share a group id) rather than
+        # tripping the identity fallback that strands a doctored quote from its clause.
+        draft = (
+            "Section 1. Definitions\nSection 2. Indemnity\n"
+            "The court held that 'the indemnity\nset forth survives' here."
+        )
+        segments, groups = split_sentences_with_groups(draft)
+        self.assertEqual(["Section 1. Definitions", "Section 2. Indemnity"], segments[:2])
+        self.assertEqual([0, 1, 2, 2], groups)
+        # The same wrapped quote pools identically with no headings present.
+        _, control = split_sentences_with_groups(
+            "The court held that 'the indemnity\nset forth survives' here."
+        )
+        self.assertEqual([0, 0], control)
+
     def test_empty_text_is_safe(self) -> None:
         self.assertEqual([], split_sentences(""))
         self.assertEqual([], split_sentences("   "))

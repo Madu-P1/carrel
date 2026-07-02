@@ -86,6 +86,20 @@ _BOUNDARY = re.compile(
     r")"
 )
 
+# A line that is JUST a structural-unit enumerator and its number ("Section 1",
+# "Article IV", "Clause 3.2", "Schedule 4", "§ 7") is a HEADING: the period that
+# follows numbers the heading, it does not end a sentence. We match the whole
+# segment (trailing terminator stripped), so this fires only for a heading at the
+# start of a line ("Section 1. Definitions" stays ONE statement instead of
+# fragmenting into "Section 1." + "Definitions"); a mid-sentence cross-reference
+# ("The remedy is in Section 4.") has a longer segment, does not match, and still
+# splits at its real terminator.
+_HEADING_ENUMERATOR = re.compile(
+    r"^(?:section|sec\.|article|art\.|clause|schedule|exhibit|paragraph|para\.|annex|appendix|§§?)\s*"
+    r"(?:\d+(?:\.\d+)*(?:\([a-z0-9]+\))?|[ivxlcdm]+)$",
+    re.IGNORECASE,
+)
+
 
 def split_sentences(text: str) -> list[str]:
     """Split ``text`` into sentences without breaking legal abbreviations.
@@ -141,8 +155,10 @@ def split_sentences_with_groups(text: str) -> tuple[list[str], list[int]]:
     (identity) -- the pre-fix per-segment behavior, never a mis-group or a crash.
     """
     segments = split_sentences(text)
-    # The line-unaware core over the whole draft == the pre-regression logical split.
-    logical = _split_line_sentences(text)
+    # The line-unaware core over the whole draft. heading_as_unit keeps a section
+    # heading a self-contained logical unit, so a later soft-wrapped sentence still
+    # pools instead of tripping the identity fallback (mythos corr-1).
+    logical = _split_line_sentences(text, heading_as_unit=True)
     return segments, _logical_groups(segments, logical)
 
 
@@ -179,8 +195,15 @@ def _logical_groups(segments: list[str], logical: list[str]) -> list[int]:
     return groups
 
 
-def _split_line_sentences(text: str) -> list[str]:
-    """Split a single physical line into sentences (the legal-aware core)."""
+def _split_line_sentences(text: str, *, heading_as_unit: bool = False) -> list[str]:
+    """Split a single physical line into sentences (the legal-aware core).
+
+    ``heading_as_unit`` is set ONLY by ``split_sentences_with_groups`` when it runs
+    this over the WHOLE multi-line draft to compute the logical grouping. There a
+    heading enumerator must be closed at its own line end; the per-line default
+    (bare skip) would let the skipped boundary merge across the following newline
+    and corrupt the logical split that soft-wrap pooling depends on.
+    """
     text = text.strip()
     if not text:
         return []
@@ -224,15 +247,32 @@ def _split_line_sentences(text: str) -> list[str]:
     sentences: list[str] = []
     start = 0
     for m in _BOUNDARY.finditer(text):
+        if m.start() < start:
+            continue  # boundary already consumed when a heading unit advanced start
         if _inside_citation(m.start()):
             continue
         ws = m.group("ws_nl") or m.group("ws_inline")
         punct_end = m.start() + len(m.group(0)) - len(ws)
         segment = text[start:punct_end]
-        last_token = re.split(r"[\s(]+", segment.strip())[-1].rstrip(".!?")
+        stripped = segment.strip()
+        last_token = re.split(r"[\s(]+", stripped)[-1].rstrip(".!?")
         if last_token.lower() in _ABBREVIATIONS or (len(last_token) == 1 and last_token.isupper()):
             continue
-        sentences.append(segment.strip())
+        if _HEADING_ENUMERATOR.match(stripped.rstrip(".!?")):
+            # A heading enumerator ("Section 1.") is not a sentence end. Per-line
+            # (default): bare skip, so the heading keeps its title and a same-line
+            # body still splits at its own boundary. Whole-draft (heading_as_unit):
+            # close the heading at its line end, or the skipped boundary would merge
+            # across the next newline and corrupt the logical split.
+            if heading_as_unit:
+                nl = text.find("\n", punct_end)
+                end_idx = nl if nl != -1 else len(text)
+                heading = text[start:end_idx].strip()
+                if heading:
+                    sentences.append(heading)
+                start = end_idx
+            continue
+        sentences.append(stripped)
         start = m.end()
     tail = text[start:].strip()
     if tail:

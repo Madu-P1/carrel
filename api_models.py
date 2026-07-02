@@ -411,6 +411,25 @@ class VerifyCoverageItem(BaseModel):
     untreated: int = 0
 
 
+class StructuralFindingItem(BaseModel):
+    """One intra-document structural-integrity finding (Cachet SI-1/SI-2/SI-3).
+
+    Document-level (not per-claim): a defined-term-unused FLAGGED catch, or a
+    dangling-cross-reference / internal-contradiction COULD_NOT_CHECK review
+    prompt. `disposition` is "flagged" or "could_not_check"; there is no
+    green/verified state (the honest-refusal stance). `target` is the normalized
+    referent (a section number or the term).
+    """
+
+    kind: str
+    disposition: Literal["flagged", "could_not_check"]
+    detail: str
+    span: str
+    start: int
+    end: int
+    target: Optional[str] = None
+
+
 class VerifyResponse(BaseModel):
     draft_text: str
     claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
@@ -435,6 +454,10 @@ class VerifyResponse(BaseModel):
     # so the UI and the certification can state what was NOT checked instead of
     # implying the whole draft was.
     coverage: Optional[VerifyCoverageItem] = None
+    # Cachet SI-5: document-level structural-integrity findings (cross-references,
+    # defined-term usage, internal contradictions). Draft-level, a sibling to
+    # quote_results. Empty when the engine surfaced nothing.
+    structural_findings: List[StructuralFindingItem] = Field(default_factory=list)
 
 
 class NoteUpsertRequest(BaseModel):

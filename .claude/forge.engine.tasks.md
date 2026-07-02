@@ -177,6 +177,106 @@ additive, and independently shippable as one draft (the contract is
 
 ---
 
+## SI — Structural Integrity pillar (2026-06-24, REVIEW)
+
+New intra-document verification surface: a document checked against ITSELF, no source,
+no DB, no model, no network. Full spec + held-out test list in
+`docs/plans/2026-06-24-structural-integrity-pillar.md`. New module
+`services/legal/structural_integrity.py` + new tests `tests/test_structural_integrity.py`.
+All REVIEW (new truth-feeding module; SI-4 edits `deterministic_envelope.py`). Land SI-1
+first; it is the demo hero on its own. Each task is additive and independently shippable.
+
+### SI-1 — [REVIEW] Dangling intra-document cross-reference detection (demo hero)
+- STATUS 2026-06-24: BUILT + adversary-hardened in worktree peaceful-kilby-70f12c
+  (UNCOMMITTED). `services/legal/structural_integrity.py` +
+  `tests/test_structural_integrity.py` (14 tests). cachet-adversary closed 4
+  false-flag cracks (subsection/parent, markup heading, Roman numeral, quoted
+  external); report at `.claude/adversary/report-2026-06-24-si1.md`. Pending
+  human review + commit. Do not re-pick.
+- Deps: none. New `structural_integrity.py`. Reuses `anchors._SECTION` + `_normalize_section`.
+- Why: "...set forth in Section 12.3..." when the document declares only Sections 1-9 is an
+  undeniable, zero-false-green catch a lawyer sees instantly. Highest demo-per-build.
+- Acceptance (ALL hold, pure functions, no DB, fixtures only):
+  - `StructuralFinding` dataclass per the spec (kind/disposition/detail/span/start/end/target).
+  - A referenced `Section`/`Clause`/`Article` number with no start-of-line declaration in the
+    same text reads `flagged` `dangling_cross_reference` with normalized `target`.
+  - A reference whose target IS declared reads silent (no finding, no green card).
+  - `Exhibit`/`Schedule` refs with no in-document declaration read `could_not_check`, NEVER
+    `flagged` (may be external attachments).
+  - FRAGMENT GUARD: a text with fewer than the declaration threshold reads every reference
+    `could_not_check`, never `flagged`.
+  - Range form ("Sections 4 through 9") does not false-flag interior numbers.
+  - New `tests/test_structural_integrity.py` pins every case above. Every existing assertion
+    in `test_anchors`, `test_contract_verify`, `test_deterministic_envelope` stays green
+    UNCHANGED. Zero-egress holds.
+
+### SI-2 — [REVIEW] Defined-term-defined-but-never-used detection
+- STATUS 2026-06-24: BUILT + adversary-hardened in worktree peaceful-kilby-70f12c
+  (UNCOMMITTED). `check_defined_terms` in structural_integrity.py; conservative
+  use-counting (case-insensitive + trailing-s) so plural/lowercase/possessive uses
+  never false-flag. adversary pass found 0 cracks (all controls held). Pending
+  review + commit. Do not re-pick.
+- Deps: SI-1 (shares the module + finding type). Reuses `build_alias_table` +
+  `_defined_term_anchors`.
+- Why: a defined term that is never used is a real, deterministic drafting defect with low
+  false-green risk.
+- Acceptance:
+  - A term in `build_alias_table` whose only occurrence is its definition site reads
+    `flagged` `defined_term_unused`.
+  - A defined term used elsewhere reads silent.
+  - USED-BUT-UNDEFINED is NOT flagged in v1 (false-accuse risk on capitalized words);
+    documented recall gap, `could_not_check` at most. Pin that it never `flagged`.
+  - Fixtures both directions; existing suites green unchanged; zero-egress holds.
+
+### SI-3 — [REVIEW] Internal single-document contradiction (subject-bound, ADR-0013-constrained)
+- STATUS 2026-06-24: BUILT + adversary-hardened in worktree peaceful-kilby-70f12c
+  (UNCOMMITTED). `check_internal_contradictions`, PERCENT-ONLY (reuses D3 subject).
+  adversary found the predicted crack: a bare proper-noun subject conflates "10%
+  France tax" with "20% France tariff" (different facts). DECISION: SI-3 emits
+  `could_not_check` ("possible inconsistency, review"), NEVER `flagged` - a confident
+  intra-document contradiction needs stronger (T1) binding. Money/duration never
+  compared. Safety-invariant test pins "SI-3 never flags". Pending review + commit.
+  Do not re-pick.
+- Deps: SI-1. Reuses subject-bound anchors (the D3 conservative percent subject).
+- Why: "10% to France ... 20% to France" inside one document is a real contradiction.
+- Acceptance:
+  - Two same-type anchors bound to the SAME subject with different canonical values read
+    `flagged` `internal_contradiction`, both spans named.
+  - INHERITS ADR-0013: no new figure green path. Unbound / weakly-bound pairs (incl. the
+    "$1,000,000 ... $1,200,000" different-subject case) read `could_not_check`, never
+    `flagged`.
+  - A `cachet-adversary` pass runs first; each surviving crack becomes a held-out test.
+  - Fixtures both directions; existing suites green unchanged; zero-egress holds.
+- Note: most false-green-prone of the pillar. Supervised only; do not ship unattended.
+
+### SI-4 — [REVIEW] Source-free entry point + additive envelope wiring
+- STATUS 2026-06-24: BUILT in worktree peaceful-kilby-70f12c (UNCOMMITTED).
+  `check_structural_integrity` aggregates SI-1+SI-2; `build_deterministic_envelope`
+  gains an additive `structural_findings` key (only return path). All existing
+  envelope/verify/zero-egress assertions green unchanged (447-test subset). Pending
+  review + commit. Do not re-pick.
+- Deps: SI-1 (SI-2/SI-3 optional). Edits `deterministic_envelope.py` (truth surface).
+- Why: structural integrity must run on one document with no source uploaded, and the tray
+  must see the findings.
+- Acceptance:
+  - `check_structural_integrity(text: str) -> list[StructuralFinding]` runs SI-1..SI-3 with
+    no `conn`/`doc_ids`.
+  - `build_deterministic_envelope` gains an ADDITIVE `structural_findings` key (serialized
+    findings over the draft); `claims`, `unsupported_spans`, `provider`, `model` keys
+    unchanged in shape and value for existing fixtures.
+  - A draft with a dangling ref yields a non-empty `structural_findings` AND an unchanged
+    `claims` shape. Every existing `test_deterministic_envelope` assertion green unchanged.
+  - Zero-egress holds.
+
+### SI-5 — [REVIEW] Render structural findings in the tray (FRONTEND, separate track)
+- Deps: SI-4. `*.tsx`/`*.css`. NOT part of the engine contract; queued for visibility.
+- Why: surface the catch to the lawyer in the existing 3-state tray.
+- Acceptance: `structural_findings` render in the flagged + could-not-check registers; no
+  green badge; honest empty state; matches `DESIGN.md` (Libre Caslon, ink/paper/oxblood);
+  RTL test; route to /design-review.
+
+---
+
 ## NOT queued (operator / validation gated — never Forge-shippable)
 - Role-aligned clause matching (after T66 validation).
 - T1 labeled legal corpus (data task).

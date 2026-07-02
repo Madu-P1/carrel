@@ -1400,6 +1400,74 @@
   color: var(--text-primary);
 }
 
+/* Cachet SI-5: structure check. Same register as the quotation check: warm paper,
+   oxblood (--verify-flag) reserved for the confident defined-term-unused flag, a
+   quiet hairline for the could-not-check review prompts. No green, no numbers. */
+.structurePanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.structurePanelTitle {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.structureList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.structureItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+}
+
+/* Confident defect (a defined term never used): oxblood, like the other flags. */
+.structureFlag {
+  border-left-color: var(--verify-flag);
+}
+
+/* The honest review prompt (reference/value could not be confirmed): quiet ink. */
+.structureReview {
+  border-left-color: color-mix(in srgb, var(--text-tertiary) 60%, transparent);
+}
+
+.structureStatus {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.structureFlag .structureStatus {
+  color: var(--verify-flag);
+}
+
+.structureDetail {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
 /* ============================================================
    Cachet PR5b (Direction A): Workspace / Margin / Examination
    The cold record: document body + pinned margin rail + unplaced
@@ -1436,6 +1504,13 @@
   /* A printed-brief register: justified with hyphenation to avoid rivers. */
   text-align: justify;
   hyphens: auto;
+  /* Preserve the draft's own line structure: a contract's section headings sit on
+     their own lines instead of collapsing into one justified block. documentSegments
+     keeps the draft verbatim (newlines included), so pre-wrap renders them as breaks.
+     A prose paragraph with no hard breaks still wraps and justifies as before; a
+     hard-break-terminated line is treated as a last line, so short headings are not
+     stretched. */
+  white-space: pre-wrap;
 }
 
 /* A claim span. Supported (pass) carries NO mark and no resting weight; the

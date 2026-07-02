@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { VerifyResults, verdictSummaryRegister } from "./VerifyResults";
+import { VerifyResults, structuralStatusLabel, verdictSummaryRegister } from "./VerifyResults";
 import type { ClaimDisposition } from "./claimDisposition";
 import { initialStreamState, reduceStreamEvent } from "./streamProgress";
 import type { VerifyEngine } from "./useVerify";
+import styles from "./VerifyView.module.css";
 
 // VerifyResults reaches the briefs API only on Save/Seal (not exercised here);
 // mock the module so importing it never touches the real client.
@@ -72,6 +73,73 @@ const ambiguousCiteClaim = {
   ],
   placement: { placed: true, method: "exact", char_start: 0, char_end: 10 }
 };
+
+describe("VerifyResults — SI-5 structure check panel", () => {
+  const flaggedFinding = {
+    kind: "defined_term_unused",
+    disposition: "flagged",
+    detail: 'The term "Indemnified Party" is defined but never used in this document.',
+    span: "Indemnified Party",
+    start: 0,
+    end: 1,
+    target: "Indemnified Party"
+  };
+  const reviewFinding = {
+    kind: "dangling_cross_reference",
+    disposition: "could_not_check",
+    detail: "Section 12.3 is referenced but was not found among this document's declared sections.",
+    span: "Section 12.3",
+    start: 2,
+    end: 3,
+    target: "12.3"
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function engineWithStructural(findings: any[]): VerifyEngine {
+    const engine = engineWith([noRecordClaim]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (engine.response as any).structural_findings = findings;
+    return engine;
+  }
+
+  it("renders a flagged finding in the oxblood register and a review finding quietly", () => {
+    render(<VerifyResults engine={engineWithStructural([flaggedFinding, reviewFinding])} draft="" />);
+    expect(screen.getByText("Structure check")).toBeTruthy();
+    const flagged = screen.getByText("Defined term unused").closest("li");
+    expect(flagged?.className).toContain(styles.structureFlag);
+    const review = screen.getByText("Reference unverified").closest("li");
+    expect(review?.className).toContain(styles.structureReview);
+    expect(review?.className).not.toContain(styles.structureFlag);
+  });
+
+  it("renders no panel when there are no structural findings", () => {
+    render(<VerifyResults engine={engineWithStructural([])} draft="" />);
+    expect(screen.queryByText("Structure check")).toBeNull();
+  });
+
+  it("labels each finding kind", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(structuralStatusLabel(flaggedFinding as any)).toBe("Defined term unused");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(structuralStatusLabel(reviewFinding as any)).toBe("Reference unverified");
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      structuralStatusLabel({ kind: "internal_contradiction", disposition: "could_not_check" } as any)
+    ).toBe("Possible inconsistency");
+  });
+
+  it("falls back to the disposition for an unknown kind", () => {
+    // A future engine kind must still get a sane label, not crash or blank.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(structuralStatusLabel({ kind: "future_kind", disposition: "flagged" } as any)).toBe(
+      "Flagged"
+    );
+    expect(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      structuralStatusLabel({ kind: "future_kind", disposition: "could_not_check" } as any)
+    ).toBe("Could not check");
+  });
+});
 
 describe("VerifyResults — acceptance and refusal both visible on a segmented draft", () => {
   // The demo failure: a slide pasted as one blob verified as ONE claim, so the
