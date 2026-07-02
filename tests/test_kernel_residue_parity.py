@@ -39,21 +39,30 @@ class KernelResidueParityTests(unittest.TestCase):
         )
 
     def test_every_anchored_alteration_is_caught(self) -> None:
-        # 2026-07-02 baseline: 12/12 anchored near-verbatim fabrications caught
-        # across finance, consulting, medical, tax, operations, journalism.
-        # A drop below total is a regression in the portable kernel's value.
+        # Batch-A baseline (2026-07-02): 15/15 anchored near-verbatim
+        # fabrications caught across finance, consulting, medical, tax,
+        # operations, journalism -- including the three blind spots the first
+        # run documented (mg dosage, tons, grouped counts), closed by the
+        # kernel residue detectors. A drop below total is a regression in the
+        # portable kernel's value.
         self.assertEqual(self.summary.altered_flagged, self.summary.altered_total)
-        self.assertGreaterEqual(self.summary.altered_total, 12)
+        self.assertGreaterEqual(self.summary.altered_total, 15)
 
     def test_blind_spots_refuse_never_rule(self) -> None:
-        # Dosages (mg), physical units (tons), bare counts, and semantic claims
-        # are outside the residue's anchor set: the honest verdict is refusal.
+        # The NEXT documented gaps (ratio notation, word-form frequency,
+        # temperature units) plus pure-semantic claims: the honest verdict is
+        # refusal, never silence and never a guess.
         self.assertEqual(self.summary.uncheckable_refused, self.summary.uncheckable_total)
+        self.assertGreaterEqual(self.summary.uncheckable_total, 4)
+
+    def test_faithful_restatements_are_confirmed(self) -> None:
+        # Batch-A baseline: every faithful case confirms (5/5) via the
+        # exact-restatement rule and the residue near-copy confirmation. The
+        # engine's topicality conservatism still governs anything looser.
+        self.assertEqual(self.summary.faithful_supported, self.summary.faithful_total)
+        self.assertGreaterEqual(self.summary.faithful_total, 5)
 
     def test_verbatim_quote_is_confirmed(self) -> None:
-        # The quote path confirms positively (unlike the clause path, whose
-        # topicality gate deliberately withholds `present` without an on-topic
-        # match; that conservatism is design, not a defect).
         q2 = next(r for r in self.summary.results if r.case.id == "Q2")
         self.assertEqual(q2.outcome, "supported")
 

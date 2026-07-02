@@ -25,8 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from services.legal.contract_verify import verify_claim_against_clause
-from services.legal.quote_check import check_quote_against_sources
+from cachet_verify.adapter import verify_claim
 
 
 @dataclass(frozen=True)
@@ -54,33 +53,24 @@ class CaseResult:
     detail: str
 
 
-_CLAUSE_OUTCOME = {
-    "parametric_contradiction": "flagged",
-    "present": "supported",
-    "not_found": "refused",
-    "multi_value_unverifiable": "refused",
-    "conflicting_clauses": "refused",
+# The kernel's own vocabulary, collapsed for scoring. Since batch A the
+# harness runs THE KERNEL (cachet_verify.adapter.verify_claim), not the raw
+# legal-engine functions: the parity number now measures exactly the artifact
+# ADR-0015 ships.
+_STATE_OUTCOME = {
+    "altered": "flagged",
+    "verified": "supported",
+    "could_not_check": "refused",
 }
 
 
 def run_case(case: Case) -> CaseResult:
-    if case.kind == "clause":
-        verdict = verify_claim_against_clause(case.claim, case.source)
-        outcome = _CLAUSE_OUTCOME.get(verdict.disposition, "refused")
-        return CaseResult(case, outcome, verdict.disposition, verdict.detail)
-    if case.kind == "quote":
-        result = check_quote_against_sources(case.claim, [case.source])
-        # QuoteCheckResult is flag-shaped: altered wins, unplaceable is the
-        # honest refusal, and a quote that is neither is verbatim-satisfied.
-        if result.altered:
-            raw, outcome = "altered", "flagged"
-        elif result.unplaceable:
-            raw, outcome = "unplaceable", "refused"
-        else:
-            raw, outcome = "verbatim", "supported"
-        detail = " / ".join(seg.text for seg in result.segments if seg.kind == "altered")
-        return CaseResult(case, outcome, raw, detail)
-    raise ValueError(f"unknown case kind: {case.kind!r}")
+    attestation = verify_claim(case.claim, [case.source])
+    outcome = _STATE_OUTCOME[attestation.state]
+    detail = "; ".join(
+        c.detail for c in attestation.checks if c.state == attestation.state
+    ) or "; ".join(c.detail for c in attestation.checks)
+    return CaseResult(case, outcome, attestation.state, detail)
 
 
 @dataclass(frozen=True)

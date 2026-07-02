@@ -22,8 +22,8 @@ def render_report(summary: ParitySummary) -> str:
     lines.append("# Kernel-residue parity report (ADR-0015, revisit-trigger #3)")
     lines.append("")
     lines.append(
-        "Domain-agnostic residue (quote, money, percent, duration, magnitude, date) "
-        "against non-legal AI fabrications. No legal pack in play."
+        "The kernel adapter (cachet_verify: legal-engine parametrics + kernel residue "
+        "detectors + quote check) against non-legal AI fabrications. No citation or caselaw pack in play."
     )
     lines.append("")
     lines.append("## Headline numbers")
