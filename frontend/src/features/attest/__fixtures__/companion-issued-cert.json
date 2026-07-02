@@ -6,20 +6,20 @@
   "source_sha256s": [
     "2ba30f2d215ae27a85f3c63aa52bf37c5bdbc8794ede89d3e21e14d626e1110b"
   ],
-  "state": "could_not_check",
+  "state": "verified",
   "claims": [
     {
       "claim": "The settlement fund totals $180 million, payable within 30 days.",
-      "state": "could_not_check",
+      "state": "verified",
       "checks": [
         {
-          "state": "could_not_check",
+          "state": "verified",
           "provenance": "deterministic",
-          "detail": "claim value matches the vault text on-topic and is a near-copy of the same clause, but positive clause confirmation is semantic (deferred to T4 retrieval + T8 the local model); this deterministic check can only detect a contradiction, not confirm a clause's meaning",
-          "subject": "$180 million"
+          "detail": "a source states this claim verbatim",
+          "subject": "The settlement fund totals $180 million, payable within 30 days."
         }
       ]
     }
   ],
-  "fingerprint": "bee77bb31e09548620833d392065ca8f87a9766deabd510b2b682fcea25b2473"
+  "fingerprint": "2f637e4d4d9c645b8ea2f34c4f03ecc77ada89e3d83ab6fd853b85a8d65d0ba9"
 }
