@@ -22,6 +22,7 @@ verbatim quotes).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from services.legal.anchors import extract_anchors
@@ -56,7 +57,7 @@ def _normalize(text: str) -> str:
     return " ".join(text.split()).strip().lower()
 
 
-def _coerce_sources(sources: list[SourceInput]) -> list[SourceText]:
+def _coerce_sources(sources: Sequence[SourceInput]) -> list[SourceText]:
     """Accept raw strings (complete by assumption), dicts ({text, truncated?,
     complete?}), or SourceText records. Truncation/completeness ride into the
     quote pool so a run absent from a partial source degrades to
@@ -209,7 +210,7 @@ def _topical_conflict(claim: str, norm_claim: str, source_texts: list[str]) -> b
     return False
 
 
-def verify_claim(claim: str, sources: list[SourceInput]) -> Attestation:
+def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
     """Attest one claim against sources. Pure, no I/O, no network.
 
     Legs (each participating only when the claim carries its content):
@@ -379,7 +380,7 @@ class DraftAttestation:
     schema_version: int = SCHEMA_VERSION
 
 
-def attest_draft(draft: str, sources: list[SourceInput]) -> DraftAttestation:
+def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation:
     """Attest every statement in a draft (sentence-split exactly like the
     app's verify surface). An empty draft is honestly uncheckable."""
     sentences = split_sentences(draft)

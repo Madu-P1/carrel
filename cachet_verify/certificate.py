@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from .adapter import DraftAttestation, SourceInput, _coerce_sources, attest_draft
@@ -62,7 +63,7 @@ def _attestation_body(attestation: DraftAttestation) -> list[dict]:
 
 def issue_certificate(
     draft: str,
-    sources: list[SourceInput],
+    sources: Sequence[SourceInput],
     attestation: DraftAttestation,
     issued_at: str,
 ) -> dict:
@@ -82,7 +83,7 @@ def issue_certificate(
     return {**body, "fingerprint": sha256_hex(canonical_json(body))}
 
 
-def attest_and_issue(draft: str, sources: list[SourceInput], issued_at: str) -> dict:
+def attest_and_issue(draft: str, sources: Sequence[SourceInput], issued_at: str) -> dict:
     return issue_certificate(draft, sources, attest_draft(draft, sources), issued_at)
 
 
@@ -95,7 +96,7 @@ def verify_certificate(cert: dict) -> bool:
     return cert["fingerprint"] == sha256_hex(canonical_json(body))
 
 
-def revalidate_certificate(cert: dict, draft: str, sources: list[SourceInput]) -> dict:
+def revalidate_certificate(cert: dict, draft: str, sources: Sequence[SourceInput]) -> dict:
     """Full offline revalidation: seal integrity, input identity, and a fresh
     engine run compared verdict-for-verdict. Returns a dict of booleans rather
     than one blended verdict so a reviewer sees exactly WHAT failed."""

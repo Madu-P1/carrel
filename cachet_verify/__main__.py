@@ -42,6 +42,13 @@ def main(argv: list[str] | None = None) -> int:
     what = parser.add_mutually_exclusive_group(required=True)
     what.add_argument("--claim", help="one claim to attest")
     what.add_argument("--draft-file", help="path to a draft; every statement is attested")
+    what.add_argument(
+        "--conformance",
+        nargs="?",
+        const="",
+        metavar="CORPUS_JSONL",
+        help="run the conformance floors (optionally against a custom corpus)",
+    )
     parser.add_argument(
         "--source-file",
         action="append",
@@ -53,6 +60,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exhibit", action="store_true", help="print the filing-grade exhibit")
     parser.add_argument("--certificate", help="write the sealed certificate JSON here")
     args = parser.parse_args(argv)
+
+    if args.conformance is not None:
+        from .adapter import verify_claim as _vc
+        from .conformance import DEFAULT_CORPUS, load_corpus, run_conformance
+
+        corpus_path = args.conformance or DEFAULT_CORPUS
+        report = run_conformance(lambda c, s: _vc(c, s).state, load_corpus(corpus_path))
+        print(f"cases: {report.total}")
+        print(f"conformant: {report.conformant}")
+        print(f"catch: {report.altered_caught}/{report.altered_total}")
+        print(f"faithful confirmed: {report.faithful_confirmed}/{report.faithful_total}")
+        print(f"refusals: {report.uncheckable_refused}/{report.uncheckable_total}")
+        for v in report.violations:
+            print(f"VIOLATION: {v}", file=sys.stderr)
+        return 0 if report.conformant else 1
 
     sources: list[str] = list(args.source)
     for path in args.source_file:
