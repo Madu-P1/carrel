@@ -79,8 +79,12 @@ _MONEY = re.compile(
 # "1,2 mld"). Unambiguous magnitude tokens; the scale word is required so a bare
 # number (a count/identifier) never anchors. Longer/more-specific forms first.
 _MAGNITUDE = re.compile(
+    # The (?<![\d,]) run-boundary guard + possessive quantifiers keep the scan
+    # linear on adversarial digit floods (CodeQL py/polynomial-redos, PR #194):
+    # a match may only START at the head of a digit run, so every interior
+    # position fails in O(1) instead of re-consuming the run.
     r"(?:(?:EUR|USD|GBP)\s?)?"
-    r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*"
+    r"(?<![\d,])(?P<num>\d[\d,]*+(?:\.\d++)?)\s*"
     r"(?P<scale>billion|million|thousand|mld|bln|mln|bn|mn)\b",
     re.IGNORECASE,
 )
@@ -610,7 +614,7 @@ _PERCENT = re.compile(
     # carries the Unicode dash family so "5\u201310%" and minus-signed rates
     # refuse the same way the ASCII range form does.
     r"(?<![\w.,\-\u2010\u2011\u2012\u2013\u2014\u2015\u2212])"
-    r"(?P<num>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*"
+    r"(?P<num>(?:\d{1,3}(?:,\d{3})++|\d++)(?:\.\d++)?)\s*"
     r"(?P<unit>%|percent\b|per\s?cent\b|bps\b|basis\s+points?\b)",
     re.IGNORECASE,
 )
@@ -632,7 +636,7 @@ _PERCENT_RANGE_BEFORE = re.compile(
 # "10%= 6%", "10% - level" bind nothing. Deliberately narrow: a percent carries a
 # subject only when the text makes it obvious. The follower must be a standalone
 # word (a word boundary after), so it does not grab the head of a longer phrase.
-_PERCENT_SUBJECT = re.compile(r"\s+([A-Z][A-Za-z]{2,})\b")
+_PERCENT_SUBJECT = re.compile(r"\s++([A-Z][A-Za-z]{2,}+)\b")
 
 
 def _percent_subject(span: str, end: int) -> str | None:

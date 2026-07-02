@@ -78,11 +78,14 @@ _NEAR_COPY_RATIO = 0.90
 # bare identifier digit ("Q1", "Section 8", "Pillar 1", "23 States"). That bound is
 # what keeps "Pillar 1 vs Pillar 2" and "23 States" out of the positional diff.
 _FIGURE = re.compile(
-    r"(?:EUR|USD|GBP|\$)\s?\d[\d,]*(?:\.\d+)?(?:\s*(?:billion|million|thousand))?"
-    r"|\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand)"
-    r"|\d+(?:\.\d+)?\s*%"
-    r"|(?:19|20)\d{2}"
-    r"|\d{1,3}(?:,\d{3})+(?:\.\d+)?",
+    # Run-boundary guards + possessive quantifiers keep the scan linear on
+    # adversarial digit floods (CodeQL py/polynomial-redos, PR #194): each
+    # digit-led branch may only start at the head of a digit run.
+    r"(?:EUR|USD|GBP|\$)\s?\d[\d,]*+(?:\.\d++)?(?:\s*(?:billion|million|thousand))?"
+    r"|(?<![\d,])\d[\d,]*+(?:\.\d++)?\s*(?:billion|million|thousand)"
+    r"|(?<![\d,])\d++(?:\.\d++)?\s*%"
+    r"|(?<![\d,])(?:19|20)\d{2}"
+    r"|(?<![\d,])\d{1,3}(?:,\d{3})++(?:\.\d++)?",
     re.IGNORECASE,
 )
 
