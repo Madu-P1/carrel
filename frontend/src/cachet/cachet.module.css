@@ -92,17 +92,22 @@
   --glass-shadow: 0 24px 60px -24px rgba(27, 30, 37, 0.22);
   --color-bg-base: var(--paper);
 
-  /* Cold display override (cascades into verify/shelf within Cachet). */
-  --font-serif: "Libre Caslon Display", "Charter", Georgia, "Times New Roman", serif;
-  /* Body reading serif, matched to the verify/shelf body stack. */
-  --font-serif-body: Charter, "Charter BT", "Iowan Old Style", Georgia,
+  /* The handoff type trio (self-hosted, @font-face in tokens.css). Chrome is
+     the grotesk sans; reading surfaces (draft read-back, headings, quotes,
+     exhibit) opt into the Newsreader serif; hashes/counts/tiers use the mono. */
+  --font-sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Inter",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-serif: Newsreader, Charter, Georgia, "Times New Roman", serif;
+  --font-serif-body: Newsreader, Charter, "Iowan Old Style", Georgia,
     "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo,
+    Consolas, monospace;
 
   display: flex;
   min-height: 100vh;
   background: var(--paper);
   color: var(--ink-1);
-  font-family: var(--font-serif-body);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* The shell never scrolls sideways: any child that overflows is clipped
