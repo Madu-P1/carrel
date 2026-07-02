@@ -1,8 +1,9 @@
 """Batch E: kernel latency guard.
 
-Measured baseline (2026-07-02, M-series): verify_claim p50 0.44 ms / p95
-0.96 ms; attest_draft 271 ms for a 25-claim draft against a whole-corpus
-source. The ceilings below carry ~50x headroom -- they exist to catch a
+Measured baseline (2026-07-02, M-series): verify_claim p50 ~0.42 ms / p95
+~0.96 ms; attest_draft ~147 ms for a 25-claim draft against a whole-corpus
+source (271 ms before the batch-E relevance prefilter). The ceilings below
+carry ~50x headroom -- they exist to catch a
 pathological regression (an accidental O(n^2), a catastrophic regex), never to
 flake on a loaded machine.
 """

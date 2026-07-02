@@ -57,6 +57,16 @@ def register_attest_routes(app) -> None:
                 status_code=413,
                 detail="sources exceed 2 MiB; attach fewer or smaller records",
             )
+        if request.issued_at is not None:
+            # The field's own contract says ISO-8601; a non-date string would
+            # otherwise seal verbatim into the exhibit's "Issued:" line
+            # (mythos batchE/final-sweep, low). Reject rather than seal garbage.
+            try:
+                datetime.fromisoformat(request.issued_at)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=422, detail="issued_at must be an ISO-8601 timestamp"
+                ) from e
         issued_at = request.issued_at or datetime.now(timezone.utc).isoformat()
         sources = [
             s

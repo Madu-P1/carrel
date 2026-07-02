@@ -11,7 +11,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from cachet_verify.adapter import verify_claim
+from cachet_verify.adapter import attest_draft, verify_claim
 from cachet_verify.certificate import attest_and_issue
 from cachet_verify.daemon import AttestationDaemon
 from cachet_verify.residue import extract_residue_anchors
@@ -80,6 +80,41 @@ class VerdictGamingTests(unittest.TestCase):
     def test_empty_and_whitespace_claims_refuse(self) -> None:
         self.assertEqual("could_not_check", verify_claim("", ["source"]).state)
         self.assertEqual("could_not_check", verify_claim("   \n  ", ["source"]).state)
+
+
+class ResourceBoundTests(unittest.TestCase):
+    """mythos final-sweep (high): a large near-copy document wedged the sync
+    worker for minutes (superlinear sentence-pair fan-out). The kernel now
+    REFUSES over the ceiling rather than block."""
+
+    def test_oversize_near_copy_draft_refuses_fast(self) -> None:
+        import time
+
+        # A near-copy document where every sentence is relevant (the prefilter
+        # cannot help): draft x source sentence-pairs blow past the ceiling.
+        block = "\n".join(f"Item {i}: the payment covers {i} units." for i in range(300))
+        t0 = time.perf_counter()
+        d = attest_draft(block, [block])
+        elapsed = time.perf_counter() - t0
+        self.assertEqual("could_not_check", d.state)
+        self.assertLess(
+            elapsed, 5.0, f"oversize refusal took {elapsed:.1f}s, should be near-instant"
+        )
+
+    def test_oversize_single_claim_refuses(self) -> None:
+        huge_source = "\n".join(f"Clause {i}: the fee is ${i} million." for i in range(25_000))
+        a = verify_claim("The fee is $5 million.", [huge_source])
+        self.assertEqual("could_not_check", a.state)
+        self.assertTrue(any("too large" in c.detail for c in a.checks))
+
+    def test_normal_multipage_draft_still_processes(self) -> None:
+        # A realistic ~40-sentence draft vs a ~40-sentence source stays under
+        # the ceiling and attests normally.
+        draft = "\n".join(f"Point {i}: revenue was {i} billion." for i in range(40))
+        source = "\n".join(f"Point {i}: revenue was {i} billion." for i in range(40))
+        d = attest_draft(draft, [source])
+        self.assertIn(d.state, ("verified", "altered", "could_not_check"))
+        self.assertGreater(len(d.claims), 1)  # not the single oversize-refusal claim
 
 
 class DaemonFuzzTests(unittest.TestCase):

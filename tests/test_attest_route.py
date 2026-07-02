@@ -71,6 +71,21 @@ class AttestRouteTests(unittest.TestCase):
         resp = _client().post("/api/attest", json={"draft": "x" * 100_001, "sources": SOURCES})
         self.assertEqual(422, resp.status_code)
 
+    def test_non_iso_issued_at_is_rejected(self) -> None:
+        # mythos final-sweep (low): a non-date issued_at would otherwise seal
+        # verbatim into the exhibit's "Issued:" line.
+        resp = _client().post(
+            "/api/attest",
+            json={"draft": DRAFT, "sources": SOURCES, "issued_at": "whenever I want"},
+        )
+        self.assertEqual(422, resp.status_code)
+
+    def test_valid_iso_issued_at_is_accepted(self) -> None:
+        resp = _client().post(
+            "/api/attest", json={"draft": DRAFT, "sources": SOURCES, "issued_at": ISSUED}
+        )
+        self.assertEqual(200, resp.status_code)
+
     def test_oversized_sources_are_rejected(self) -> None:
         resp = _client().post(
             "/api/attest",

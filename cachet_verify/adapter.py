@@ -52,6 +52,34 @@ _CLAUSE_STATE = {
 
 SourceInput = str | dict | SourceText
 
+# The clause + residue legs each compare the claim against every source
+# SENTENCE, so a single verify_claim costs O(source_sentences); attest_draft
+# multiplies that by the draft's sentence count. The relevance prefilter blunts
+# this on unrelated prose but NOT on a near-copy document (every sentence shares
+# vocabulary), so a large record wedges the synchronous worker (mythos
+# final-sweep, high: ~150s at 100x100 sentences). This is a hard ceiling on the
+# work a single attestation may attempt: past it the engine REFUSES
+# (could_not_check) rather than block, because a silent multi-minute stall on a
+# trust surface is worse than an honest "too large, split it". A per-request
+# sentence cache would raise this ceiling; that is recorded debt, not done here.
+_MAX_SENTENCE_PAIRS = 20_000
+
+
+def _too_large(claim_sentence_count: int, source_sentence_count: int) -> bool:
+    return claim_sentence_count * source_sentence_count > _MAX_SENTENCE_PAIRS
+
+
+def _oversize_refusal(claim: str) -> CheckResult:
+    return CheckResult(
+        state="could_not_check",
+        provenance="deterministic",
+        detail=(
+            "the draft and sources are too large to attest deterministically in "
+            "bounded time; split them into smaller sections and attest each"
+        ),
+        subject=claim,
+    )
+
 
 def _normalize(text: str) -> str:
     return " ".join(text.split()).strip().lower()
@@ -275,6 +303,12 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
         )
         return attest(checks)
 
+    # Bound the per-claim work: one claim vs every source sentence.
+    source_sentence_count = sum(len(split_sentences(s)) for s in source_texts)
+    if _too_large(1, source_sentence_count):
+        checks.append(_oversize_refusal(claim))
+        return attest(checks)
+
     clause_outcome = _clause_leg(claim, source_texts) if claim_serv else None
 
     residue_outcomes: list[ResidueComparison] = []
@@ -312,32 +346,41 @@ def verify_claim(claim: str, sources: Sequence[SourceInput]) -> Attestation:
     verified_residue = next((o for o in residue_outcomes if o.state == "verified"), None)
 
     any_altered = altered_clause or altered_residue is not None
+
+    # Genuine same-fact disagreement -- the ONLY confirmation that may veto a
+    # caught alteration (mythos final-sweep, high: a matching co-located
+    # DIFFERENT anchor used to mask a real catch). Two shapes qualify:
+    #   - a source states the WHOLE claim verbatim while another contradicts it
+    #     (restated + altered): the same fact, confirmed here and denied there;
+    #   - the residue leg fires BOTH altered and verified across sentences: the
+    #     SAME quantity confirmed in one source sentence and contradicted in
+    #     another.
+    # A verified signal from a DIFFERENT leg/anchor than the altered one (the
+    # $900->$500 money drift beside a matching "1,234 units") is NOT
+    # disagreement about the altered fact, so it must never downgrade the catch.
+    same_fact_disagreement = (restated and any_altered) or (
+        altered_residue is not None and verified_residue is not None
+    )
     any_verified = restated or verified_clause or verified_residue is not None
 
-    if clause_conflict:
-        # The adjudicator KNOWS the sources disagree about THIS fact (a
-        # same-skeleton sentence carries different figures). That refusal
-        # outranks every confirmation, including an exact restatement: a
-        # source that both states and contradicts a claim proves nothing
-        # either way.
-        assert clause_outcome is not None
-        checks.append(
-            CheckResult(
-                state="could_not_check",
-                provenance="deterministic",
-                detail=clause_outcome[1],
-                subject=claim,
+    if clause_conflict or same_fact_disagreement:
+        # The sources disagree about THIS fact (a same-skeleton sentence carries
+        # different figures, or the whole claim is both stated and contradicted).
+        # That refusal outranks every confirmation: a source that both states
+        # and contradicts a claim proves nothing either way.
+        detail = (
+            clause_outcome[1]
+            if clause_conflict and clause_outcome is not None
+            else (
+                "the sources disagree about this claim (one statement matches, "
+                "another contradicts); refusing to pick a winner"
             )
         )
-    elif any_altered and any_verified:
         checks.append(
             CheckResult(
                 state="could_not_check",
                 provenance="deterministic",
-                detail=(
-                    "the sources disagree about this claim (one statement matches, "
-                    "another contradicts); refusing to pick a winner"
-                ),
+                detail=detail,
                 subject=claim,
             )
         )
@@ -406,6 +449,17 @@ def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation
     sentences = split_sentences(draft)
     if not sentences:
         return DraftAttestation(state="could_not_check")
+    # Bound the whole-draft work: draft sentences x source sentences. Past the
+    # ceiling the draft refuses as one honest could_not_check rather than
+    # wedging the caller (mythos final-sweep, high). Guarding here AND in
+    # verify_claim means the daemon /attest and /verify surfaces share the
+    # bound -- no wire divergence.
+    source_sentence_count = sum(len(split_sentences(s.text)) for s in _coerce_sources(sources))
+    if _too_large(len(sentences), source_sentence_count):
+        return DraftAttestation(
+            state="could_not_check",
+            claims=(ClaimAttestation(claim=draft, attestation=attest([_oversize_refusal(draft)])),),
+        )
     claims = tuple(
         ClaimAttestation(claim=s, attestation=verify_claim(s, sources)) for s in sentences
     )

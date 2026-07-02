@@ -69,6 +69,32 @@ class AdjudicatorSwallowTests(unittest.TestCase):
         )
         self.assertEqual("could_not_check", a.state)
 
+    def test_co_located_matching_anchor_never_masks_a_caught_alteration(self) -> None:
+        # mythos final-sweep (high), locked: a money drift ($900->$500) on a
+        # near-verbatim sentence must read altered even though a co-located
+        # DIFFERENT anchor ("1,234 units") matches. A caught RED must not be
+        # downgraded to could_not_check by an unrelated confirmation.
+        a = verify_claim(
+            "The $900 payment covers 1,234 units.",
+            ["The $500 payment covers 1,234 units."],
+        )
+        self.assertEqual("altered", a.state)
+        # Symmetric control: count drifts, money matches -> still altered.
+        b = verify_claim(
+            "The $500 payment covers 2,234 units.",
+            ["The $500 payment covers 1,234 units."],
+        )
+        self.assertEqual("altered", b.state)
+
+    def test_same_fact_cross_source_disagreement_still_refuses(self) -> None:
+        # The genuine case the veto DOES exist for: the same dosage confirmed
+        # in one source sentence and contradicted in another.
+        a = verify_claim(
+            "The patient takes 5 mg nightly.",
+            ["The patient takes 5 mg nightly.\nThe patient takes 50 mg nightly."],
+        )
+        self.assertEqual("could_not_check", a.state)
+
     def test_true_accusation_names_the_same_fact_clause(self) -> None:
         # Evidence quality (batch D): when a same-fact contradiction exists,
         # the filing-grade detail must cite IT, not a cross-fact figure that
