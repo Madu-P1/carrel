@@ -29,10 +29,24 @@ class ResidueExtractionTests(unittest.TestCase):
         self.assertEqual(Decimal(5000), anchors[0].canonical)
 
     def test_metric_mass_converts_within_family(self) -> None:
-        (a,) = extract_residue_anchors("a dose of 0.5 g")
+        (a,) = extract_residue_anchors("a dose of 0.5 grams")
         (b,) = extract_residue_anchors("a dose of 500 mg")
         self.assertEqual(a.canonical, b.canonical)
         self.assertEqual(a.dimension, b.dimension)
+
+    def test_bare_single_letter_units_never_anchor(self) -> None:
+        # mythos batchA-20260702 (confirmed false-accusation): "g"/"m"/"l"/"w"
+        # beside a number are enumeration markers, network generations ("5G"),
+        # or finance shorthand ("10m") as often as they are units. They must
+        # not anchor at all; the honest verdict on such text is refusal.
+        for text in (
+            "Question 4 g asks for a proof.",
+            "upgraded to 5G coverage",
+            "a 10 m runway of budget",
+            "rated 8 w overall",
+            "clause 3 l applies",
+        ):
+            self.assertEqual([], extract_residue_anchors(text), text)
 
     def test_ton_and_tonne_are_isolated_dimensions(self) -> None:
         (ton,) = extract_residue_anchors("shipped 100 tons of resin")
@@ -84,7 +98,7 @@ class ResidueComparisonTests(unittest.TestCase):
 
     def test_cross_unit_equal_value_is_verified(self) -> None:
         out = self._compare(
-            "administer 0.5 g with food.",
+            "administer 0.5 grams with food.",
             "administer 500 mg with food.",
         )
         self.assertIsNotNone(out)
@@ -167,6 +181,15 @@ class ResidueAdapterIntegrationTests(unittest.TestCase):
             ["Daily outbound volume at the facility is 120 tons of product."],
         )
         self.assertEqual("could_not_check", a.state)
+
+    def test_enumeration_prose_never_accuses(self) -> None:
+        # The mythos batchA-20260702 repro, locked: a sub-item marker beside a
+        # number must not read as a physical-quantity contradiction.
+        a = verify_claim(
+            "The rubric awards a 5 g for clarity.",
+            ["The rubric awards a 9 g for clarity."],
+        )
+        self.assertNotEqual("altered", a.state)
 
 
 if __name__ == "__main__":

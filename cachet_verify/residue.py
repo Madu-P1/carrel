@@ -45,7 +45,13 @@ _UNIT_TABLE: dict[str, tuple[str, Decimal]] = {
     "mg": ("mass_metric", Decimal(1_000)),
     "milligram": ("mass_metric", Decimal(1_000)),
     "milligrams": ("mass_metric", Decimal(1_000)),
-    "g": ("mass_metric", Decimal(1_000_000)),
+    # NOTE (mythos batchA-20260702, false-accusation floor): bare single-letter
+    # unit surfaces ("g", "m", "l", "w") are structurally ambiguous in prose --
+    # enumeration markers ("Question 4 g"), network generations ("5G"), finance
+    # shorthand ("10m"), Roman-alphabet labels -- and a wrong reading here mints
+    # a confident RED on faithful text. They are deliberately ABSENT from this
+    # table; their quantities land as honest refusals until an unambiguous
+    # detector exists. Multi-letter surfaces only.
     "gram": ("mass_metric", Decimal(1_000_000)),
     "grams": ("mass_metric", Decimal(1_000_000)),
     "kg": ("mass_metric", Decimal(1_000_000_000)),
@@ -59,7 +65,6 @@ _UNIT_TABLE: dict[str, tuple[str, Decimal]] = {
     "milliliters": ("volume_metric", Decimal(1_000)),
     "cl": ("volume_metric", Decimal(10_000)),
     "dl": ("volume_metric", Decimal(100_000)),
-    "l": ("volume_metric", Decimal(1_000_000)),
     "liter": ("volume_metric", Decimal(1_000_000)),
     "liters": ("volume_metric", Decimal(1_000_000)),
     "litre": ("volume_metric", Decimal(1_000_000)),
@@ -67,7 +72,6 @@ _UNIT_TABLE: dict[str, tuple[str, Decimal]] = {
     # metric distance (base: millimeter)
     "mm": ("distance_metric", Decimal(1)),
     "cm": ("distance_metric", Decimal(10)),
-    "m": ("distance_metric", Decimal(1_000)),
     "meter": ("distance_metric", Decimal(1_000)),
     "meters": ("distance_metric", Decimal(1_000)),
     "metre": ("distance_metric", Decimal(1_000)),
@@ -83,7 +87,6 @@ _UNIT_TABLE: dict[str, tuple[str, Decimal]] = {
     "mwh": ("energy", Decimal(1_000_000)),
     "gwh": ("energy", Decimal(1_000_000_000)),
     # power (base: watt)
-    "w": ("power", Decimal(1)),
     "kw": ("power", Decimal(1_000)),
     "mw": ("power", Decimal(1_000_000)),
     "gw": ("power", Decimal(1_000_000_000)),
