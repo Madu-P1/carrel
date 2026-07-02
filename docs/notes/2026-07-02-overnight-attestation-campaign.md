@@ -78,8 +78,30 @@ affordance; no timestamp-authority guarantee is claimed).*
 attacks (two live cracks found and fixed — '1.000 mg' false accusation,
 '1,5 mg' tail-anchor), verdict gaming (quote-padding, self-sourcing,
 confusable digits — all bounced off the algebra), daemon fuzz,
-cross-instance determinism, mixed concurrent load. This log, the ADR
-addendum, the full chain, Mythos #6 (full-campaign sweep), the draft PR.
+cross-instance determinism, mixed concurrent load. *Mythos #6
+(full-campaign 2-shard sweep over all 32 files): TWO HIGH findings the
+incremental reviews could not see because they live at cross-batch
+seams — (1) a caught clause alteration was silently downgraded to
+could_not_check when a co-located DIFFERENT anchor matched (a dropped
+RED, the batch-A residue leg colliding with the batch-B conflict rule);
+(2) the batch-E byte caps did not bound the superlinear sentence-pair
+fan-out, so a near-copy document wedged the sync worker ~150s. Both
+fixed: same-fact-only disagreement veto, and a 20k-pair ceiling that
+refuses over wedging (inherited by both surfaces, closing a
+wire-divergence finding too). Two lows fixed (ISO issued_at, stale
+benchmark doc); issued_at backdating refuted.* Delivered: this log, the
+full chain green (899 backend + 855 frontend), the draft PR.
+
+## Final delivery state
+
+- **Backend/full python chain: 899 tests, OK (1 skipped).** ruff check +
+  format clean across ai/services/evals/tests/routes/benchmarks/cachet_verify.
+- **Frontend chain: 855 tests, typecheck + lint clean.**
+- Parity floors at close: 15/15 catch, 5/5 faithful, 5/5 refusals, 0 false
+  greens, 0 false accusations.
+- 6 Mythos ledgers under `.mythos/` (batchA, batchC, batchD, batchE, batchB
+  in-line, final-sweep). Findings: 8 confirmed+fixed, 5 refuted-with-reason,
+  2 found by the campaign's own tests mid-build and fixed.
 
 ## What this means against the north star
 
