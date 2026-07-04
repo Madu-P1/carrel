@@ -293,7 +293,9 @@ export interface paths {
         /**
          * Create Vault Route
          * @description Create a (possibly empty) vault so records can be filed into it. Returns
-         *     the full vault list so the caller resyncs in one round trip.
+         *     the full vault list so the caller resyncs in one round trip. See
+         *     services.documents.create_vault for the full validation catalog; every
+         *     ValueError it raises surfaces here as a 400 with the specific reason.
          */
         post: operations["create_vault_route_api_vaults_post"];
         /**
@@ -1018,6 +1020,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attest */
+        post: operations["attest_api_attest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/briefs": {
         parameters: {
             query?: never;
@@ -1609,6 +1628,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AttestRequest */
+        AttestRequest: {
+            /** Draft */
+            draft: string;
+            /** Sources */
+            sources?: (string | components["schemas"]["AttestSourceModel"])[];
+            /** Issued At */
+            issued_at?: string | null;
+        };
+        /** AttestSourceModel */
+        AttestSourceModel: {
+            /** Text */
+            text: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Complete
+             * @default true
+             */
+            complete: boolean;
+        };
         /** Body_import_document_job_api_jobs_import_post */
         Body_import_document_job_api_jobs_import_post: {
             /** File */
@@ -3395,7 +3438,10 @@ export interface operations {
     };
     list_documents_api_documents_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number | null;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3409,6 +3455,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentListItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3614,7 +3669,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultListResponse"];
                 };
             };
-            /** @description Blank vault name */
+            /** @description Blank, traversal-shaped, or over-long vault name */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4967,6 +5022,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attest_api_attest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
