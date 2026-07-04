@@ -6,8 +6,9 @@ import { VerifyResults } from "@/features/verify/VerifyResults";
 import { useVerify } from "@/features/verify/useVerify";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
-import { CachetMark } from "./CachetMark";
 import { openExamination } from "./examine/examineStore";
+import { resetVerifyStore } from "@/features/verify/useVerify";
+
 import { liveDraft } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
 import {
@@ -23,16 +24,13 @@ import {
 import styles from "./cachet.module.css";
 
 /**
- * The lectern: a composed title page that IS the verify surface. The mark, one
- * line of what Cachet verifies and refuses, a paste affordance that reads as a
- * sheet of paper, and the record to check against. Verifying runs the check in
- * place — the verdict unfolds directly beneath the sheet on the same page, so
- * there is no second compose form and no hand-off to a separate route. The
- * verdict render is the shared `VerifyResults`, the same one Carrel's VerifyView
- * uses; the engine is the shared `useVerify`.
- *
- * SM-V1 in spirit: the writing area IS the sheet. We do not promise an outcome
- * here; we set up the honest gap the verdict lands in, right below.
+ * The Lectern composer (handoff §3): a centered 760px column — the "Checking
+ * against" pill row, a large serif sheet (Newsreader 18.5/1.75), and the
+ * primary Verify draft action with its ⌘↩ chord. The composer IS the landing
+ * surface; the brand lives in the splash and the top strip, not in a hero.
+ * Verifying unfolds the verdict in place beneath (Flow A) — no second compose
+ * form, no route hand-off. The verdict render is the shared `VerifyResults`;
+ * the engine is the shared `useVerify`.
  */
 
 /* The specimen: a litigator-shaped draft with planted defects, so a cold
@@ -44,6 +42,7 @@ const SPECIMEN_DRAFT =
   'The Supreme Court held that "separate educational facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483 (1954).\n' +
   "The settlement fund totals $360 million, payable to the class within 30 days of final approval.\n" +
   "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).";
+
 export function LecternView() {
   // The draft lives in the shared `liveDraft` signal, not local state, so a paste
   // on the home page survives navigating to the Shelf and back (the route swap
@@ -51,6 +50,7 @@ export function LecternView() {
   const draft = liveDraft.value;
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const ready = draft.trim().length > 0;
+  const wordCount = draft.trim().split(/\s+/).filter(Boolean).length;
 
   // The record to verify against. A user can attach it right here (upload a PDF
   // or Word file) or pick one already filed in Sources; the active record's doc
@@ -71,9 +71,9 @@ export function LecternView() {
     docIds: source?.docId ? [source.docId] : undefined,
     store: lecternVerify
   });
-  // The verdict region replaces the centred title-page layout once a check is in
-  // flight or has landed (or errored), so the page scrolls from the top instead
-  // of staying vertically centred.
+  // The verdict region takes over once a check is in flight or has landed (or
+  // errored): the composer yields the page to the run view (handoff §4 —
+  // showComposer only while idle).
   const hasVerdict = engine.loading || engine.response !== null || engine.error !== null;
 
   // Populate the record list so the "pick a loaded record" control is available
@@ -124,85 +124,35 @@ export function LecternView() {
     }
   }
 
-  return (
-    <section className={styles.lectern} data-active={hasVerdict ? "true" : undefined}>
-      <CachetMark size={76} strokeWidth={26} className={styles.lecternMark} />
-      <h1 className={styles.wordmark}>Cachet</h1>
-      <p className={styles.standing}>The independent attestation layer</p>
-      <p className={styles.tagline}>
-        Cachet certifies only what it can trace to the record you provide, and says
-        so plainly when it cannot. Every ruling becomes a sealed record you can hand
-        to anyone.
-      </p>
-
-      <div className={styles.sheet}>
-        <textarea
-          ref={areaRef}
-          className={styles.sheetArea}
-          value={draft}
-          placeholder="Paste a draft to verify"
-          aria-label="Draft to verify"
-          spellcheck={false}
-          onInput={(e) => (liveDraft.value = (e.target as HTMLTextAreaElement).value)}
-          onKeyDown={onKeyDown}
-        />
-        <div className={styles.sheetFoot}>
-          <span className={styles.sheetHint}>
-            Reads the citations and quotes against the sources you provide
-          </span>
-          <kbd className={styles.sheetKbd} title="Command Enter verifies the draft">
-            &#8984;&#9166;
-          </kbd>
-          {engine.loading ? (
-            // The escape hatch a persistent store makes necessary: loading
-            // survives navigation by design, so a hung stream would otherwise
-            // leave Verify disabled forever (the remount no longer resets it).
-            <button
-              type="button"
-              className={styles.lecternSourceChange}
-              onClick={() => engine.cancel()}
-            >
-              Stop the check
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={styles.sheetGo}
-            onClick={verify}
-            disabled={!ready || engine.loading}
-          >
-            {engine.loading ? "Verifying…" : "Verify"}
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.lecternSource}>
+  const composer = (
+    <div className={styles.composer}>
+      <div className={styles.pillRow}>
+        <span className={styles.pillLabel}>Checking against</span>
         {source ? (
-          <p className={styles.lecternSourceLoaded}>
-            <span className={styles.lecternSourceDot} aria-hidden="true" />
+          <span className={styles.pill}>
             <button
               type="button"
-              className={styles.lecternSourceName}
+              className={styles.pillName}
               onClick={() => openExamination({ docId: source.docId, filename: source.filename })}
               aria-label={`Open ${source.filename}`}
               title="Open the record"
             >
               {source.filename}
             </button>
-            <span className={styles.lecternSourceTag}>loaded as the record</span>
             <button
               type="button"
-              className={styles.lecternSourceChange}
+              className={styles.pillChange}
               onClick={() => clearSource()}
+              aria-label="Change the record"
             >
               change
             </button>
-          </p>
+          </span>
         ) : (
           <>
             {docs && docs.length > 0 ? (
               <select
-                className={styles.lecternRecordSelect}
+                className={styles.pillSelect}
                 aria-label="Check against a loaded record"
                 value=""
                 onChange={(e) => {
@@ -219,7 +169,10 @@ export function LecternView() {
                 ))}
               </select>
             ) : null}
-            <label className={styles.lecternSourceAdd} data-busy={upload ? "true" : undefined}>
+            <label
+              className={`${styles.pill} ${styles.pillUpload}`}
+              data-busy={upload ? "true" : undefined}
+            >
               <input
                 type="file"
                 accept=".pdf,.docx,.txt,.md"
@@ -233,17 +186,43 @@ export function LecternView() {
             </label>
           </>
         )}
-        {docsError ? (
-          <span className={styles.lecternSourceError} role="alert">
-            {docsError}
-          </span>
-        ) : null}
-        {sourceError ? (
-          <span className={styles.lecternSourceError}>{sourceError}</span>
-        ) : null}
+        <span className={styles.pillQuiet}>Case-law store · bundled</span>
       </div>
 
-      {!ready && !hasVerdict ? (
+      <textarea
+        ref={areaRef}
+        className={styles.composerArea}
+        value={draft}
+        placeholder="Paste the draft to check."
+        aria-label="Draft to verify"
+        spellcheck={false}
+        onInput={(e) => (liveDraft.value = (e.target as HTMLTextAreaElement).value)}
+        onKeyDown={onKeyDown}
+      />
+
+      <div className={styles.composerFoot}>
+        <button
+          type="button"
+          className={styles.verifyDraftBtn}
+          onClick={verify}
+          disabled={!ready || engine.loading}
+        >
+          {engine.loading ? "Verifying…" : "Verify draft"}
+          <kbd className={styles.kbdChip} title="Command Enter verifies the draft">
+            &#8984;&#9166;
+          </kbd>
+        </button>
+        <span className={styles.wordHelper}>{wordCount} words · reads only, never rewrites</span>
+      </div>
+
+      {docsError ? (
+        <span className={styles.lecternSourceError} role="alert">
+          {docsError}
+        </span>
+      ) : null}
+      {sourceError ? <span className={styles.lecternSourceError}>{sourceError}</span> : null}
+
+      {!ready ? (
         // The cold lectern's one-click first move: a specimen with planted
         // defects, so the first thing a skeptic sees is the surface refusing
         // and flagging, not a blank void asking for trust up front.
@@ -258,28 +237,17 @@ export function LecternView() {
           Or examine a specimen draft with planted defects
         </button>
       ) : null}
+    </div>
+  );
 
-      <dl className={styles.lecternSpine} aria-label="What this machine guarantees">
-        <div className={styles.spineItem}>
-          <dt className={styles.spineTerm}>On device</dt>
-          <dd className={styles.spineGloss}>The substance never leaves this machine.</dd>
-        </div>
-        <div className={styles.spineItem}>
-          <dt className={styles.spineTerm}>Independent</dt>
-          <dd className={styles.spineGloss}>It grades the output, never its own.</dd>
-        </div>
-        <div className={styles.spineItem}>
-          <dt className={styles.spineTerm}>Sealed</dt>
-          <dd className={styles.spineGloss}>A record you can hand to anyone.</dd>
-        </div>
-      </dl>
-
+  return (
+    <section className={styles.lectern} data-active={hasVerdict ? "true" : undefined}>
       {hasVerdict ? (
         // A malformed/unexpected wire shape (missing or mistyped fields) must
-        // not blank the whole lectern — the mark, sheet, and record picker
-        // above stay usable even if the verdict tree itself can't render.
-        // Keyed on engine.response so a fresh verify (which nulls it, then
-        // sets a new object) always clears a prior crash.
+        // not blank the whole lectern — a reset back to the composer stays
+        // reachable even if the verdict tree itself can't render. Keyed on
+        // engine.response so a fresh verify (which nulls it, then sets a new
+        // object) always clears a prior crash.
         <ErrorBoundary
           resetKey={engine.response}
           fallback={() => (
@@ -288,10 +256,32 @@ export function LecternView() {
                 The verification result could not be displayed. Nothing here has been verified —
                 verify the draft again.
               </p>
+              {/* The composer yields to the run view, so a crashed verdict must
+                  hand back an explicit way home or the surface is stranded. */}
+              <button
+                type="button"
+                className={styles.stopCheck}
+                onClick={() => resetVerifyStore(lecternVerify)}
+              >
+                New draft
+              </button>
             </div>
           )}
         >
           <div className={[styles.lecternVerdict, verifyStyles.verifyScope].join(" ")}>
+            {engine.loading ? (
+              // The escape hatch a persistent store makes necessary: loading
+              // survives navigation by design, so a hung stream would otherwise
+              // leave Verify disabled forever (the remount no longer resets it).
+              // Cancelling settles to idle, which returns the composer.
+              <button
+                type="button"
+                className={styles.stopCheck}
+                onClick={() => engine.cancel()}
+              >
+                Stop the check
+              </button>
+            ) : null}
             <VerifyResults
               engine={engine}
               draft={draft}
@@ -305,10 +295,7 @@ export function LecternView() {
           </div>
         </ErrorBoundary>
       ) : (
-        <p className={styles.lecternMeta} data-lectern-empty="true">
-          Nothing to examine yet. Paste a draft above and press Verify to check it against your
-          sources.
-        </p>
+        composer
       )}
     </section>
   );

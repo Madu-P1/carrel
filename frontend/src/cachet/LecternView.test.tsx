@@ -84,14 +84,14 @@ describe("LecternView inline verify (the unified surface)", () => {
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
 
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
 
     // The verdict summary renders inside the lectern...
     expect(
       await screen.findByText("All 1 statements are supported by the sources you provided.")
     ).toBeTruthy();
-    // ...the sheet is still on screen (we did not leave the lectern)...
-    expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
+    // ...the composer yielded the page to the run view (handoff §4)...
+    expect(screen.queryByLabelText("Draft to verify")).toBeNull();
     // ...and crucially nothing navigated to a second compose page.
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -99,7 +99,7 @@ describe("LecternView inline verify (the unified surface)", () => {
   it("does not verify an empty draft", () => {
     liveDraft.value = "   ";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     expect(mockDraftStream).not.toHaveBeenCalled();
   });
 });
@@ -169,7 +169,7 @@ describe("LecternView refusal CTA honesty", () => {
     );
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     await screen.findByText(/could not be verified against your sources/);
     expect(screen.queryByText("Open the Vault to load it")).toBeNull();
   });
@@ -183,7 +183,7 @@ describe("LecternView refusal CTA honesty", () => {
     );
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     await screen.findByText(/could not be verified against your sources/);
     expect(screen.getByText("Open the Vault to load it")).toBeTruthy();
   });
@@ -208,10 +208,10 @@ describe("LecternView cancel (the hung-stream escape hatch)", () => {
       })()) as never);
     liveDraft.value = "A draft whose check hangs.";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     fireEvent.click(await screen.findByText("Stop the check"));
     await waitFor(() => {
-      const verifyButton = screen.getByText("Verify") as HTMLButtonElement;
+      const verifyButton = screen.getByText("Verify draft") as HTMLButtonElement;
       expect(verifyButton.disabled).toBe(false);
     });
     expect(screen.queryByText("Stop the check")).toBeNull();
@@ -233,7 +233,7 @@ describe("LecternView verdict persistence (the verdict survives unmount-on-nav)"
     );
     liveDraft.value = "The NDA term is three years.";
     const first = render(<LecternView />);
-    fireEvent.click(first.getByText("Verify"));
+    fireEvent.click(first.getByText("Verify draft"));
     expect(
       await first.findByText("All 1 statements are supported by the sources you provided.")
     ).toBeTruthy();
@@ -251,21 +251,19 @@ describe("LecternView verdict persistence (the verdict survives unmount-on-nav)"
   });
 });
 
-describe("LecternView attestation-layer identity (north star)", () => {
-  it("names the independent attestation layer and its three guarantees", () => {
+describe("LecternView composer register (handoff §3)", () => {
+  // The brand hero moved to the splash and the top strip; the composer itself
+  // must still carry the product's honest register in its own copy.
+  it("states the read-only promise beside the word count", () => {
+    liveDraft.value = "A short draft.";
     render(<LecternView />);
-    expect(screen.getByText(/independent attestation layer/i)).toBeTruthy();
-    // The trust spine: the north star made visible. All three stated
-    // guarantees must be present so none can silently drop.
-    const spine = screen.getByLabelText(/what this machine guarantees/i);
-    expect(spine.textContent).toContain("On device");
-    expect(spine.textContent).toContain("Independent");
-    expect(spine.textContent).toContain("Sealed");
+    expect(screen.getByText(/3 words · reads only, never rewrites/)).toBeTruthy();
   });
 
-  it("promises the sealed record a third party can be handed", () => {
+  it("names what the draft is checked against (record + bundled case-law store)", () => {
     render(<LecternView />);
-    expect(screen.getByText(/sealed record you can hand to anyone/i)).toBeTruthy();
+    expect(screen.getByText("Checking against")).toBeTruthy();
+    expect(screen.getByText("Case-law store · bundled")).toBeTruthy();
   });
 });
 
@@ -321,11 +319,10 @@ describe("LecternView draft persistence (shared liveDraft)", () => {
 // or throw. Each case below asserts the specific explicit text a lawyer would
 // actually see, not just "did not crash".
 describe("LecternView non-happy-path safety (the lectern never blanks or throws)", () => {
-  it("MISSING DATA: shows an explicit empty-state prompt before any draft is verified", () => {
+  it("MISSING DATA: the cold composer offers the paste sheet and the specimen", () => {
     render(<LecternView />);
-    expect(screen.getByText(/Nothing to examine yet/)).toBeTruthy();
-    // The rest of the lectern is still present too — this is not a blank page.
-    expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Paste the draft to check.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /examine a specimen draft/i })).toBeTruthy();
   });
 
   it("IN-FLIGHT LOAD: shows an explicit loading affordance while a check is running", async () => {
@@ -341,8 +338,8 @@ describe("LecternView non-happy-path safety (the lectern never blanks or throws)
     );
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
-    expect(await screen.findByText("Verifying…")).toBeTruthy();
+    fireEvent.click(screen.getByText("Verify draft"));
+    expect(await screen.findByText("Stop the check")).toBeTruthy();
     expect(await screen.findByText(/Reading the draft and extracting claims/)).toBeTruthy();
   });
 
@@ -360,7 +357,7 @@ describe("LecternView non-happy-path safety (the lectern never blanks or throws)
     );
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     expect(await screen.findByText(/Verification did not finish/)).toBeTruthy();
     expect(screen.queryByText(/All \d+ statements are supported/)).toBeNull();
   });
@@ -395,10 +392,10 @@ describe("LecternView non-happy-path safety (the lectern never blanks or throws)
     liveDraft.value = "The NDA term is three years.";
     render(<LecternView />);
     // Rendering (and the click below) must not throw out of the test.
-    fireEvent.click(screen.getByText("Verify"));
+    fireEvent.click(screen.getByText("Verify draft"));
     expect(await screen.findByText(/could not be displayed/)).toBeTruthy();
-    // The crash is scoped to the verdict area — the rest of the lectern survives.
+    // The crash is scoped and recoverable: an explicit way back to the composer.
+    fireEvent.click(screen.getByRole("button", { name: "New draft" }));
     expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Cachet" })).toBeTruthy();
   });
 });

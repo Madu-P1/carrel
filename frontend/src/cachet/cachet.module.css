@@ -346,13 +346,212 @@
 
 /* ---------- lectern (the landing title page) ---------- */
 .lectern {
-  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 32px 36px 80px;
+}
+
+/* ---------- the composer (handoff §3: centered 760px column) ---------- */
+.composer {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.pillRow {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 7vh 24px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.pillLabel {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--sheet);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-1);
+}
+
+.pillQuiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--hair-soft);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.pillName {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 110ms ease-out;
+}
+
+.pillName:hover {
+  text-decoration-color: currentColor;
+}
+
+.pillChange {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.pillChange:hover {
+  color: var(--ink-1);
+}
+
+.pillSelect {
+  padding: 5px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--sheet);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.pillUpload {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
+.pillUpload:hover {
+  border-color: var(--border-strong);
+  color: var(--ink-1);
+}
+
+.pillUpload[data-busy="true"] {
+  cursor: progress;
+  color: var(--ink-3);
+}
+
+.composerArea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 340px;
+  resize: vertical;
+  padding: 28px 30px;
+  background: var(--sheet);
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(27, 30, 37, 0.06);
+  font-family: var(--font-serif-body);
+  font-size: 18.5px;
+  line-height: 1.75;
+  color: var(--ink-1);
+  outline: none;
+  transition: border-color 110ms ease-out, box-shadow 110ms ease-out;
+}
+
+.composerArea:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.composerArea::placeholder {
+  color: var(--ink-3);
+}
+
+.composerFoot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+/* The primary action of the whole product: the oxblood fill (handoff §3). */
+.verifyDraftBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: var(--accent);
+  color: var(--text-inverse);
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 110ms ease-out, transform 110ms ease-out;
+}
+
+.verifyDraftBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.verifyDraftBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.verifyDraftBtn:disabled {
+  background: var(--surface-active);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.verifyDraftBtn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.kbdChip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.65;
+}
+
+.wordHelper {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Cancelling a run that is hiding the composer: quiet, but reachable. */
+.stopCheck {
+  align-self: flex-start;
+  margin-bottom: 14px;
+  padding: 6px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--sheet);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.stopCheck:hover {
+  background: var(--surface-hover);
 }
 
 .lecternMark {
