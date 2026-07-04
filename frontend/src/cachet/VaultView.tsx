@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Button, Dialog, showToast, toast } from "@/design-system";
 import { apiErrorMessage } from "@/services/api/client";
 
+import { FolderMark } from "./FolderMark";
 import { VaultMark } from "./VaultMark";
 import { openExamination } from "./examine/examineStore";
 
@@ -275,7 +276,7 @@ export function VaultView() {
           ← All vaults
         </button>
         <div className={styles.vaultDetailHead}>
-          <VaultMark size={34} className={styles.vaultDetailMark} title="" />
+          <FolderMark width={34} className={styles.vaultDetailMark} />
           <h2 className={styles.vaultDetailName}>{name}</h2>
           <span className={styles.sourceGroupCount}>{recordCount(openItems.length)}</span>
           {openItems.length === 0 && name !== DEFAULT_PROJECT ? (
@@ -451,7 +452,7 @@ export function VaultView() {
                     if (doc) requestMove(doc, target);
                   }}
                 >
-                  <VaultMark size={20} className={styles.moveChipMark} title="" />
+                  <FolderMark width={20} className={styles.moveChipMark} />
                   <span className={styles.moveChipName}>{target}</span>
                 </div>
               ))}
@@ -600,7 +601,7 @@ export function VaultView() {
                     onClick={() => setOpenVault(vault.name)}
                     aria-label={`Open the ${vault.name} vault`}
                   >
-                    <VaultMark size={88} className={styles.vaultCardMark} title="" />
+                    <FolderMark width={56} className={styles.vaultCardMark} />
                   </button>
                   <div className={styles.vaultCardMeta}>
                     <span className={styles.vaultCardName} title={vault.name}>
@@ -626,6 +627,11 @@ export function VaultView() {
             })}
           </div>
         )}
+
+        <p className={styles.vaultProvenance}>
+          <span className={styles.vaultProvenanceDot} aria-hidden="true" />
+          Every source is hashed when loaded and stays on this machine. Nothing leaves it.
+        </p>
       </>
     );
   }

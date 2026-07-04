@@ -1877,3 +1877,221 @@
   margin-top: 0;
   width: 100%;
 }
+
+/* ==========================================================================
+ * Handoff steps 9-11 (2026-07-05): vault provenance, settings, splash.
+ * Named keyframes per README §Motion; transform/opacity (+ the splash's
+ * stroke draw) only; the global reduced-motion clamp collapses all of them.
+ * ========================================================================== */
+
+@keyframes cachetDraw {
+  from {
+    stroke-dashoffset: 100;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cachetRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cachetFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- vault provenance ---------- */
+.vaultProvenance {
+  margin: 26px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  max-width: 62ch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vaultProvenanceDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-1);
+  display: inline-block;
+  flex: none;
+}
+
+/* ---------- settings (handoff §10: 640px column of cards) ---------- */
+.settingsCol {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 36px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.settingsCard {
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--sheet);
+  padding: 22px 24px;
+}
+
+.settingsCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--ink-1);
+}
+
+.themeSeg {
+  display: flex;
+  gap: 8px;
+}
+
+.themeSegBtn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--hair);
+  background: var(--sheet);
+  color: var(--ink-1);
+  transition: background 110ms ease-out, border-color 110ms ease-out;
+}
+
+.themeSegBtn:hover {
+  background: var(--surface-hover);
+}
+
+.themeSegBtn[data-active="true"] {
+  border-color: var(--ink-1);
+  background: var(--surface-active);
+}
+
+.themeSegBtn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.engineGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 20px;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+
+.engineKey {
+  color: var(--ink-3);
+}
+
+.engineMono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settingsFoot {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+/* ---------- splash (handoff §1) ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #14161c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  transition: opacity 500ms ease-in;
+  opacity: 1;
+}
+
+.splash[data-leaving="true"] {
+  opacity: 0;
+}
+
+.splashMark {
+  width: 108px;
+  height: 108px;
+  color: #f5f6f9;
+}
+
+.splashArc1 {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: cachetDraw 600ms cubic-bezier(0.2, 0, 0.2, 1) 250ms forwards;
+}
+
+.splashArc2 {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: cachetDraw 850ms cubic-bezier(0.2, 0, 0.2, 1) 450ms forwards;
+}
+
+.splashWordmark {
+  font-family: var(--font-serif);
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: #f5f6f9;
+  opacity: 0;
+  animation: cachetRise 500ms ease-out 1050ms forwards;
+}
+
+.splashLine {
+  position: fixed;
+  bottom: 44px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: #9297a1;
+  opacity: 0;
+  animation: cachetFadeIn 500ms ease-out 1400ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splashArc1,
+  .splashArc2 {
+    animation-duration: 0.01ms;
+    stroke-dashoffset: 0;
+  }
+
+  .splashWordmark,
+  .splashLine {
+    animation-duration: 0.01ms;
+    opacity: 1;
+  }
+
+  .splash {
+    transition-duration: 0.01ms;
+  }
+}

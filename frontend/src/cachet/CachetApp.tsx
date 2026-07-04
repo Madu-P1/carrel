@@ -8,6 +8,8 @@ import verifyStyles from "@/features/verify/VerifyView.module.css";
 import { ShelfView } from "@/features/shelf/ShelfView";
 
 import { CommandPalette } from "./CommandPalette";
+import { Splash, splashAlreadyShown } from "./Splash";
+import { applyStoredTheme } from "./SettingsView";
 import { buildCommands } from "./commands";
 import { enterRoom } from "./roomMotion";
 import { CachetRail } from "./CachetRail";
@@ -100,6 +102,12 @@ export function CachetApp() {
   const route = appShell.currentRoute.value;
   const path = pathnameFromRoute(route);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The splash runs once per launch (handoff §1); the persisted theme applies
+  // before first paint of the shell so light/dark never flashes.
+  const [splashOn, setSplashOn] = useState(() => !splashAlreadyShown());
+  useEffect(() => {
+    applyStoredTheme();
+  }, []);
   const canvasRef = useRef<HTMLElement | null>(null);
   const roomRef = useRef<HTMLDivElement | null>(null);
   const prevPath = useRef<string | null>(null);
@@ -144,6 +152,7 @@ export function CachetApp() {
 
   return (
     <div className={styles.app}>
+      {splashOn ? <Splash onDone={() => setSplashOn(false)} /> : null}
       <CachetRail currentPath={path} />
       <div className={styles.mainCol}>
         <header className={styles.topStrip}>
