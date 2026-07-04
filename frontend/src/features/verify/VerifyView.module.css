@@ -2478,3 +2478,56 @@
 .examCaseLine[data-kind="query"] .examCaseLabel {
   color: var(--text-primary);
 }
+
+/* ---------- certification exhibit head (handoff §7) ---------- */
+.certExhibit {
+  border-radius: 4px;
+  font-family: var(--font-serif-body, Newsreader, Charter, Georgia, serif);
+}
+
+.exhibitHead {
+  text-align: center;
+  border-bottom: 2px solid var(--text-primary);
+  padding-bottom: 22px;
+  margin-bottom: 24px;
+}
+
+.exhibitMark {
+  width: 34px;
+  height: 34px;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.exhibitTitle {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+}
+
+.exhibitCertNo {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}
+
+/* Per-item state tokens: refusals carry EQUAL weight to confirmations
+   (invariant 7); assistive stays visibly softer; pass stays quiet. */
+.certItemLabel[data-tier="flag"] {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+}
+
+.certItemLabel[data-tier="assistive"] {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.certItemLabel[data-tier="refusal"] {
+  background: var(--surface-active);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+}

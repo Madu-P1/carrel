@@ -66,15 +66,14 @@ describe("ShelfView", () => {
 
     expect(await screen.findByText("Motion to Dismiss")).toBeTruthy();
     expect(screen.getByText("Reply Brief")).toBeTruthy();
-    // "Sealed" / "Unsealed" are the section headings now (no per-row labels);
-    // the seal state reads from the group + the gutter ink + the disc.
-    expect(screen.getByText("Sealed")).toBeTruthy();
-    expect(screen.getByText("Unsealed")).toBeTruthy();
-    // Fingerprint is truncated for the card (first 12 hex + ellipsis).
-    expect(screen.getByText("abcdef012345…")).toBeTruthy();
+    // Handoff §8: per-row seal badges (SEAL INTACT / UNSEALED), one flat list.
+    expect(screen.getByText("SEAL INTACT")).toBeTruthy();
+    expect(screen.getByText("UNSEALED")).toBeTruthy();
+    // The fingerprint renders shortened, never the full 64 hex chars.
+    expect(screen.getByText("1234567890ab…")).toBeTruthy();
   });
 
-  it("groups briefs into Sealed and Unsealed sections by seal state", async () => {
+  it("badges each brief by its own seal state (no silent mixing)", async () => {
     mockList.mockResolvedValue({
       briefs: [
         summary({ id: "b1", title: "Motion to Dismiss", seal_state: "sealed" }),
@@ -84,11 +83,12 @@ describe("ShelfView", () => {
     render(<ShelfView />);
 
     await screen.findByText("Motion to Dismiss");
-    // Each group becomes its own section with an h2 spine label.
-    expect(screen.getByRole("heading", { name: "Sealed" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Unsealed" })).toBeTruthy();
-    // Both briefs land under their respective sections.
-    expect(screen.getByText("Reply Brief")).toBeTruthy();
+    // One flat list; the badge on each row carries the seal state (a cracked
+    // seal is derived on reopen, so the list never claims it).
+    const rows = document.querySelectorAll("li");
+    expect(rows.length).toBe(2);
+    expect(screen.getByText("SEAL INTACT")).toBeTruthy();
+    expect(screen.getByText("UNSEALED")).toBeTruthy();
   });
 
   it("marks each spine row with its seal state so the gutter ink and disc can key off it", async () => {

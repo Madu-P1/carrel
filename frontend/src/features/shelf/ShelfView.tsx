@@ -7,15 +7,12 @@ import { briefs as briefsApi, type BriefSummary } from "@/services/api/endpoints
 import styles from "./ShelfView.module.css";
 
 /**
- * Cachet PR6b-craft — the Shelf (warm register, Direction C "The Spine").
- *
- * A bookshelf of saved briefs: grouped by the human's act (Sealed / Unsealed),
- * each a row with a gutter spine (ink when sealed) and an ink seal disc that
- * echoes the certification seal. Warm cream ground, a Fraunces ceremonial
- * title. No oxblood (reserved for verify flags), no green/amber, no verdict
- * signal — warmth never touches a verdict. The open + delete wiring is PR6b
- * mechanical; this pass is the craft. Opening a brief re-hydrates the Verify
- * view from the stored response (no re-verify).
+ * The Shelf (handoff §8): a centered 860px list of saved briefs. Each row is a
+ * hover-lift card — serif title, mono "date · fingerprint" meta, and a right
+ * seal badge (SEAL INTACT / UNSEALED; a cracked seal is derived on reopen,
+ * where the saved fingerprint meets the draft, so the list never claims it).
+ * Opening a brief re-hydrates the Verify view from the stored response (no
+ * re-verify). The two-step delete stays: a hard delete has no undo.
  */
 
 type LoadState =
@@ -36,19 +33,6 @@ function formatSavedAt(iso: string | null | undefined): string {
 
 function shortFingerprint(fingerprint: string): string {
   return fingerprint.length > 12 ? `${fingerprint.slice(0, 12)}…` : fingerprint;
-}
-
-/** The ink seal disc — echoes the cert seal (PR2): an ink ring + engraved
- *  core. Decorative; the "Sealed" section label carries the meaning. */
-function SealDisc() {
-  return (
-    <span className={styles.seal} aria-hidden="true">
-      <svg viewBox="0 0 18 18">
-        <circle className={styles.sealRing} cx="9" cy="9" r="7" />
-        <circle className={styles.sealCore} cx="9" cy="9" r="3" />
-      </svg>
-    </span>
-  );
 }
 
 export function ShelfView() {
@@ -99,7 +83,6 @@ export function ShelfView() {
   if (state.status === "loading") {
     return (
       <div className={styles.shelf}>
-        <ShelfHeader />
         <Stack align="center" gap={3} className={styles.centered}>
           <Spinner label="Loading saved briefs" />
         </Stack>
@@ -110,7 +93,6 @@ export function ShelfView() {
   if (state.status === "error") {
     return (
       <div className={styles.shelf}>
-        <ShelfHeader />
         <Stack gap={3} align="start" className={styles.centered}>
           <Text tone="secondary">{state.message}</Text>
           <Button variant="secondary" onClick={() => void load()}>
@@ -124,7 +106,6 @@ export function ShelfView() {
   if (state.items.length === 0) {
     return (
       <div className={styles.shelf}>
-        <ShelfHeader />
         <div className={styles.empty}>
           <h2 className={styles.emptyTitle}>Nothing on the shelf yet</h2>
           <p className={styles.emptyBody}>
@@ -135,18 +116,12 @@ export function ShelfView() {
     );
   }
 
-  const sealed = state.items.filter((brief) => brief.seal_state === "sealed");
-  const unsealed = state.items.filter((brief) => brief.seal_state !== "sealed");
-
   const renderRow = (brief: BriefSummary) => {
     const isSealed = brief.seal_state === "sealed";
     const date = formatSavedAt(brief.created_at);
     const title = brief.title || "Untitled brief";
     return (
-      <li key={brief.id} className={styles.spine} data-sealed={isSealed ? "true" : "false"}>
-        <span className={styles.gutter} aria-hidden="true">
-          <span className={styles.bar} />
-        </span>
+      <li key={brief.id} className={styles.row} data-sealed={isSealed ? "true" : "false"}>
         <div
           className={styles.rowMain}
           role="button"
@@ -172,7 +147,9 @@ export function ShelfView() {
           </span>
         </div>
         <div className={styles.right}>
-          {isSealed ? <SealDisc /> : null}
+          <span className={styles.sealBadge} data-sealed={isSealed ? "true" : "false"}>
+            {isSealed ? "SEAL INTACT" : "UNSEALED"}
+          </span>
           {confirmingId === brief.id ? (
             // Armed: keep the two-step confirm (a hard delete has no undo).
             <span className={styles.confirm}>
@@ -208,32 +185,11 @@ export function ShelfView() {
 
   return (
     <div className={styles.shelf}>
-      <ShelfHeader count={state.items.length} />
-      {sealed.length > 0 ? (
-        <section className={styles.section}>
-          <h2 className={styles.sectionLabel}>Sealed</h2>
-          <ul className={styles.list}>{sealed.map(renderRow)}</ul>
-        </section>
-      ) : null}
-      {unsealed.length > 0 ? (
-        <section className={styles.section}>
-          <h2 className={styles.sectionLabel}>Unsealed</h2>
-          <ul className={styles.list}>{unsealed.map(renderRow)}</ul>
-        </section>
-      ) : null}
+      <ul className={styles.list}>{state.items.map(renderRow)}</ul>
+      <p className={styles.reopenNote}>
+        Reopening a brief re-reads the saved record. If the draft no longer matches its
+        fingerprint, the seal shows as cracked.
+      </p>
     </div>
-  );
-}
-
-function ShelfHeader({ count }: { count?: number }) {
-  const subtitle =
-    typeof count === "number" && count > 0
-      ? `${count} saved ${count === 1 ? "brief" : "briefs"}`
-      : "Saved briefs";
-  return (
-    <header className={styles.header}>
-      <h1 className={styles.pageTitle}>Shelf</h1>
-      <p className={styles.subtitle}>{subtitle}</p>
-    </header>
   );
 }

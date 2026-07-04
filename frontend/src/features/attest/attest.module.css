@@ -308,3 +308,127 @@
     flex-basis: 72px;
   }
 }
+
+/* ---------- handoff §9 (2026-07-05): the two-column bench ---------- */
+.bench {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 36px 80px;
+}
+
+.benchGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .benchGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.benchActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.benchSample {
+  padding: 9px 14px;
+  background: var(--sheet, #fcfdfe);
+  border: 1px solid rgba(27, 30, 37, 0.16);
+  border-radius: 8px;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 13px;
+  color: var(--ink-2, #454951);
+  cursor: pointer;
+  transition: background 110ms ease-out;
+}
+
+.benchSample:hover {
+  background: var(--surface-hover, #eff1f4);
+}
+
+.benchIdle {
+  border: 1px dashed var(--border-strong, #c9ccd2);
+  border-radius: 12px;
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--ink-3, #5f646d);
+  font-size: 13px;
+}
+
+.benchIdleMark {
+  width: 40px;
+  height: 40px;
+  color: var(--text-faint, #a1a5ad);
+  margin-bottom: 14px;
+}
+
+.benchVerdictLabel {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.benchPanel {
+  border-radius: 12px;
+  background: var(--sheet, #fcfdfe);
+  padding: 28px 30px;
+}
+
+.benchPanelIntact {
+  border: 1.5px solid var(--ink-1, #181c22);
+}
+
+.benchPanelIntact .benchVerdictLabel {
+  color: var(--ink-2, #454951);
+}
+
+.benchPanelBroken {
+  border: 1.5px solid var(--flag, #c20c18);
+  background: var(--danger-subtle, #ffeae7);
+}
+
+.benchPanelBroken .benchVerdictLabel {
+  color: var(--danger-text, #c20c18);
+}
+
+.benchVerdictHead {
+  font-family: var(--font-serif-body, Newsreader, Charter, Georgia, serif);
+  font-size: 21px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--ink-1, #181c22);
+}
+
+.benchVerdictBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2, #454951);
+}
+
+.benchInvalid {
+  border: 1px solid var(--border-strong, #c9ccd2);
+  border-radius: 12px;
+  background: var(--paper-2, #eff1f4);
+  padding: 28px 30px;
+}
+
+.benchInvalid .benchVerdictLabel {
+  color: var(--ink-3, #5f646d);
+}
+
+.benchInvalidReason {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-2, #454951);
+}

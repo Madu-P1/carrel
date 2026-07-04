@@ -37,7 +37,9 @@ describe("SealBenchView (the connector: check any surface's record offline)", ()
   it("refuses non-certificate input with a plain reason", async () => {
     render(<SealBenchView />);
     paste('{"hello": "world"}');
-    await waitFor(() => expect(screen.getByText(/not a certificate/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getAllByText(/not a certificate/i).length).toBeGreaterThan(0)
+    );
     expect(screen.queryByText(/seal intact/i)).toBeNull();
   });
 
