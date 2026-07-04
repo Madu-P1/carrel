@@ -24,7 +24,7 @@ describe("buildCommands", () => {
   it("the seal and export verbs say they open the certification (ellipsis convention)", () => {
     const byId = new Map(buildCommands("/", close).map((c) => [c.id, c]));
     expect(byId.get("seal")?.title).toBe("Seal and save…");
-    expect(byId.get("export")?.title).toBe("Export certification…");
+    expect(byId.get("export")?.title).toBe("Open exhibit…");
   });
 
   it("hides the verify verbs where they cannot act", () => {

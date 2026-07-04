@@ -50,7 +50,7 @@ export function buildCommands(path: string, close: () => void): Command[] {
     commands.push(
       { id: "verify-draft", title: "Verify the draft", hint: "⌘↵", keywords: "check run", run: verb("verify-draft") },
       { id: "seal", title: "Seal and save…", keywords: "record certify shelf", run: verb("seal") },
-      { id: "export", title: "Export certification…", keywords: "exhibit pdf", run: verb("export") }
+      { id: "export", title: "Open exhibit…", keywords: "exhibit pdf", run: verb("export") }
     );
   }
 

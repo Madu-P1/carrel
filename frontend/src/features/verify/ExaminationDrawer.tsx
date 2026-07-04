@@ -153,6 +153,32 @@ export function checksFor(card: VerifyClaimVerdict): CheckRow[] {
   ];
 }
 
+/** One cited case's register line (re-homed from the retired live card
+ *  sub-lines): a bounded-corpus miss is a coverage statement, never the
+ *  accusatory "Case not found" the engine refused to assert; a caption
+ *  mismatch is the flag by name, never a quiet "Case found" naming the wrong
+ *  case. Exported so the register stays unit-locked. */
+export function caseLineRegister(verdict: {
+  exists?: boolean;
+  status?: number;
+  bounded_corpus?: boolean;
+  caption_mismatch?: boolean;
+}): { label: string; kind: "pass" | "flag" | "query" | "unknown" } {
+  const captionMismatch = Boolean(verdict.caption_mismatch);
+  const boundedMiss =
+    !verdict.exists &&
+    Boolean(verdict.bounded_corpus) &&
+    (verdict.status === 404 || verdict.status === 400) &&
+    !captionMismatch;
+  if (captionMismatch) return { label: "Resolves to a different case", kind: "flag" };
+  if (boundedMiss) return { label: "Outside the offline corpus checked", kind: "unknown" };
+  if (verdict.exists) return { label: "Case found", kind: "pass" };
+  if (verdict.status === 300) return { label: "Ambiguous (multiple matches)", kind: "query" };
+  if (verdict.status === 404) return { label: "Case not found", kind: "flag" };
+  if (verdict.status === 400) return { label: "Malformed citation", kind: "flag" };
+  return { label: "Verification error", kind: "unknown" };
+}
+
 /**
  * Every non-happy path the drawer body can be in, collapsed into one
  * discriminated union so the render side is an exhaustive switch instead of
@@ -186,6 +212,13 @@ export function deriveExamState(
     return { kind: "malformed" };
   }
 }
+
+const CHECK_GLYPH: Record<string, string> = {
+  pass: "\u2713",
+  flag: "\u2715",
+  query: "\u25C7",
+  unknown: "\u2298"
+};
 
 interface ExaminationDrawerProps {
   card: VerifyClaimVerdict | null;
@@ -250,9 +283,24 @@ export function ExaminationDrawer({
       aria-label="Examination"
     >
       <header className={styles.examHead}>
-        <span className={styles.examLabel}>Examination</span>
-        <button type="button" className={styles.examClose} onClick={onClose} ref={closeRef}>
-          Close
+        {examState.kind === "ready" ? (
+          <span className={styles.examTierChip} data-tier={examState.disposition.tier}>
+            {examState.disposition.label}
+          </span>
+        ) : (
+          <span className={styles.examLabel}>Examination</span>
+        )}
+        {examState.kind === "ready" && typeof examState.card.claim_index === "number" ? (
+          <span className={styles.examIndex}>claim {examState.card.claim_index + 1}</span>
+        ) : null}
+        <button
+          type="button"
+          className={styles.examClose}
+          onClick={onClose}
+          ref={closeRef}
+          aria-label="Close"
+        >
+          ×
         </button>
       </header>
       {examState.kind === "loading" ? (
@@ -285,22 +333,58 @@ export function ExaminationDrawer({
         </div>
       ) : (
         <div className={styles.examBody}>
-          <p className={styles.examClaim}>{examState.card.claim_text}</p>
+          <blockquote className={styles.examClaim}>{examState.card.claim_text}</blockquote>
           <section className={styles.checks} aria-label="The four checks">
-            <h3 className={styles.checksLabel}>Four checks, shown separately</h3>
+            <h3 className={styles.checksLabel}>The checks</h3>
             {examState.checks.map((ck) => (
               <div key={ck.name} className={styles.check} data-state={ck.state}>
-                <span className={styles.checkMark} aria-hidden="true" />
+                <span className={styles.checkGlyph} data-state={ck.state} aria-hidden="true">
+                  {CHECK_GLYPH[ck.state] ?? "\u00B7"}
+                </span>
                 <div>
                   <span className={styles.checkName}>
                     {ck.name}
-                    <span className={styles.checkWeight}>{ck.weight}</span>
+                    <span className={styles.checkWeight} data-weight={ck.weight}>
+                      {ck.weight.toUpperCase()}
+                    </span>
                   </span>
                   <p className={styles.checkDetail}>{ck.detail}</p>
                 </div>
               </div>
             ))}
           </section>
+          {(() => {
+            // Per-citation register lines: each cited case named with the
+            // honest label (coverage statements stay muted; a caption mismatch
+            // is the flag by name). Re-homed from the retired live card.
+            const cases = (examState.card.case_verdicts ?? []).flatMap((b) =>
+              b?.ok
+                ? ((b.verdicts ?? []) as Array<{
+                    citation?: string;
+                    case_name?: string | null;
+                    exists?: boolean;
+                    status?: number;
+                    bounded_corpus?: boolean;
+                    caption_mismatch?: boolean;
+                  }>)
+                : []
+            );
+            if (cases.length === 0) return null;
+            return (
+              <section className={styles.examCases} aria-label="Cited cases">
+                {cases.map((v, i) => {
+                  const reg = caseLineRegister(v);
+                  return (
+                    <p key={i} className={styles.examCaseLine} data-kind={reg.kind}>
+                      <span>{v.citation}</span>
+                      <span className={styles.examCaseLabel}> · {reg.label}</span>
+                      {v.case_name ? <span> · {v.case_name}</span> : null}
+                    </p>
+                  );
+                })}
+              </section>
+            );
+          })()}
           <SourceInspectorBody card={examState.card} disposition={examState.disposition} />
         </div>
       )}

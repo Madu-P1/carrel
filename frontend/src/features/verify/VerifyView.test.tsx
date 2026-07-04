@@ -132,10 +132,10 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     // Edit the draft and re-verify: a NEW check, not a re-export of the brief.
     fireEvent.input(screen.getByRole("textbox"), { target: { value: newDraft } });
     fireEvent.click(screen.getByText("Verify the draft"));
-    await screen.findByText("Export certification");
+    await screen.findByText("Open exhibit");
 
     // Open the certification on the fresh check.
-    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(screen.getByText("Open exhibit"));
 
     // The fresh check must be UNSEALED — never the prior brief's stale "cracked"
     // seal. (Before the seed-clear fix this exported a false cracked seal.)
@@ -167,10 +167,10 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockSave.mockResolvedValue({ brief: { id: "b1" } } as any);
     render(<VerifyView briefId="b1" />);
-    await screen.findByText("Export certification");
+    await screen.findByText("Open exhibit");
 
     // Open the certification, then seal it — sealing must persist as Sealed.
-    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(screen.getByText("Open exhibit"));
     fireEvent.click(screen.getByRole("button", { name: "Set the seal" }));
 
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
@@ -186,7 +186,7 @@ describe("VerifyView re-hydration (open a saved brief)", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockGet.mockResolvedValue(briefDetail({ seal_state: "sealed" }) as any);
     render(<VerifyView briefId="b1" />);
-    await screen.findByText("Export certification");
+    await screen.findByText("Open exhibit");
     // Already sealed + saved: a stray "Save to Shelf" click would upsert it back
     // to unsealed, so the button must not be offered.
     expect(screen.queryByText("Save to Shelf")).toBeNull();

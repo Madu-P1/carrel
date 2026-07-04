@@ -78,7 +78,7 @@ describe("seal survival across a host remount (real engine, persistent store)", 
     await first.findByText("All 1 statements are supported by the sources you provided.");
 
     // Open the certification and set the seal.
-    fireEvent.click(first.getByText("Export certification"));
+    fireEvent.click(first.getByText("Open exhibit"));
     fireEvent.click(await first.findByRole("button", { name: "Set the seal" }));
     const sealedCaption = (await first.findByText(/^Sealed /)).textContent ?? "";
     expect(sealedCaption).toMatch(/^Sealed .+ UTC$/);
@@ -99,7 +99,7 @@ describe("seal survival across a host remount (real engine, persistent store)", 
 
     // ...and the reopened exhibit shows the seal SET with the ORIGINAL date,
     // not a freshly minted one.
-    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(screen.getByText("Open exhibit"));
     const reopenedCaption = (await screen.findByText(/^Sealed /)).textContent ?? "";
     expect(reopenedCaption).toBe(sealedCaption);
     const sealButton = screen.getByRole("button", { name: /Sealed|Set the seal/ });

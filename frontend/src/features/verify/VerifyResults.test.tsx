@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { caseLineRegister } from "./ExaminationDrawer";
 import { VerifyResults, structuralStatusLabel, verdictSummaryRegister } from "./VerifyResults";
 import type { ClaimDisposition } from "./claimDisposition";
 import { initialStreamState, reduceStreamEvent } from "./streamProgress";
@@ -299,24 +300,22 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
   }
 
   it("a bounded-corpus miss reads as coverage, never the accusatory 'Case not found'", () => {
-    // The claim-level disposition for this card is the honest could-not-check;
-    // the per-case sub-line beneath it must not contradict that with an
-    // oxblood "Case not found" accusation the engine never made.
-    const engine = liveEngineWithCase({
-      citation: "999 F.3d 1",
-      status: 404,
-      exists: false,
-      bounded_corpus: true
-    });
-    render(<VerifyResults engine={engine} draft="" />);
-    expect(screen.queryByText(/Case not found/)).toBeNull();
-    expect(screen.getByText(/Outside the offline corpus checked/)).toBeTruthy();
+    // The per-case register moved to the Examination drawer (handoff §6): the
+    // live rail cards carry the disposition only, and the drawer names each
+    // cited case. The register itself is unchanged: a bounded-corpus miss is a
+    // coverage statement, never an oxblood accusation the engine never made.
+    expect(
+      caseLineRegister({ status: 404, exists: false, bounded_corpus: true })
+    ).toEqual({ label: "Outside the offline corpus checked", kind: "unknown" });
   });
 
   it("a caption mismatch is named for what it is, not shown as a clean 'Case found'", () => {
     // The citation number resolves, but to a different case than the draft
-    // names. Rendering "Case found · <the wrong case>" in the quiet ink
-    // register under a "Citation not found" claim badge is a mixed signal.
+    // names. Naming it "Case found · <the wrong case>" would be a mixed
+    // signal; the drawer register must call the mismatch by name.
+    expect(
+      caseLineRegister({ status: 200, exists: true, caption_mismatch: true, bounded_corpus: true })
+    ).toEqual({ label: "Resolves to a different case", kind: "flag" });
     const engine = liveEngineWithCase({
       citation: "100 U.S. 1",
       status: 200,
@@ -326,8 +325,9 @@ describe("CaseVerdictLine register (the sub-line must match the claim-level hone
       bounded_corpus: true
     });
     render(<VerifyResults engine={engine} draft="" />);
+    // The live rail card never names the wrong case as found; the full
+    // per-case line lives in the drawer (asserted via the register above).
     expect(screen.queryByText(/·\s*Case found/)).toBeNull();
-    expect(screen.getByText(/Resolves to a different case/)).toBeTruthy();
   });
 });
 
@@ -477,7 +477,7 @@ describe("VerifyResults seal records the pair on the engine", () => {
     // ORIGINAL seal date, never mint a fresh one).
     const engine = engineWith([noRecordClaim]);
     render(<VerifyResults engine={engine} draft="" />);
-    fireEvent.click(screen.getByText("Export certification"));
+    fireEvent.click(screen.getByText("Open exhibit"));
     fireEvent.click(await screen.findByRole("button", { name: "Set the seal" }));
     expect(engine.markSealed).toHaveBeenCalledTimes(1);
     const [fingerprint, generatedAtISO] = vi.mocked(engine.markSealed).mock.calls[0];

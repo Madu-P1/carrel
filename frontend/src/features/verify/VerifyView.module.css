@@ -2384,3 +2384,97 @@
 .claimMarker[data-tier="refusal"] {
   color: var(--text-primary);
 }
+
+/* ---------- examination sheet additions (handoff §6) ---------- */
+.examTierChip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--hairline);
+}
+
+.examTierChip[data-tier="flag"] {
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+  border-color: var(--verify-flag);
+}
+
+.examTierChip[data-tier="assistive"] {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.examTierChip[data-tier="refusal"] {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.examIndex {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.checkGlyph {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.checkGlyph[data-state="pass"] {
+  color: var(--text-tertiary);
+}
+
+.checkGlyph[data-state="flag"] {
+  color: var(--danger-text);
+}
+
+.checkGlyph[data-state="query"] {
+  color: var(--accent-text);
+}
+
+.checkGlyph[data-state="unknown"] {
+  color: var(--text-primary);
+}
+
+.checkWeight[data-weight="Assistive"] {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.examCases {
+  margin: 0 0 22px;
+}
+
+.examCaseLine {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.examCaseLine[data-kind="flag"] .examCaseLabel {
+  color: var(--danger-text);
+}
+
+.examCaseLine[data-kind="pass"] .examCaseLabel {
+  color: var(--text-tertiary);
+}
+
+.examCaseLine[data-kind="unknown"] .examCaseLabel,
+.examCaseLine[data-kind="query"] .examCaseLabel {
+  color: var(--text-primary);
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import { ProvenanceBadge, Spinner, toast } from "@/design-system";
+import { ProvenanceBadge, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   briefs as briefsApi,
@@ -65,259 +65,44 @@ export function holdingClass(kind: HoldingKind | null): string {
   }
 }
 
-interface CaseLineProps {
-  verdict: {
-    citation: string;
-    status: number;
-    exists: boolean;
-    case_name?: string | null;
-    absolute_url?: string | null;
-    court?: string | null;
-    date_filed?: string | null;
-    error_message?: string | null;
-    // Carrel V2 half-2 holding-match fields. Populated when the
-    // cite exists (status=200) and the opinion fetch + Claude
-    // verifier succeeded.
-    holding_match?: boolean | null;
-    holding_concern?: string | null;
-    holding_excerpt?: string | null;
-    holding_error?: string | null;
-    // Deterministic engine only (not on the wire schema; claimDisposition reads
-    // the same fields with a cast). bounded_corpus: this verdict came from the
-    // BOUNDED offline corpus, so an absent cite is "outside my coverage", never
-    // "does not exist". caption_mismatch: the number resolved, but to a
-    // different case than the draft names.
-    bounded_corpus?: boolean;
-    caption_mismatch?: boolean;
-  };
+interface LiveFindingCardProps {
+  card: VerifyClaimVerdict;
+  disposition: ClaimDisposition;
+  /** True while this claim's case check is still in flight (streaming). The
+   *  card holds the "Checking" register with skeleton shimmer instead of its
+   *  disposition, so a not-yet-checked claim never flashes as a pass. */
+  checking: boolean;
 }
 
-function CaseVerdictLine({ verdict }: CaseLineProps) {
-  // Map CourtListener per-citation status to a verdict color. 200 is a
-  // confirmed single match, 300 is ambiguous, 404 is not found, 400 is
-  // malformed reporter. PR3 replaces these traffic-light hues with the
-  // scoped paper-and-oxblood palette; the claim-level disposition badge
-  // already carries the headline verdict.
-  //
-  // The sub-line must keep the claim-level register: a bounded-corpus miss is
-  // a coverage statement (muted), never the oxblood "Case not found" the
-  // engine refused to assert; a caption mismatch is the flag by name, never a
-  // quiet "Case found" naming the wrong case.
-  const captionMismatch = Boolean(verdict.caption_mismatch);
-  const boundedMiss =
-    !verdict.exists &&
-    Boolean(verdict.bounded_corpus) &&
-    (verdict.status === 404 || verdict.status === 400) &&
-    !captionMismatch;
-  const colorClass = captionMismatch
-    ? styles.caseMissing
-    : boundedMiss
-      ? styles.caseAmbiguous
-      : verdict.exists
-        ? styles.caseExists
-        : verdict.status === 300
-          ? styles.caseAmbiguous
-          : styles.caseMissing;
-  const label = captionMismatch
-    ? "Resolves to a different case"
-    : boundedMiss
-      ? "Outside the offline corpus checked"
-      : verdict.exists
-        ? "Case found"
-        : verdict.status === 300
-          ? "Ambiguous (multiple matches)"
-          : verdict.status === 404
-            ? "Case not found"
-            : verdict.status === 400
-              ? "Malformed citation"
-              : "Verification error";
-  // Carrel V2 half-2: derive a holding-match sub-line state.
-  type HoldingState = {
-    kind: HoldingKind;
-    label: string;
-    detail?: string;
-    excerpt?: string;
-  };
-  let holding: HoldingState | null = null;
-  if (verdict.exists) {
-    if (verdict.holding_error) {
-      holding = {
-        kind: "unavailable",
-        label: "Holding check unavailable",
-        detail: verdict.holding_error
-      };
-    } else if (verdict.holding_match === true) {
-      holding = {
-        kind: "supports",
-        label: "Opinion supports the claim",
-        detail: verdict.holding_concern ?? undefined,
-        excerpt: verdict.holding_excerpt ?? undefined
-      };
-    } else if (verdict.holding_match === false) {
-      holding = {
-        kind: "contradicts",
-        label: "Opinion does NOT support the claim",
-        detail: verdict.holding_concern ?? undefined,
-        excerpt: verdict.holding_excerpt ?? undefined
-      };
-    } else if (
-      verdict.holding_match === null
-      && (verdict.holding_concern || verdict.holding_excerpt)
-    ) {
-      holding = {
-        kind: "ambiguous",
-        label: "Holding ambiguous",
-        detail: verdict.holding_concern ?? undefined
-      };
-    }
-  }
-  const holdingColorClass = holdingClass(holding ? holding.kind : null);
-  return (
-    <div className={styles.caseVerdictGroup}>
-      <div className={[styles.caseVerdictLine, colorClass].join(" ")}>
-        <span className={styles.caseDot} aria-hidden />
-        <span>{verdict.citation}</span>
-        <span style={{ opacity: 0.7 }}>· {label}</span>
-        {verdict.case_name ? <span>· {verdict.case_name}</span> : null}
+/** One live findings-rail card (handoff §4): a skeleton that inks in its
+ *  verdict when the claim's checks land. Read-only — the examination reads the
+ *  settled citation that only exists once the result settles. */
+function LiveFindingCard({ card, disposition, checking }: LiveFindingCardProps) {
+  if (checking) {
+    return (
+      <div className={styles.findingCard} data-pending="true" data-tier="checking">
+        <span className={styles.findingLabel}>Checking</span>
+        <span className={styles.skeletonBar} style={{ width: "70%" }} />
+        <span className={styles.skeletonBar} style={{ width: "45%" }} />
       </div>
-      {holding ? (
-        <div className={[styles.holdingMatchLine, holdingColorClass].join(" ")}>
-          <span className={styles.holdingDot} aria-hidden />
-          <span className={styles.holdingLabel}>{holding.label}</span>
-          {holding.detail ? (
-            <span className={styles.holdingDetail}>· {holding.detail}</span>
-          ) : null}
-          {holding.excerpt ? (
-            <div className={styles.holdingExcerpt}>“{holding.excerpt}”</div>
-          ) : null}
-        </div>
+    );
+  }
+  return (
+    <div className={styles.findingCard} data-tier={disposition.tier}>
+      <span className={styles.findingLabel}>{disposition.label}</span>
+      {card.claim_text ? <span className={styles.findingTitle}>{card.claim_text}</span> : null}
+      {disposition.detail ? (
+        <span className={styles.findingDetail}>{disposition.detail}</span>
       ) : null}
     </div>
   );
 }
 
-interface VerdictCardProps {
-  card: VerifyClaimVerdict;
-  disposition: ClaimDisposition;
-  index: number;
-  isSelected: boolean;
-  onInspect: () => void;
-  /** True while this claim's case check is still in flight (streaming). The
-   *  card shows a quiet "Checking…" register instead of its disposition badge,
-   *  so a not-yet-checked claim never flashes as a pass. */
-  checking?: boolean;
-  /** When false, the card is a read-only preview (the live streaming list):
-   *  no "View source" affordance, since the inspector reads the settled
-   *  citation that only exists once the result lands. Default true. */
-  interactive?: boolean;
-}
-
-function VerdictCard({
-  card,
-  disposition,
-  index,
-  isSelected,
-  onInspect,
-  checking = false,
-  interactive = true
-}: VerdictCardProps) {
-  const caseBatches = card.case_verdicts ?? [];
-  const citationCount = (card.citations ?? []).length;
-  const caseCount = caseBatches.reduce(
-    (n, batch) => n + (batch.ok ? (batch.verdicts ?? []).length : 0),
-    0
-  );
-  const sourceCount = citationCount + caseCount;
-  // Flatten case verdicts across all batches attached to this claim;
-  // V1 emits at most one batch per claim, but the API leaves it open.
-  type CaseLine =
-    | {
-        batchError: true;
-        batchErrorCode: string | null;
-        batchErrorMessage: string | null;
-      }
-    | {
-        batchError: false;
-        verdict: CaseLineProps["verdict"];
-      };
-  const caseLines: CaseLine[] = caseBatches.flatMap((batch): CaseLine[] => {
-    if (!batch.ok) {
-      return [
-        {
-          batchError: true,
-          batchErrorCode: batch.error_code ?? null,
-          batchErrorMessage: batch.error_message ?? null
-        }
-      ];
-    }
-    return (batch.verdicts ?? []).map((v) => ({
-      batchError: false,
-      verdict: v as CaseLineProps["verdict"]
-    }));
-  });
-  return (
-    <article
-      className={[
-        styles.verdictCard,
-        isSelected ? styles.verdictCardSelected : "",
-        checking ? styles.verdictCardChecking : ""
-      ].join(" ")}
-      data-tier={checking ? "checking" : disposition.tier}
-    >
-      <header className={styles.verdictHeader}>
-        <span className={styles.verdictIndex}>[{index + 1}]</span>
-        {checking ? (
-          <span className={[styles.verdictBadge, styles.badgeChecking].join(" ")}>
-            <Spinner size={16} />
-            <span>Checking…</span>
-          </span>
-        ) : (
-          <span className={[styles.verdictBadge, tierBadgeClass(disposition.tier)].join(" ")}>
-            {disposition.label}
-          </span>
-        )}
-      </header>
-      <p className={styles.claimText}>{card.claim_text}</p>
-      {!checking && disposition.detail ? (
-        <p className={styles.dispositionDetail}>{disposition.detail}</p>
-      ) : null}
-      {caseLines.length > 0 ? (
-        <div className={styles.caseVerdictsRow}>
-          {caseLines.map((line, i) =>
-            line.batchError ? (
-              <div key={`err-${i}`} className={[styles.caseVerdictLine, styles.caseError].join(" ")}>
-                Case verification unavailable
-                {line.batchErrorCode ? ` (${line.batchErrorCode})` : ""}
-                {line.batchErrorMessage ? ` · ${line.batchErrorMessage}` : ""}
-              </div>
-            ) : (
-              <CaseVerdictLine key={`case-${i}`} verdict={line.verdict!} />
-            )
-          )}
-        </div>
-      ) : null}
-      {interactive ? (
-        <div className={styles.cardFoot}>
-          <button
-            type="button"
-            className={styles.viewSource}
-            onClick={onInspect}
-            aria-pressed={isSelected}
-          >
-            {isSelected
-              ? "Hide source"
-              : sourceCount > 0
-                ? `View source (${sourceCount})`
-                : "View source"}
-          </button>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 interface VerifySummaryProps {
   dispositions: ClaimDisposition[];
+  /** The settled action row (Open exhibit / Save to shelf / New draft),
+   *  rendered inside the verdict bar (handoff §4). */
+  actions?: preact.ComponentChildren;
   /** Deterministic-path coverage counts (statements/treated/untreated), or
    *  null on the LLM path. Drives the honest scope copy: the legacy "each
    *  statement is checked" line overclaimed for anchor-free prose, which is
@@ -350,7 +135,7 @@ export function verdictSummaryRegister(dispositions: ClaimDisposition[]): {
   return { flagged, notVerified, headline };
 }
 
-function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
+function VerifyVerdictSummary({ dispositions, coverage, actions }: VerifySummaryProps) {
   const count = (kind: ClaimDisposition["kind"]) =>
     dispositions.filter((d) => d.kind === kind).length;
   const citationNotFound = count("citation_not_found");
@@ -375,19 +160,24 @@ function VerifyVerdictSummary({ dispositions, coverage }: VerifySummaryProps) {
 
   return (
     <div className={styles.summary} role="status" aria-live="polite">
-      <p
-        className={[styles.summaryHeadline, flagged > 0 ? styles.summaryHeadlineProblem : ""].join(
-          " "
-        )}
-      >
-        {headline}
-      </p>
-      <div className={styles.summaryRow}>
-        {stats.map((s) => (
-          <span key={s.label} className={styles.summaryStat}>
-            {s.label} <span className={styles.summaryCount}>{s.value}</span>
-          </span>
-        ))}
+      <div className={styles.verdictBar}>
+        <p
+          className={[
+            styles.summaryHead,
+            styles.summaryHeadline,
+            flagged > 0 ? styles.summaryHeadlineProblem : ""
+          ].join(" ")}
+        >
+          {headline}
+        </p>
+        <span className={styles.summaryCounts}>
+          {stats.map((s) => (
+            <span key={s.label} className={styles.summaryStat}>
+              {s.label} <span className={styles.summaryCount}>{s.value}</span>
+            </span>
+          ))}
+        </span>
+        {actions ? <div className={styles.summaryActions}>{actions}</div> : null}
       </div>
       {coverage && (coverage.untreated ?? 0) > 0 ? (
         <p className={styles.scopeNote}>
@@ -622,7 +412,8 @@ function isUsableCard(card: unknown): card is VerifyClaimVerdict {
 export function VerifyResults({
   engine,
   draft,
-  onResolve
+  onResolve,
+  onNewDraft
 }: {
   engine: VerifyEngine;
   /** The composer's current draft text. Used as the fallback document text for
@@ -633,6 +424,10 @@ export function VerifyResults({
    *  they load it (Sources, on the Cachet lectern). When omitted (Carrel, which
    *  has no Sources surface) the refusal CTA is not rendered at all. */
   onResolve?: () => void;
+  /** Returns the host to a fresh composer (handoff §4 "New draft"). The
+   *  composer yields the page to the run view, so the way back lives here.
+   *  Omitted on hosts (Carrel, the brief reader) that keep their own frame. */
+  onNewDraft?: () => void;
 }) {
   const { response, stream, loading, hydrating, error, sealedSeed, certAtSeed } = engine;
   // claim_index of the statement whose source panel is open, or null.
@@ -694,7 +489,7 @@ export function VerifyResults({
 
   const cards = (response?.claim_verdicts ?? []).filter(isUsableCard);
   // O5: malformed cards (null / non-object) are filtered out so the render
-  // stays crash-safe (VerdictCard and dispositionForClaim read properties
+  // stays crash-safe (the finding cards and dispositionForClaim read properties
   // straight off the card). But a dropped claim must not vanish SILENTLY —
   // count the drop so an honest note can state it below. A real deterministic
   // run ~never emits these; this is a robustness backstop for a malformed or
@@ -833,9 +628,9 @@ export function VerifyResults({
         // Opening a saved brief is a disk fetch, not a verification. Honest
         // neutral copy so the no-verify promise holds for the whole fetch window
         // (including a slow or offline backend), never "Verifying…".
-        <div className={styles.workingIndicator} aria-hidden="true">
-          <Spinner size={16} />
-          <span className={styles.workingLabel}>Opening saved brief…</span>
+        <div className={styles.progressLine} aria-hidden="true">
+          <span className={styles.progressDot} />
+          <span className={styles.progressLabel}>Opening saved brief…</span>
         </div>
       ) : null}
 
@@ -844,9 +639,9 @@ export function VerifyResults({
         // here would re-announce on every cite_verdict (the holding-match checks
         // land seconds apart), spamming a screen reader with "2 of 7", "3 of 7".
         // The settled verdict summary carries its own role=status announcement.
-        <div className={styles.workingIndicator} aria-hidden="true">
-          <Spinner size={16} />
-          <span className={styles.workingLabel}>
+        <div className={styles.progressLine} aria-hidden="true">
+          <span className={styles.progressDot} />
+          <span className={styles.progressLabel}>
             {stream.phase === "checking" && progress.total > 0
               ? `Checking citations · ${progress.checked} of ${progress.total}`
               : "Reading the draft and extracting claims…"}
@@ -874,21 +669,29 @@ export function VerifyResults({
       ) : null}
 
       {streaming && liveItems.length > 0 ? (
-        <div className={styles.workspace}>
-          <div className={styles.verdictList}>
+        <div className={styles.settledGrid}>
+          <article className={styles.readback} aria-hidden="true">
+            <div className={styles.colEyebrow}>Draft · read-back</div>
+            {draft
+              .split(/\n{2,}/)
+              .filter((para) => para.trim())
+              .map((para, pi) => (
+                <p key={pi} className={styles.docParagraph}>
+                  {para}
+                </p>
+              ))}
+          </article>
+          <aside className={styles.findingsRail} aria-label="Findings, checking">
+            <div className={styles.colEyebrow}>Findings · worst first</div>
             {liveItems.map((it, i) => (
-              <VerdictCard
+              <LiveFindingCard
                 key={`live-${it.card.claim_index}-${i}`}
                 card={it.card}
                 disposition={it.disposition}
-                index={i}
-                isSelected={false}
-                onInspect={() => {}}
                 checking={isCardChecking(stream, it.card)}
-                interactive={false}
               />
             ))}
-          </div>
+          </aside>
         </div>
       ) : null}
 
@@ -939,6 +742,31 @@ export function VerifyResults({
             <VerifyVerdictSummary
               dispositions={items.map((it) => it.disposition)}
               coverage={response?.coverage ?? null}
+              actions={
+                <>
+                  <button
+                    type="button"
+                    className={styles.actionPrimary}
+                    onClick={() => setCertAt(certAtSeed ?? new Date().toISOString())}
+                  >
+                    Open exhibit
+                  </button>
+                  {!isSealed ? (
+                    <button
+                      type="button"
+                      className={styles.actionOutline}
+                      onClick={() => void saveToShelf("unsealed")}
+                    >
+                      Save to Shelf
+                    </button>
+                  ) : null}
+                  {onNewDraft ? (
+                    <button type="button" className={styles.actionQuiet} onClick={onNewDraft}>
+                      New draft
+                    </button>
+                  ) : null}
+                </>
+              }
             />
           ) : showEmptyCoverage ? (
             <EmptyCoveragePanel statements={examinedStatements} />
@@ -977,27 +805,6 @@ export function VerifyResults({
           <QuotePanel quotes={quoteResults} />
 
           {settled && <StructuralPanel findings={structuralFindings} />}
-
-          {settled && items.length > 0 ? (
-            <div className={styles.resultActions}>
-              {!isSealed ? (
-                <button
-                  type="button"
-                  className={styles.saveShelf}
-                  onClick={() => void saveToShelf("unsealed")}
-                >
-                  Save to Shelf
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className={styles.exportCert}
-                onClick={() => setCertAt(certAtSeed ?? new Date().toISOString())}
-              >
-                Export certification
-              </button>
-            </div>
-          ) : null}
 
           {settled ? (
             // Render the draft as the document either way. With claim cards it shows
