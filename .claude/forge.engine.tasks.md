@@ -291,6 +291,45 @@ Filed by Mythos ACTION mode. 8 fresh-context Opus finders + 4 cross-model (Sonne
 over the verify engine. ALL are truth/verdict surfaces -> **[REVIEW]** (drafts for a human/
 council read, NEVER auto-shipped). Ledger: /tmp/mythos-cachet-scan/.mythos/findings-cachet-engine-scan.md
 
+### Q1 [REVIEW] (critical) — Quote-framing false green: a verbatim quote greens inside a rejected/attributed frame
+- Status: DRAFT on branch claude/vibrant-wu-d6c9fc (2026-07-04) — awaiting human read.
+  The quote leg greened on verbatim PRESENCE even when the quoted words live only
+  inside an adverse frame ("Appellant argued that '<quote>'; the court rejected
+  that contention." -> verified). Fix: new pure
+  `services/legal/quote_check.py::quote_adverse_framed` + the frame lexicon;
+  `cachet_verify/adapter.py::_quote_checks` demotes a present quote to
+  could_not_check when EVERY located occurrence in a confident source is
+  adverse-framed. Refuse-leaning, NO new green path; a clean-source verbatim quote
+  stays verified (ADR-0013 provably-safe anchor). `combine` floors the whole
+  verdict. cachet-adversary round ran FIRST on the refuse-vs-over-refuse tradeoff:
+  HELD 15/15 (10 adverse demotions + 5 clean-quote preservations). A follow-up
+  independent /mythos report round found 5 real defects in the first pass and ALL
+  were reproduced + FIXED in-change: C1/C2 over-refusal (adopted contention /
+  non-merits rejection word) via `_ADOPTION` veto + `_ARG_NOUN` requirement;
+  S1/S2 quadratic DoS (54KB -> 22s) via `_FRAME_WINDOW` bound + `_MAX_OCCURRENCES`
+  budget (3.4MB now ~1.1s); C3 abbreviation split via `_ABBREVIATIONS`-aware
+  sentence boundaries. Report:
+  `.claude/adversary/report-2026-07-04-quote-framing.md`. Held-out tests:
+  `tests/test_quote_check.py::AdverseFrameDemotionTests` (22) +
+  `tests/test_cachet_verify_seam.py::QuoteFramingHonestyTests` (4). Gate: 590
+  engine tests + ruff (check + format) + zero-egress green.
+- Deps: none. Touches `quote_check.py` + `adapter.py` (truth surfaces).
+- Acceptance (met): the rejected-argument repro resolves to could_not_check; a
+  faithful bare verbatim quote against a clean source still reads verified;
+  existing quote_check + cachet_verify suites green unchanged; zero-egress holds.
+- Follow-up (separate REVIEW, NOT in this change): the clause leg
+  (`contract_verify.py::verify_claim_against_clause`) emits an internal `verified`
+  sub-check for the same quote. It is floored by `combine` (verdict is honest),
+  but the twin should be neutralized without touching the figure/percent catches.
+  See the report's "documented residual". The truncation variant
+  ("...runs with the land, provided the owner consents...") is a separate
+  documented residual (the clause leg already refuses it); not part of Q1.
+- Residual (Mythos C3, safe direction — a MISSED demotion, never a new green): a
+  comma parenthetical splitting a negation ("did not, per Corp. Inc., hold that
+  '<quote>'") loses "did not" to `_governing_prefix` comma-splitting, so it stays
+  verified. Closing it re-introduces a real over-refusal, so it is left as a
+  recall gap.
+
 ### M1 [REVIEW] (critical) — Caption acronym false-green: fabricated ALL-CAPS initials read as match
 - Status: todo
 - Deps: none

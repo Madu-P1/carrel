@@ -122,6 +122,47 @@ class AdjudicatorSwallowTests(unittest.TestCase):
         self.assertEqual("could_not_check", a.state)
 
 
+class QuoteFramingHonestyTests(unittest.TestCase):
+    """Q1: a verbatim quote is not confirmed by mere PRESENCE when the source
+    frames the quoted proposition as rejected or merely attributed. The whole
+    verdict must floor to could_not_check; a clean-source verbatim quote stays
+    verified (the ADR-0013 provably-safe green anchor must survive)."""
+
+    QUOTE = '"the covenant runs with the land"'
+
+    def test_rejected_argument_quote_floors_to_could_not_check(self) -> None:
+        # The confirmed Q1 repro: the quoted words live only inside a rejected
+        # contention.
+        a = verify_claim(
+            self.QUOTE,
+            [
+                "The deed is silent on whether the covenant binds successors.",
+                "Appellant argued that the covenant runs with the land; "
+                "the court rejected that contention.",
+            ],
+        )
+        self.assertEqual("could_not_check", a.state)
+
+    def test_negated_authority_quote_floors_to_could_not_check(self) -> None:
+        a = verify_claim(
+            self.QUOTE, ["The court did not hold that the covenant runs with the land."]
+        )
+        self.assertEqual("could_not_check", a.state)
+
+    def test_faithful_bare_verbatim_quote_stays_verified(self) -> None:
+        # The control: a clean-source verbatim quote must NOT over-refuse.
+        a = verify_claim(self.QUOTE, ["The court held that the covenant runs with the land."])
+        self.assertEqual("verified", a.state)
+
+    def test_rejection_of_a_different_proposition_still_verifies(self) -> None:
+        # The rejection governs a sibling clause, not the quoted holding.
+        a = verify_claim(
+            self.QUOTE,
+            ["The court rejected the fraud claim but held that the covenant runs with the land."],
+        )
+        self.assertEqual("verified", a.state)
+
+
 class DraftAttestationTests(unittest.TestCase):
     SOURCES = [
         "Net revenue for the third quarter was $2.4 billion.\n"

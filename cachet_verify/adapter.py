@@ -45,6 +45,7 @@ from services.legal.quote_check import (
     check_quote_against_pool,
     extract_draft_quotes,
     prepare_source_pool,
+    quote_adverse_framed,
 )
 from services.legal.sentences import split_sentences
 
@@ -212,6 +213,20 @@ def _quote_checks(claim: str, pool) -> list[CheckResult]:
             state, detail = "altered", "quoted words absent from every source"
         elif result.unplaceable:
             state, detail = "could_not_check", "no source could be fully seen for this quote"
+        elif quote_adverse_framed(quote, pool):
+            # Verbatim presence is not faithful quotation: the quoted words
+            # appear in the source only inside a frame that rejects or merely
+            # attributes the proposition. Demote to could_not_check (never a new
+            # green); the honest reading is that the source does not support the
+            # quote as stated (Q1).
+            state, detail = (
+                "could_not_check",
+                (
+                    "the quoted words appear in the source only inside a rejected or "
+                    "attributed argument; verbatim presence there does not confirm the "
+                    "quoted proposition"
+                ),
+            )
         else:
             state, detail = "verified", "quote is verbatim in a source"
         checks.append(
