@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cachet certificate verifier</title>
+<!--
+  The free, standalone Cachet certificate verifier.
+
+  One file, zero dependencies, zero network. Open it from disk (file://) or
+  host it anywhere; paste or drop a Cachet certificate and the seal is checked
+  right here in your browser with the Web Crypto API. Nothing is sent
+  anywhere. You do not need Cachet installed, an account, or any trust in
+  whoever handed you the certificate.
+
+  The format contract (frozen, additive-only):
+    - A certificate is a single JSON object carrying schema_version,
+      kernel_version, issued_at, draft_sha256, source_sha256s, state
+      (verified | altered | could_not_check), claims[], and fingerprint.
+    - The fingerprint is SHA-256 over the canonical body: every field except
+      the fingerprint, serialized with keys sorted, separators "," and ":"
+      (no whitespace), UTF-8.
+    - Refusals (could_not_check) carry the same weight as confirmations.
+      A certificate never certifies more than the kernel could prove.
+-->
+<style>
+  :root {
+    --bg: #f6f7fa; --sheet: #fcfdfe; --sunken: #eff1f4;
+    --ink-1: #181c22; --ink-2: #454951; --ink-3: #5f646d; --faint: #a1a5ad;
+    --hair: rgba(27, 30, 37, 0.16); --hair-soft: rgba(27, 30, 37, 0.07);
+    --strong: #c9ccd2;
+    --danger: #c20c18; --danger-subtle: #ffeae7;
+    --serif: "Newsreader", Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink-1); }
+  body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .page { max-width: 980px; margin: 0 auto; padding: 40px 28px 80px; }
+  header.top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .mark { width: 34px; height: 34px; color: var(--ink-1); flex: none; }
+  h1 { font-family: var(--serif); font-size: 26px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .lede { margin: 6px 0 30px; font-size: 13.5px; line-height: 1.6; color: var(--ink-2); max-width: 62ch; }
+  .lede code { font-family: var(--mono); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 36px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: minmax(0,1fr); } }
+  textarea {
+    width: 100%; min-height: 320px; resize: vertical; padding: 18px 20px;
+    background: var(--sheet); border: 1px solid var(--hair); border-radius: 12px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--ink-1); outline: none;
+  }
+  textarea:focus { border-color: var(--strong); box-shadow: 0 0 0 2px var(--sunken); }
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .fileBtn {
+    display: inline-block; padding: 9px 14px; background: var(--sheet);
+    border: 1px solid var(--hair); border-radius: 8px; font-size: 13px;
+    color: var(--ink-2); cursor: pointer;
+  }
+  .fileBtn:hover { background: var(--sunken); }
+  .fileBtn input { display: none; }
+  .drop { font-size: 12px; color: var(--ink-3); }
+  .idle {
+    border: 1px dashed var(--strong); border-radius: 12px; padding: 48px 32px;
+    text-align: center; color: var(--ink-3); font-size: 13px;
+  }
+  .idle .mark { width: 40px; height: 40px; color: var(--faint); margin: 0 auto 14px; display: block; }
+  .panel { border-radius: 12px; background: var(--sheet); padding: 28px 30px; }
+  .panel.intact { border: 1.5px solid var(--ink-1); }
+  .panel.broken { border: 1.5px solid var(--danger); background: var(--danger-subtle); }
+  .panel.invalid { border: 1px solid var(--strong); background: var(--sunken); }
+  .vLabel { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; font-weight: 600; margin-bottom: 6px; color: var(--ink-2); }
+  .broken .vLabel { color: var(--danger); }
+  .invalid .vLabel { color: var(--ink-3); }
+  .vHead { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 0 0 12px; }
+  .vBody { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 12.5px; margin-top: 16px; }
+  .meta .k { color: var(--ink-3); }
+  .meta .m { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+  .fps { margin-top: 12px; font-family: var(--mono); font-size: 11.5px; line-height: 1.8; word-break: break-all; }
+  .claims { margin-top: 18px; border: 1px solid var(--hair); border-radius: 6px; background: var(--sheet); }
+  .claim { display: flex; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--hair-soft); align-items: baseline; }
+  .claim:last-child { border-bottom: 0; }
+  .claim .n { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); flex: none; width: 18px; }
+  .claim .t { font-family: var(--serif); font-size: 14px; line-height: 1.5; flex: 1; min-width: 0; }
+  .state { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; flex: none; padding: 2px 8px; border-radius: 3px; border: 1px solid transparent; color: var(--ink-3); font-weight: 500; }
+  .state.altered { background: var(--danger-subtle); color: var(--danger); }
+  .state.could_not_check { background: var(--sunken); color: var(--ink-1); border-color: var(--strong); font-weight: 600; }
+  .equalNote { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair-soft); font-size: 12px; color: var(--ink-2); }
+  footer { margin-top: 48px; font-size: 12px; color: var(--ink-3); line-height: 1.7; max-width: 68ch; }
+  footer .dot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--ink-1); margin-right: 8px; vertical-align: 1px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <svg class="mark" viewBox="0 0 240 240" role="img" aria-label="Cachet mark">
+      <g fill="none" stroke="currentColor" stroke-linecap="butt">
+        <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="16"></path>
+        <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="16"></path>
+      </g>
+    </svg>
+    <h1>Cachet certificate verifier</h1>
+  </header>
+  <p class="lede">
+    Paste or drop a Cachet certificate. Its seal is checked here, in your browser, offline,
+    with no backend and no trust required: the fingerprint is recomputed as SHA-256 over the
+    certificate's canonical body (<code>keys sorted, "," and ":" separators, UTF-8</code>) and
+    compared against the declared one. Nothing is sent anywhere.
+  </p>
+
+  <div class="grid">
+    <div>
+      <textarea id="input" placeholder="Paste certificate JSON." spellcheck="false" aria-label="Certificate to check"></textarea>
+      <div class="actions">
+        <label class="fileBtn">Open a certificate file<input id="file" type="file" accept=".json,application/json"></label>
+        <span class="drop">…or drop a .json file anywhere on this page.</span>
+      </div>
+    </div>
+    <div id="out">
+      <div class="idle">
+        <svg class="mark" viewBox="0 0 240 240" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-linecap="butt">
+            <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="16"></path>
+            <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="16"></path>
+          </g>
+        </svg>
+        <div>The verdict on the certificate appears here.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span class="dot"></span>A certificate records what a Cachet verification could and could not
+    prove: every claim carries <em>verified</em>, <em>altered</em>, or <em>could not check</em>, and
+    refusals carry the same weight as confirmations. An intact seal proves the record is exactly as
+    the kernel issued it; it does not make any claim true. This page is a single file with no
+    dependencies and no network use — save it, host it, or hand it to whoever needs to check a
+    record you gave them.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const VALID_STATES = new Set(["verified", "altered", "could_not_check"]);
+const REQUIRED = ["schema_version", "issued_at", "draft_sha256", "source_sha256s", "state", "claims", "fingerprint"];
+
+/* Structural check: is this object shaped like a certificate at all?
+   Mirrors the app's coerceCertificate, reasons included. */
+function coerce(raw) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { cert: null, reason: "Not a certificate: expected a JSON object." };
+  }
+  for (const key of REQUIRED) {
+    if (!(key in raw)) return { cert: null, reason: "Not a certificate: the " + key + " field is missing." };
+  }
+  if (typeof raw.state !== "string" || !VALID_STATES.has(raw.state)) {
+    return { cert: null, reason: "Not a certificate: the state is not a Cachet verdict." };
+  }
+  if (!Array.isArray(raw.claims)) {
+    return { cert: null, reason: "Not a certificate: claims is not a list." };
+  }
+  return { cert: raw, reason: "" };
+}
+
+/* Byte-stable serialization matching the kernel's
+   json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False). */
+function canonicalJson(value) {
+  if (value === null || typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+  const keys = Object.keys(value).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(value[k])).join(",") + "}";
+}
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function computedFingerprint(cert) {
+  const body = {};
+  for (const [k, v] of Object.entries(cert)) if (k !== "fingerprint") body[k] = v;
+  return sha256Hex(canonicalJson(body));
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function stateLabel(s) {
+  return s === "verified" ? "Verified" : s === "altered" ? "Altered" : "Could not check";
+}
+
+function render(html) { document.getElementById("out").innerHTML = html; }
+
+function renderInvalid(reason) {
+  render('<div class="panel invalid" role="status"><div class="vLabel">NOT A CERTIFICATE</div><p class="vBody">' + esc(reason) + "</p></div>");
+}
+
+function renderBroken(declared, computed) {
+  render(
+    '<div class="panel broken" role="status"><div class="vLabel">SEAL BROKEN</div>' +
+    '<p class="vHead">The body was edited after sealing.</p>' +
+    '<p class="vBody">The certificate body no longer matches its fingerprint. Treat every verdict inside as unverified. Request the original certificate from its issuer.</p>' +
+    '<div class="fps">declared&nbsp;&nbsp;' + esc(declared) + "<br>computed&nbsp;&nbsp;" + esc(computed) + "</div></div>"
+  );
+}
+
+function renderIntact(cert) {
+  const claims = Array.isArray(cert.claims) ? cert.claims : [];
+  let verified = 0, altered = 0, refused = 0;
+  for (const c of claims) {
+    if (c && c.state === "verified") verified++;
+    else if (c && c.state === "altered") altered++;
+    else refused++;
+  }
+  const rows = claims.map((c, i) => {
+    const st = c && VALID_STATES.has(c.state) ? c.state : "could_not_check";
+    const text = c && typeof c.claim === "string" ? c.claim : "(unreadable claim)";
+    return '<div class="claim"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(text) +
+      '</span><span class="state ' + st + '">' + stateLabel(st) + "</span></div>";
+  }).join("");
+  render(
+    '<div class="panel intact" role="status"><div class="vLabel">SEAL INTACT</div>' +
+    '<p class="vHead">The record matches its fingerprint.</p>' +
+    '<div class="meta">' +
+    '<span class="k">Issued</span><span>' + esc(cert.issued_at) + "</span>" +
+    '<span class="k">Kernel</span><span class="m">' + esc(cert.kernel_version || "(not stated)") + "</span>" +
+    '<span class="k">Schema</span><span class="m">v' + esc(cert.schema_version) + "</span>" +
+    '<span class="k">Draft</span><span class="m">sha256 ' + esc(cert.draft_sha256) + "</span>" +
+    '<span class="k">Sources</span><span class="m">' + (Array.isArray(cert.source_sha256s) && cert.source_sha256s.length ? cert.source_sha256s.map(esc).join("<br>") : "(none)") + "</span>" +
+    '<span class="k">Record</span><span>' + claims.length + " claims · " + verified + " verified · " + altered + " altered · " + refused + " could not check</span>" +
+    '<span class="k">Fingerprint</span><span class="m">' + esc(cert.fingerprint) + "</span>" +
+    "</div>" +
+    (rows ? '<div class="claims">' + rows + "</div>" : "") +
+    '<div class="equalNote">Refusals in this record carry the same weight as confirmations. An intact seal proves the record is exactly as issued; it does not make any claim true.</div>' +
+    "</div>"
+  );
+}
+
+async function check(text) {
+  if (!text.trim()) return;
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { renderInvalid("The text is not JSON. A Cachet certificate is a single JSON object with a fingerprint field."); return; }
+  const { cert, reason } = coerce(parsed);
+  if (!cert) { renderInvalid(reason); return; }
+  const computed = await computedFingerprint(cert);
+  if (computed === cert.fingerprint) renderIntact(cert);
+  else renderBroken(cert.fingerprint, computed);
+}
+
+const input = document.getElementById("input");
+let timer = null;
+input.addEventListener("input", () => {
+  if (timer !== null) clearTimeout(timer);
+  timer = setTimeout(() => { timer = null; void check(input.value); }, 140);
+});
+
+document.getElementById("file").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const text = await f.text();
+  input.value = text;
+  void check(text);
+  e.target.value = "";
+});
+
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f) return;
+  const text = await f.text();
+  input.value = text;
+  void check(text);
+});
+</script>
+</body>
+</html>
