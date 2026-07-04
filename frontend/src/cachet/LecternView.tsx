@@ -33,15 +33,40 @@ import styles from "./cachet.module.css";
  * the engine is the shared `useVerify`.
  */
 
-/* The specimen: a litigator-shaped draft with planted defects, so a cold
- * lectern can be examined in one click instead of opening on a blank void.
- * Stated plainly as a specimen; the flaws are the point (the refusal and the
- * flag are what the surface exists to show). Three physical lines so the
- * sentence splitter reads three statements. */
+/* The specimen: a draft with planted defects paired with its OWN record, so a
+ * cold lectern runs the whole four-beat demo in one click (craft roadmap #3 —
+ * without the record, the contract lines could only refuse). The litigator
+ * lines exercise the citation beats against the bundled case-law store; the
+ * contract lines are the demo corpus's pre-vetted AI-summary defects (date
+ * drift, capped-amount drift, an exclusivity flip, one verified term, one
+ * verbatim quote) checked against the specimen MSA below. Stated plainly as a
+ * specimen; the flaws are the point. */
 const SPECIMEN_DRAFT =
   'The Supreme Court held that "separate educational facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483 (1954).\n' +
-  "The settlement fund totals $360 million, payable to the class within 30 days of final approval.\n" +
-  "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).";
+  "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).\n" +
+  "The Agreement was executed on March 11, 2024.\n" +
+  "Liability under this agreement is capped at $1,000,000.\n" +
+  "The vendor grants the customer an exclusive license to use the Software.\n" +
+  "The term of the agreement is two (2) years from the Effective Date.\n" +
+  'The parties submit to "the exclusive jurisdiction of the courts of New York."';
+
+/* The specimen's record: the demo corpus MSA excerpt (demo/contract-msa.md,
+ * proven honest by tests.test_demo_corpus). Uploaded as a real record so the
+ * check above lands flags AND a confirmed beat, not a wall of refusals. */
+const SPECIMEN_RECORD_NAME = "specimen-msa-executed.md";
+const SPECIMEN_RECORD =
+  "Section 1. Effective Date. This Agreement is dated March 11, 2023.\n\n" +
+  "Section 3. License Grant. Licensor hereby grants Licensee a non-exclusive,\n" +
+  "non-transferable license to use the Software during the Term.\n\n" +
+  "Section 8. Limitation of Liability. The aggregate liability of either party\n" +
+  "under this Agreement shall not exceed $500,000.\n\n" +
+  "Section 12. Term. This Agreement shall continue for a term of two (2) years from\n" +
+  "the Effective Date, unless earlier terminated in accordance with Section 13.\n\n" +
+  "Section 14. Governing Law. This Agreement shall be governed by and construed in\n" +
+  "accordance with the laws of the State of Delaware; the parties submit to the\n" +
+  "exclusive jurisdiction of the courts of New York.\n\n" +
+  "Section 15. Confidentiality. Each party shall use commercially reasonable efforts\n" +
+  "to protect the other party's Confidential Information.";
 
 export function LecternView() {
   // The draft lives in the shared `liveDraft` signal, not local state, so a paste
@@ -232,9 +257,23 @@ export function LecternView() {
           onClick={() => {
             liveDraft.value = SPECIMEN_DRAFT;
             areaRef.current?.focus();
+            // Pair the specimen with its record so the one-click demo lands
+            // flags AND a confirmed beat. Never auto-runs the check: verifying
+            // stays the human's explicit act.
+            if (!source && !upload) {
+              setSourceError(null);
+              const record = new File([SPECIMEN_RECORD], SPECIMEN_RECORD_NAME, {
+                type: "text/markdown"
+              });
+              uploadSource(record).catch(() => {
+                setSourceError(
+                  "The specimen record could not be loaded. Without it the contract lines can only read as could-not-check."
+                );
+              });
+            }
           }}
         >
-          Or examine a specimen draft with planted defects
+          Or examine a specimen draft with planted defects · loads its specimen record
         </button>
       ) : null}
     </div>
