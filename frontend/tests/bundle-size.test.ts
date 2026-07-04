@@ -213,7 +213,14 @@ const ENTRY_JS_GZIP_BUDGET = 130 * 1024;
 // verdict surface shifts beside the open drawer at >=1081px instead of
 // underneath it, and the shell clips horizontal overflow. ~45.0 KB gz live
 // (the prior ceiling had 49 bytes of headroom; this is real geometry, not drift).
-const ENTRY_CSS_GZIP_BUDGET = 45 * 1024;
+// Bumped 45 -> 48 KB for the Claude Design handoff rebuild (2026-07): the
+// OKLCH token system + light/dark theming (on main) plus the handoff step-4
+// settled verdict layout (two-column read-back + worst-first findings rail,
+// VerifyView.module.css). Dead CSS from the reverted streaming-rail experiment
+// was trimmed first; ~46.8 KB gz live is the real post-handoff design system,
+// not drift. ~2.3 KB headroom for the remaining handoff surfaces (summary bar,
+// verdict reveal), each of which bumps this again deliberately when it lands.
+const ENTRY_CSS_GZIP_BUDGET = 48 * 1024;
 
 function gzippedSize(path: string): number {
   const raw = readFileSync(path);

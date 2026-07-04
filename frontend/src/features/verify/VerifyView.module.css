@@ -2182,3 +2182,205 @@
     transition: none;
   }
 }
+
+/* ==========================================================================
+ * Handoff step 4 (2026-07-04): the settled two-column verdict layout.
+ * Grid: draft read-back (Newsreader 19/2.05, ≤68ch) beside the worst-first
+ * findings rail. Motion: one named keyframe (cachetInk), transform/opacity
+ * only, collapsed under prefers-reduced-motion; the verifyScope motion lock
+ * enumerates it.
+ * ========================================================================== */
+
+@keyframes cachetInk {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .findingCard {
+    animation: none;
+  }
+}
+
+/* The settled layout: read-back beside the findings rail (handoff §4). */
+.settledGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+  gap: 44px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .settledGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.readback {
+  font-family: var(--font-serif-body, Newsreader, Charter, Georgia, serif);
+  font-size: 19px;
+  line-height: 2.05;
+  color: var(--text-primary);
+  max-width: 68ch;
+  min-width: 0;
+}
+
+.colEyebrow {
+  font-family: var(--font-sans, sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 18px;
+}
+
+/* The mono superscript claim number after a treated sentence. Its color rides
+   the tier via data-tier on the mark (set inline per tier below). */
+.claimMarker {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  margin-left: 3px;
+}
+
+/* The findings rail: worst-first vertical list. */
+.findingsRail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.findingCard {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--hairline);
+  border-radius: 8px;
+  padding: 13px 16px 15px;
+  font-family: var(--font-sans, sans-serif);
+  box-shadow: 0 1px 2px rgb(27 30 37 / 6%);
+  transition: transform 110ms ease-out, box-shadow 110ms ease-out;
+  animation: cachetInk 280ms ease-out;
+}
+
+.findingCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgb(27 30 37 / 10%);
+}
+
+.findingCard:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Tier top rules: the four tiers must read as different KINDS of thing. */
+.findingCard[data-tier="pass"] {
+  border-top: 2px solid var(--border-strong);
+}
+
+.findingCard[data-tier="flag"] {
+  border-top: 2px solid var(--verify-flag);
+}
+
+.findingCard[data-tier="assistive"] {
+  border-top: 2px dotted var(--accent);
+}
+
+.findingCard[data-tier="refusal"] {
+  border: 1px solid var(--border-strong);
+  border-top: 3px solid var(--text-primary);
+  padding: 16px 18px 18px;
+}
+
+.findingLabel {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.findingCard[data-tier="flag"] .findingLabel {
+  color: var(--danger-text);
+}
+
+.findingCard[data-tier="assistive"] .findingLabel {
+  color: var(--accent-text);
+}
+
+.findingCard[data-tier="refusal"] .findingLabel {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.findingTitle {
+  display: block;
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.findingDetail {
+  display: block;
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.findingTag {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+/* The unplaced tray, restyled to the handoff's dashed register. */
+.unplacedTray {
+  margin-top: 34px;
+  padding: 16px 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-sans, sans-serif);
+}
+
+/* Pass: the quiet hairline underline (handoff tier table). The calibration
+   mark that says "checked", never a badge and never a color. */
+.markPass {
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.claimMarker[data-tier="pass"] {
+  color: var(--text-tertiary);
+}
+
+.claimMarker[data-tier="flag"] {
+  color: var(--danger-text);
+}
+
+.claimMarker[data-tier="assistive"] {
+  color: var(--accent-text);
+}
+
+.claimMarker[data-tier="refusal"] {
+  color: var(--text-primary);
+}

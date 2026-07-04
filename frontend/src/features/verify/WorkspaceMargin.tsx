@@ -1,26 +1,23 @@
 /**
- * Cachet PR5b (Direction A, document-primary) — the Workspace / Margin layout.
+ * The settled verdict layout (handoff §4, rebuilt 2026-07-04): a two-column
+ * grid — the lawyer's draft as a serif read-back (left, Newsreader 19/2.05,
+ * ≤68ch) beside the findings rail (right, worst-first vertical list). Each
+ * treated sentence carries its tier's inline mark and a mono superscript claim
+ * number; altered tokens inside a flagged sentence get the precise
+ * danger-subtle mark (invariant 6 — mark the exact changed token, never a
+ * refusal). Below the read-back, the dashed unplaced tray holds claims the
+ * aligner could not pin (never guessed into the text).
  *
- * Renders the lawyer's draft as a cold read-back record on warm paper: the
- * document body (left) with each placed claim inline-marked at its span, the
- * 300px right rail holding one disposition note per non-supported placed claim
- * pinned at its eye-line, and the unplaced tray below for claims the aligner
- * could not pin (PR5a never mis-pins; an un-placeable claim is surfaced here,
- * never guessed into the margin).
+ * The four tiers must always read as different KINDS of thing (invariant 4):
+ * pass = hairline underline (quiet; the absence of a problem), flag = solid
+ * danger, assistive = dotted oxblood, refusal = ink double rule (the hero).
+ * A `fuzzy` (approximate) placement renders distinctly from an `exact` one so
+ * the loud mark never implies the tool found the lawyer's verbatim bytes.
  *
- * Supported claims are UNMARKED. The absence of a mark is the pass; there is no
- * green and no VERIFIED badge, by design. Deterministic flags wear the single
- * oxblood accent; an assistive holding-match judgment wears a quiet dotted
- * pencil, never oxblood; the refusal wears a composed ink bracket. A `fuzzy`
- * (approximate) placement is rendered distinctly from an `exact` one so the loud
- * mark never implies the tool found the lawyer's verbatim bytes when it matched
- * a near-identical span.
- *
- * Pure presentation over PR5a/PR4 data + the segmentation/rail-layout helpers.
- * Motion (ink-in choreography, claim pulse) is deferred to the operator visual
- * gate; this slice ships structure + functional transitions only.
+ * Pure presentation over the segmentation helpers. This replaced the findings
+ * carousel (one-at-a-time) with the handoff's always-visible rail.
  */
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useMemo } from "preact/hooks";
 
 import type { VerifyClaimVerdict } from "@/services/api/endpoints";
 
@@ -44,15 +41,17 @@ function markClass(tier: ClaimDisposition["tier"]): string {
     case "refusal":
       return styles.markRefusal;
     default:
-      return ""; // pass: unmarked
+      // Pass: the quiet hairline underline (handoff tier table). Not a badge,
+      // not a color — the calibration mark that says "this one was checked".
+      return styles.markPass;
   }
 }
 
-/** The rail-note tier attribute for the left border. A pass that carries an
- *  affirming detail (a contract "present"/verbatim confirmation, or a verified
- *  citation) earns a positive "confirm" note so the buyer can see what the
- *  engine actually vouched for, the calibration that tells them what a refusal
- *  means; a silent empty-detail pass stays unmarked, the absence of a flag. */
+/** The rail-card tier attribute. A pass that carries an affirming detail (a
+ *  contract "present"/verbatim confirmation, a verified citation) earns a card
+ *  so the buyer can see what the engine actually vouched for — the calibration
+ *  that tells them what a refusal means; a silent empty-detail pass stays off
+ *  the rail (the absence of a flag is the pass). */
 function noteTier(
   d: ClaimDisposition
 ): "flag" | "query" | "refusal" | "confirm" | null {
@@ -60,7 +59,7 @@ function noteTier(
   if (d.tier === "assistive") return "query";
   if (d.tier === "refusal") return "refusal";
   if (d.tier === "pass" && d.detail.trim()) return "confirm";
-  return null; // silent pass: no note
+  return null; // silent pass: no card
 }
 
 interface WorkspaceMarginProps {
@@ -84,10 +83,7 @@ export function WorkspaceMargin({
 }: WorkspaceMarginProps) {
   // One memoized derivation for everything (draftText, cards) determines:
   // dispositions, segmentation, paragraph split, rail/tray sets, and the
-  // display-safe text. This render re-runs on every selection change
-  // (`examined`), and recomputing dispositionForClaim per card three times
-  // plus sanitizing the whole document each time was the measurable hot path
-  // on long drafts.
+  // display-safe text.
   const { metaByIndex, paragraphs, railClaims, trayClaims } = useMemo(() => {
     const meta = new Map<number, ClaimMeta>();
     cards.forEach((card, i) => {
@@ -102,17 +98,21 @@ export function WorkspaceMargin({
       para.map((seg) => ({ ...seg, text: displaySafe(seg.text) }))
     );
 
-    // PLACED claims that carry a note get a rail card: every flag/query/refusal,
-    // plus an affirming pass (a "present"/verbatim confirmation) so the buyer
-    // sees what the engine vouched for. A silent empty-detail pass stays
-    // unmarked. (Unplaced = no span here, lives in the tray.)
+    // PLACED claims that carry a card, WORST-FIRST (handoff: the rail leads
+    // with the flags, then the refusals, then the affirmed passes).
     const placedClaimIndices = segments
       .filter((s): s is ClaimSegment => s.kind === "claim")
       .map((s) => s.claimIndex);
-    const rail = placedClaimIndices.filter((idx) => {
-      const m = meta.get(idx);
-      return m ? noteTier(m.disposition) !== null : false;
-    });
+    const rail = placedClaimIndices
+      .filter((idx) => {
+        const m = meta.get(idx);
+        return m ? noteTier(m.disposition) !== null : false;
+      })
+      .sort(
+        (a, b) =>
+          DISPOSITION_ORDER[meta.get(a)!.disposition.kind] -
+          DISPOSITION_ORDER[meta.get(b)!.disposition.kind]
+      );
 
     // Unplaced claims (no span produced) -> the tray, worst-first.
     const placedSet = new Set(placedClaimIndices);
@@ -126,37 +126,12 @@ export function WorkspaceMargin({
     return { metaByIndex: meta, paragraphs: safeParagraphs, railClaims: rail, trayClaims: tray };
   }, [draftText, cards]);
 
-  // The findings carousel position. One finding shows at a time, centered; its
-  // error is highlighted in the document above, and both advance together.
-  const railKey = railClaims.join(",");
-  const [activeIndex, setActiveIndex] = useState(0);
-  // A fresh verify (a new set of findings) returns the carousel to the first.
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [railKey]);
-  const clampedActive = railClaims.length > 0 ? Math.min(activeIndex, railClaims.length - 1) : 0;
-  const activeClaimIndex = railClaims.length > 0 ? railClaims[clampedActive] : null;
-
-  // Bring the active finding's mark into view in the document as the carousel
-  // advances, so the highlighted error is always visible beside its card.
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (activeClaimIndex == null) return;
-    const mark = bodyRef.current?.querySelector<HTMLElement>(
-      `[data-claim-index="${activeClaimIndex}"]`
-    );
-    // scrollIntoView is absent in the test DOM (jsdom/happy-dom); guard so the
-    // effect never throws where the API is unimplemented.
-    if (!mark || typeof mark.scrollIntoView !== "function") return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    mark.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
-  }, [activeClaimIndex]);
-
   const hasTray = trayClaims.length > 0;
 
   return (
-    <div className={styles.canvas}>
-      <div className={styles.documentBody} ref={bodyRef}>
+    <div className={styles.settledGrid}>
+      <article className={styles.readback}>
+        <div className={styles.colEyebrow}>Draft · read-back</div>
         {paragraphs.map((para, pi) => (
           <p key={pi} className={styles.docParagraph}>
             {para.map((seg, si) =>
@@ -168,190 +143,37 @@ export function WorkspaceMargin({
                   segment={seg}
                   meta={metaByIndex.get(seg.claimIndex)}
                   isExamined={examined === seg.claimIndex}
-                  isActive={activeClaimIndex === seg.claimIndex}
                   onExamine={onExamine}
                 />
               )
             )}
           </p>
         ))}
-      </div>
 
-      {/* The findings are reviewed one at a time: a single card centered in
-          view, its error highlighted in the document above. Advancing (an arrow
-          button, the Left/Right arrow keys, a horizontal scroll, or a swipe)
-          slides the card and moves the highlight to the next finding. */}
-      {railClaims.length > 0 ? (
-        <FindingsCarousel
-          claims={railClaims}
-          metaByIndex={metaByIndex}
-          activeIndex={clampedActive}
-          setActiveIndex={setActiveIndex}
-          onExamine={onExamine}
-        />
-      ) : null}
+        {hasTray ? <UnplacedTray claims={trayClaims} onExamine={onExamine} /> : null}
+      </article>
 
-      {hasTray ? (
-        <UnplacedTray
-          claims={trayClaims}
-          onExamine={onExamine}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The findings carousel: one finding card centered at a time. Advancing slides
- * the track (a CSS transition on transform, not a keyframe, so the verifyScope
- * motion guard holds and reduced-motion makes it instant) and the parent moves
- * the document highlight to match. Four ways to advance: the arrow buttons, the
- * Left/Right arrow keys, a horizontal wheel/trackpad scroll, and a pointer
- * swipe. Dots give direct access and show position.
- */
-function FindingsCarousel({
-  claims,
-  metaByIndex,
-  activeIndex,
-  setActiveIndex,
-  onExamine
-}: {
-  claims: number[];
-  metaByIndex: Map<number, ClaimMeta>;
-  activeIndex: number;
-  setActiveIndex: (next: number) => void;
-  onExamine: (claimIndex: number) => void;
-}) {
-  const total = claims.length;
-  const go = (next: number) => setActiveIndex(Math.max(0, Math.min(total - 1, next)));
-  const prev = () => go(activeIndex - 1);
-  const next = () => go(activeIndex + 1);
-
-  // One horizontal wheel gesture moves one card; the lock keeps a flick from
-  // skating across every finding at once.
-  const wheelLock = useRef(false);
-  function onWheel(e: WheelEvent) {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 16) return;
-    e.preventDefault();
-    if (wheelLock.current) return;
-    wheelLock.current = true;
-    if (e.deltaX > 0) next();
-    else prev();
-    window.setTimeout(() => {
-      wheelLock.current = false;
-    }, 340);
-  }
-
-  // Pointer swipe past a threshold advances in the dragged direction.
-  const startX = useRef<number | null>(null);
-  function onPointerDown(e: PointerEvent) {
-    startX.current = e.clientX;
-  }
-  function onPointerUp(e: PointerEvent) {
-    if (startX.current == null) return;
-    const dx = e.clientX - startX.current;
-    startX.current = null;
-    if (Math.abs(dx) < 44) return;
-    if (dx < 0) next();
-    else prev();
-  }
-
-  function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      next();
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      prev();
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      go(0);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      go(total - 1);
-    }
-  }
-
-  const activeLabel = metaByIndex.get(claims[activeIndex])?.disposition.label ?? "";
-
-  return (
-    <div
-      className={styles.carousel}
-      role="group"
-      aria-roledescription="carousel"
-      aria-label={`Findings, ${total} total`}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onWheel={onWheel}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-    >
-      <div className={styles.carouselStage}>
-        <button
-          type="button"
-          className={styles.carouselArrow}
-          aria-label="Previous finding"
-          disabled={activeIndex === 0}
-          onClick={prev}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-        </button>
-
-        <div className={styles.carouselViewport}>
-          <div
-            className={styles.carouselTrack}
-            style={{ transform: `translateX(-${activeIndex * 100}%)` }}
-          >
-            {claims.map((idx) => {
-              const meta = metaByIndex.get(idx);
-              if (!meta) return null;
-              return (
-                <MarginNote
-                  key={idx}
-                  claimIndex={idx}
-                  disposition={meta.disposition}
-                  card={meta.card}
-                  onExamine={onExamine}
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className={styles.carouselArrow}
-          aria-label="Next finding"
-          disabled={activeIndex === total - 1}
-          onClick={next}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-        </button>
-      </div>
-
-      {total > 1 ? (
-        <div className={styles.carouselDots}>
-          {claims.map((idx, i) => (
-            <button
+      <aside className={styles.findingsRail} aria-label="Findings, worst first">
+        <div className={styles.colEyebrow}>Findings · worst first</div>
+        {railClaims.map((idx) => {
+          const meta = metaByIndex.get(idx);
+          if (!meta) return null;
+          return (
+            <FindingCard
               key={idx}
-              type="button"
-              className={[styles.carouselDot, i === activeIndex ? styles.carouselDotActive : ""]
-                .filter(Boolean)
-                .join(" ")}
-              aria-label={`Finding ${i + 1} of ${total}`}
-              aria-current={i === activeIndex ? "true" : undefined}
-              onClick={() => go(i)}
+              claimIndex={idx}
+              disposition={meta.disposition}
+              card={meta.card}
+              onExamine={onExamine}
             />
-          ))}
-        </div>
-      ) : null}
-
-      {/* aria-live (without role=status) announces the active finding to a
-          screen reader without adding a second status landmark that the verdict
-          summary already owns. */}
-      <p className={styles.carouselStatus} aria-live="polite">
-        Finding {activeIndex + 1} of {total}: {activeLabel}
-      </p>
+          );
+        })}
+        {railClaims.length === 0 ? (
+          <p className={styles.noteDetail}>
+            No findings to raise. Every treated statement is marked in the draft.
+          </p>
+        ) : null}
+      </aside>
     </div>
   );
 }
@@ -360,15 +182,11 @@ function ClaimMark({
   segment,
   meta,
   isExamined,
-  isActive,
   onExamine
 }: {
   segment: ClaimSegment;
   meta: ClaimMeta | undefined;
   isExamined: boolean;
-  /** True when this is the finding currently centered in the carousel; the mark
-   *  wears a soft highlight so the eye links the card to its error. */
-  isActive: boolean;
   onExamine: (claimIndex: number) => void;
 }) {
   const tier = meta?.disposition.tier ?? "pass";
@@ -380,8 +198,6 @@ function ClaimMark({
   // span not literally present), so a near-miss never paints the wrong word.
   const flaggedSpans = tier === "flag" ? (meta?.card.flagged_spans ?? []) : [];
   const runs = flaggedSpans.length > 0 ? highlightRuns(segment.text, flaggedSpans) : null;
-  // Supported (pass): a plain, tabbable span that announces "checked, supported"
-  // but carries no visible mark. Flags/assistive/refusal carry their mark.
   const interactive = tier !== "pass" || Boolean(meta);
   const fuzzy = segment.method === "fuzzy";
   // The announcement must keep the visible register split: only a real flag is
@@ -403,8 +219,7 @@ function ClaimMark({
         styles.claimMark,
         markClass(tier),
         fuzzy && tier !== "pass" ? styles.markFuzzy : "",
-        isExamined ? styles.claimMarkExamined : "",
-        isActive ? styles.claimMarkActive : ""
+        isExamined ? styles.claimMarkExamined : ""
       ]
         .filter(Boolean)
         .join(" ")}
@@ -436,11 +251,19 @@ function ClaimMark({
             )
           )
         : segment.text}
+      {/* The mono superscript claim number (handoff §4): the eye's link from a
+          marked sentence to its rail card and examination. aria-hidden — the
+          span's own label already names the claim. */}
+      <sup className={styles.claimMarker} data-tier={tier} aria-hidden="true">
+        {segment.claimIndex + 1}
+      </sup>
     </span>
   );
 }
 
-function MarginNote({
+/** One findings-rail card (handoff §4): mono tier label under the tier's top
+ *  rule, the claim as the title line, the disposition detail beneath. */
+function FindingCard({
   claimIndex,
   disposition,
   card,
@@ -451,33 +274,38 @@ function MarginNote({
   card: VerifyClaimVerdict;
   onExamine: (claimIndex: number) => void;
 }) {
-  const tier = noteTier(disposition);
   // The wire's unsupported_reason is the refusal's audit trail, but for an
   // unknown-verdict card the disposition detail already IS that reason
   // (claimDisposition reads it first); suppress the trail when it would print
-  // the identical sentence twice in one note.
+  // the identical sentence twice in one card.
   const trail =
-    card.unsupported_reason && tier === "refusal" && card.unsupported_reason !== disposition.detail
+    card.unsupported_reason &&
+    disposition.tier === "refusal" &&
+    card.unsupported_reason !== disposition.detail
       ? card.unsupported_reason
       : null;
   return (
-    <div
-      className={styles.marginNote}
+    <button
+      type="button"
+      className={styles.findingCard}
+      data-tier={disposition.tier}
       data-note-key={claimIndex}
-      data-tier={tier ?? undefined}
+      onClick={() => onExamine(claimIndex)}
     >
-      <p className={styles.noteKind}>
+      <span className={styles.findingLabel}>
         {disposition.label}
         {disposition.tier === "assistive" ? (
-          <span className={styles.noteTag}>Assistive</span>
+          <span className={styles.findingTag}>ASSISTIVE</span>
         ) : null}
-      </p>
-      {disposition.detail ? <p className={styles.noteDetail}>{disposition.detail}</p> : null}
-      {trail ? <p className={styles.noteTrail}>{trail}</p> : null}
-      <button type="button" className={styles.noteAct} onClick={() => onExamine(claimIndex)}>
-        Examine
-      </button>
-    </div>
+      </span>
+      {card.claim_text ? (
+        <span className={styles.findingTitle}>{displaySafe(card.claim_text)}</span>
+      ) : null}
+      {disposition.detail ? (
+        <span className={styles.findingDetail}>{disposition.detail}</span>
+      ) : null}
+      {trail ? <span className={styles.findingDetail}>{trail}</span> : null}
+    </button>
   );
 }
 
@@ -489,8 +317,10 @@ function UnplacedTray({
   onExamine: (claimIndex: number) => void;
 }) {
   return (
-    <section className={styles.tray} aria-label="Statements not located in the draft text">
-      <h2 className={styles.trayLabel}>Statements not located in the draft text</h2>
+    <section className={styles.unplacedTray} aria-label="Statements not located in the draft text">
+      <h2 className={styles.trayLabel}>
+        Could not pin to the text · {claims.length === 1 ? "1 claim" : `${claims.length} claims`}
+      </h2>
       <p className={styles.trayNote}>
         These statements were checked, but their exact wording could not be matched to a span in the
         draft above. Review them here.

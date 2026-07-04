@@ -17,11 +17,26 @@ describe("verify visual mode is scoped and motion-safe", () => {
     expect(css).not.toMatch(/^\s*:root\b/m);
   });
 
-  test("introduces no keyframe or animation (near-zero motion, reduced-motion safe)", () => {
-    // The verify surface uses only Tier-1 CSS transitions (globally clamped under
-    // prefers-reduced-motion); it must not add narrative keyframe motion.
-    expect(css).not.toMatch(/@keyframes/);
-    expect(css).not.toMatch(/\banimation\s*:/);
+  test("keyframe motion is limited to the named handoff keyframes and collapses under reduced motion", () => {
+    // The handoff (README §Motion) adds exactly two named keyframes to the
+    // verify surface: cachetInk (result/panel reveal) and cachetPulse (progress
+    // dot, skeleton shimmer). Both are transform/opacity-only. This lock was
+    // deliberately NARROWED from "no keyframes at all" (2026-07-04, handoff
+    // step 4) — it now enumerates the allowed names so any new keyframe still
+    // fails loudly, and requires the reduced-motion collapse.
+    const ALLOWED = ["cachetInk", "cachetPulse"];
+    const declared = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
+    for (const name of declared) {
+      expect(ALLOWED, `@keyframes ${name} is not an allowed named keyframe`).toContain(name);
+    }
+    for (const [, use] of css.matchAll(/\banimation\s*:\s*([^;]+);/g)) {
+      expect(
+        ALLOWED.some((n) => use.includes(n)) || /\bnone\b/.test(use),
+        `animation must reference a named handoff keyframe, got: ${use}`
+      ).toBe(true);
+    }
+    // Keyframe motion must collapse under prefers-reduced-motion.
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   });
 
   test("the scope neutralizes --color-success so no shared primitive can leak green", () => {

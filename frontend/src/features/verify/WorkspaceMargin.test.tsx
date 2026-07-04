@@ -69,11 +69,11 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     expect(mark.getAttribute("data-tier")).toBe("pass");
   });
 
-  it("an affirming pass (present in your sources) shows a confirm card, the calibration beat", () => {
+  it("an affirming pass (present in your sources) shows a rail card, the calibration beat", () => {
     // The demo's killer beat: a verbatim 'present' confirmation (verdict verified
-    // WITH a presence reason) must surface as a positive carousel card so the buyer
-    // can see what the engine vouched for, next to the contradictions. A silent
-    // empty-detail pass stays unmarked; an affirming one earns a 'confirm' note.
+    // WITH a presence reason) must surface as a positive card on the findings rail
+    // so the buyer can see what the engine vouched for, next to the contradictions.
+    // A silent empty-detail pass stays off the rail; an affirming one earns a card.
     const green = {
       ...card(0, {
         text: "The statute was unconstitutional as applied.",
@@ -84,16 +84,18 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
       unsupported_reason: "This language appears verbatim in Section 14 of your source."
     } as VerifyClaimVerdict;
     const { getAllByText, container } = renderMargin([green]);
-    // Rendered both as the confirm card's label and the carousel's live status.
+    // The affirming pass earns a rail card (data-note-key), labelled with what the
+    // engine vouched for. Presence on the rail is the calibration signal.
     expect(getAllByText(/Present in your sources/i).length).toBeGreaterThan(0);
-    expect(container.querySelector('[data-tier="confirm"]')).not.toBeNull();
+    expect(container.querySelector('[data-note-key="0"]')).not.toBeNull();
   });
 
-  it("a silent supported claim (no detail) stays out of the carousel, unmarked", () => {
+  it("a silent supported claim (no detail) stays off the rail, unmarked", () => {
     const { container } = renderMargin([
       card(0, { text: "The statute was unconstitutional as applied.", start: 0, end: 44, verdict: "verified" })
     ]);
-    expect(container.querySelector('[data-tier="confirm"]')).toBeNull();
+    // A silent pass produces no rail card at all (the absence of a flag is the pass).
+    expect(container.querySelector('[data-note-key]')).toBeNull();
   });
 
   it("a refusal is announced as could-not-check, never as 'flagged'", () => {
@@ -171,8 +173,8 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     const { container, getByText } = renderMargin([
       card(0, { text: "A claim with no draft span", placed: false, verdict: "unsupported" })
     ]);
-    // tray section present with its honesty copy
-    expect(getByText(/Statements not located in the draft text/i)).toBeDefined();
+    // tray section present with its honesty copy (the visible heading)
+    expect(getByText(/Could not pin to the text/i)).toBeDefined();
     // no inline claim mark in the document (it has no span)
     expect(container.querySelector('[data-claim-index="0"]')).toBeNull();
   });
