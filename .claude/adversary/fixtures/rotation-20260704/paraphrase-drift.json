@@ -1,0 +1,38 @@
+{
+  "family": "paraphrase-drift",
+  "target": "missed catch under paraphrase (catch-rate sizing; refusal acceptable, supported = FALSE_GREEN)",
+  "cases": [
+    {
+      "id": "A1",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Third-quarter net revenue came in at $4.2 billion, up 6% from a year earlier.",
+      "source": "Net revenue for the third quarter was $2.4 billion, an increase of 6% year over year.",
+      "note": "transposed money figure under full paraphrase (not near-verbatim)"
+    },
+    {
+      "id": "A2",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Across three waves, the program is expected to run for 12 months.",
+      "source": "The transformation program runs for 18 months across three waves.",
+      "note": "duration drift with reordered, reworded sentence"
+    },
+    {
+      "id": "A3",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "By year end the company employed 2,140 people.",
+      "source": "Headcount reached 1,240 at year end.",
+      "note": "grouped-count drift under vocabulary change (employed/headcount)"
+    },
+    {
+      "id": "A4",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Initial-order pricing was set at $17.85 per unit.",
+      "source": "The unit price is fixed at $18.75 for the initial order.",
+      "note": "transposed decimal digits under paraphrase"
+    }
+  ]
+}

@@ -434,3 +434,53 @@ council read, NEVER auto-shipped). Ledger: /tmp/mythos-cachet-scan/.mythos/findi
 - Goal: Mirror the date loop's None-drop for money anchors.
 - Acceptance: held-out: a money anchor with a None canonical value is dropped, not collided.
 
+
+---
+
+## P6 — Scale (large sources; truth surface; REVIEW)
+
+Plan: docs/plans/cachet-large-source-retrieval-2026-07-04.md
+
+### L1 [REVIEW] (critical) — Lift the O(draft×source) ceiling via deterministic candidate retrieval
+- Status: todo
+- Deps: none
+- Surface: cachet_verify/adapter.py (verdict truth surface; REVIEW, drafts-only, human read before land)
+- Source: live test 2026-07-04 — a 7-sentence draft against a large source returns
+  0 verified / 0 altered / 1 could_not_check because _too_large(1, source_sentences)
+  refuses any source > ~4000 sentences (adapter.py:83-87, :394, :402).
+- Grounding: cite:cachet_verify/adapter.py:87 (_too_large product ceiling);
+  cite:cachet_verify/adapter.py:394 (single-claim refusal); cite:cachet_verify/adapter.py:402
+  (full O(N) source scan); cite:cachet_verify/adapter.py:448 (same_fact_disagreement veto
+  that must still see the contradicting sentence).
+- Goal: Make verify_claim and attest_draft cost O(draft x candidates_per_claim),
+  independent of source size, by adding a deterministic exact-keyed candidate
+  index to SourceIndex (a SUPERSET FILTER, never a top-K ranker). Two key
+  namespaces, unioned: (a) w-word shingles for the quote leg, w = the quote
+  matcher's own minimum n-gram width; (b) residue anchors + content-topic tokens
+  for the residue/clause legs. Move the oversize bound from total-source-size to
+  candidates-per-claim.
+- Constraints: zero-egress (no socket), no embeddings, no new runtime dep, fully
+  deterministic (exact keys, no scoring). Extend build_source_index / SourceIndex;
+  do not add a parallel structure. Honesty over coverage: never widen a green.
+- Acceptance (ALL hold as deterministic fixtures; no DB; no network):
+  1. EQUIVALENCE (P1): over a randomized corpus of (claim, sources) pairs covering
+     verbatim quotes, altered figures, same-subject contradictions, negation flips,
+     proper-noun swaps, and no-match cases, the NEW indexed verify_claim returns a
+     byte-identical Attestation.state and check set to the OLD brute-force path on
+     the same input; same for attest_draft. The index changes cost, never verdict.
+  2. SUPERSET (P2): for randomized (claim, source_sentences), the retrieved
+     candidate id set is asserted to be a SUPERSET of the sentence ids the
+     brute-force scan produces a non-None leg outcome for. Assert superset directly.
+  3. SCALE (P3): a source with > 100000 sentences plus a small draft attests every
+     claim with NO oversize refusal caused by source size; a degenerate
+     stopword-only claim still refuses as could_not_check via the per-claim bound.
+  4. NO CATCH WEAKENED (P4, the mln rule): every existing altered-quote /
+     fabricated-quote / contradiction fixture across the cachet_verify suites still
+     catches, AND a new fixture reproduces the real behavior changed: against a
+     large source, an altered quote still reads altered and a fabricated case still
+     reads could_not_check.
+- Verify (this task ADDS these; the contract default engine-suites do NOT cover cachet_verify):
+    /Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_cachet_verify_kernel tests.test_kernel_residue_parity tests.test_cachet_verify_seam tests.test_cachet_verify_certificate tests.test_cachet_verify_residue tests.test_cachet_verify_conformance tests.test_cachet_verify_zero_egress tests.test_redos_guard tests.test_structural_integrity
+    /Users/madu/Desktop/Codex/.venv/bin/python -m unittest tests.test_zero_egress
+    /Users/madu/Desktop/Codex/.venv/bin/python -m ruff check cachet_verify
+    /Users/madu/Desktop/Codex/.venv/bin/python -m ruff format --check cachet_verify

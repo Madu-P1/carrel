@@ -1,0 +1,30 @@
+{
+  "family": "cross-fact-laundering",
+  "target": "claim's figure coincides with a DIFFERENT fact's figure in the source (supported = FALSE_GREEN, the C3 guard under attack)",
+  "cases": [
+    {
+      "id": "F1",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The break fee is $7 million.",
+      "source": "The break fee is $3 million. The marketing budget is $7 million.",
+      "note": "claim's $7M coincides with the marketing budget; the break fee is stated as $3M"
+    },
+    {
+      "id": "F2",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Segment B grew 12% in the period.",
+      "source": "Segment A grew 12% in the period. Segment B grew 7% in the period.",
+      "note": "percent coincidence with the wrong segment"
+    },
+    {
+      "id": "F3",
+      "kind": "clause",
+      "truth": "uncheckable",
+      "claim": "The break fee is $7 million.",
+      "source": "The marketing budget is $7 million.",
+      "note": "source says nothing about a break fee; value coincidence only (G4-class: must refuse, never green)"
+    }
+  ]
+}

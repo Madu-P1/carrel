@@ -1,0 +1,30 @@
+{
+  "family": "superseded-conflict",
+  "target": "sources that disagree about the same fact (supported = FALSE_GREEN; the engine must refuse, never pick a winner)",
+  "cases": [
+    {
+      "id": "H1",
+      "kind": "clause",
+      "truth": "uncheckable",
+      "claim": "The purchase price is $5 million.",
+      "source": "The purchase price was originally $5 million. The amendment revised the purchase price to $7 million.",
+      "note": "stale superseded value; claim matches the original but the amendment changed it"
+    },
+    {
+      "id": "H2",
+      "kind": "clause",
+      "truth": "uncheckable",
+      "claim": "The term is 24 months.",
+      "source": "Draft A states: The term is 24 months. Draft B states: The term is 36 months.",
+      "note": "two sources, same-skeleton disagreement; picking either side is dishonest"
+    },
+    {
+      "id": "H3",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "The amendment revised the purchase price to $7 million.",
+      "source": "The purchase price was originally $5 million. The amendment revised the purchase price to $7 million.",
+      "note": "faithful verbatim restatement of the amended value beside the stale one (flagged = FALSE_ACCUSATION)"
+    }
+  ]
+}

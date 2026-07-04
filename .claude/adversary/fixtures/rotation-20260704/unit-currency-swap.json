@@ -1,0 +1,30 @@
+{
+  "family": "unit-currency-swap",
+  "target": "same digits, different unit/currency (supported = FALSE_GREEN, the digit-equality trap)",
+  "cases": [
+    {
+      "id": "D1",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The contract is valued at $20 million.",
+      "source": "The contract is valued at €20 million.",
+      "note": "currency swap, identical digits (euro -> dollar)"
+    },
+    {
+      "id": "D2",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The shipment weighs 120 kilograms.",
+      "source": "The shipment weighs 120 tons.",
+      "note": "physical-unit swap, identical digits (tons -> kilograms)"
+    },
+    {
+      "id": "D3",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Completed a course of amoxicillin for 7 weeks before readmission.",
+      "source": "Completed a course of amoxicillin for 7 days before readmission.",
+      "note": "duration-unit swap, identical digit (days -> weeks)"
+    }
+  ]
+}

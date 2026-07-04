@@ -1,0 +1,30 @@
+{
+  "family": "quote-evasion",
+  "target": "quote alterations that dodge the verbatim check (supported = FALSE_GREEN) and legitimate variants (flagged = FALSE_ACCUSATION)",
+  "cases": [
+    {
+      "id": "E1",
+      "kind": "quote",
+      "truth": "altered",
+      "claim": "\"We expect to close the acquisition by the end of the second quarter, subject to regulatory review\"",
+      "source": "CEO remarks, prepared transcript: We expect to close the acquisition by the end of the second quarter, subject to regulatory approval. We will not comment further while the review is pending.",
+      "note": "one word swapped deep in a long quote (approval -> review); 'review' appears elsewhere in source"
+    },
+    {
+      "id": "E2",
+      "kind": "quote",
+      "truth": "faithful",
+      "claim": "“subject to regulatory approval”",
+      "source": "CEO remarks, prepared transcript: We expect to close the acquisition by the end of the second quarter, subject to regulatory approval. We will not comment further while the review is pending.",
+      "note": "verbatim span wrapped in curly smart quotes"
+    },
+    {
+      "id": "E3",
+      "kind": "quote",
+      "truth": "altered",
+      "claim": "\"We expect to close the acquisition while the review is pending\"",
+      "source": "CEO remarks, prepared transcript: We expect to close the acquisition by the end of the second quarter, subject to regulatory approval. We will not comment further while the review is pending.",
+      "note": "stitched quote: both fragments real, composite sentence never uttered"
+    }
+  ]
+}

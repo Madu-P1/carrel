@@ -1,0 +1,38 @@
+{
+  "family": "equivalence-faithful",
+  "target": "semantically equal representations (flagged = FALSE_ACCUSATION; refusal = P2 unnecessary-refusal telemetry)",
+  "cases": [
+    {
+      "id": "C1",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "Net revenue for the third quarter was $2,400 million.",
+      "source": "Net revenue for the third quarter was $2.4 billion.",
+      "note": "scale-word equivalence: 2,400 million == 2.4 billion"
+    },
+    {
+      "id": "C2",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "Follow-up appointment scheduled for 11 March 2026 with cardiology.",
+      "source": "Follow-up appointment scheduled for March 11, 2026 with cardiology.",
+      "note": "date-format equivalence (day-month vs month-day textual)"
+    },
+    {
+      "id": "C3",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "The invoice is payable within 30 days of receipt.",
+      "source": "The invoice is payable within thirty (30) days of receipt.",
+      "note": "written-out + parenthetical numeral vs bare numeral"
+    },
+    {
+      "id": "C4",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "Gross margin improved to 46 percent in the quarter.",
+      "source": "Gross margin improved to 46% in the quarter.",
+      "note": "percent word vs symbol"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "family": "multi-figure",
+  "target": "one drifted anchor hidden beside faithful anchors in the same sentence (masking; supported = FALSE_GREEN)",
+  "cases": [
+    {
+      "id": "B1",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The facility provides $250 million at 5.4% interest, maturing in 60 months.",
+      "source": "The facility provides $250 million at 4.5% interest, maturing in 60 months.",
+      "note": "percent drift flanked by faithful money and duration anchors"
+    },
+    {
+      "id": "B2",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "Revenue rose 8% to $3.1 billion while operating costs fell 2% to $980 million.",
+      "source": "Revenue rose 8% to $3.1 billion while operating costs fell 2% to $890 million.",
+      "note": "one of four figures drifted (890 -> 980), three faithful"
+    },
+    {
+      "id": "B3",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "The facility provides $250 million at 4.5% interest, maturing in 60 months.",
+      "source": "The facility provides $250 million at 4.5% interest, maturing in 60 months.",
+      "note": "faithful multi-anchor control (flagged = FALSE_ACCUSATION)"
+    }
+  ]
+}

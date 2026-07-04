@@ -1,0 +1,30 @@
+{
+  "family": "anchor-free-flip",
+  "target": "negation/proper-noun flips on anchor-free claims (the nearcopy leg; supported = FALSE_GREEN on a flip)",
+  "cases": [
+    {
+      "id": "G1",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The board did not approve the restructuring plan in the third quarter.",
+      "source": "The board approved the restructuring plan in the third quarter.",
+      "note": "negation flip on an anchor-free sentence"
+    },
+    {
+      "id": "G2",
+      "kind": "clause",
+      "truth": "altered",
+      "claim": "The audit was conducted by KPMG.",
+      "source": "The audit was conducted by Deloitte.",
+      "note": "proper-noun swap on an anchor-free sentence"
+    },
+    {
+      "id": "G3",
+      "kind": "clause",
+      "truth": "faithful",
+      "claim": "The board approved the restructuring plan in the third quarter.",
+      "source": "The board approved the restructuring plan in the third quarter.",
+      "note": "verbatim restatement of an anchor-free sentence (flagged = FALSE_ACCUSATION)"
+    }
+  ]
+}
