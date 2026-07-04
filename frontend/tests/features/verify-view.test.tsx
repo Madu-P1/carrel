@@ -271,7 +271,7 @@ test("Export certification opens the exhibit and Save as PDF triggers print", as
 
   await submitDraft("a grounded statement");
 
-  fireEvent.click(await screen.findByRole("button", { name: /Export certification/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Open exhibit/i }));
 
   // The exhibit opens as a labelled dialog, carries the human-certified line,
   // and shows no confidence score.
@@ -309,7 +309,7 @@ test("the certification exhibit is keyboard-dismissable with Escape", async () =
 
   await submitDraft("a grounded statement");
 
-  fireEvent.click(await screen.findByRole("button", { name: /Export certification/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Open exhibit/i }));
   expect(await screen.findByRole("dialog", { name: /Verification certification/i })).toBeDefined();
 
   fireEvent.keyDown(document, { key: "Escape" });
@@ -441,7 +441,7 @@ test("mid-stream: a landed cite_verdict renders its real disposition, never a st
   // word "Supported" must appear nowhere (claim 1 is still "Checking…").
   expect(await screen.findByText("Citation not found")).toBeDefined();
   expect(screen.queryByText("Supported")).toBeNull();
-  expect(screen.getByText("Checking…")).toBeDefined();
+  expect(screen.getByText("Checking")).toBeDefined();
 
   release();
 });
