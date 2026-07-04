@@ -104,7 +104,7 @@
     Consolas, monospace;
 
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--paper);
   color: var(--ink-1);
   font-family: var(--font-sans);
@@ -163,18 +163,17 @@
   background: #05060a;
 }
 
-/* ---------- the ruled margin (pleading paper's left column) ---------- */
+/* ---------- the left rail (handoff §2: 88px, icon + label, LOCAL badge) ---------- */
 .rail {
-  width: 64px;
-  flex: 0 0 64px;
-  background: var(--paper-2);
-  /* The signature rule: pleading paper closes its margin with a double line. */
-  border-right: 3px double var(--hair);
+  width: 88px;
+  flex: 0 0 88px;
+  background: var(--sheet);
+  border-right: 1px solid var(--hair-soft);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 18px 0;
-  gap: 2px;
+  padding: 20px 0 16px;
+  gap: 4px;
 }
 
 .railMark {
@@ -183,13 +182,14 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ink-1);
+  /* The open-ring mark wears the oxblood accent in the rail (handoff §Assets). */
+  color: var(--accent);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 8px;
   transition: color 0.12s ease, opacity 0.12s ease;
 }
 
@@ -197,7 +197,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   width: 100%;
 }
 
@@ -205,52 +205,116 @@
   margin-top: auto;
   width: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
 .glyph {
-  position: relative;
-  width: 100%;
-  height: 48px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0;
+  gap: 5px;
+  width: 68px;
+  padding: 9px 0;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: background 110ms ease-out, color 110ms ease-out;
 }
 
 .glyph svg {
-  width: 22px;
-  height: 22px;
+  width: 19px;
+  height: 19px;
 }
 
 .glyph:hover {
+  background: var(--surface-hover);
   color: var(--ink-2);
 }
 
-.glyphActive {
-  color: var(--ink-1);
+.glyphActive,
+.glyphActive:hover {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
 }
 
-.glyphActive::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 2px;
-  background: var(--accent);
+/* The no-network provenance badge: a solid ink dot + mono LOCAL, always visible
+   (honesty invariant 8 — on-device provenance is shown, not hidden). */
+.localBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.localDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ink-1);
+  display: block;
+}
+
+.localLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
 }
 
 .railMark:focus-visible,
 .glyph:focus-visible {
-  outline: 2px solid var(--ink-1);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
-  border-radius: 3px;
+  border-radius: 8px;
+}
+
+/* ---------- top strip (handoff §2: eyebrow + helper + corpus meta) ---------- */
+.topStrip {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 18px 36px 14px;
+  border-bottom: 1px solid var(--hair-soft);
+}
+
+.topStripTitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.topStripSub {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.topStripMeta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ---------- main column (top strip + canvas) ---------- */
+.mainCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ---------- canvas ---------- */

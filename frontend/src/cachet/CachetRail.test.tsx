@@ -48,7 +48,7 @@ describe("CachetRail active station", () => {
       expect(active).toHaveLength(1);
       return active[0].getAttribute("aria-label") ?? "";
     };
-    expect(labelFor("/")).toBe("Verify");
+    expect(labelFor("/")).toBe("Lectern");
     expect(labelFor("/shelf")).toBe("Shelf");
     expect(labelFor("/vault")).toBe("Vault");
     expect(labelFor("/settings")).toBe("Settings");
@@ -58,6 +58,6 @@ describe("CachetRail active station", () => {
     const { container } = render(<CachetRail currentPath="/verify" />);
     const active = activeGlyphs(container);
     expect(active).toHaveLength(1);
-    expect(active[0].getAttribute("aria-label")).toBe("Verify");
+    expect(active[0].getAttribute("aria-label")).toBe("Lectern");
   });
 });

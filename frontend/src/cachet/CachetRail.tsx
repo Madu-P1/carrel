@@ -4,9 +4,11 @@ import { CachetMark } from "./CachetMark";
 import styles from "./cachet.module.css";
 
 /**
- * The thin left rail. Four quiet ink glyphs and the mark. Navigation recedes so
- * the document and its verdict carry the weight ("The Instrument" direction).
- * The active glyph is ink with a 2px left tick; the rest sit in quiet ink.
+ * The left rail (handoff §2): 88px, the open-ring mark in oxblood at the top,
+ * icon-plus-label nav items 68px wide, Settings pinned to the bottom, and the
+ * always-visible LOCAL provenance badge below it (invariant 8 — on-device
+ * provenance is a feature, shown, not hidden). Active item wears the
+ * accent-subtle fill with accent text.
  */
 
 interface RailItem {
@@ -16,53 +18,53 @@ interface RailItem {
   icon: preact.JSX.Element;
 }
 
-// Glyphs are hand-set strokes (currentColor) so they read as ink marks, not a
-// borrowed icon set. 22px, 1.4 stroke, butt joins to match the document hand.
-const VERIFY_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-    <path d="M6 3.5h8l4 4v9.5" />
-    <path d="M6 3.5v17h7" />
-    <circle cx="16.5" cy="18.5" r="3" />
+// Outline glyphs per the handoff prototype: 19px, 1.75 stroke, round joins.
+const LECTERN_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
   </svg>
 );
 
 const SHELF_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-    <path d="M4 18.5h16" />
-    <path d="M7.5 18.5V8M11 18.5V6M14.5 18.5V9.5" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="4" rx="1" />
+    <path d="M5 8v12h14V8" />
+    <path d="M10 12h4" />
   </svg>
 );
 
-const SOURCES_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-    <path d="M9 4.5h7l3 3v9.5H9z" />
-    <path d="M5 8v11.5h10" />
+const VAULT_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="12" cy="12" r="4.5" />
+    <path d="M12 9.5v2.5l1.8 1.8" />
   </svg>
 );
 
-// The Seal Bench: a wax-seal disc with a check stroke. It reads as the place a
-// sealed record is brought to be checked, distinct from the document glyphs.
-const SEAL_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-    <circle cx="12" cy="10" r="6" />
-    <path d="M9.3 10l2 2 3.4-3.6" />
-    <path d="M8.6 15.2l-1.6 4 5-2 5 2-1.6-4" />
+const BENCH_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 21h14" />
+    <path d="M6 17h12l-1.5-4h-9Z" />
+    <path d="M12 13V8" />
+    <path d="M8.5 5.5a3.5 3.5 0 0 1 7 0V8h-7Z" />
   </svg>
 );
 
 const SETTINGS_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-    <path d="M4 8.5h16M4 15.5h16" />
-    <circle cx="9" cy="8.5" r="2.2" />
-    <circle cx="15" cy="15.5" r="2.2" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="7" x2="20" y2="7" />
+    <circle cx="9" cy="7" r="2" />
+    <line x1="4" y1="17" x2="20" y2="17" />
+    <circle cx="15" cy="17" r="2" />
   </svg>
 );
 
 const MAIN_ITEMS: RailItem[] = [
-  { key: "verify", label: "Verify", path: "/", icon: VERIFY_ICON },
-  { key: "bench", label: "Seal Bench", path: "/bench", icon: SEAL_ICON },
+  { key: "lectern", label: "Lectern", path: "/", icon: LECTERN_ICON },
   { key: "shelf", label: "Shelf", path: "/shelf", icon: SHELF_ICON },
-  { key: "vault", label: "Vault", path: "/vault", icon: SOURCES_ICON }
+  { key: "vault", label: "Vault", path: "/vault", icon: VAULT_ICON },
+  { key: "bench", label: "Bench", path: "/bench", icon: BENCH_ICON }
 ];
 
 const SETTINGS_ITEM: RailItem = {
@@ -74,9 +76,9 @@ const SETTINGS_ITEM: RailItem = {
 
 function isActive(currentPath: string, itemPath: string): boolean {
   if (itemPath === "/") {
-    // The lectern ("/") is the Verify station. Match it exactly (plus any
-    // future /verify sub-route) so the root never swallows every other route
-    // via startsWith("/") and lights two glyphs at once.
+    // The lectern ("/") is the verify surface. Match it exactly (plus any
+    // /verify sub-route) so the root never swallows every other route via
+    // startsWith("/") and lights two items at once.
     return currentPath === "/" || currentPath.startsWith("/verify");
   }
   return currentPath.startsWith(itemPath);
@@ -94,6 +96,7 @@ function Glyph({ item, currentPath }: { item: RailItem; currentPath: string }) {
       onClick={() => navigateTo(item.path)}
     >
       {item.icon}
+      <span>{item.label}</span>
     </button>
   );
 }
@@ -108,7 +111,7 @@ export function CachetRail({ currentPath }: { currentPath: string }) {
         title="Cachet"
         onClick={() => navigateTo("/")}
       >
-        <CachetMark size={26} strokeWidth={19} />
+        <CachetMark size={30} strokeWidth={19} />
       </button>
       <div className={styles.railGroup}>
         {MAIN_ITEMS.map((item) => (
@@ -117,6 +120,13 @@ export function CachetRail({ currentPath }: { currentPath: string }) {
       </div>
       <div className={styles.railFoot}>
         <Glyph item={SETTINGS_ITEM} currentPath={currentPath} />
+        <div
+          className={styles.localBadge}
+          title="No network connection is used on the verify path"
+        >
+          <span className={styles.localDot} />
+          <span className={styles.localLabel}>LOCAL</span>
+        </div>
       </div>
     </nav>
   );

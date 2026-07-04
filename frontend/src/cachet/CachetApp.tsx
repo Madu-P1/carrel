@@ -61,6 +61,16 @@ function BriefReader({ briefId }: { briefId: string }) {
   );
 }
 
+/** Top-strip eyebrow + helper per surface (handoff §2). */
+function routeStrip(path: string): [string, string] {
+  if (path.startsWith("/bench")) return ["Seal Bench", "Verify any Cachet certificate. No backend, no trust."];
+  if (path.startsWith("/shelf")) return ["Shelf", "Saved briefs and their seals."];
+  if (path.startsWith("/vault"))
+    return ["Vault", "The sources a draft is checked against. Nothing leaves this machine."];
+  if (path.startsWith("/settings")) return ["Settings", ""];
+  return ["Lectern", "Paste a draft. Watch every claim get checked."];
+}
+
 function renderRoute(route: string) {
   const path = pathnameFromRoute(route);
 
@@ -130,16 +140,25 @@ export function CachetApp() {
     canvas.focus?.({ preventScroll: true });
   }, [path]);
 
+  const [stripTitle, stripSub] = routeStrip(path);
+
   return (
     <div className={styles.app}>
       <CachetRail currentPath={path} />
-      <main className={styles.canvas} ref={canvasRef} tabIndex={-1}>
-        <ErrorBoundary resetKey={route}>
-          <div key={path} ref={roomRef} className={styles.room}>
-            {renderRoute(route)}
-          </div>
-        </ErrorBoundary>
-      </main>
+      <div className={styles.mainCol}>
+        <header className={styles.topStrip}>
+          <h1 className={styles.topStripTitle}>{stripTitle}</h1>
+          {stripSub ? <span className={styles.topStripSub}>{stripSub}</span> : null}
+          <span className={styles.topStripMeta}>local corpus 2025.11 · network: none</span>
+        </header>
+        <main className={styles.canvas} ref={canvasRef} tabIndex={-1}>
+          <ErrorBoundary resetKey={route}>
+            <div key={path} ref={roomRef} className={styles.room}>
+              {renderRoute(route)}
+            </div>
+          </ErrorBoundary>
+        </main>
+      </div>
       {paletteOpen ? (
         <CommandPalette
           commands={buildCommands(path, () => setPaletteOpen(false))}
