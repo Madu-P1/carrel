@@ -126,16 +126,38 @@ export function LecternView() {
     void engine.verify(draft);
   }
 
+  function loadSpecimen() {
+    liveDraft.value = SPECIMEN_DRAFT;
+    areaRef.current?.focus();
+    // Pair the specimen with its record so the one-click demo lands flags AND
+    // a confirmed beat. Never auto-runs the check: verifying stays the
+    // human's explicit act.
+    if (!loadedSource.value && !sourceUpload.value) {
+      setSourceError(null);
+      const record = new File([SPECIMEN_RECORD], SPECIMEN_RECORD_NAME, {
+        type: "text/markdown"
+      });
+      uploadSource(record).catch(() => {
+        setSourceError(
+          "The specimen record could not be loaded. Without it the contract lines can only read as could-not-check."
+        );
+      });
+    }
+  }
+
   // SM-V7 command spine: the ⌘K palette dispatches `cachet:command` and
   // dismisses itself; the lectern owns the draft, so the verify verb lands
   // here. The ref keeps the listener registered once while always invoking the
   // current closure (draft and engine change every render).
   const verifyRef = useRef(verify);
   verifyRef.current = verify;
+  const specimenRef = useRef(loadSpecimen);
+  specimenRef.current = loadSpecimen;
   useEffect(() => {
     function onCommand(event: Event) {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id === "verify-draft") verifyRef.current();
+      if (id === "load-specimen") specimenRef.current();
     }
     window.addEventListener("cachet:command", onCommand);
     return () => window.removeEventListener("cachet:command", onCommand);
@@ -254,24 +276,7 @@ export function LecternView() {
         <button
           type="button"
           className={styles.lecternSpecimen}
-          onClick={() => {
-            liveDraft.value = SPECIMEN_DRAFT;
-            areaRef.current?.focus();
-            // Pair the specimen with its record so the one-click demo lands
-            // flags AND a confirmed beat. Never auto-runs the check: verifying
-            // stays the human's explicit act.
-            if (!source && !upload) {
-              setSourceError(null);
-              const record = new File([SPECIMEN_RECORD], SPECIMEN_RECORD_NAME, {
-                type: "text/markdown"
-              });
-              uploadSource(record).catch(() => {
-                setSourceError(
-                  "The specimen record could not be loaded. Without it the contract lines can only read as could-not-check."
-                );
-              });
-            }
-          }}
+          onClick={loadSpecimen}
         >
           Or examine a specimen draft with planted defects · loads its specimen record
         </button>

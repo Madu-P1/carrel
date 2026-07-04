@@ -340,7 +340,7 @@
 .benchSample {
   padding: 9px 14px;
   background: var(--sheet, #fcfdfe);
-  border: 1px solid rgba(27, 30, 37, 0.16);
+  border: 1px solid var(--hair, rgba(27, 30, 37, 0.16));
   border-radius: 8px;
   font-family: var(--font-sans, sans-serif);
   font-size: 13px;
