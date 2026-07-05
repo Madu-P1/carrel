@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import companionCert from "./__fixtures__/companion-issued-cert.json";
+import docDraftCert from "./__fixtures__/document-draft-cert.json";
 import specimenCert from "./__fixtures__/specimen-cert.json";
 import { canonicalJson, coerceCertificate, sha256Hex } from "./certificate";
 
@@ -137,6 +138,17 @@ describe("the standalone verifier page matches the kernel contract", () => {
     // A state outside the three-verdict vocabulary.
     const badState = { ...(specimenCert as Record<string, unknown>), state: "probably_fine" };
     expect(coerce(badState).reason).toBe(coerceCertificate(badState).reason);
+  });
+
+  it("verifies a document-draft provenance cert intact and renders the file line (D2)", async () => {
+    const cert = docDraftCert as unknown as Record<string, unknown>;
+    // The two additive fields ride inside the sealed body, so the page's own
+    // digest still verifies the kernel-issued provenance cert intact.
+    expect(await standaloneFingerprint(cert)).toBe(cert.fingerprint);
+    // And the page names the original file (additive render, present-only).
+    expect(html).toContain("Draft file");
+    expect(html).toContain("cert.draft_file_sha256");
+    expect(html).toContain("cert.draft_extractor");
   });
 
   it("keeps the page self-contained: no external requests, no telemetry", () => {

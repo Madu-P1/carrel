@@ -61,15 +61,40 @@ def _attestation_body(attestation: DraftAttestation) -> list[dict]:
     ]
 
 
+def _clean_provenance(draft_provenance: dict | None) -> dict | None:
+    """Normalize optional draft-file provenance to exactly the two string
+    fields the certificate seals, or None. When the draft is an uploaded
+    DOCUMENT, ``draft_sha256`` is the EXTRACTED-text hash (unchanged meaning);
+    provenance names the ORIGINAL file too, so the certificate can honestly say
+    which bytes were extracted and by what. Both must be present and truthy or
+    the whole block is dropped (a half-provenance is a dishonest label)."""
+    if not draft_provenance:
+        return None
+    file_sha256 = str(draft_provenance.get("file_sha256") or "").strip()
+    extractor = str(draft_provenance.get("extractor") or "").strip()
+    if not file_sha256 or not extractor:
+        return None
+    return {"file_sha256": file_sha256, "extractor": extractor}
+
+
 def issue_certificate(
     draft: str,
     sources: Sequence[SourceInput],
     attestation: DraftAttestation,
     issued_at: str,
+    *,
+    draft_provenance: dict | None = None,
 ) -> dict:
     """Seal an attestation into a certificate. ``issued_at`` is supplied by the
     caller (an ISO-8601 string) so issuance is deterministic and testable; the
-    daemon injects its clock exactly once."""
+    daemon injects its clock exactly once.
+
+    ``draft_provenance`` (optional ``{"file_sha256", "extractor"}``) names the
+    ORIGINAL uploaded file and the extraction identity when the draft came from
+    a document. It is ADDITIVE-ONLY: absent (a pasted-text draft), the body is
+    byte-identical to before, so existing certificates and the conformance
+    corpus are unchanged; present, the fields ride INSIDE the fingerprinted
+    body, so tampering the file hash breaks the seal like any other edit."""
     source_records = _coerce_sources(sources)
     body = {
         "schema_version": SCHEMA_VERSION,
@@ -80,11 +105,28 @@ def issue_certificate(
         "state": attestation.state,
         "claims": _attestation_body(attestation),
     }
+    provenance = _clean_provenance(draft_provenance)
+    if provenance is not None:
+        # Present-only keys: absent leaves canonical_json byte-identical.
+        body["draft_file_sha256"] = provenance["file_sha256"]
+        body["draft_extractor"] = provenance["extractor"]
     return {**body, "fingerprint": sha256_hex(canonical_json(body))}
 
 
-def attest_and_issue(draft: str, sources: Sequence[SourceInput], issued_at: str) -> dict:
-    return issue_certificate(draft, sources, attest_draft(draft, sources), issued_at)
+def attest_and_issue(
+    draft: str,
+    sources: Sequence[SourceInput],
+    issued_at: str,
+    *,
+    draft_provenance: dict | None = None,
+) -> dict:
+    return issue_certificate(
+        draft,
+        sources,
+        attest_draft(draft, sources),
+        issued_at,
+        draft_provenance=draft_provenance,
+    )
 
 
 def verify_certificate(cert: dict) -> bool:
@@ -144,6 +186,14 @@ def render_exhibit(cert: dict) -> str:
         f"Kernel: cachet-verify {cert.get('kernel_version', '')} "
         f"(schema v{cert.get('schema_version', '')})",
         f"Draft SHA-256: {cert.get('draft_sha256', '')}",
+        *(
+            [
+                f"Draft file SHA-256: {cert['draft_file_sha256']} "
+                f"(extracted by {cert.get('draft_extractor', '')})"
+            ]
+            if cert.get("draft_file_sha256")
+            else []
+        ),
         *(f"Source SHA-256: {h}" for h in cert.get("source_sha256s", [])),
         "",
         f"Statements examined: {len(cert.get('claims', []))}",

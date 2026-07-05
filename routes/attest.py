@@ -32,6 +32,16 @@ class AttestSourceModel(BaseModel):
     complete: bool = True
 
 
+class DraftProvenanceModel(BaseModel):
+    """When the draft came from an uploaded DOCUMENT (via /api/verify/
+    extract-draft), name the ORIGINAL file and the extraction identity so the
+    certificate can too. Additive-only: omit it for a pasted-text draft and the
+    sealed body is byte-identical to before."""
+
+    file_sha256: str = Field(max_length=64)
+    extractor: str = Field(max_length=120)
+
+
 class AttestRequest(BaseModel):
     # Caps mirror the kernel daemon's 2 MiB posture (mythos batchE-20260702:
     # the engine's sentence-pair fan-out is superlinear, so an unbounded body
@@ -44,6 +54,9 @@ class AttestRequest(BaseModel):
     # certificates under test; the live path omits it and gets the server
     # clock, recorded verbatim in the sealed body.
     issued_at: str | None = None
+    # Optional draft-file provenance (document drafts). Rides into the sealed
+    # body when present; absent leaves the certificate byte-identical.
+    draft_provenance: DraftProvenanceModel | None = None
 
 
 def register_attest_routes(app) -> None:
@@ -74,7 +87,15 @@ def register_attest_routes(app) -> None:
             else {"text": s.text, "truncated": s.truncated, "complete": s.complete}
             for s in request.sources
         ]
-        cert = attest_and_issue(request.draft, sources, issued_at)
+        provenance = (
+            {
+                "file_sha256": request.draft_provenance.file_sha256,
+                "extractor": request.draft_provenance.extractor,
+            }
+            if request.draft_provenance is not None
+            else None
+        )
+        cert = attest_and_issue(request.draft, sources, issued_at, draft_provenance=provenance)
         LOGGER.info("attest: %d claims, state=%s", len(cert.get("claims", [])), cert.get("state"))
         return cert
 

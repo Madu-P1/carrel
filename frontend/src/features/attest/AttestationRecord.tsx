@@ -98,6 +98,15 @@ export function AttestationRecord({ cert }: { cert: Certificate }) {
           <span className={styles.provKey}>Draft</span>
           <span className={styles.provVal}>{cert.draft_sha256}</span>
         </div>
+        {cert.draft_file_sha256 ? (
+          <div className={styles.provRow}>
+            <span className={styles.provKey}>Draft file</span>
+            <span className={styles.provVal}>
+              {cert.draft_file_sha256}
+              {cert.draft_extractor ? ` · extracted by ${cert.draft_extractor}` : ""}
+            </span>
+          </div>
+        ) : null}
         {(cert.source_sha256s ?? []).map((hash, i) => (
           <div key={i} className={styles.provRow}>
             <span className={styles.provKey}>Source {i + 1}</span>

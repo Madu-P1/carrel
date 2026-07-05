@@ -39,6 +39,13 @@ export interface Certificate {
   state: VerdictState;
   claims: CertClaim[];
   fingerprint: string;
+  /** Present only when the draft came from an uploaded DOCUMENT: the sha256 of
+   *  the ORIGINAL file bytes (draft_sha256 stays the extracted-text hash). */
+  draft_file_sha256?: string;
+  /** The extraction identity (e.g. "pdf:native_text", "pdf:docling-rapidocr"
+   *  for OCR). Both fields are additive and ride inside the sealed body, so an
+   *  edit to either breaks the seal like any other tamper. */
+  draft_extractor?: string;
 }
 
 const VALID_STATES: ReadonlySet<string> = new Set(["verified", "altered", "could_not_check"]);

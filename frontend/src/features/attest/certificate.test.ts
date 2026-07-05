@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import companionCert from "./__fixtures__/companion-issued-cert.json";
+import docDraftCert from "./__fixtures__/document-draft-cert.json";
 import specimenCert from "./__fixtures__/specimen-cert.json";
 import {
   canonicalJson,
@@ -78,6 +79,32 @@ describe("cross-language seal conformance (Python-issued fixture)", () => {
     expect(summary.total).toBe(3);
     expect(summary.verified + summary.altered + summary.couldNotCheck).toBe(3);
     expect(summary.altered).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("document-draft provenance (D2, additive + sealed)", () => {
+  it("verifies a kernel-issued cert that names the original file and extractor", async () => {
+    const docCert = docDraftCert as unknown as Certificate;
+    // The frontend seal check covers the WHOLE body, so the two new fields are
+    // sealed automatically: a real kernel-issued provenance cert verifies here.
+    expect(await verifySeal(docCert)).toBe(true);
+    expect(docCert.draft_file_sha256).toBeTruthy();
+    expect(docCert.draft_extractor).toBe("pdf:docling-rapidocr");
+    // draft_sha256 stays the extracted-text hash, distinct from the file hash.
+    expect(docCert.draft_sha256).not.toBe(docCert.draft_file_sha256);
+  });
+
+  it("breaks the seal when the file hash is edited", async () => {
+    const tampered = JSON.parse(JSON.stringify(docDraftCert)) as Certificate;
+    tampered.draft_file_sha256 = "b".repeat(64);
+    expect(await verifySeal(tampered)).toBe(false);
+  });
+
+  it("still accepts a plain (no-provenance) cert unchanged (additivity)", async () => {
+    // The pasted-text path is untouched: a cert without the fields verifies
+    // exactly as before.
+    expect(cert.draft_file_sha256).toBeUndefined();
+    expect(await verifySeal(cert)).toBe(true);
   });
 });
 

@@ -207,5 +207,55 @@ class CertificateShapeTests(unittest.TestCase):
         self.assertEqual(len(attestation.claims), len(cert["claims"]))
 
 
+class DraftProvenanceTests(unittest.TestCase):
+    """Track D, D2: an uploaded-DOCUMENT draft names the original file and the
+    extractor inside the sealed body. Additive-only: absent, the certificate is
+    byte-identical to before; present, the fields are sealed and tamper-evident."""
+
+    PROV = {"file_sha256": "a" * 64, "extractor": "pdf:native_text"}
+
+    def test_absent_provenance_is_byte_identical_to_before(self) -> None:
+        # The additivity proof: a pasted-text draft (no provenance) seals to the
+        # exact same certificate whether or not the new parameter exists. This
+        # is what keeps the conformance corpus and every issued cert unchanged.
+        plain = attest_and_issue(DRAFT, SOURCES, ISSUED)
+        also_plain = attest_and_issue(DRAFT, SOURCES, ISSUED, draft_provenance=None)
+        self.assertEqual(plain, also_plain)
+        self.assertNotIn("draft_file_sha256", plain)
+        self.assertNotIn("draft_extractor", plain)
+
+    def test_present_provenance_rides_the_sealed_body_and_verifies(self) -> None:
+        cert = attest_and_issue(DRAFT, SOURCES, ISSUED, draft_provenance=self.PROV)
+        self.assertEqual(cert["draft_file_sha256"], self.PROV["file_sha256"])
+        self.assertEqual(cert["draft_extractor"], self.PROV["extractor"])
+        # draft_sha256 stays the EXTRACTED-text hash (unchanged meaning).
+        self.assertNotEqual(cert["draft_sha256"], cert["draft_file_sha256"])
+        self.assertTrue(verify_certificate(cert))
+
+    def test_tampering_the_file_hash_breaks_the_seal(self) -> None:
+        cert = attest_and_issue(DRAFT, SOURCES, ISSUED, draft_provenance=self.PROV)
+        cert["draft_file_sha256"] = "b" * 64
+        self.assertFalse(verify_certificate(cert), "editing the file hash must break the seal")
+
+    def test_half_provenance_is_dropped_not_half_sealed(self) -> None:
+        # A file hash with no extractor (or vice versa) is a dishonest label;
+        # the whole block is dropped, leaving a plain certificate.
+        cert = attest_and_issue(
+            DRAFT, SOURCES, ISSUED, draft_provenance={"file_sha256": "a" * 64, "extractor": ""}
+        )
+        self.assertNotIn("draft_file_sha256", cert)
+        self.assertEqual(cert, attest_and_issue(DRAFT, SOURCES, ISSUED))
+
+    def test_exhibit_names_the_file_when_present(self) -> None:
+        cert = attest_and_issue(DRAFT, SOURCES, ISSUED, draft_provenance=self.PROV)
+        exhibit = render_exhibit(cert)
+        self.assertIn("Draft file SHA-256", exhibit)
+        self.assertIn("pdf:native_text", exhibit)
+        # A plain certificate's exhibit does not grow the line.
+        self.assertNotIn(
+            "Draft file SHA-256", render_exhibit(attest_and_issue(DRAFT, SOURCES, ISSUED))
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

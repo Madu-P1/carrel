@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kernel_version": "0.1.0",
+  "issued_at": "2026-07-05T09:00:00+00:00",
+  "draft_sha256": "718421e6c66bf1b79b766bc34f66ca9b3bff98822741669b9f192e022f476fc2",
+  "source_sha256s": [
+    "4a0425a34cb4e25e232d65e3b9ac520a9fbbce2f2289af4c84723b0ebbf178df"
+  ],
+  "state": "altered",
+  "claims": [
+    {
+      "claim": "The settlement fund totals $360 million.",
+      "state": "altered",
+      "checks": [
+        {
+          "state": "altered",
+          "provenance": "deterministic",
+          "detail": "The summary states $360 million; the loaded source states $180 million.",
+          "subject": "The settlement fund totals $360 million."
+        }
+      ]
+    },
+    {
+      "claim": "The fee is $500.",
+      "state": "verified",
+      "checks": [
+        {
+          "state": "verified",
+          "provenance": "deterministic",
+          "detail": "a source states this claim verbatim",
+          "subject": "The fee is $500."
+        }
+      ]
+    }
+  ],
+  "draft_file_sha256": "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
+  "draft_extractor": "pdf:docling-rapidocr",
+  "fingerprint": "c198e6bbff59c11288eb2524b94dd7e7c7a81d195a55ddd0d61bc8e967c38c94"
+}

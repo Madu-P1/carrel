@@ -1667,6 +1667,7 @@ export interface components {
             sources?: (string | components["schemas"]["AttestSourceModel"])[];
             /** Issued At */
             issued_at?: string | null;
+            draft_provenance?: components["schemas"]["DraftProvenanceModel"] | null;
         };
         /** AttestSourceModel */
         AttestSourceModel: {
@@ -2330,6 +2331,19 @@ export interface components {
             chars: number;
             /** Sentences */
             sentences: number;
+        };
+        /**
+         * DraftProvenanceModel
+         * @description When the draft came from an uploaded DOCUMENT (via /api/verify/
+         *     extract-draft), name the ORIGINAL file and the extraction identity so the
+         *     certificate can too. Additive-only: omit it for a pasted-text draft and the
+         *     sealed body is byte-identical to before.
+         */
+        DraftProvenanceModel: {
+            /** File Sha256 */
+            file_sha256: string;
+            /** Extractor */
+            extractor: string;
         };
         /** EvidenceResolution */
         EvidenceResolution: {
