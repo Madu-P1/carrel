@@ -135,7 +135,7 @@
     prove: every claim carries <em>verified</em>, <em>altered</em>, or <em>could not check</em>, and
     refusals carry the same weight as confirmations. An intact seal proves the record is exactly as
     the kernel issued it; it does not make any claim true. This page is a single file with no
-    dependencies and no network use — save it, host it, or hand it to whoever needs to check a
+    dependencies and no network use. Save it, host it, or hand it to whoever needs to check a
     record you gave them.
   </footer>
 </div>
@@ -194,6 +194,15 @@ function stateLabel(s) {
   return s === "verified" ? "Verified" : s === "altered" ? "Altered" : "Could not check";
 }
 
+const IDLE_HTML =
+  '<div class="idle">' +
+  '<svg class="mark" viewBox="0 0 240 240" aria-hidden="true">' +
+  '<g fill="none" stroke="currentColor" stroke-linecap="butt">' +
+  '<path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" stroke-width="16"></path>' +
+  '<path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" stroke-width="16"></path>' +
+  "</g></svg>" +
+  "<div>The verdict on the certificate appears here.</div></div>";
+
 function render(html) { document.getElementById("out").innerHTML = html; }
 
 function renderInvalid(reason) {
@@ -241,14 +250,25 @@ function renderIntact(cert) {
   );
 }
 
+let checkSeq = 0;
+
 async function check(text) {
-  if (!text.trim()) return;
+  const seq = ++checkSeq;
+  // Emptied input returns the page to idle: a verdict must never outlive the
+  // certificate it ruled on.
+  if (!text.trim()) { render(IDLE_HTML); return; }
   let parsed;
   try { parsed = JSON.parse(text); }
-  catch { renderInvalid("The text is not JSON. A Cachet certificate is a single JSON object with a fingerprint field."); return; }
+  catch {
+    renderInvalid("The text is not JSON. A Cachet certificate is a single JSON object with a fingerprint field.");
+    return;
+  }
   const { cert, reason } = coerce(parsed);
   if (!cert) { renderInvalid(reason); return; }
   const computed = await computedFingerprint(cert);
+  // A newer check started while the digest ran: drop this result so an older
+  // verdict can never land on top of a newer input.
+  if (seq !== checkSeq) return;
   if (computed === cert.fingerprint) renderIntact(cert);
   else renderBroken(cert.fingerprint, computed);
 }

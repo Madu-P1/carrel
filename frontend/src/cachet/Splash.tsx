@@ -31,8 +31,14 @@ export function Splash({ onDone }: { onDone: () => void }) {
     } catch {
       /* storage unavailable: shows again next mount, harmless */
     }
-    const fade = setTimeout(() => setLeaving(true), 1900);
-    const gone = setTimeout(onDone, 2450);
+    // Under reduced motion the draw/rise choreography is collapsed by CSS, so
+    // holding a static plate for 2.45s would be pure dead time against the
+    // 800ms cold-launch budget; show it just long enough to read the line.
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const fade = setTimeout(() => setLeaving(true), reduce ? 400 : 1900);
+    const gone = setTimeout(onDone, reduce ? 700 : 2450);
     return () => {
       clearTimeout(fade);
       clearTimeout(gone);

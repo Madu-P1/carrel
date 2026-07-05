@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
+import { CachetMark } from "@/cachet/CachetMark";
 import { enterRoom } from "@/cachet/roomMotion";
 
 import specimenCert from "./__fixtures__/specimen-cert.json";
@@ -87,7 +88,18 @@ export function SealBenchView() {
     }, 140);
   }
 
+  /** A pending keystroke debounce would re-check STALE text after an explicit
+   *  load renders its verdict (verdict and visible input disagreeing); cancel
+   *  it whenever a load takes over. */
+  function cancelPendingCheck() {
+    if (debounceRef.current !== null) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+  }
+
   async function loadSpecimen(text: string) {
+    cancelPendingCheck();
     setRaw(text);
     await checkText(text);
   }
@@ -95,6 +107,7 @@ export function SealBenchView() {
   async function onFile(files: FileList | null | undefined) {
     const file = files && files[0];
     if (!file) return;
+    cancelPendingCheck();
     const text = await file.text();
     setRaw(text);
     await checkText(text);
@@ -148,12 +161,7 @@ export function SealBenchView() {
         <div className={styles.benchVerdictCol}>
           {state.kind === "empty" ? (
             <div className={styles.benchIdle}>
-              <svg viewBox="0 0 240 240" className={styles.benchIdleMark} aria-hidden="true">
-                <g fill="none" stroke="currentColor" strokeLinecap="butt">
-                  <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" strokeWidth="16" />
-                  <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" strokeWidth="16" />
-                </g>
-              </svg>
+              <CachetMark size={40} className={styles.benchIdleMark} title="" />
               <div>The verdict on the certificate appears here.</div>
             </div>
           ) : null}

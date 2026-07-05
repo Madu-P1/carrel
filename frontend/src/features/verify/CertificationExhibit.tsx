@@ -2,26 +2,11 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { Button } from "@/design-system";
 
-import { certificationToJson, sealStateFor, type CertificationModel } from "./certification";
-import type { DispositionKind } from "./claimDisposition";
-import styles from "./VerifyView.module.css";
+import { CachetMark } from "@/cachet/CachetMark";
 
-/** The per-item state token's tier (handoff §7: refusals carry equal visual
- *  weight to confirmations; assistive stays visibly softer). */
-function tokenTier(kind: DispositionKind): "pass" | "flag" | "assistive" | "refusal" {
-  switch (kind) {
-    case "supported":
-      return "pass";
-    case "citation_not_found":
-    case "claim_unsupported":
-      return "flag";
-    case "proposition_unsupported":
-    case "assessed":
-      return "assistive";
-    default:
-      return "refusal";
-  }
-}
+import { certificationToJson, sealStateFor, type CertificationModel } from "./certification";
+import { tierForKind } from "./claimDisposition";
+import styles from "./VerifyView.module.css";
 
 /** Download the machine-readable certification alongside the print-to-PDF exhibit. */
 function downloadCertificationJson(model: CertificationModel): void {
@@ -243,12 +228,7 @@ export function CertificationExhibit({
 
       <article className={[styles.verifyScope, styles.certExhibit].join(" ")}>
         <div className={styles.exhibitHead}>
-          <svg viewBox="0 0 240 240" className={styles.exhibitMark} aria-hidden="true">
-            <g fill="none" stroke="currentColor" strokeLinecap="butt">
-              <path d="M174.25 86.02 A64 64 0 0 1 80.53 69.56" strokeWidth="16" />
-              <path d="M64.53 88.00 A64 64 0 0 0 174.25 153.98" strokeWidth="16" />
-            </g>
-          </svg>
+          <CachetMark size={34} className={styles.exhibitMark} title="" />
           <div className={styles.exhibitTitle}>CERTIFICATION EXHIBIT</div>
           <div className={styles.exhibitCertNo}>
             {model.fingerprint.slice(0, 12)} · issued {stamp}
@@ -388,7 +368,7 @@ export function CertificationExhibit({
             <ol className={styles.certList}>
               {model.flagged.map((it) => (
                 <li key={it.index} className={styles.certItem}>
-                  <span className={styles.certItemLabel} data-tier={tokenTier(it.kind)}>
+                  <span className={styles.certItemLabel} data-tier={tierForKind(it.kind)}>
                     {it.label}
                   </span>
                   <span className={styles.certItemClaim}>{it.claimText}</span>
@@ -409,7 +389,7 @@ export function CertificationExhibit({
           <ol className={styles.certList}>
             {model.allItems.map((it) => (
               <li key={it.index} className={styles.certItem}>
-                <span className={styles.certItemLabel} data-tier={tokenTier(it.kind)}>
+                <span className={styles.certItemLabel} data-tier={tierForKind(it.kind)}>
                   {it.label}
                 </span>
                 <span className={styles.certItemClaim}>{it.claimText}</span>

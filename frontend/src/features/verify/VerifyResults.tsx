@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { ProvenanceBadge, toast } from "@/design-system";
 import { ProviderQualityGateBanner } from "@/features/shared";
@@ -487,7 +487,14 @@ export function VerifyResults({
   const draftStale =
     checkedText !== null && draft.trim() !== "" && draft.trim() !== checkedText.trim();
 
-  const cards = (response?.claim_verdicts ?? []).filter(isUsableCard);
+  // Memoized so WorkspaceMargin's own [draftText, cards] memo actually hits:
+  // a fresh .filter() array per render silently defeated it, re-running full
+  // segmentation + displaySafe over the whole document on every examine click
+  // (the measurable hot path on long drafts).
+  const cards = useMemo(
+    () => (response?.claim_verdicts ?? []).filter(isUsableCard),
+    [response]
+  );
   // O5: malformed cards (null / non-object) are filtered out so the render
   // stays crash-safe (the finding cards and dispositionForClaim read properties
   // straight off the card). But a dropped claim must not vanish SILENTLY —
@@ -499,9 +506,15 @@ export function VerifyResults({
   // Compute one disposition per claim, then order flags first, the honest
   // refusal next, and the unmarked passes last. The not-confirmed set is the
   // headline of the surface.
-  const items = cards
-    .map((card) => ({ card, disposition: dispositionForClaim(card) }))
-    .sort((a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]);
+  const items = useMemo(
+    () =>
+      cards
+        .map((card) => ({ card, disposition: dispositionForClaim(card) }))
+        .sort(
+          (a, b) => DISPOSITION_ORDER[a.disposition.kind] - DISPOSITION_ORDER[b.disposition.kind]
+        ),
+    [cards]
+  );
   const selectedItem =
     selected != null ? (items.find((it) => it.card.claim_index === selected) ?? null) : null;
   // T71: a run is only "settled" once it has a response AND carries no error
@@ -532,7 +545,27 @@ export function VerifyResults({
   // coverage block at all; a deterministic run can also report 0 statements
   // read). Without this branch the result rendered as a blank container.
   const showEmptyClaims = settled && items.length === 0 && !showEmptyCoverage;
-  const certModel = certAt && response ? buildCertification(response, certAt, draft) : null;
+  // Memoized: buildCertification runs a full synchronous SHA-256 over the
+  // draft. Keyed on the checked text (draft_text when the engine echoes it,
+  // which the deterministic path always does), so re-renders from typing or
+  // stream bookkeeping do not redo the digest while the exhibit is open.
+  const certDraftText = response?.draft_text ?? draft;
+  const certModel = useMemo(
+    () => (certAt && response ? buildCertification(response, certAt, certDraftText) : null),
+    [certAt, response, certDraftText]
+  );
+  // The sheet's CURRENT text, fingerprinted so a seal set on since-edited text
+  // reads cracked on the live flow. Memoized (one SHA-256 per draft change
+  // while the exhibit is open, none while it is closed) instead of inline in
+  // JSX, where every stream/selection re-render redid the digest.
+  const currentFingerprint = useMemo(
+    () =>
+      certAt !== null
+        ? fingerprintDraft(draft.trim() !== "" ? draft.trim() : (response?.draft_text ?? ""))
+        : null,
+    [certAt, draft, response]
+  );
+
   // A sealed brief is already on the Shelf as Sealed; the quiet unsealed Save is
   // hidden so it can never downgrade the seal (sealing is the only path to Sealed).
   const isSealed = sessionSealed || sealedSeed !== null;
@@ -593,6 +626,13 @@ export function VerifyResults({
   // surface quotes that need attention (altered / could-not-check); a fully
   // verbatim quote needs no callout (absence of a flag is the pass).
   const quoteResults = response?.quote_results ?? stream.quotes ?? [];
+  // The live read-back's paragraph split, computed once per draft instead of
+  // per SSE frame (every cite_verdict re-renders this component; the draft
+  // cannot change mid-stream).
+  const streamParagraphs = useMemo(
+    () => (streaming ? draft.split(/\n{2,}/).filter((para) => para.trim()) : []),
+    [streaming, draft]
+  );
   const structuralFindings = response?.structural_findings ?? [];
 
   return (
@@ -672,14 +712,11 @@ export function VerifyResults({
         <div className={styles.settledGrid}>
           <article className={styles.readback} aria-hidden="true">
             <div className={styles.colEyebrow}>Draft · read-back</div>
-            {draft
-              .split(/\n{2,}/)
-              .filter((para) => para.trim())
-              .map((para, pi) => (
-                <p key={pi} className={styles.docParagraph}>
-                  {para}
-                </p>
-              ))}
+            {streamParagraphs.map((para, pi) => (
+              <p key={pi} className={styles.docParagraph}>
+                {para}
+              </p>
+            ))}
           </article>
           <aside className={styles.findingsRail} aria-label="Findings, checking">
             <div className={styles.colEyebrow}>Findings · worst first</div>
@@ -840,9 +877,7 @@ export function VerifyResults({
           // been edited reads cracked on the live flow too, not only on a
           // reopened brief. Computed only while the exhibit is open (one
           // SHA-256 per open, not per keystroke).
-          currentFingerprint={fingerprintDraft(
-            draft.trim() !== "" ? draft.trim() : (response?.draft_text ?? "")
-          )}
+          currentFingerprint={currentFingerprint ?? undefined}
           onSeal={() => {
             setSessionSealed(true);
             // Record the live seal on the ENGINE too: sessionSealed is render

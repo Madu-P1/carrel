@@ -432,3 +432,8 @@
   line-height: 1.6;
   color: var(--ink-2, #454951);
 }
+
+/* The bench's verdict column (right side of the grid). */
+.benchVerdictCol {
+  min-width: 0;
+}

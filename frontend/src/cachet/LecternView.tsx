@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { navigateTo } from "@/app/shell/useAppShell";
 import { ErrorBoundary } from "@/design-system";
@@ -75,7 +75,15 @@ export function LecternView() {
   const draft = liveDraft.value;
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const ready = draft.trim().length > 0;
-  const wordCount = draft.trim().split(/\s+/).filter(Boolean).length;
+  // Counted without materializing an array of every word (a pasted brief is
+  // tens of thousands of words), and memoized so engine-signal re-renders
+  // during a stream skip it entirely.
+  const wordCount = useMemo(() => {
+    let n = 0;
+    const re = /\S+/g;
+    while (re.exec(draft) !== null) n += 1;
+    return n;
+  }, [draft]);
 
   // The record to verify against. A user can attach it right here (upload a PDF
   // or Word file) or pick one already filed in Sources; the active record's doc
@@ -123,6 +131,12 @@ export function LecternView() {
       areaRef.current?.focus();
       return;
     }
+    // A record upload in flight (the specimen's paired MSA, or a user file)
+    // means docIds would be silently absent: the check would run recordless
+    // and every contract line could only refuse. Hold verify until it lands;
+    // the button is disabled on the same condition, and this guard covers the
+    // ⌘↩ chord and the palette verb.
+    if (sourceUpload.value) return;
     void engine.verify(draft);
   }
 
@@ -252,9 +266,9 @@ export function LecternView() {
           type="button"
           className={styles.verifyDraftBtn}
           onClick={verify}
-          disabled={!ready || engine.loading}
+          disabled={!ready || engine.loading || !!upload}
         >
-          {engine.loading ? "Verifying…" : "Verify draft"}
+          {engine.loading ? "Verifying…" : upload ? "Loading the record…" : "Verify draft"}
           <kbd className={styles.kbdChip} title="Command Enter verifies the draft">
             &#8984;&#9166;
           </kbd>

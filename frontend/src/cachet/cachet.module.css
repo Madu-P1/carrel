@@ -2095,3 +2095,10 @@
     transition-duration: 0.01ms;
   }
 }
+
+/* The move control's label wrapper: keeps the sr-only text and the select on
+   one flex line inside the row's action cluster. */
+.sourceMove {
+  display: inline-flex;
+  align-items: center;
+}

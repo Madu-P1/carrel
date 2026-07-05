@@ -183,6 +183,14 @@ function couldNotCheckDetail(card: VerifyClaimVerdict): string {
   return GENERIC_COULD_NOT_CHECK_DETAIL;
 }
 
+/** The kind->tier mapping as the ONE exported source of truth. Any consumer
+ *  that stores only `kind` (the certification model) derives its tier here;
+ *  re-deriving it locally is how a future kind silently renders at the wrong
+ *  register on one surface. Unknown kinds fail safe to the honest refusal. */
+export function tierForKind(kind: DispositionKind): DispositionTier {
+  return TIER[kind] ?? "refusal";
+}
+
 function mk(kind: DispositionKind, label: string, detail: string): ClaimDisposition {
   return { kind, tier: TIER[kind], label, detail };
 }
