@@ -124,8 +124,16 @@ _UNIT_TABLE: dict[str, tuple[str, Decimal]] = {
 _UNIT_WORDS = "|".join(sorted((re.escape(u) for u in _UNIT_TABLE), key=len, reverse=True))
 
 # number + unit word, unit NOT glued to a longer word ("5 mgx" is not a dose).
+# Digit runs are length-bounded (no real figure carries 18+ significant digits,
+# and no grouped number exceeds 8 comma groups): an unbounded `\d+` before the
+# required trailing unit backtracks super-linearly on a long anchorless digit
+# run, and finditer re-scans every start position, so an anchorless run gives
+# O(n^2) -- a DoS reachable through the daemon's /verify claim text. The fixed
+# upper bounds make each match attempt O(1) and the whole scan linear. (CWE-1333;
+# the companion's parametric fork carried this bound, the kernel had drifted
+# without it -- ADR-0014 surfaced the gap.)
 _QUANTITY = re.compile(
-    rf"(?P<num>\d{{1,3}}(?:,\d{{3}})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?(?P<unit>{_UNIT_WORDS})\b",
+    rf"(?P<num>\d{{1,3}}(?:,\d{{3}}){{1,8}}(?:\.\d+)?|\d{{1,18}}(?:\.\d+)?)\s?(?P<unit>{_UNIT_WORDS})\b",
     re.IGNORECASE,
 )
 
