@@ -442,7 +442,19 @@ council read, NEVER auto-shipped). Ledger: /tmp/mythos-cachet-scan/.mythos/findi
 Plan: docs/plans/cachet-large-source-retrieval-2026-07-04.md
 
 ### L1 [REVIEW] (critical) — Lift the O(draft×source) ceiling via deterministic candidate retrieval
-- Status: todo
+- Status: BUILT, awaiting review (commit d671a513c, branch cachet-handoff-rebuild,
+  2026-07-05). Hand-built test-first (not via the unattended loop; this is a truth
+  surface, drafts-only). Ship gate met: P2 mechanism (superset over 200 randomized
+  corpora), P1/P4/P6 equivalence + honesty floor (whole cachet_verify suite + parity
+  15/15 clean + rotation 26/26 zero-crack, byte-identical on the indexed path), P3/P5
+  scale (6k-sentence source verifies, 5k-claim draft attests, buried alteration caught,
+  degenerate source refuses). Design differs from the plan's shingle namespace: the
+  quote-pool scan was left as-is (separate mechanism, not the _too_large ceiling); the
+  clause/residue legs use a content-token ∪ all-digit ∪ normalized-restatement candidate
+  set that is a PROVABLE superset of the old _sentence_relevant filter, so equivalence is
+  by construction. Tests: tests/test_kernel_candidate_index.py. NEEDS: a human/council
+  read of adapter.py before it lands (per human_gates.security).
+- Status(orig): todo
 - Deps: none
 - Surface: cachet_verify/adapter.py (verdict truth surface; REVIEW, drafts-only, human read before land)
 - Source: live test 2026-07-04 — a 7-sentence draft against a large source returns
