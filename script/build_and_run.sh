@@ -237,8 +237,9 @@ prepare_frontend_resources
 # build. Noops quietly when icon-source.png is absent.
 "$ROOT_DIR/script/generate-icon.sh" || true
 
-# Build the Swift targets. EinsteinDesktop (the app shell) and
-# EinsteinIngestionBridge (PDF / OCR) are REQUIRED and have no macOS-26
+# Build the Swift targets. EinsteinDesktop (the app shell),
+# EinsteinIngestionBridge (PDF / OCR), and EinsteinEncodeBridge
+# (NLContextualEmbedding sentence encoder) are REQUIRED and have no macOS-26
 # dependency, so they build on any toolchain. EinsteinAFMBridge wraps
 # Apple's FoundationModels framework, whose @Generable / @Guide macros
 # need the FoundationModelsMacros compiler plugin. That plugin ships
@@ -248,7 +249,8 @@ prepare_frontend_resources
 # aborted the whole build under `set -e`. Core targets now build alone.
 swift build --package-path "$PROJECT_DIR" \
   --product EinsteinDesktop \
-  --product EinsteinIngestionBridge
+  --product EinsteinIngestionBridge \
+  --product EinsteinEncodeBridge
 BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
@@ -288,6 +290,8 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 # the moment a user lacks a Codex checkout.
 cp "$BUILD_DIR/EinsteinIngestionBridge" "$APP_MACOS/EinsteinIngestionBridge"
 chmod +x "$APP_MACOS/EinsteinIngestionBridge"
+cp "$BUILD_DIR/EinsteinEncodeBridge" "$APP_MACOS/EinsteinEncodeBridge"
+chmod +x "$APP_MACOS/EinsteinEncodeBridge"
 # The AFM bridge is bundled only when it was built (see the toolchain
 # gate above). A missing binary is not an error: ai/native_bridge_paths.py
 # tolerates it and AFM reports unavailable, so the app falls back cleanly.

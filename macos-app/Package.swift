@@ -24,6 +24,10 @@ let package = Package(
         .executable(
             name: "EinsteinAFMBridge",
             targets: ["EinsteinAFMBridge"]
+        ),
+        .executable(
+            name: "EinsteinEncodeBridge",
+            targets: ["EinsteinEncodeBridge"]
         )
     ],
     targets: [
@@ -38,6 +42,10 @@ let package = Package(
         .executableTarget(
             name: "EinsteinAFMBridge",
             path: "Sources/EinsteinAFMBridge"
+        ),
+        .executableTarget(
+            name: "EinsteinEncodeBridge",
+            path: "Sources/EinsteinEncodeBridge"
         ),
         .testTarget(
             name: "EinsteinDesktopTests",

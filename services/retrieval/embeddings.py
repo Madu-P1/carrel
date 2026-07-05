@@ -74,6 +74,65 @@ class FastembedEmbedder:
         return list(map(float, next(iter(self._model.embed([text]))).tolist()))
 
 
+class AppleContextualEmbedder:
+    """On-device sentence encoder backed by the EinsteinEncodeBridge Swift
+    sidecar (Apple ``NLContextualEmbedding``, 512-d).
+
+    Unlike ``FastembedEmbedder`` this needs no ``HF_HUB_OFFLINE`` enforcement
+    and no pre-cached weights: ``NaturalLanguage`` runs on-device and cannot
+    reach the network, so the zero-egress guarantee holds by CONSTRUCTION
+    rather than by an env flag (it closes the cold-cache false-attestation hole
+    ``offline_embedder`` guards against). macOS 14+ only.
+
+    RECALL primitive only: it decides which source span the deterministic
+    engine should check a claim against; it never renders a verdict. See memory
+    ``cachet-llm-adoption-proposer-side``.
+    """
+
+    dim = 512
+
+    def __init__(self, bridge_path: str | None = None) -> None:
+        from ai.native_bridge_paths import ENCODE_BRIDGE_CANDIDATES, find_binary
+
+        self._bridge = bridge_path or find_binary(ENCODE_BRIDGE_CANDIDATES)
+        if self._bridge is None:
+            raise RuntimeError(
+                "EinsteinEncodeBridge not found. Build it with "
+                "`swift build --package-path macos-app --product EinsteinEncodeBridge` "
+                "(macOS 14+ only)."
+            )
+
+    def _run(self, texts: Sequence[str]) -> list[list[float]]:
+        import json
+        import subprocess
+
+        items = [t.replace("\n", " ") for t in texts]
+        if not items:
+            return []
+        proc = subprocess.run(
+            [str(self._bridge)],
+            input="\n".join(items),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"EinsteinEncodeBridge failed ({proc.returncode}): {proc.stderr.strip()}"
+            )
+        vectors = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+        if len(vectors) != len(items):
+            raise RuntimeError(
+                f"EinsteinEncodeBridge returned {len(vectors)} vectors for {len(items)} inputs"
+            )
+        return vectors
+
+    def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
+        return self._run(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._run([text])[0]
+
+
 _default: Embedder | None = None
 
 
