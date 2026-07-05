@@ -31,6 +31,12 @@ import {
 } from "./documentSegments";
 import styles from "./VerifyView.module.css";
 
+/** The worst-first findings rail caps its rendered cards so a long document
+ *  (hundreds of findings) cannot explode the DOM; the overflow is stated, not
+ *  silently dropped, and every finding still lives in the read-back marks, the
+ *  unplaced tray, and the certification exhibit. */
+const RAIL_CAP = 50;
+
 /** Map a disposition tier to the inline mark class on a claim span. */
 function markClass(tier: ClaimDisposition["tier"]): string {
   switch (tier) {
@@ -155,7 +161,7 @@ export function WorkspaceMargin({
 
       <aside className={styles.findingsRail} aria-label="Findings, worst first">
         <div className={styles.colEyebrow}>Findings · worst first</div>
-        {railClaims.map((idx) => {
+        {railClaims.slice(0, RAIL_CAP).map((idx) => {
           const meta = metaByIndex.get(idx);
           if (!meta) return null;
           return (
@@ -168,6 +174,16 @@ export function WorkspaceMargin({
             />
           );
         })}
+        {railClaims.length > RAIL_CAP ? (
+          // No silent cap (long-doc UX): a long document can raise hundreds of
+          // findings; the rail shows the worst RAIL_CAP, but says so and points
+          // to where every finding is kept. The rest are NOT dropped from the
+          // record — they are in the read-back marks, the tray, and the exhibit.
+          <p className={styles.noteDetail} data-rail-capped={railClaims.length}>
+            Showing the worst {RAIL_CAP} of {railClaims.length} findings. Every finding is marked in
+            the read-back and listed in the certification exhibit.
+          </p>
+        ) : null}
         {railClaims.length === 0 ? (
           <p className={styles.noteDetail}>
             No findings to raise. Every treated statement is marked in the draft.

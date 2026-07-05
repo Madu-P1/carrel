@@ -96,3 +96,59 @@ class AttestRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongSourceEndToEnd(unittest.TestCase):
+    """L5 (2026-07-05): the flagship long-document pipeline, end to end through
+    the REAL /api/attest route. Before L1, a normal draft against a long source
+    refused outright (the source blew the sentence ceiling); now it verifies,
+    catches a contradiction buried deep in the source, and returns a valid
+    sealed certificate. This proves the candidate index flows through the route
+    to the certificate + seal, not just the kernel unit."""
+
+    def test_a_small_draft_against_a_long_source_seals_and_catches_a_buried_alteration(
+        self,
+    ) -> None:
+        # ~8,000 sentences of digit-free prose (far past the old ~4,000 ceiling)
+        # with one contradicting clause buried at the end. Within the 2 MiB
+        # AttestRequest source cap.
+        filler = "\n".join(
+            "This clause concerns an administrative matter of no numeric consequence."
+            for _ in range(8000)
+        )
+        source = filler + "\nThe aggregate liability shall not exceed $500,000."
+        draft = "The aggregate liability shall not exceed $1,000,000."
+        resp = _client().post(
+            "/api/attest", json={"draft": draft, "sources": [source], "issued_at": ISSUED}
+        )
+        self.assertEqual(200, resp.status_code, resp.text)
+        cert = resp.json()
+        # The whole pipeline held: a real sealed certificate (NOT an oversize
+        # refusal), the buried alteration caught, and the seal verifies offline.
+        self.assertTrue(verify_certificate(cert), "the long-source certificate must seal")
+        self.assertEqual("altered", cert["state"])
+        self.assertNotIn(
+            "too large",
+            " ".join(
+                chk.get("detail", "") for claim in cert["claims"] for chk in claim.get("checks", [])
+            ).lower(),
+            "a long source must no longer trip the oversize refusal",
+        )
+
+    def test_a_faithful_small_draft_against_a_long_source_confirms(self) -> None:
+        filler = "\n".join(
+            "This clause concerns an administrative matter of no numeric consequence."
+            for _ in range(8000)
+        )
+        # A verbatim money clause at the top of a long source: the candidate
+        # index still finds it, so the restatement confirms rather than
+        # refusing for source size.
+        source = "The fee is $500,000 under the agreement.\n" + filler
+        draft = "The fee is $500,000 under the agreement."
+        resp = _client().post(
+            "/api/attest", json={"draft": draft, "sources": [source], "issued_at": ISSUED}
+        )
+        self.assertEqual(200, resp.status_code, resp.text)
+        cert = resp.json()
+        self.assertTrue(verify_certificate(cert))
+        self.assertEqual("verified", cert["state"])

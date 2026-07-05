@@ -208,3 +208,34 @@ describe("WorkspaceMargin — honesty guards (headless)", () => {
     expect(notes[0].getAttribute("data-note-key")).toBe("0");
   });
 });
+
+describe("WorkspaceMargin findings rail cap (long-doc UX, no silent caps)", () => {
+  it("caps the rail at the worst 50 findings and states the overflow", () => {
+    // A long document can raise hundreds of findings; the rail must not render
+    // them all (a DOM explosion) but must not silently drop them either.
+    const sentences = Array.from({ length: 60 }, (_, i) => `Claim number ${i} is unsupported here.`);
+    const draft = sentences.join(" ");
+    let cursor = 0;
+    const cards = sentences.map((text, i) => {
+      const start = draft.indexOf(text, cursor);
+      cursor = start + text.length;
+      return card(i, { text, start, end: start + text.length, verdict: "unsupported" });
+    });
+    const { container, getByText } = render(
+      <WorkspaceMargin draftText={draft} cards={cards} examined={null} onExamine={() => {}} />
+    );
+    // Only the worst 50 finding cards render...
+    const railCards = container.querySelectorAll("[data-note-key]");
+    expect(railCards.length).toBe(50);
+    // ...and the overflow is stated honestly (not silently dropped).
+    expect(getByText(/Showing the worst 50 of 60 findings/)).toBeTruthy();
+    expect(container.querySelector("[data-rail-capped]")).not.toBeNull();
+  });
+
+  it("does not show the cap note when findings fit", () => {
+    const { container } = renderMargin([
+      card(0, { text: "One flag.", start: 0, end: 9, verdict: "unsupported" })
+    ]);
+    expect(container.querySelector("[data-rail-capped]")).toBeNull();
+  });
+});
