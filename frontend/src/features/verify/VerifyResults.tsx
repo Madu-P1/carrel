@@ -413,7 +413,8 @@ export function VerifyResults({
   engine,
   draft,
   onResolve,
-  onNewDraft
+  onNewDraft,
+  draftProvenance
 }: {
   engine: VerifyEngine;
   /** The composer's current draft text. Used as the fallback document text for
@@ -428,6 +429,10 @@ export function VerifyResults({
    *  composer yields the page to the run view, so the way back lives here.
    *  Omitted on hosts (Carrel, the brief reader) that keep their own frame. */
   onNewDraft?: () => void;
+  /** Present only when the draft came from an uploaded document: the original
+   *  file's sha256 + the extractor. Rides into the certificate so the exhibit
+   *  names the file the extracted text came from. */
+  draftProvenance?: { fileSha256: string; extractor: string };
 }) {
   const { response, stream, loading, hydrating, error, sealedSeed, certAtSeed } = engine;
   // claim_index of the statement whose source panel is open, or null.
@@ -551,8 +556,11 @@ export function VerifyResults({
   // stream bookkeeping do not redo the digest while the exhibit is open.
   const certDraftText = response?.draft_text ?? draft;
   const certModel = useMemo(
-    () => (certAt && response ? buildCertification(response, certAt, certDraftText) : null),
-    [certAt, response, certDraftText]
+    () =>
+      certAt && response
+        ? buildCertification(response, certAt, certDraftText, draftProvenance)
+        : null,
+    [certAt, response, certDraftText, draftProvenance]
   );
   // The sheet's CURRENT text, fingerprinted so a seal set on since-edited text
   // reads cracked on the live flow. Memoized (one SHA-256 per draft change

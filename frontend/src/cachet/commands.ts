@@ -19,7 +19,7 @@ export interface Command {
 }
 
 /** The id carried on a `cachet:command` event when a verify verb is chosen. */
-export type VerifyCommandId = "verify-draft" | "load-specimen" | "seal" | "export";
+export type VerifyCommandId = "verify-draft" | "load-specimen" | "verify-document" | "seal" | "export";
 
 export function emitVerifyCommand(id: VerifyCommandId): void {
   window.dispatchEvent(new CustomEvent("cachet:command", { detail: { id } }));
@@ -50,6 +50,7 @@ export function buildCommands(path: string, close: () => void): Command[] {
     commands.push(
       { id: "verify-draft", title: "Verify the draft", hint: "⌘↵", keywords: "check run", run: verb("verify-draft") },
       { id: "load-specimen", title: "Load the specimen draft", hint: "Planted defects", keywords: "demo sample example specimen record", run: verb("load-specimen") },
+      { id: "verify-document", title: "Verify a document…", hint: "Upload a file", keywords: "upload pdf docx file document draft", run: verb("verify-document") },
       { id: "seal", title: "Seal and save…", keywords: "record certify shelf", run: verb("seal") },
       { id: "export", title: "Open exhibit…", keywords: "exhibit pdf", run: verb("export") }
     );

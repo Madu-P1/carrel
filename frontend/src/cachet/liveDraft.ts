@@ -14,3 +14,23 @@
 import { signal } from "@preact/signals";
 
 export const liveDraft = signal<string>("");
+
+/**
+ * Draft-file provenance when the current draft came from an uploaded DOCUMENT
+ * (via /api/verify/extract-draft), else null. Holds the original filename, the
+ * raw-file sha256, and the extraction identity so the certificate can name
+ * BOTH artifacts (honesty law: verify exactly the extracted text, name the
+ * file it came from and how it was read).
+ *
+ * Module-scope like liveDraft so it survives the shell's unmount-on-nav. The
+ * ONE rule that keeps it honest: any manual edit to the draft text drops it,
+ * because once the visible text no longer matches the extracted bytes, the
+ * file hash would be a lie. The Lectern clears it on every textarea edit.
+ */
+export interface LiveDraftProvenance {
+  filename: string;
+  fileSha256: string;
+  extractor: string;
+}
+
+export const liveDraftProvenance = signal<LiveDraftProvenance | null>(null);

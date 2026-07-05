@@ -7,7 +7,7 @@ import { documents as documentsApi, verify as verifyApi } from "@/services/api/e
 import { resetVerifyStore } from "@/features/verify/useVerify";
 
 import { LecternView } from "./LecternView";
-import { liveDraft } from "./liveDraft";
+import { liveDraft, liveDraftProvenance } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
 import { loadedSource, sourceDocs, sourcesError } from "./source";
 
@@ -18,7 +18,7 @@ import { loadedSource, sourceDocs, sourcesError } from "./source";
 // the inline check.
 vi.mock("@/app/shell/useAppShell", () => ({ navigateTo: vi.fn() }));
 vi.mock("@/services/api/endpoints", () => ({
-  verify: { draft: vi.fn(), draftStream: vi.fn() },
+  verify: { draft: vi.fn(), draftStream: vi.fn(), extractDraft: vi.fn() },
   briefs: { get: vi.fn(), save: vi.fn(), list: vi.fn(), remove: vi.fn() },
   documents: { list: vi.fn().mockResolvedValue([]), upload: vi.fn() }
 }));
@@ -34,6 +34,7 @@ const mockDraftStream = vi.mocked(verifyApi.draftStream);
 
 afterEach(() => {
   liveDraft.value = "";
+  liveDraftProvenance.value = null;
   loadedSource.value = null;
   // sourceDocs/sourcesError are also module-scoped (refreshSources' target);
   // reset them so one test's record-library state or load error never leaks
@@ -397,5 +398,95 @@ describe("LecternView non-happy-path safety (the lectern never blanks or throws)
     // The crash is scoped and recoverable: an explicit way back to the composer.
     fireEvent.click(screen.getByRole("button", { name: "New draft" }));
     expect(screen.getByLabelText("Draft to verify")).toBeTruthy();
+  });
+});
+
+describe("LecternView document mode (Track D — verify an uploaded document)", () => {
+  const extractDraft = vi.mocked(verifyApi.extractDraft);
+
+  const EXTRACTION = {
+    draft_text: "The cap is one million dollars. The term is two years.",
+    draft_file_sha256: "a".repeat(64),
+    draft_sha256: "b".repeat(64),
+    extractor: "pdf:native_text",
+    chars: 52,
+    sentences: 2
+  };
+
+  function pickDocument(fileName = "brief.pdf") {
+    // The document picker specifically (the composer also has a source
+    // dropzone file input), targeted by its aria-label.
+    const input = screen.getByLabelText("Verify a document") as HTMLInputElement;
+    const file = new File([new Uint8Array([1, 2, 3])], fileName, { type: "application/pdf" });
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    fireEvent.change(input);
+  }
+
+  it("extracts an uploaded document into the sheet as read-only document mode", async () => {
+    extractDraft.mockResolvedValue(EXTRACTION);
+    render(<LecternView />);
+    pickDocument();
+    // The extracted text fills the sheet — what the user sees IS what gets checked.
+    const sheet = await screen.findByLabelText("Draft to verify");
+    await waitFor(() => expect((sheet as HTMLTextAreaElement).value).toContain("one million dollars"));
+    // Read-only, and the caption names the file + extractor (the honesty line).
+    expect((sheet as HTMLTextAreaElement).readOnly).toBe(true);
+    expect(screen.getByText("brief.pdf")).toBeTruthy();
+    expect(screen.getByText(/extracted by pdf:native_text/)).toBeTruthy();
+  });
+
+  it("drops the file provenance when the user chooses Edit as text", async () => {
+    extractDraft.mockResolvedValue(EXTRACTION);
+    render(<LecternView />);
+    pickDocument();
+    await screen.findByText("brief.pdf");
+    expect(liveDraftProvenance.value).not.toBeNull();
+    fireEvent.click(screen.getByText("Edit as text"));
+    // Provenance dropped; the sheet is editable again.
+    expect(liveDraftProvenance.value).toBeNull();
+    expect((screen.getByLabelText("Draft to verify") as HTMLTextAreaElement).readOnly).toBe(false);
+  });
+
+  it("refuses an unreadable document explicitly, never a silent empty draft", async () => {
+    extractDraft.mockRejectedValue(new Error("This document has no checkable text to verify."));
+    render(<LecternView />);
+    pickDocument("scanned.pdf");
+    expect(await screen.findByText(/no checkable text to verify/)).toBeTruthy();
+    // The sheet stays empty and no verify ran.
+    expect((screen.getByLabelText("Draft to verify") as HTMLTextAreaElement).value).toBe("");
+    expect(mockDraftStream).not.toHaveBeenCalled();
+  });
+
+  it("does not verify against the retrieval corpus for a document draft (no doc_ids)", async () => {
+    // The self-verification-trap guard, from the UI side: a document draft is
+    // checked as TEXT, never as a source, so verify carries no doc_ids.
+    extractDraft.mockResolvedValue(EXTRACTION);
+    mockDraftStream.mockReturnValue(
+      (async function* () {
+        yield {
+          type: "result",
+          verify: {
+            draft_text: EXTRACTION.draft_text,
+            claim_verdicts: [],
+            summary: { total: 0, verified: 0, unsupported: 0, unknown: 0 },
+            latency_ms: 1,
+            model: "deterministic",
+            ok: true,
+            error: null,
+            provider: "deterministic",
+            quote_results: [],
+            unplaced: []
+          }
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })() as any
+    );
+    render(<LecternView />);
+    pickDocument();
+    await screen.findByText("brief.pdf");
+    fireEvent.click(screen.getByText("Verify draft"));
+    await waitFor(() => expect(mockDraftStream).toHaveBeenCalledTimes(1));
+    const payload = mockDraftStream.mock.calls[0][0] as { doc_ids?: string[] };
+    expect(payload.doc_ids).toBeUndefined();
   });
 });

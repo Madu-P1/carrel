@@ -2102,3 +2102,55 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* ---------- document mode (Track D, D3) ---------- */
+.docMode {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--paper-2);
+}
+
+.docModeName {
+  font-family: var(--font-serif-body, Newsreader, Charter, Georgia, serif);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-1);
+}
+
+.docModeMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.docPick {
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 110ms ease-out, color 110ms ease-out;
+}
+
+.docPick:hover {
+  color: var(--ink-1);
+  text-decoration-color: currentColor;
+}
+
+.docPick[data-busy="true"] {
+  cursor: progress;
+  color: var(--ink-3);
+}
+
+/* The sheet reads as a fixed record, not an editor, in document mode. */
+.composerArea[data-readonly="true"] {
+  background: var(--paper-2);
+  cursor: default;
+}

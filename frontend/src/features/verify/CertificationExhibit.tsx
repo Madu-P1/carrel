@@ -322,6 +322,15 @@ export function CertificationExhibit({
               <dt>Document fingerprint</dt>
               <dd className={styles.certMono}>{model.fingerprint}</dd>
             </div>
+            {model.draftFileSha256 ? (
+              <div>
+                <dt>Draft file</dt>
+                <dd className={styles.certMono}>
+                  {model.draftFileSha256}
+                  {model.draftExtractor ? ` · extracted by ${model.draftExtractor}` : ""}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt>Statements checked</dt>
               <dd className={styles.certMono}>

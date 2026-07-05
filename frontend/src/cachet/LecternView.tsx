@@ -6,10 +6,12 @@ import { VerifyResults } from "@/features/verify/VerifyResults";
 import { useVerify } from "@/features/verify/useVerify";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
+import { verify as verifyApi } from "@/services/api/endpoints";
+
 import { openExamination } from "./examine/examineStore";
 import { resetVerifyStore } from "@/features/verify/useVerify";
 
-import { liveDraft } from "./liveDraft";
+import { liveDraft, liveDraftProvenance } from "./liveDraft";
 import { lecternVerify } from "./liveVerify";
 import {
   clearSource,
@@ -73,8 +75,14 @@ export function LecternView() {
   // on the home page survives navigating to the Shelf and back (the route swap
   // unmounts this view) and is unchanged when the view remounts.
   const draft = liveDraft.value;
+  // Draft-file provenance when the draft came from an uploaded document.
+  const provenance = liveDraftProvenance.value;
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
   const ready = draft.trim().length > 0;
+  // True while a document is being extracted into the sheet.
+  const [docLoading, setDocLoading] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
   // Counted without materializing an array of every word (a pasted brief is
   // tens of thousands of words), and memoized so engine-signal re-renders
   // during a stream skip it entirely.
@@ -131,13 +139,62 @@ export function LecternView() {
       areaRef.current?.focus();
       return;
     }
-    // A record upload in flight (the specimen's paired MSA, or a user file)
-    // means docIds would be silently absent: the check would run recordless
-    // and every contract line could only refuse. Hold verify until it lands;
-    // the button is disabled on the same condition, and this guard covers the
+    // Hold verify while a record upload OR a document extraction is in flight:
+    // a recordless run could only refuse the contract lines, and verifying a
+    // half-extracted document would check text the user cannot yet see. The
+    // button is disabled on the same conditions; this guard also covers the
     // ⌘↩ chord and the palette verb.
-    if (sourceUpload.value) return;
+    if (sourceUpload.value || docLoading) return;
     void engine.verify(draft);
+  }
+
+  /**
+   * Upload a DOCUMENT as the draft. The backend extracts its text and persists
+   * nothing (it never becomes a source), returning the extracted text plus the
+   * file hash and extractor. The extracted text fills the sheet in read-only
+   * document mode — what the user sees IS what will be checked and what the
+   * certificate names. Never auto-runs the check; verifying stays explicit.
+   */
+  async function loadDocument(file: File | null | undefined) {
+    if (!file || docLoading) return;
+    setDocError(null);
+    setDocLoading(true);
+    try {
+      const res = await verifyApi.extractDraft(file);
+      liveDraft.value = res.draft_text;
+      liveDraftProvenance.value = {
+        filename: file.name,
+        fileSha256: res.draft_file_sha256,
+        extractor: res.extractor
+      };
+    } catch (e) {
+      // Honesty law: an unreadable/empty document refuses explicitly, never a
+      // silent empty draft. Leave the sheet as it was and say why.
+      setDocError(
+        e instanceof Error && e.message
+          ? e.message
+          : "This document could not be read as text. Nothing was verified and nothing was stored."
+      );
+    } finally {
+      setDocLoading(false);
+    }
+  }
+
+  /** Leave document mode: unlock the sheet for editing and DROP the file
+   *  provenance, because once the text can diverge from the extracted bytes
+   *  the file hash would be a lie. */
+  function editAsText() {
+    liveDraftProvenance.value = null;
+    setDocError(null);
+    // A microtask so the textarea has re-rendered editable before focus.
+    setTimeout(() => areaRef.current?.focus(), 0);
+  }
+
+  function onDraftInput(value: string) {
+    liveDraft.value = value;
+    // Any manual edit drops document provenance (the honesty rule). Guarded so
+    // a signal write only fires when there is provenance to drop.
+    if (liveDraftProvenance.value !== null) liveDraftProvenance.value = null;
   }
 
   function loadSpecimen() {
@@ -172,6 +229,9 @@ export function LecternView() {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       if (id === "verify-draft") verifyRef.current();
       if (id === "load-specimen") specimenRef.current();
+      // The palette can't hand a File; it opens the OS picker (the click is
+      // still in the command's user-gesture chain).
+      if (id === "verify-document") docInputRef.current?.click();
     }
     window.addEventListener("cachet:command", onCommand);
     return () => window.removeEventListener("cachet:command", onCommand);
@@ -250,6 +310,23 @@ export function LecternView() {
         <span className={styles.pillQuiet}>Case-law store · bundled</span>
       </div>
 
+      {provenance ? (
+        // Document mode: the sheet holds the EXTRACTED text (read-only), and
+        // the caption names the file it came from and how it was read, so what
+        // the user sees is exactly what gets checked and what the certificate
+        // names. "Edit as text" unlocks the sheet and drops the file
+        // provenance (the honesty rule: edited text can't claim a file hash).
+        <div className={styles.docMode} data-doc-mode="true">
+          <span className={styles.docModeName}>{provenance.filename}</span>
+          <span className={styles.docModeMeta}>
+            extracted by {provenance.extractor} · file sha256 {provenance.fileSha256.slice(0, 12)}…
+          </span>
+          <button type="button" className={styles.pillChange} onClick={editAsText}>
+            Edit as text
+          </button>
+        </div>
+      ) : null}
+
       <textarea
         ref={areaRef}
         className={styles.composerArea}
@@ -257,7 +334,9 @@ export function LecternView() {
         placeholder="Paste the draft to check."
         aria-label="Draft to verify"
         spellcheck={false}
-        onInput={(e) => (liveDraft.value = (e.target as HTMLTextAreaElement).value)}
+        readOnly={!!provenance}
+        data-readonly={provenance ? "true" : undefined}
+        onInput={(e) => onDraftInput((e.target as HTMLTextAreaElement).value)}
         onKeyDown={onKeyDown}
       />
 
@@ -266,19 +345,44 @@ export function LecternView() {
           type="button"
           className={styles.verifyDraftBtn}
           onClick={verify}
-          disabled={!ready || engine.loading || !!upload}
+          disabled={!ready || engine.loading || !!upload || docLoading}
         >
-          {engine.loading ? "Verifying…" : upload ? "Loading the record…" : "Verify draft"}
+          {engine.loading
+            ? "Verifying…"
+            : docLoading
+              ? "Reading the document…"
+              : upload
+                ? "Loading the record…"
+                : "Verify draft"}
           <kbd className={styles.kbdChip} title="Command Enter verifies the draft">
             &#8984;&#9166;
           </kbd>
         </button>
         <span className={styles.wordHelper}>{wordCount} words · reads only, never rewrites</span>
+        {/* The document picker. The same input is opened by the ⌘K verb (its
+            ref) and by clicking this label. */}
+        <label className={styles.docPick} data-busy={docLoading ? "true" : undefined}>
+          <input
+            ref={docInputRef}
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            className={styles.dropzoneInput}
+            aria-label="Verify a document"
+            disabled={docLoading}
+            onChange={(e) => void loadDocument((e.target as HTMLInputElement).files?.[0])}
+          />
+          {docLoading ? "Reading the document…" : "Verify a document instead"}
+        </label>
       </div>
 
       {docsError ? (
         <span className={styles.lecternSourceError} role="alert">
           {docsError}
+        </span>
+      ) : null}
+      {docError ? (
+        <span className={styles.lecternSourceError} role="alert">
+          {docError}
         </span>
       ) : null}
       {sourceError ? <span className={styles.lecternSourceError}>{sourceError}</span> : null}
@@ -349,6 +453,14 @@ export function LecternView() {
               // record lacks), pointing at the Vault would overclaim the cause,
               // so the CTA is withheld.
               onResolve={source ? undefined : () => navigateTo("/vault")}
+              // When the draft came from a document, the certificate names the
+              // file it was extracted from and how (D2/D3). Captured at verify
+              // time so a later edit-as-text can't retroactively attach it.
+              draftProvenance={
+                provenance
+                  ? { fileSha256: provenance.fileSha256, extractor: provenance.extractor }
+                  : undefined
+              }
             />
           </div>
         </ErrorBoundary>

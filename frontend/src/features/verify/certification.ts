@@ -169,10 +169,25 @@ export interface CertificationCoverage {
   untreated: number;
 }
 
+/** Draft-file provenance when the checked draft came from an uploaded
+ *  document: the original file's sha256 and the extraction identity. Passed to
+ *  buildCertification so the exhibit and the machine-readable export name the
+ *  file the extracted text came from. */
+export interface DraftProvenance {
+  fileSha256: string;
+  extractor: string;
+}
+
 export interface CertificationModel {
   generatedAtISO: string;
   fingerprint: string;
   provider: string;
+  /** Present only for a document draft: the ORIGINAL file's sha256. The
+   *  model's `fingerprint` stays the extracted-text hash (unchanged meaning). */
+  draftFileSha256?: string;
+  /** Present only for a document draft: the extraction identity (e.g.
+   *  "pdf:native_text", "pdf:docling-rapidocr"). */
+  draftExtractor?: string;
   /** Whether the producing MODEL ran on-device (not a no-egress claim). */
   localExecution: boolean;
   /** The named data-handling attestation (honest across all three postures). */
@@ -234,7 +249,10 @@ export function buildCertification(
   // computes (which already falls back to the composer draft), so one brief
   // never carries two fingerprints and a seal cannot read cracked against a
   // draft that never changed.
-  draftFallback = ""
+  draftFallback = "",
+  // Present only when the draft came from an uploaded document. Additive: a
+  // pasted-text draft omits it and the model/JSON are unchanged.
+  provenance?: DraftProvenance
 ): CertificationModel {
   const cards = (response.claim_verdicts ?? []) as VerifyClaimVerdict[];
   const counts: Record<DispositionKind, number> = {
@@ -273,10 +291,16 @@ export function buildCertification(
         untreated: rawCoverage.untreated ?? 0
       }
     : null;
+  const cleanProvenance =
+    provenance && provenance.fileSha256 && provenance.extractor ? provenance : null;
   return {
     generatedAtISO,
     fingerprint: fingerprintDraft(response.draft_text ?? draftFallback),
     provider,
+    // Present-only, so a pasted-text draft's model and JSON are unchanged.
+    ...(cleanProvenance
+      ? { draftFileSha256: cleanProvenance.fileSha256, draftExtractor: cleanProvenance.extractor }
+      : {}),
     localExecution: isLocalExecution(provider),
     attestation: attestationFor(provider),
     totalStatements: allItems.length,

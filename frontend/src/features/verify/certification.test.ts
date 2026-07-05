@@ -159,6 +159,29 @@ describe("buildCertification", () => {
     const m = buildCertification(resp({ draft_text: "x", claim_verdicts: [supported, fabricated] }), AT);
     for (const it of m.allItems) expect(it.label).not.toContain("%");
   });
+
+  test("names the draft file + extractor when the draft came from a document (D3)", () => {
+    const m = buildCertification(resp({ draft_text: "x" }), AT, "", {
+      fileSha256: "f".repeat(64),
+      extractor: "pdf:docling-rapidocr"
+    });
+    expect(m.draftFileSha256).toBe("f".repeat(64));
+    expect(m.draftExtractor).toBe("pdf:docling-rapidocr");
+    // The model fingerprint stays the extracted-text hash, unchanged.
+    expect(m.fingerprint).toBe(fingerprintDraft("x"));
+  });
+
+  test("omits draft-file provenance for a pasted-text draft (additivity)", () => {
+    const m = buildCertification(resp({ draft_text: "x" }), AT);
+    expect(m.draftFileSha256).toBeUndefined();
+    expect(m.draftExtractor).toBeUndefined();
+    // A half-provenance is dropped, never half-attached.
+    const half = buildCertification(resp({ draft_text: "x" }), AT, "", {
+      fileSha256: "f".repeat(64),
+      extractor: ""
+    });
+    expect(half.draftFileSha256).toBeUndefined();
+  });
 });
 
 // Phase 8: filing-grade audit artifact (local/cloud provenance, attestation,

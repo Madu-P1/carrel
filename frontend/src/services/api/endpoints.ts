@@ -2,6 +2,11 @@ import type { components, paths } from "./types.gen";
 
 import { API_BASE, api } from "./client";
 import { streamSse } from "./streaming";
+import { uploadWithProgress } from "../upload/withProgress";
+
+/** The extracted text of an uploaded DOCUMENT draft (Track D). Carries the
+ *  read-back text plus BOTH artifact hashes and the named extractor. */
+export type DraftExtraction = components["schemas"]["DraftExtractionResponse"];
 
 export type DocumentRow =
   paths["/api/documents"]["get"]["responses"][200]["content"]["application/json"][number];
@@ -962,7 +967,16 @@ export const verify = {
    * cancel an in-flight verification.
    */
   draftStream: (payload: VerifyRequest, opts?: { signal?: AbortSignal }) =>
-    streamSse<VerifyStreamEvent>("/api/verify/stream", payload, opts)
+    streamSse<VerifyStreamEvent>("/api/verify/stream", payload, opts),
+  /**
+   * Extract the text of an uploaded DOCUMENT so it can be verified as a draft.
+   * This is NOT an upload: the backend persists nothing (no document row, no
+   * stored file), so a draft can never enter the retrieval corpus and verify
+   * against itself. Returns the extracted text (the read-back and verify
+   * input), both artifact hashes, and the named extractor.
+   */
+  extractDraft: (file: File) =>
+    uploadWithProgress<DraftExtraction>("/api/verify/extract-draft", file).then((r) => r.body)
 };
 
 /**
