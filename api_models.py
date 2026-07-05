@@ -460,6 +460,35 @@ class VerifyResponse(BaseModel):
     structural_findings: List[StructuralFindingItem] = Field(default_factory=list)
 
 
+class DraftExtractionResponse(BaseModel):
+    """The extracted text of an uploaded DOCUMENT draft (Track D, D1).
+
+    Returned by POST /api/verify/extract-draft. The honesty law: Cachet
+    verifies exactly this extracted text and shows exactly this text, and it
+    names BOTH artifacts so the certificate can too:
+
+    - `draft_text`: the extracted text. It IS the read-back and the verify
+      input; nothing is verified that the user cannot see here.
+    - `draft_file_sha256`: sha256 of the raw uploaded bytes (the original file).
+    - `draft_sha256`: sha256 of `draft_text` (the extracted text). Same
+      meaning as the certificate's existing extracted-text hash.
+    - `extractor`: the extraction identity (e.g. "pdf:native_text",
+      "pdf:docling-rapidocr" for OCR, "docx:structured_text"). OCR fidelity is
+      a materially different trust statement than embedded text, so it is named.
+    - `chars` / `sentences`: honest positive counts of what was extracted.
+
+    Nothing here is persisted: the endpoint stores no document and no file, so
+    a draft can never enter the retrieval corpus and verify against itself.
+    """
+
+    draft_text: str
+    draft_file_sha256: str
+    draft_sha256: str
+    extractor: str
+    chars: int
+    sentences: int
+
+
 class NoteUpsertRequest(BaseModel):
     note_id: Optional[str] = Field(default=None, max_length=128)
     doc_id: Optional[str] = Field(default=None, max_length=128)

@@ -9,16 +9,22 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, Iterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 import db
-from api_models import VerifyRequest, VerifyResponse
-from app_logging import get_logger
+from api_models import DraftExtractionResponse, VerifyRequest, VerifyResponse
+from app_logging import get_logger, log_event
+from services import extraction_pipeline
 from services import verify as verify_service
 from services.app_state import fetch_recent_events, log_study_event
+from services.extraction.utils import text_sha
+from services.legal.sentences import split_sentences
+from services.uploads import save_upload_bounded, validate_upload_suffix
 
 LOGGER = get_logger("verify_api")
 
@@ -92,6 +98,95 @@ def verify_stream_endpoint(payload: VerifyRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _extractor_label(asset: Any) -> str:
+    """Name the extraction identity honestly. OCR fidelity is a materially
+    different trust statement than embedded text, so the mode is included
+    (e.g. "pdf:native_text" vs "pdf:docling-rapidocr")."""
+    modes = list(getattr(asset.quality, "extraction_modes", None) or [])
+    detected = str(getattr(asset, "detected_type", "") or "file")
+    return f"{detected}:{'+'.join(modes)}" if modes else detected
+
+
+@router.post("/api/verify/extract-draft", response_model=DraftExtractionResponse)
+async def extract_draft_endpoint(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Extract the text of an uploaded DOCUMENT so it can be verified as a draft.
+
+    This is NOT an upload: nothing is persisted. It reuses the same extraction
+    path as sources but stores no document row and no file, because a draft
+    that entered the retrieval corpus could verify against itself (a structural
+    false green). The response carries the extracted text (the read-back and
+    the verify input), both artifact hashes (raw bytes + extracted text), and
+    the named extractor. An unreadable or empty document refuses explicitly;
+    it never returns a silent empty draft.
+
+    Zero-egress holds: extraction is local (PDFKit/Vision/docling), no network,
+    no LLM.
+    """
+    suffix = validate_upload_suffix(file.filename)
+    # A private temp file, NOT db.UPLOAD_DIR (the persistent source store). It
+    # is deleted in `finally` no matter what, so nothing survives the request.
+    tmp_dir = tempfile.mkdtemp(prefix="cachet-draft-")
+    path = Path(tmp_dir) / f"draft{suffix}"
+    try:
+        await save_upload_bounded(file, path)
+        try:
+            asset = extraction_pipeline.extract_asset(path)
+        except HTTPException as exc:
+            # extract_asset raises 400 when no grounded text could be read. The
+            # honesty law: refuse explicitly with a concrete reason, never a
+            # silent empty draft.
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "extraction_failed",
+                    "message": str(exc.detail),
+                },
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - surface, don't swallow
+            log_event(
+                LOGGER,
+                30,
+                "extract_draft_failed",
+                filename=file.filename or "",
+                error=str(exc),
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "extraction_failed",
+                    "message": "Could not read this document as text.",
+                },
+            ) from exc
+
+        draft_text = str(asset.cleaned_text or asset.raw_text or "").strip()
+        sentences = split_sentences(draft_text)
+        if not draft_text or not sentences:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "no_checkable_text",
+                    "message": "This document has no checkable text to verify.",
+                },
+            )
+        return {
+            "draft_text": draft_text,
+            # asset.content_hash is file_sha(path): sha256 over the raw bytes.
+            "draft_file_sha256": str(asset.content_hash),
+            "draft_sha256": text_sha(draft_text),
+            "extractor": _extractor_label(asset),
+            "chars": len(draft_text),
+            "sentences": len(sentences),
+        }
+    finally:
+        # Persist nothing: the draft never becomes a source and never touches
+        # the retrieval corpus.
+        path.unlink(missing_ok=True)
+        try:
+            Path(tmp_dir).rmdir()
+        except OSError:
+            pass
 
 
 def register_verify_routes(app) -> None:

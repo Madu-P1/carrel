@@ -1020,6 +1020,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/verify/extract-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extract Draft Endpoint
+         * @description Extract the text of an uploaded DOCUMENT so it can be verified as a draft.
+         *
+         *     This is NOT an upload: nothing is persisted. It reuses the same extraction
+         *     path as sources but stores no document row and no file, because a draft
+         *     that entered the retrieval corpus could verify against itself (a structural
+         *     false green). The response carries the extracted text (the read-back and
+         *     the verify input), both artifact hashes (raw bytes + extracted text), and
+         *     the named extractor. An unreadable or empty document refuses explicitly;
+         *     it never returns a silent empty draft.
+         *
+         *     Zero-egress holds: extraction is local (PDFKit/Vision/docling), no network,
+         *     no LLM.
+         */
+        post: operations["extract_draft_endpoint_api_verify_extract_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attest": {
         parameters: {
             query?: never;
@@ -1652,6 +1683,11 @@ export interface components {
              */
             complete: boolean;
         };
+        /** Body_extract_draft_endpoint_api_verify_extract_draft_post */
+        Body_extract_draft_endpoint_api_verify_extract_draft_post: {
+            /** File */
+            file: string;
+        };
         /** Body_import_document_job_api_jobs_import_post */
         Body_import_document_job_api_jobs_import_post: {
             /** File */
@@ -2259,6 +2295,41 @@ export interface components {
             confidence?: number | null;
             /** Duplicate Of */
             duplicate_of?: string | null;
+        };
+        /**
+         * DraftExtractionResponse
+         * @description The extracted text of an uploaded DOCUMENT draft (Track D, D1).
+         *
+         *     Returned by POST /api/verify/extract-draft. The honesty law: Cachet
+         *     verifies exactly this extracted text and shows exactly this text, and it
+         *     names BOTH artifacts so the certificate can too:
+         *
+         *     - `draft_text`: the extracted text. It IS the read-back and the verify
+         *       input; nothing is verified that the user cannot see here.
+         *     - `draft_file_sha256`: sha256 of the raw uploaded bytes (the original file).
+         *     - `draft_sha256`: sha256 of `draft_text` (the extracted text). Same
+         *       meaning as the certificate's existing extracted-text hash.
+         *     - `extractor`: the extraction identity (e.g. "pdf:native_text",
+         *       "pdf:docling-rapidocr" for OCR, "docx:structured_text"). OCR fidelity is
+         *       a materially different trust statement than embedded text, so it is named.
+         *     - `chars` / `sentences`: honest positive counts of what was extracted.
+         *
+         *     Nothing here is persisted: the endpoint stores no document and no file, so
+         *     a draft can never enter the retrieval corpus and verify against itself.
+         */
+        DraftExtractionResponse: {
+            /** Draft Text */
+            draft_text: string;
+            /** Draft File Sha256 */
+            draft_file_sha256: string;
+            /** Draft Sha256 */
+            draft_sha256: string;
+            /** Extractor */
+            extractor: string;
+            /** Chars */
+            chars: number;
+            /** Sentences */
+            sentences: number;
         };
         /** EvidenceResolution */
         EvidenceResolution: {
@@ -5022,6 +5093,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_draft_endpoint_api_verify_extract_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_extract_draft_endpoint_api_verify_extract_draft_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftExtractionResponse"];
                 };
             };
             /** @description Validation Error */
