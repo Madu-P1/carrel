@@ -262,5 +262,40 @@ class DaemonPostureV2Tests(unittest.TestCase):
             self.assertEqual((200, expected), results[i], f"request {i}")
 
 
+class KernelSelfContainmentTests(unittest.TestCase):
+    """ADR-0014 step 3 lock: the kernel imports nothing from the app.
+
+    Runs in a subprocess so modules imported by other tests cannot mask a
+    regression. If this fails, someone re-introduced an app dependency
+    (``services.*`` / ``ai.*``) into the kernel package -- the extraction's
+    whole point is that embedders can take ``cachet_verify`` without the app.
+    """
+
+    def test_importing_kernel_pulls_no_app_modules(self) -> None:
+        import subprocess
+        import sys as _sys
+
+        probe = (
+            "import sys, cachet_verify, cachet_verify.adapter, "
+            "cachet_verify.daemon, cachet_verify.certificate\n"
+            "bad = sorted(m for m in sys.modules "
+            "if m in ('services', 'ai') "
+            "or m.startswith(('services.', 'ai.')))\n"
+            "print('\\n'.join(bad))\n"
+        )
+        result = subprocess.run(
+            [_sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "",
+            result.stdout.strip(),
+            f"app modules leaked into the kernel import: {result.stdout}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

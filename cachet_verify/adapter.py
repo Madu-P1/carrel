@@ -33,24 +33,30 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
-from services.legal.anchors import extract_anchors
-from services.legal.contract_verify import (
+from .contract import SCHEMA_VERSION, Attestation, CheckResult, attest, combine
+from .engine.anchors import extract_anchors
+from .engine.contract_verify import (
     ClauseCandidate,
     adjudicate_clause_candidates,
     verify_claim_against_clause,
 )
-from services.legal.quote_check import (
+from .engine.quote_check import (
     SourceText,
     check_quote_against_pool,
     extract_draft_quotes,
     prepare_source_pool,
 )
-from services.legal.sentences import split_sentences
-
-from .contract import SCHEMA_VERSION, Attestation, CheckResult, attest, combine
+from .engine.sentences import split_sentences
 from .nearcopy import verify_near_copy_flip
-from .residue import ResidueAnchor, ResidueComparison, compare_residue, extract_residue_anchors
+from .residue import (
+    ResidueAnchor,
+    ResidueComparison,
+    _mask,
+    compare_residue,
+    extract_residue_anchors,
+)
 
 _CLAUSE_STATE = {
     "parametric_contradiction": "altered",
@@ -156,23 +162,44 @@ def _content_tokens(text: str) -> frozenset[str]:
     return frozenset(w for w in words if len(w) >= 3 and w not in _TOPIC_STOPWORDS)
 
 
+def _canon_num(value: object) -> str | None:
+    """Numerically-canonical string for a value, or None if it is not numeric.
+
+    ``str(Decimal)`` is NOT numerically normalized -- ``str(Decimal("500"))`` is
+    "500" but ``str(Decimal("500.0"))`` is "500.0", while the two are equal --
+    so keying a value by its raw string splits numerically-equal figures written
+    in different notation ("5%" vs "5.0%", "0.5" vs ".50") into different keys. A
+    same-value carrier would then miss the claim's key and be dropped, which (via
+    the adjudicator's numeric carrier veto) can turn a refusal into a false
+    accusation. Normalizing collapses them to one key (mythos correctness, 2026-
+    07-05)."""
+    try:
+        return format(Decimal(str(value)).normalize(), "f")
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 def _value_keys_from_anchors(serv_anchors, res_anchors) -> frozenset[str]:
     """The VALUE-identity keys of a sentence (or claim): the canonical value of
     every parametric anchor (money/date/duration/percent/...) and residue
     anchor (quantity/count/...) it carries. Used by the value-anchor candidate
     index: a claim retrieves only the source sentences that carry ONE OF ITS
     OWN values -- the sentences that can carry or contradict it -- instead of
-    every digit-bearing sentence. A serv anchor with no canonical value falls
-    back to its lowercased text so a non-numeric anchor (a defined term, a
-    governing-law name) still keys deterministically."""
+    every digit-bearing sentence. Numeric canonicals are normalized so equal
+    figures in different notation share one key; a non-numeric canonical (an ISO
+    date, a governing-law name) keys by its raw string, and a serv anchor with
+    no canonical value falls back to its lowercased text."""
     keys: set[str] = set()
     for a in serv_anchors:
         cv = getattr(a, "canonical_value", None)
-        keys.add(f"s:{cv}" if cv is not None else f"t:{a.text.strip().lower()}")
+        if cv is None:
+            keys.add(f"t:{a.text.strip().lower()}")
+        else:
+            keys.add(f"s:{_canon_num(cv) or cv}")
     for a in res_anchors:
         c = getattr(a, "canonical", None)
         if c is not None:
-            keys.add(f"r:{c}")
+            keys.add(f"r:{_canon_num(c) or c}")
     return frozenset(keys)
 
 
@@ -242,21 +269,31 @@ class SourceIndex:
     token_ids: dict[str, frozenset[int]]
     value_ids: dict[str, frozenset[int]]
     norm_ids: dict[str, frozenset[int]]
+    skeleton_ids: dict[str, frozenset[int]]
 
     @property
     def sentence_count(self) -> int:
         return len(self.sentences)
 
     def candidate_ids(
-        self, claim_tokens: frozenset[str], norm_claim: str, value_keys: frozenset[str]
+        self,
+        claim_tokens: frozenset[str],
+        norm_claim: str,
+        value_keys: frozenset[str],
+        skeleton: str = "",
     ) -> frozenset[int]:
         """The sentence ids a claim must be compared against: those sharing a
         content token (same-topic contradictions), those carrying one of the
-        claim's own anchor VALUES (confirmations/carriers), and any normalized-
-        exact restatement. Independent of source size when the claim's values
-        and vocabulary are sparse in the document -- which is what lets a long
-        figure-dense document be verified. Sorted at the call sites for a stable
-        candidate order."""
+        claim's own anchor VALUES (confirmations/carriers), those with the same
+        masked SKELETON (residue/near-copy contradictions -- a sentence that
+        restates the claim's surface with a DIFFERENT figure shares neither a
+        content token nor the claim's value, yet the residue leg accuses it on
+        skeleton equality alone, so it MUST be retrieved or the drop would
+        launder a self-contradicting source into a false green), and any
+        normalized-exact restatement. Independent of source size when the claim's
+        values, vocabulary, and skeleton are sparse in the document -- which is
+        what lets a long figure-dense document be verified. Sorted at the call
+        sites for a stable candidate order."""
         ids: set[int] = set()
         for token in claim_tokens:
             hit = self.token_ids.get(token)
@@ -266,6 +303,10 @@ class SourceIndex:
             hit = self.value_ids.get(key)
             if hit:
                 ids |= hit
+        if skeleton:
+            skel_hit = self.skeleton_ids.get(skeleton)
+            if skel_hit:
+                ids |= skel_hit
         if norm_claim:
             norm_hit = self.norm_ids.get(norm_claim)
             if norm_hit:
@@ -279,6 +320,7 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
     token_ids: dict[str, set[int]] = {}
     value_ids: dict[str, set[int]] = {}
     norm_ids: dict[str, set[int]] = {}
+    skeleton_ids: dict[str, set[int]] = {}
     for record in records:
         for sentence in split_sentences(record.text):
             serv_anchors = extract_anchors(sentence)
@@ -288,6 +330,7 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
             tokens = _content_tokens(sentence)
             has_digit = any(ch.isdigit() for ch in sentence)
             normalized = _normalize(sentence)
+            all_spans = serv_spans + tuple((a.start, a.end) for a in res_anchors)
             entries.append(
                 _SentenceEntry(
                     text=sentence,
@@ -296,7 +339,7 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
                     has_digit=has_digit,
                     serv_spans=serv_spans,
                     res_anchors=res_anchors,
-                    all_spans=serv_spans + tuple((a.start, a.end) for a in res_anchors),
+                    all_spans=all_spans,
                 )
             )
             for token in tokens:
@@ -305,6 +348,13 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
                 value_ids.setdefault(key, set()).add(idx)
             if normalized:
                 norm_ids.setdefault(normalized, set()).add(idx)
+            # A sentence carrying a figure gets a masked-skeleton key so a
+            # near-copy of it with a DIFFERENT figure (which shares no token and
+            # no value key) is still retrieved as a candidate -- the residue leg
+            # accuses on skeleton equality alone, so this is what keeps a
+            # self-contradicting source from laundering into a false green.
+            if all_spans:
+                skeleton_ids.setdefault(_mask(sentence, list(all_spans)), set()).add(idx)
     return SourceIndex(
         records=records,
         pool=prepare_source_pool(list(records)),
@@ -312,6 +362,7 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
         token_ids={k: frozenset(v) for k, v in token_ids.items()},
         value_ids={k: frozenset(v) for k, v in value_ids.items()},
         norm_ids={k: frozenset(v) for k, v in norm_ids.items()},
+        skeleton_ids={k: frozenset(v) for k, v in skeleton_ids.items()},
     )
 
 
