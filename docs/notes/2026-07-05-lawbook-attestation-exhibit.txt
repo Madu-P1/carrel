@@ -1,0 +1,35 @@
+CACHET ATTESTATION RECORD
+
+Issued: 2026-07-05T13:10:00+00:00
+Kernel: cachet-verify 0.1.0 (schema v1)
+Draft SHA-256: 7376a30e1a0cccf0564519b81882bcd8e2940afc78dd4834994d48f8a386d23e
+Source SHA-256: 4928d283180dcc18c6227f43f1e2a521030d155c12e22d325960e9cce4b90df8
+
+Statements examined: 5
+  Verified against the record: 1
+  Altered from the record: 0
+  Could not be checked: 4
+
+1. COULD NOT BE CHECKED
+   The small claims track covers most claims for up to £15,000 or less.
+   - the claim's quantities have no near-verbatim source statement to compare against; not confirmed and not accused [deterministic]
+
+2. COULD NOT BE CHECKED
+   Magistrates may impose imprisonment for up to six months and a fine of up to £5,000.
+   - the claim's quantities have no near-verbatim source statement to compare against; not confirmed and not accused [deterministic]
+
+3. COULD NOT BE CHECKED
+   The defendant must admit the claim or file a detailed defence within 14 days.
+   - The summary states 14 days; one retrieved clause carries that value, but the loaded source states 21 days. The retrieved clauses conflict, so this statement was not independently checked. Review both clauses. [deterministic]
+
+4. VERIFIED AGAINST THE RECORD
+   The book states that magistrates may impose "a fine of up to £5,000".
+   - quote is verbatim in a source [deterministic]
+   - The quoted language "a fine of up to £5,000" appears verbatim in the loaded source; review the full passage for context. [deterministic]
+
+5. COULD NOT BE CHECKED
+   Cases in tort and contract may be heard if the claimant is not suing for more than £50,000.
+   - the claim's quantities have no near-verbatim source statement to compare against; not confirmed and not accused [deterministic]
+
+Seal (SHA-256 of the canonical record): a13f9853d6b9a0484942caeb2830b8beb0a3e6ca9f35788e080549ca70930c7c
+This record attests only what a deterministic engine could trace to the sources named above. A statement marked could-not-be-checked is neither confirmed nor accused.

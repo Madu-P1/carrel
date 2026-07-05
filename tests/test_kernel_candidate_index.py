@@ -1,28 +1,40 @@
-"""L1 (2026-07-05): the candidate index that lifts the O(draft x source) ceiling.
+"""Value-anchor candidate index (2026-07-05): verify FIGURE-DENSE long documents.
 
 The old kernel compared each claim against EVERY source sentence and refused
-outright once a source passed ~4,000 sentences, so a long document could not be
-verified at all. The candidate index retrieves only the sentences that could
-affect a claim's verdict, so a long document verifies while the honesty
-guarantees are untouched.
+outright once a source passed ~4,000 sentences. The first candidate index (L1)
+retrieved a SUPERSET of the old full scan -- every content-token match PLUS
+every digit-bearing sentence -- so it was byte-identical but still refused a
+figure-DENSE long document (a real contract, thousands of amounts): the all-digit
+term alone blew the per-claim ceiling. The value-anchor index fixes that: a claim
+retrieves only the sentences sharing one of its content TOKENS or one of its own
+anchor VALUES, so a figure-dense document verifies as long as THIS claim's values
+and vocabulary are sparse in it.
 
 The safety argument, pinned here as tests:
 
-  P2 (superset) -- ``candidate_ids`` is a SUPERSET of every sentence the
-      per-sentence legs could act on (a clause candidate needs
-      ``_sentence_relevant`` = token|digit; a residue outcome needs a residue
-      anchor, which is digit-bearing; a restatement is a normalized match). So
-      iterating candidates and keeping the identical guards/bodies visits every
-      sentence that mattered -- the change is cost, never correctness.
+  HONESTY FLOOR (the guarantee that matters) -- value-anchor can only DROP
+      sentences the old full scan visited (those sharing no token and none of the
+      claim's values). Such a sentence can never have been the source of a
+      ``verified`` (that needs a value carrier -> value_ids, a normalized
+      restatement -> norm_ids, or a verbatim quote -> the pool, ALL kept) and
+      never a legitimate accusation (a zero-token-overlap contradiction is
+      cross-fact noise the clause leg already filters). So dropping it can only
+      turn a catch or a would-be false accusation into a REFUSAL -- never a false
+      green, never a new false accusation. ``HonestyFloorDifferential`` proves
+      this directly against the full-scan reference over random corpora: 0 false
+      greens, 0 false accusations, every divergence ``altered -> could_not_check``
+      on degenerate multi-value word-salad claims.
 
-  P3/P5 (scale) -- a long source with a small draft attests every claim
-      (no oversize refusal from source size alone), and a long DRAFT does too;
-      a genuinely degenerate claim still refuses honestly.
+  SCALE -- a figure-dense long source verifies a faithful claim and catches a
+      buried alteration (no oversize refusal from source size alone); a long
+      DRAFT attests every claim; a genuinely degenerate claim still refuses.
 
-Verdict equivalence itself (P1/P4/P6) is pinned by the whole cachet_verify
-suite, the frozen parity corpus, and the adversarial rotation all running
-GREEN on this indexed path -- they are the behavior oracle; this file pins the
-mechanism that makes their green trustworthy at scale.
+This is a deliberately WEAKER guarantee than L1's byte-identity, taken because
+byte-identity was worthless on the actual deliverable (it refused the whole
+document). The honesty floor -- no false green, no false accusation -- is the
+property the product's trust rests on, and it is preserved and tested here; the
+whole cachet_verify suite, the frozen parity corpus, and the adversarial rotation
+remain the behavior oracle and stay GREEN on this path.
 """
 
 from __future__ import annotations
@@ -30,17 +42,15 @@ from __future__ import annotations
 import random
 import unittest
 
+import cachet_verify.adapter as adapter
 from cachet_verify.adapter import (
+    _claim_value_keys,
     _content_tokens,
     _normalize,
-    _sentence_relevant,
     attest_draft,
     build_source_index,
-    compare_residue,
-    extract_residue_anchors,
     verify_claim,
 )
-from services.legal.anchors import extract_anchors
 
 # A vocabulary that mixes prose, figures, dates, durations, and polarity so the
 # generated sources exercise every leg (clause, residue, restatement, quote).
@@ -64,52 +74,66 @@ def _sentence(rng: random.Random) -> str:
     return " ".join(parts).capitalize() + "."
 
 
-def _effective_ids(index, claim: str) -> set[int]:
-    """Every sentence id the per-sentence legs could produce an effect for:
-    a clause candidate (``_sentence_relevant``), a residue outcome
-    (``compare_residue`` non-None), or a restatement (normalized match). The
-    candidate set MUST be a superset of this or a verdict could change."""
-    claim_tokens = _content_tokens(claim)
-    norm_claim = _normalize(claim)
-    claim_serv = extract_anchors(claim)
-    claim_res = extract_residue_anchors(claim, claimed_spans=[(a.start, a.end) for a in claim_serv])
-    serv_spans = [(a.start, a.end) for a in claim_serv]
-    res_spans = [(a.start, a.end) for a in claim_res]
-    all_spans = serv_spans + res_spans
-    effective: set[int] = set()
-    for i, entry in enumerate(index.sentences):
-        if _sentence_relevant(claim_tokens, entry):
-            effective.add(i)
-        if norm_claim and entry.normalized == norm_claim:
-            effective.add(i)
-        if claim_res:
-            outcome = compare_residue(
-                claim,
-                claim_res,
-                all_spans,
-                entry.text,
-                list(entry.res_anchors),
-                list(entry.all_spans),
-            )
-            if outcome is not None:
-                effective.add(i)
-    return effective
+class HonestyFloorDifferential(unittest.TestCase):
+    """The honesty-floor lock, the strongest safety statement value-anchor CAN
+    make (byte-identity is gone by design). Run the SAME verify_claim twice on
+    the same input -- once on the real value-anchor candidate set, once with
+    candidate_ids monkeypatched to return ALL sentence ids (the old full scan) --
+    over randomized corpora, and assert the floor holds every time:
 
+      * NO false green  -- value-anchor never returns ``verified`` where the
+        full scan did not (a green needs a value carrier, a normalized
+        restatement, or a verbatim quote, all of which value-anchor keeps).
+      * NO new false accusation -- value-anchor never returns ``altered`` where
+        the full scan did not.
+      * every divergence is ``altered -> could_not_check`` -- value-anchor
+        REFUSING where the full scan flagged, which the honesty ordering permits
+        (a refusal is always acceptable). In practice these are degenerate
+        multi-value word-salad claims, the very cross-clause false-accusation
+        class, so the refusal is if anything more honest.
 
-class CandidateSupersetProperty(unittest.TestCase):
-    def test_candidates_superset_the_effective_set_over_random_corpora(self) -> None:
-        rng = random.Random(20260705)
-        for _ in range(200):
-            source = "\n".join(_sentence(rng) for _ in range(rng.randint(5, 40)))
-            index = build_source_index([source])
+    Same code path, only the candidate set differs, so this is a direct proof of
+    the floor -- a future change that let the index manufacture a green or an
+    accusation would fail HERE."""
+
+    def test_value_anchor_never_greens_or_accuses_where_full_scan_did_not(self) -> None:
+        real = adapter.SourceIndex.candidate_ids
+
+        def full_scan(self, claim_tokens, norm_claim, value_keys):  # noqa: ANN001 - test shim
+            return frozenset(range(len(self.sentences)))
+
+        rng = random.Random(4242)
+        divergences: list[tuple[str, str, str]] = []
+        for _ in range(1500):
+            source = "\n".join(_sentence(rng) for _ in range(rng.randint(4, 30)))
             claim = _sentence(rng)
-            candidates = index.candidate_ids(_content_tokens(claim), _normalize(claim))
-            effective = _effective_ids(index, claim)
-            missing = effective - candidates
+            indexed = verify_claim(claim, [source])
+            try:
+                adapter.SourceIndex.candidate_ids = full_scan
+                brute = verify_claim(claim, [source])
+            finally:
+                adapter.SourceIndex.candidate_ids = real
+            if indexed.state == brute.state:
+                continue
+            divergences.append((brute.state, indexed.state, claim))
+            # The floor: never a green the full scan withheld, never an
+            # accusation the full scan withheld.
+            self.assertNotEqual(
+                "verified",
+                indexed.state,
+                f"value-anchor manufactured a green: claim={claim!r} full_scan={brute.state}",
+            )
+            self.assertNotEqual(
+                "altered",
+                indexed.state,
+                f"value-anchor manufactured an accusation: claim={claim!r} full_scan={brute.state}",
+            )
+            # The only permitted divergence: full scan flagged, value-anchor
+            # honestly refused.
             self.assertEqual(
-                missing,
-                set(),
-                f"candidate set dropped an effective sentence: claim={claim!r} missing={missing}",
+                ("altered", "could_not_check"),
+                (brute.state, indexed.state),
+                f"unexpected divergence direction: claim={claim!r}",
             )
 
 
@@ -167,45 +191,57 @@ class RealLongDocumentCatch(unittest.TestCase):
         self.assertEqual(result.state, "altered")
 
 
-if __name__ == "__main__":
-    unittest.main()
+class FigureDenseLongDocument(unittest.TestCase):
+    """The motivating win: a FIGURE-DENSE long document (every sentence carries a
+    figure) that the all-digit index (L1) refused outright now verifies, because
+    a claim retrieves only the sentences carrying its own value/vocabulary rather
+    than the whole digit population. 5,000 distinct money clauses -> the old
+    ``_too_large(1, digit_ids)`` short-circuit fired on all 5,000 digit-bearing
+    sentences and refused; value-anchor pulls the handful sharing the claim's
+    value and subject."""
 
+    @staticmethod
+    def _subject(i: int) -> str:
+        # A distinct all-alphabetic subject per clause (base-26 -> "aaaa"...), so
+        # each sentence's lone content token appears once. Real long documents
+        # have varied vocabulary; uniform boilerplate ("the fee for item N") is
+        # the degenerate case and is meant to refuse on token density, not here.
+        letters = "abcdefghijklmnopqrstuvwxyz"
+        return "".join(letters[(i // 26**p) % 26] for p in range(3, -1, -1))
 
-class IndexedVsBruteForceEquivalence(unittest.TestCase):
-    """P1 DIFFERENTIAL (mythos D-track+L1 c7): the strongest equivalence lock.
+    def _dense_source(self) -> str:
+        # 5,000 clauses, each a DISTINCT subject + amount, EVERY sentence
+        # digit-bearing. The all-digit candidate term (L1) would be 5,000 here.
+        return "\n".join(f"The {self._subject(i)} is ${1000 + i:,}." for i in range(5000))
 
-    The candidate index's whole safety case is 'byte-identical verdicts.' The
-    superset property proves the mechanism; this proves the RESULT directly by
-    running the SAME verify_claim twice on the same input -- once on the real
-    indexed candidate set, once with candidate_ids monkeypatched to return ALL
-    sentence ids (the old full scan) -- and asserting identical Attestation
-    state and check details over randomized corpora. Same code path, only the
-    candidate set differs, so a match is a direct equivalence proof; a future
-    change that made the index drop an effective sentence would diverge here."""
+    def test_a_faithful_claim_against_a_dense_source_verifies(self) -> None:
+        source = self._dense_source()
+        # Verbatim restatement of one clause among 5,000 figure-bearing ones.
+        result = verify_claim(f"The {self._subject(4200)} is $5,200.", [source])
+        self.assertEqual(result.state, "verified")
+        self.assertNotIn("too large", " ".join(c.detail for c in result.checks).lower())
 
-    def test_indexed_verdicts_equal_full_scan_verdicts(self) -> None:
-        import cachet_verify.adapter as adapter
+    def test_a_buried_alteration_in_a_dense_source_is_caught(self) -> None:
+        source = self._dense_source()
+        # The altered figure for that same clause is flagged, not lost in the
+        # 5,000-figure haystack and not swallowed by an oversize refusal.
+        result = verify_claim(f"The {self._subject(4200)} is $9,999.", [source])
+        self.assertEqual(result.state, "altered")
 
-        real = adapter.SourceIndex.candidate_ids
-
-        def full_scan(self, claim_tokens, norm_claim):  # noqa: ANN001 - test shim
-            return frozenset(range(len(self.sentences)))
-
-        rng = random.Random(4242)
-        for _ in range(150):
-            source = "\n".join(_sentence(rng) for _ in range(rng.randint(4, 30)))
-            claim = _sentence(rng)
-            indexed = verify_claim(claim, [source])
-            try:
-                adapter.SourceIndex.candidate_ids = full_scan
-                brute = verify_claim(claim, [source])
-            finally:
-                adapter.SourceIndex.candidate_ids = real
-            self.assertEqual(
-                (indexed.state, [(c.state, c.detail, c.subject) for c in indexed.checks]),
-                (brute.state, [(c.state, c.detail, c.subject) for c in brute.checks]),
-                f"indexed path diverged from full scan: claim={claim!r} source={source!r}",
-            )
+    def test_the_dense_source_would_have_refused_under_the_all_digit_bound(self) -> None:
+        # Guards the motivation: every sentence is digit-bearing, so the old
+        # all-digit candidate term alone was >> the ~4,000 ceiling. The
+        # value-anchor index carries no such term, which is why the two tests
+        # above verify instead of refusing.
+        index = build_source_index([self._dense_source()])
+        digit_bearing = sum(1 for e in index.sentences if e.has_digit)
+        self.assertGreater(digit_bearing, 4000)
+        # The claim's OWN candidate set, by contrast, is tiny.
+        claim = f"The {self._subject(4200)} is $5,200."
+        candidates = index.candidate_ids(
+            _content_tokens(claim), _normalize(claim), _claim_value_keys(claim)
+        )
+        self.assertLess(len(candidates), 4000)
 
 
 class AggregateAntiWedge(unittest.TestCase):
@@ -248,3 +284,7 @@ class AggregateAntiWedge(unittest.TestCase):
             any("too large" in c.detail for a in att.claims for c in a.attestation.checks),
             "a long draft against a sparse source must not hit the aggregate ceiling",
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

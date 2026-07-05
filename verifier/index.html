@@ -240,6 +240,10 @@ function renderIntact(cert) {
     '<span class="k">Kernel</span><span class="m">' + esc(cert.kernel_version || "(not stated)") + "</span>" +
     '<span class="k">Schema</span><span class="m">v' + esc(cert.schema_version) + "</span>" +
     '<span class="k">Draft</span><span class="m">sha256 ' + esc(cert.draft_sha256) + "</span>" +
+    (cert.draft_file_sha256
+      ? '<span class="k">Draft file</span><span class="m">sha256 ' + esc(cert.draft_file_sha256) +
+        (cert.draft_extractor ? " · extracted by " + esc(cert.draft_extractor) : "") + "</span>"
+      : "") +
     '<span class="k">Sources</span><span class="m">' + (Array.isArray(cert.source_sha256s) && cert.source_sha256s.length ? cert.source_sha256s.map(esc).join("<br>") : "(none)") + "</span>" +
     '<span class="k">Record</span><span>' + claims.length + " claims · " + verified + " verified · " + altered + " altered · " + refused + " could not check</span>" +
     '<span class="k">Fingerprint</span><span class="m">' + esc(cert.fingerprint) + "</span>" +

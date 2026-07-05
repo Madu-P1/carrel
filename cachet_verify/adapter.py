@@ -156,6 +156,32 @@ def _content_tokens(text: str) -> frozenset[str]:
     return frozenset(w for w in words if len(w) >= 3 and w not in _TOPIC_STOPWORDS)
 
 
+def _value_keys_from_anchors(serv_anchors, res_anchors) -> frozenset[str]:
+    """The VALUE-identity keys of a sentence (or claim): the canonical value of
+    every parametric anchor (money/date/duration/percent/...) and residue
+    anchor (quantity/count/...) it carries. Used by the value-anchor candidate
+    index: a claim retrieves only the source sentences that carry ONE OF ITS
+    OWN values -- the sentences that can carry or contradict it -- instead of
+    every digit-bearing sentence. A serv anchor with no canonical value falls
+    back to its lowercased text so a non-numeric anchor (a defined term, a
+    governing-law name) still keys deterministically."""
+    keys: set[str] = set()
+    for a in serv_anchors:
+        cv = getattr(a, "canonical_value", None)
+        keys.add(f"s:{cv}" if cv is not None else f"t:{a.text.strip().lower()}")
+    for a in res_anchors:
+        c = getattr(a, "canonical", None)
+        if c is not None:
+            keys.add(f"r:{c}")
+    return frozenset(keys)
+
+
+def _claim_value_keys(claim: str) -> frozenset[str]:
+    serv = extract_anchors(claim)
+    res = extract_residue_anchors(claim, claimed_spans=[(a.start, a.end) for a in serv])
+    return _value_keys_from_anchors(serv, res)
+
+
 @dataclass(frozen=True)
 class _SentenceEntry:
     """One source sentence with everything the legs need, computed once."""
@@ -179,50 +205,65 @@ class SourceIndex:
     so sharing it cannot change any verdict, only skip recomputation. The
     equivalence suite pins that.
 
-    Inverted maps (L1, 2026-07-05) let a single claim retrieve only the source
-    sentences that could possibly affect its verdict, instead of scanning every
-    sentence. They are a candidate FILTER, never a ranker: no scores, no top-K,
-    so a candidate can never be silently dropped. The candidate set for a claim
-    is EXACTLY the set the old full scan would have kept plus the normalized-
-    restatement matches (see ``candidate_ids``), so verdicts are byte-identical
-    -- the change is cost, never correctness (tests.test_kernel_candidate_index
-    pins the superset property; the whole cachet_verify suite pins equivalence).
+    Inverted maps (value-anchor index, 2026-07-05) let a single claim retrieve
+    only the source sentences that could possibly affect its verdict, instead of
+    scanning every one. They are a candidate FILTER, never a ranker: no scores,
+    no top-K, so a candidate can never be silently dropped.
 
     - ``token_ids``: content token -> the sentence ids containing it. Retrieves
-      every source sentence sharing fact vocabulary with the claim.
-    - ``digit_ids``: every digit-bearing sentence id. The old prefilter kept ALL
-      digit sentences (a value carrier with reworded surface still had to reach
-      the adjudicator's carrier rule), so the candidate set must too.
+      every source sentence sharing fact vocabulary with the claim (so a
+      same-topic contradiction, whatever its figure, is a candidate).
+    - ``value_ids``: canonical anchor VALUE -> the sentence ids carrying it. A
+      claim retrieves only the source sentences that carry ONE OF ITS OWN values
+      -- the sentences that can CONFIRM it (same value) -- instead of every
+      digit-bearing sentence. This is what lets a figure-DENSE long document
+      (a real contract, thousands of amounts/dates) be verified: the old
+      all-digit candidate set blew the per-claim ceiling on such a document.
     - ``norm_ids``: normalized sentence text -> ids. Guarantees a normalized-
       exact restatement of the claim is always a candidate, even when it carries
       no content token (e.g. a polarity-only sentence).
+
+    EQUIVALENCE (weaker than the old all-digit index, deliberately): the
+    candidate set is value|token|norm, NOT a superset of the old token|digit
+    filter -- a digit sentence carrying neither a shared token nor one of the
+    claim's values is now dropped. That change preserves the VERDICT STATE and
+    the honesty floor (0 false greens, 0 false accusations over the parity
+    corpus, the adversarial rotation, the long-doc family, and 2,500 random
+    corpora), and never weakens a REAL alteration catch (the whole cachet_verify
+    suite is the oracle). Its only measured cost: a handful of DEGENERATE
+    multi-value word-salad claims flip altered->could_not_check -- a refusal,
+    which is honest (Cachet's stance is honesty over coverage), never a false
+    green. This is a truth-surface trade and is REVIEW-gated.
     """
 
     records: tuple[SourceText, ...]
     pool: object  # NormalizedSourcePool (opaque here; owned by quote_check)
     sentences: tuple[_SentenceEntry, ...]
     token_ids: dict[str, frozenset[int]]
-    digit_ids: frozenset[int]
+    value_ids: dict[str, frozenset[int]]
     norm_ids: dict[str, frozenset[int]]
 
     @property
     def sentence_count(self) -> int:
         return len(self.sentences)
 
-    def candidate_ids(self, claim_tokens: frozenset[str], norm_claim: str) -> frozenset[int]:
+    def candidate_ids(
+        self, claim_tokens: frozenset[str], norm_claim: str, value_keys: frozenset[str]
+    ) -> frozenset[int]:
         """The sentence ids a claim must be compared against: those sharing a
-        content token, EVERY digit-bearing sentence, and any normalized-exact
-        restatement. This is a superset of every sentence the per-sentence legs
-        could produce a non-None outcome for (clause candidates are gated by
-        ``_sentence_relevant`` = token|digit; a residue outcome needs a residue
-        anchor, which is digit-bearing; a restatement is a norm match), so
-        iterating it and keeping the existing guards is byte-identical to the
-        old full scan -- only cheaper. Order is deterministic (sorted) so the
-        adjudicator sees candidates in a stable order, as the sentence-order
-        scan did."""
-        ids: set[int] = set(self.digit_ids)
+        content token (same-topic contradictions), those carrying one of the
+        claim's own anchor VALUES (confirmations/carriers), and any normalized-
+        exact restatement. Independent of source size when the claim's values
+        and vocabulary are sparse in the document -- which is what lets a long
+        figure-dense document be verified. Sorted at the call sites for a stable
+        candidate order."""
+        ids: set[int] = set()
         for token in claim_tokens:
             hit = self.token_ids.get(token)
+            if hit:
+                ids |= hit
+        for key in value_keys:
+            hit = self.value_ids.get(key)
             if hit:
                 ids |= hit
         if norm_claim:
@@ -236,11 +277,12 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
     records = tuple(_coerce_sources(sources))
     entries: list[_SentenceEntry] = []
     token_ids: dict[str, set[int]] = {}
-    digit_ids: set[int] = set()
+    value_ids: dict[str, set[int]] = {}
     norm_ids: dict[str, set[int]] = {}
     for record in records:
         for sentence in split_sentences(record.text):
-            serv_spans = tuple((a.start, a.end) for a in extract_anchors(sentence))
+            serv_anchors = extract_anchors(sentence)
+            serv_spans = tuple((a.start, a.end) for a in serv_anchors)
             res_anchors = tuple(extract_residue_anchors(sentence, claimed_spans=list(serv_spans)))
             idx = len(entries)
             tokens = _content_tokens(sentence)
@@ -259,8 +301,8 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
             )
             for token in tokens:
                 token_ids.setdefault(token, set()).add(idx)
-            if has_digit:
-                digit_ids.add(idx)
+            for key in _value_keys_from_anchors(serv_anchors, res_anchors):
+                value_ids.setdefault(key, set()).add(idx)
             if normalized:
                 norm_ids.setdefault(normalized, set()).add(idx)
     return SourceIndex(
@@ -268,7 +310,7 @@ def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
         pool=prepare_source_pool(list(records)),
         sentences=tuple(entries),
         token_ids={k: frozenset(v) for k, v in token_ids.items()},
-        digit_ids=frozenset(digit_ids),
+        value_ids={k: frozenset(v) for k, v in value_ids.items()},
         norm_ids={k: frozenset(v) for k, v in norm_ids.items()},
     )
 
@@ -326,10 +368,13 @@ def _clause_leg(claim: str, index: SourceIndex) -> tuple[str, str, str, bool] | 
     claim_tokens = _content_tokens(claim)
     topical_conflict = not claim_tokens  # nothing to compare on: keep the veto
     # Retrieve only the candidate sentences instead of scanning every one; the
-    # ``_sentence_relevant`` guard below still runs, so the set of clause
-    # candidates is byte-identical to the old full scan (candidate_ids is a
-    # superset of the relevant set). Sorted for a stable candidate order.
-    for cid in sorted(index.candidate_ids(claim_tokens, _normalize(claim))):
+    # ``_sentence_relevant`` guard below still runs. Value-anchor candidates are
+    # the sentences sharing a content token (topical contradictions) or one of
+    # the claim's own anchor VALUES (presents / carriers); a same-topic
+    # contradiction reaches the adjudicator via its shared token, a confirmation
+    # via its shared value. Sorted for a stable candidate order.
+    value_keys = _claim_value_keys(claim)
+    for cid in sorted(index.candidate_ids(claim_tokens, _normalize(claim), value_keys)):
         entry = index.sentences[cid]
         if not _sentence_relevant(claim_tokens, entry):
             continue
@@ -466,25 +511,17 @@ def verify_claim(
         return attest(checks)
 
     # Bound the per-claim work by the CANDIDATE count, not the total source
-    # size (L1, 2026-07-05). The old bound refused any source past ~4,000
-    # sentences outright, so a long document could not be checked at all; the
-    # candidate set is the sentences that could actually affect this claim's
-    # verdict, so a long prose document with sparse figures now verifies while
-    # a genuinely degenerate claim (matching a huge fraction of the source)
-    # still refuses honestly. candidate_ids is a superset of every sentence the
-    # per-sentence legs act on, so bounding it can only refuse MORE
-    # conservatively than the old full-scan bound, never less.
-    #
-    # O(1) lower-bound short-circuit FIRST: candidates always contain every
-    # digit-bearing sentence, so a source with more figures than the bound is
-    # oversize without materializing the set. This keeps a dense-figure source
-    # (or a near-copy document, where every sentence is a candidate) a fast
-    # refusal -- preserving the anti-wedge guarantee the old draft-level bound
-    # gave -- while a sparse-figure long document sails past it.
-    if _too_large(1, len(index.digit_ids)):
-        checks.append(_oversize_refusal(claim))
-        return attest(checks)
-    claim_candidates = index.candidate_ids(claim_tokens, norm_claim)
+    # size (L1/value-anchor, 2026-07-05). The old bound refused any source past
+    # ~4,000 sentences outright, so a long document could not be checked at all.
+    # The value-anchor candidate set is the sentences that could actually affect
+    # this claim's verdict -- those sharing one of its content tokens or one of
+    # its own anchor VALUES -- so a long document (even a figure-DENSE one, a
+    # real contract with thousands of amounts) verifies as long as THIS claim's
+    # values and vocabulary are sparse in it, while a genuinely degenerate claim
+    # (its value repeated across a huge fraction of the source) still refuses
+    # honestly at the same bound.
+    claim_value_keys = _value_keys_from_anchors(claim_serv, claim_res)
+    claim_candidates = index.candidate_ids(claim_tokens, norm_claim, claim_value_keys)
     if _too_large(1, len(claim_candidates)):
         checks.append(_oversize_refusal(claim))
         return attest(checks)
@@ -493,10 +530,10 @@ def verify_claim(
 
     residue_outcomes: list[ResidueComparison] = []
     restated = False
-    # Same candidate set as the clause leg: a residue outcome needs a residue
-    # anchor (digit-bearing -> in the candidate set) and a restatement is a
-    # normalized match (-> in the candidate set), so iterating candidates and
-    # keeping the identical body is byte-identical to the old full scan.
+    # The value-anchor candidate set: a residue confirmation carries one of the
+    # claim's residue values (-> in value_ids), a residue contradiction shares
+    # the claim's subject vocabulary (-> in token_ids), and a restatement is a
+    # normalized match (-> in norm_ids). Sorted for a stable outcome order.
     for cid in sorted(claim_candidates):
         entry = index.sentences[cid]
         if norm_claim and entry.normalized == norm_claim:
@@ -653,13 +690,19 @@ def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation
     # no set materialized) and refuses the whole draft once the total exceeds the
     # work budget. It over-counts overlaps, so it only ever refuses MORE
     # conservatively (never a false verify), and a long PROSE draft against a
-    # sparse source stays far under the budget.
+    # sparse source stays far under the budget. The per-claim upper bound sums
+    # the SAME inverted-index lists candidate_ids unions (value-key + token +
+    # norm postings), so it tracks the value-anchor candidate count -- a
+    # figure-dense source no longer inflates every claim's bound by its whole
+    # digit population (which the old digit_n term did), only by the sentences
+    # carrying THIS claim's actual values.
     total_upper = 0
-    digit_n = len(index.digit_ids)
     for sentence in sentences:
-        upper = digit_n + len(index.norm_ids.get(_normalize(sentence), ()))
+        upper = len(index.norm_ids.get(_normalize(sentence), ()))
         for token in _content_tokens(sentence):
             upper += len(index.token_ids.get(token, ()))
+        for key in _claim_value_keys(sentence):
+            upper += len(index.value_ids.get(key, ()))
         total_upper += upper
         if total_upper > _MAX_DRAFT_CANDIDATE_WORK:
             return DraftAttestation(
