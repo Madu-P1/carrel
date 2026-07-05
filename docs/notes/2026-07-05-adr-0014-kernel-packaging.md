@@ -117,11 +117,44 @@ install ran the full deterministic path with neither present.
      depends on #199 landing: **merge #199 before `cachet-companion#1`.** This is
      exactly the two-copies-drift the extraction exists to end — a fix on one
      side that never reached the other, caught the moment they were unified.
-   - **Slice 4+ (parametric money/date half + `quote.py`) still NOT clean.** They
-     route through the kernel's eyecite-bearing `engine` modules, which have no
-     stdlib-clean parametric-only entry yet. The likely proper move is a
-     kernel-side parametric extractor the companion adopts wholesale — a focused
-     follow-up, differential-tested, its own PR.
+   - **Slices 1-3 + the kernel ReDoS fix are MERGED** (2026-07-05): carrel#199
+     (`fe1a55f3a` on main) and cachet-companion#1 (nearcopy+combine+residue, 4
+     commits rebased onto companion main). Both mains synced and green together
+     (companion 45 core tests OK against the merged kernel).
+   - **Slice 4 (parametric money/date) is NOT a delegation — investigated and
+     stopped, with evidence.** The companion's `extract_anchors` and
+     `_compare_sentence` are **co-designed**: the companion carries currency
+     INSIDE its magnitude canonical (`("EUR", val)`) so a currency swap fails the
+     canonical compare (a deliberate fix, mythos: magnitude-currency-blind-
+     false-green). The kernel's `engine.anchors` magnitude canonical is
+     units-only; the kernel reaches the SAME safe verdict (a currency swap →
+     `could_not_check`, verified by direct test 2026-07-06) but via its OWN
+     comparison path, not its anchors. So feeding the kernel's parametric anchors
+     into the companion's `_compare_sentence` would **reintroduce the currency-
+     blind false-green** — a naive extraction-delegation is unsafe. Deduping the
+     money/date half therefore requires the companion to adopt the kernel's WHOLE
+     parametric VERIFY path (extraction + comparison), not just extraction — a
+     major refactor that replaces `verify_parametric`, needing a stdlib-clean
+     parametric verify entry in the kernel. **Not worth forcing now**; the
+     remaining parametric fork is guarded against drift by the shared
+     conformance + honesty-parity corpora.
+   - **`quote.py`** (the other big companion fork, of `engine.quote_check` +
+     `engine.validators`) may be a cleaner delegation than parametric (quote
+     checking is more self-contained, and eyecite is now accepted) — worth its
+     own scoped investigation before the parametric refactor.
+
+## Where ADR-0014 stands (2026-07-06)
+
+The cleanly-dedupable duplication is gone and merged: kernel extracted +
+packaged (main), and the companion's nearcopy + combine + residue forks deleted
+and routed through the kernel. The unification lens already earned its keep by
+surfacing a real kernel ReDoS (carrel#199). What remains — the companion's
+parametric money/date extraction and `quote.py` — are behavior-equivalent
+hardened forks that are NOT simple swaps (co-designed extraction+comparison,
+load-bearing divergences), guarded against drift by the shared corpora. Fully
+finishing "delete the vendored fork" is a dedicated future project (companion
+adopts the kernel's whole parametric verify path, differential-tested), not a
+quick slice. The website mirror re-point remains a separate scoped PR.
 2. **Website mirror re-point — still open.**
    `~/Desktop/cachetverify` carries TWO pre-extraction copies of the kernel
    (`packages/cachet-kernel` and `site/api/_kernel`), both in the old
