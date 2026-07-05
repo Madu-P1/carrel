@@ -86,11 +86,27 @@ install ran the full deterministic path with neither present.
    - The kernel's full `verify_claim`/`attest_draft` API is **not**
      dependency-light (it pulls eyecite+dateutil via `engine.anchors`); only
      `contract`, `residue`, `nearcopy` import with zero heavy deps. So the
-     migration goes stdlib-clean-first: **slice 1 nearcopy (done)** → combine →
-     residue → then the parametric/quote paths (which route through the
-     eyecite-bearing engine modules — the decision slice, now unblocked by the
-     accept-eyecite posture). Companion-only seams (citation, caselaw, holding,
-     validity, cloud, clause) are NOT duplication and stay.
+     migration goes stdlib-clean-first: **slice 1 nearcopy + slice 2 combine
+     (both done, in PR #1)** → residue → then the parametric/quote paths (which
+     route through the eyecite-bearing engine modules — the decision slice, now
+     unblocked by the accept-eyecite posture). Companion-only seams (citation,
+     caselaw, holding, validity, cloud, clause) are NOT duplication and stay.
+   - **Slice 2 (combine)** was a clean duck-typed drop-in: the kernel's
+     `contract.combine` reads only `.state`, so it rolls up the companion's
+     richer `CheckResult` unchanged, and the re-export keeps
+     `from cachet_companion.verify import combine` working. Semantics identical.
+     Also cleared two pre-existing `F841` lint errors that were failing the
+     companion's forge `ruff check` invariant (unrelated to the migration).
+   - **Slices 3+ (residue, then parametric/quote) are NOT clean swaps.** The
+     companion's `parametric.py` is a single merged 470-line module where
+     quantity/count extraction is interleaved with money/magnitude/percent/date
+     in one `extract_anchors`, producing the companion's own `Anchor` type;
+     the kernel keeps `residue` separate (`ResidueAnchor`, its own span-skip and
+     year-shaped-integer handling). Routing just the residue half risks a subtle
+     verdict divergence not covered by the conformance corpus, so it needs a
+     careful refactor with differential testing (or a kernel-side stdlib
+     parametric entry the companion can adopt wholesale) — a focused follow-up,
+     not a quick swap. Left for its own session/PR.
 2. **Website mirror re-point — still open.**
    `~/Desktop/cachetverify` carries TWO pre-extraction copies of the kernel
    (`packages/cachet-kernel` and `site/api/_kernel`), both in the old
