@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import companionCert from "./__fixtures__/companion-issued-cert.json";
 import specimenCert from "./__fixtures__/specimen-cert.json";
-import { canonicalJson, sha256Hex } from "./certificate";
+import { canonicalJson, coerceCertificate, sha256Hex } from "./certificate";
 
 /**
  * The standalone verifier (verifier/index.html) is the free, dependency-less
@@ -23,8 +23,11 @@ const html = readFileSync(resolve(__dirname, "../../../../verifier/index.html"),
 /** Pull one top-level `function name(...) {...}` declaration out of the page's
  *  script by brace counting (regex-to-first-`}` breaks on nested braces). */
 function extractFunction(name: string): string {
-  const start = html.indexOf(`function ${name}`);
+  let start = html.indexOf(`function ${name}`);
   expect(start, `verifier/index.html must define function ${name}`).toBeGreaterThan(-1);
+  // An `async function` declaration must keep its async keyword, or the
+  // extracted body's await becomes a syntax error.
+  if (html.slice(Math.max(0, start - 6), start) === "async ") start -= 6;
   const open = html.indexOf("{", start);
   let depth = 0;
   for (let i = open; i < html.length; i++) {
@@ -45,12 +48,33 @@ function standaloneCanonicalJson(): CanonicalJson {
   return new Function(`${src}; return canonicalJson;`)() as CanonicalJson;
 }
 
+type Sha256Hex = (text: string) => Promise<string>;
+type Coerce = (raw: unknown) => { cert: unknown; reason: string };
+
+function standaloneSha256Hex(): Sha256Hex {
+  const src = extractFunction("sha256Hex");
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  return new Function(`${src}; return sha256Hex;`)() as Sha256Hex;
+}
+
+function standaloneCoerce(): Coerce {
+  // coerce depends on the page's own VALID_STATES/REQUIRED constants; extract
+  // them alongside so the function closes over the page's real definitions.
+  const constants = html.match(/const VALID_STATES = [^;]+;\s*const REQUIRED = [^;]+;/);
+  expect(constants, "verifier must define VALID_STATES and REQUIRED").not.toBeNull();
+  const src = extractFunction("coerce");
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  return new Function(`${constants![0]}; ${src}; return coerce;`)() as Coerce;
+}
+
 async function standaloneFingerprint(cert: Record<string, unknown>): Promise<string> {
   const canonical = standaloneCanonicalJson();
+  const digest = standaloneSha256Hex();
   const body: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cert)) if (k !== "fingerprint") body[k] = v;
-  // sha256Hex is pure WebCrypto in both implementations; reuse the app's.
-  return sha256Hex(canonical(body));
+  // The page's OWN digest, so a broken hex conversion cannot hide behind the
+  // app's implementation.
+  return digest(canonical(body));
 }
 
 describe("the standalone verifier page matches the kernel contract", () => {
@@ -82,6 +106,37 @@ describe("the standalone verifier page matches the kernel contract", () => {
     expect(await standaloneFingerprint(cert as unknown as Record<string, unknown>)).not.toBe(
       cert.fingerprint
     );
+  });
+
+  it("hex-encodes digests identically to the app (incl. low bytes needing padStart)", async () => {
+    const digest = standaloneSha256Hex();
+    // "c" hashes to 2e7d2c03...: a leading low nibble exercises padStart.
+    for (const vector of ["c", "", "cachet", "µ unicode ünïcode"]) {
+      expect(await digest(vector)).toBe(await sha256Hex(vector));
+    }
+  });
+
+  it("coerces structurally like the app, same reasons included", () => {
+    const coerce = standaloneCoerce();
+    // Non-object and bad shapes.
+    for (const bad of [null, 42, [], "x"]) {
+      const ours = coerceCertificate(bad);
+      const theirs = coerce(bad);
+      expect(Boolean(theirs.cert)).toBe(Boolean(ours.cert));
+      expect(theirs.reason).toBe(ours.reason);
+    }
+    // Each required field missing, one at a time.
+    for (const key of Object.keys(specimenCert)) {
+      const clipped = { ...(specimenCert as Record<string, unknown>) };
+      delete clipped[key];
+      const ours = coerceCertificate(clipped);
+      const theirs = coerce(clipped);
+      expect(Boolean(theirs.cert), `field ${key}`).toBe(Boolean(ours.cert));
+      expect(theirs.reason, `field ${key}`).toBe(ours.reason);
+    }
+    // A state outside the three-verdict vocabulary.
+    const badState = { ...(specimenCert as Record<string, unknown>), state: "probably_fine" };
+    expect(coerce(badState).reason).toBe(coerceCertificate(badState).reason);
   });
 
   it("keeps the page self-contained: no external requests, no telemetry", () => {

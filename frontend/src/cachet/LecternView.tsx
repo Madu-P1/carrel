@@ -41,7 +41,7 @@ import styles from "./cachet.module.css";
  * drift, capped-amount drift, an exclusivity flip, one verified term, one
  * verbatim quote) checked against the specimen MSA below. Stated plainly as a
  * specimen; the flaws are the point. */
-const SPECIMEN_DRAFT =
+export const SPECIMEN_DRAFT =
   'The Supreme Court held that "separate educational facilities are inherently unequal." Brown v. Board of Education, 347 U.S. 483 (1954).\n' +
   "That outcome was reaffirmed in Vandelay Industries v. Kramer, 512 U.S. 901 (1994).\n" +
   "The Agreement was executed on March 11, 2024.\n" +
@@ -54,7 +54,7 @@ const SPECIMEN_DRAFT =
  * proven honest by tests.test_demo_corpus). Uploaded as a real record so the
  * check above lands flags AND a confirmed beat, not a wall of refusals. */
 const SPECIMEN_RECORD_NAME = "specimen-msa-executed.md";
-const SPECIMEN_RECORD =
+export const SPECIMEN_RECORD =
   "Section 1. Effective Date. This Agreement is dated March 11, 2023.\n\n" +
   "Section 3. License Grant. Licensor hereby grants Licensee a non-exclusive,\n" +
   "non-transferable license to use the Software during the Term.\n\n" +
