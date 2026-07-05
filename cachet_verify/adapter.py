@@ -82,6 +82,14 @@ SourceInput = str | dict | SourceText
 # can rise) is ADR-0014 step-2 work.
 _MAX_SENTENCE_PAIRS = 4_000
 
+# Whole-draft aggregate work ceiling (attest_draft): the summed per-claim
+# candidate upper bound. Sized from measurement -- ~10us per candidate
+# comparison, so ~500k keeps a worst-case attest under ~5s on an M-series
+# machine, well inside the anti-wedge budget -- while a long PROSE draft against
+# a sparse source stays far below it. This is a deliberately conservative
+# ceiling; L3 (profiling + a pre-registered budget) refines it.
+_MAX_DRAFT_CANDIDATE_WORK = 500_000
+
 
 def _too_large(claim_sentence_count: int, source_sentence_count: int) -> bool:
     return claim_sentence_count * source_sentence_count > _MAX_SENTENCE_PAIRS
@@ -632,14 +640,38 @@ def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation
     if not sentences:
         return DraftAttestation(state="could_not_check")
     index = build_source_index(sources)
-    # No whole-draft multiplicative refusal (L1, 2026-07-05). The old bound
-    # (draft_sentences x source_sentences > 4,000) refused an entire long draft
-    # as one blob before checking any claim, so a 500-page brief could not be
-    # verified at all. Each verify_claim now self-bounds by its OWN candidate
-    # count, so a degenerate claim refuses individually (honest, granular) while
-    # the rest of a long draft is checked. The daemon /attest and /verify
-    # surfaces still share the identical PER-CLAIM bound, so there is no wire
-    # divergence -- attest_draft only aggregates their verdicts.
+    # AGGREGATE anti-wedge bound (L1 fix, mythos D-track+L1 c4). The old
+    # whole-draft product bound (draft_sentences x source_sentences > 4,000)
+    # refused a long prose draft outright, so the candidate index removed it and
+    # relied on the per-claim candidate bound. But a per-claim bound does NOT
+    # bound the SUM: a crafted in-caps draft (~2,500 sentences) x a source of
+    # ~3,999 candidate-bearing sentences (each claim just under the per-claim
+    # refusal) drives ~10M sentence-pair comparisons and wedges the sync worker
+    # (measured: ~15.5s at 400 claims, ~97s at 2,500). This pre-pass restores the
+    # anti-wedge guarantee WITHOUT the old over-conservatism: it sums a CHEAP
+    # per-claim candidate UPPER bound (precomputed inverted-index list lengths,
+    # no set materialized) and refuses the whole draft once the total exceeds the
+    # work budget. It over-counts overlaps, so it only ever refuses MORE
+    # conservatively (never a false verify), and a long PROSE draft against a
+    # sparse source stays far under the budget.
+    total_upper = 0
+    digit_n = len(index.digit_ids)
+    for sentence in sentences:
+        upper = digit_n + len(index.norm_ids.get(_normalize(sentence), ()))
+        for token in _content_tokens(sentence):
+            upper += len(index.token_ids.get(token, ()))
+        total_upper += upper
+        if total_upper > _MAX_DRAFT_CANDIDATE_WORK:
+            return DraftAttestation(
+                state="could_not_check",
+                claims=(
+                    ClaimAttestation(claim=draft, attestation=attest([_oversize_refusal(draft)])),
+                ),
+            )
+    # Each verify_claim additionally self-bounds by its OWN candidate count, so a
+    # single degenerate claim under the aggregate budget still refuses
+    # individually; the daemon /attest and /verify surfaces share that identical
+    # per-claim bound, so there is no wire divergence.
     claims = tuple(
         ClaimAttestation(claim=s, attestation=verify_claim(s, sources, index=index))
         for s in sentences

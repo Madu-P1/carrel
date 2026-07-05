@@ -31,6 +31,14 @@ export function apiErrorMessage(e: unknown, fallback?: string): string | undefin
   if (e instanceof ApiError) {
     const detail = (e.body as { detail?: unknown } | undefined)?.detail;
     if (typeof detail === "string" && detail.trim()) return detail;
+    // The app's structured-error convention is detail = {code, message}
+    // (e.g. /api/documents/upload, /api/verify/extract-draft). Without this
+    // branch the actionable `message` is lost and the raw "API 4xx ..." status
+    // line surfaces instead.
+    if (detail && typeof detail === "object") {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
     return e.message;
   }
   if (e instanceof Error && e.message) return e.message;

@@ -358,3 +358,28 @@ class ContractZeroEgressTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtractDraftZeroEgressTests(unittest.TestCase):
+    """mythos D-track+L1 c6: the document-draft surface (/api/verify/extract-draft)
+    runs extraction in the zero-egress-critical path, but that path was never
+    exercised under the socket ban -- so an extractor backend that lazy-downloads
+    a model (the endpoint names pdf:docling-rapidocr) could egress on first use
+    with no test catching it. This proves the extraction of a plain text draft
+    opens no socket."""
+
+    def test_extract_asset_opens_no_socket(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from services import extraction_pipeline
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "draft.txt"
+            path.write_text(
+                "The term is two years. The fee is $500 under the agreement.",
+                encoding="utf-8",
+            )
+            with _forbid_sockets():
+                asset = extraction_pipeline.extract_asset(path)
+        self.assertTrue((asset.cleaned_text or asset.raw_text).strip())

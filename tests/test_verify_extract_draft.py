@@ -134,10 +134,19 @@ class ExtractDraftRouteTests(unittest.TestCase):
         self.assertLess(response.status_code, 500)
         # A concrete, honest reason — not a silent 200 with an empty draft.
         self.assertNotEqual(response.status_code, 200)
+        # The self-verification trap must hold on the REFUSAL path too (a
+        # save-before-validate leak is likeliest here): nothing persisted.
+        self.assertEqual(_document_count(), 0, "a refused document must not create a row")
+        self.assertEqual(
+            list(self._upload_dir.iterdir()), [], "a refused document must leave no file"
+        )
 
     def test_unsupported_file_type_is_refused(self) -> None:
         response = self._post("draft.exe", b"not a document")
         self.assertEqual(response.status_code, 400, response.text)
+        # Zero-persistence holds on the reject path too.
+        self.assertEqual(_document_count(), 0)
+        self.assertEqual(list(self._upload_dir.iterdir()), [])
 
 
 if __name__ == "__main__":

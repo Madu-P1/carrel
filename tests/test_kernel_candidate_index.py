@@ -169,3 +169,82 @@ class RealLongDocumentCatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IndexedVsBruteForceEquivalence(unittest.TestCase):
+    """P1 DIFFERENTIAL (mythos D-track+L1 c7): the strongest equivalence lock.
+
+    The candidate index's whole safety case is 'byte-identical verdicts.' The
+    superset property proves the mechanism; this proves the RESULT directly by
+    running the SAME verify_claim twice on the same input -- once on the real
+    indexed candidate set, once with candidate_ids monkeypatched to return ALL
+    sentence ids (the old full scan) -- and asserting identical Attestation
+    state and check details over randomized corpora. Same code path, only the
+    candidate set differs, so a match is a direct equivalence proof; a future
+    change that made the index drop an effective sentence would diverge here."""
+
+    def test_indexed_verdicts_equal_full_scan_verdicts(self) -> None:
+        import cachet_verify.adapter as adapter
+
+        real = adapter.SourceIndex.candidate_ids
+
+        def full_scan(self, claim_tokens, norm_claim):  # noqa: ANN001 - test shim
+            return frozenset(range(len(self.sentences)))
+
+        rng = random.Random(4242)
+        for _ in range(150):
+            source = "\n".join(_sentence(rng) for _ in range(rng.randint(4, 30)))
+            claim = _sentence(rng)
+            indexed = verify_claim(claim, [source])
+            try:
+                adapter.SourceIndex.candidate_ids = full_scan
+                brute = verify_claim(claim, [source])
+            finally:
+                adapter.SourceIndex.candidate_ids = real
+            self.assertEqual(
+                (indexed.state, [(c.state, c.detail, c.subject) for c in indexed.checks]),
+                (brute.state, [(c.state, c.detail, c.subject) for c in brute.checks]),
+                f"indexed path diverged from full scan: claim={claim!r} source={source!r}",
+            )
+
+
+class AggregateAntiWedge(unittest.TestCase):
+    """mythos D-track+L1 c4: the per-claim bound does not bound the SUM. A
+    crafted in-caps draft x a source of ~3,999 candidate-bearing sentences (each
+    claim just under the per-claim refusal) drove ~10M comparisons. The
+    aggregate work pre-pass must refuse the whole draft fast."""
+
+    def test_a_crafted_just_under_bound_draft_refuses_fast(self) -> None:
+        import time
+
+        source = "\n".join(
+            f"Clause about the payment matter number {i} of the record here." for i in range(3999)
+        )
+        draft = "\n".join(
+            f"The payment matter number {i} is discussed at length in this record."
+            for i in range(2500)
+        )
+        t0 = time.perf_counter()
+        att = attest_draft(draft, [source])
+        elapsed = time.perf_counter() - t0
+        self.assertEqual(att.state, "could_not_check")
+        self.assertLess(elapsed, 5.0, f"aggregate wedge took {elapsed:.1f}s, must refuse fast")
+        self.assertTrue(
+            any("too large" in c.detail for a in att.claims for c in a.attestation.checks)
+        )
+
+    def test_a_long_prose_draft_against_a_sparse_source_still_attests(self) -> None:
+        # The fix must not over-refuse: a long prose draft (few candidates per
+        # claim) against a sparse source stays far under the aggregate budget.
+        source = "The cap is $500,000 in the agreement.\nThe term is two years."
+        draft = "\n".join(
+            f"The cap is $500,000 in the agreement number {i % 3}." for i in range(3000)
+        )
+        att = attest_draft(draft, [source])
+        # Processed PER CLAIM (3000 claims), not collapsed into the single
+        # oversize-refusal blob, and no claim carries the 'too large' refusal.
+        self.assertEqual(len(att.claims), 3000)
+        self.assertFalse(
+            any("too large" in c.detail for a in att.claims for c in a.attestation.checks),
+            "a long draft against a sparse source must not hit the aggregate ceiling",
+        )

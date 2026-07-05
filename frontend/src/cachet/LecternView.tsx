@@ -6,6 +6,7 @@ import { VerifyResults } from "@/features/verify/VerifyResults";
 import { useVerify } from "@/features/verify/useVerify";
 import verifyStyles from "@/features/verify/VerifyView.module.css";
 
+import { apiErrorMessage } from "@/services/api/client";
 import { verify as verifyApi } from "@/services/api/endpoints";
 
 import { openExamination } from "./examine/examineStore";
@@ -83,6 +84,19 @@ export function LecternView() {
   // True while a document is being extracted into the sheet.
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  // The provenance passed to the certificate, memoized on its two primitive
+  // fields so its object identity is STABLE across renders. A fresh literal
+  // each render would defeat VerifyResults' certModel memo (which redoes a
+  // SHA-256) on every engine-signal tick while a document-draft is verified.
+  const provFileSha = provenance?.fileSha256;
+  const provExtractor = provenance?.extractor;
+  const certProvenance = useMemo(
+    () =>
+      provFileSha && provExtractor
+        ? { fileSha256: provFileSha, extractor: provExtractor }
+        : undefined,
+    [provFileSha, provExtractor]
+  );
   // Counted without materializing an array of every word (a pasted brief is
   // tens of thousands of words), and memoized so engine-signal re-renders
   // during a stream skip it entirely.
@@ -169,11 +183,15 @@ export function LecternView() {
       };
     } catch (e) {
       // Honesty law: an unreadable/empty document refuses explicitly, never a
-      // silent empty draft. Leave the sheet as it was and say why.
+      // silent empty draft. Route through apiErrorMessage so the backend's
+      // actionable detail (e.g. "This document has no checkable text to
+      // verify.") reaches the user instead of the raw "API 422 ..." status
+      // line an ApiError's .message carries.
       setDocError(
-        e instanceof Error && e.message
-          ? e.message
-          : "This document could not be read as text. Nothing was verified and nothing was stored."
+        apiErrorMessage(
+          e,
+          "This document could not be read as text. Nothing was verified and nothing was stored."
+        ) ?? "This document could not be read as text. Nothing was verified and nothing was stored."
       );
     } finally {
       setDocLoading(false);
@@ -199,6 +217,11 @@ export function LecternView() {
 
   function loadSpecimen() {
     liveDraft.value = SPECIMEN_DRAFT;
+    // Replacing the draft text drops any document provenance (the honesty
+    // rule): the specimen is not the extracted bytes of a previously uploaded
+    // file, so a stale file hash must never ride along. This covers the ⌘K
+    // load-specimen verb, which is reachable even while in document mode.
+    liveDraftProvenance.value = null;
     areaRef.current?.focus();
     // Pair the specimen with its record so the one-click demo lands flags AND
     // a confirmed beat. Never auto-runs the check: verifying stays the
@@ -456,11 +479,7 @@ export function LecternView() {
               // When the draft came from a document, the certificate names the
               // file it was extracted from and how (D2/D3). Captured at verify
               // time so a later edit-as-text can't retroactively attach it.
-              draftProvenance={
-                provenance
-                  ? { fileSha256: provenance.fileSha256, extractor: provenance.extractor }
-                  : undefined
-              }
+              draftProvenance={certProvenance}
             />
           </div>
         </ErrorBoundary>

@@ -457,6 +457,21 @@ describe("LecternView document mode (Track D — verify an uploaded document)", 
     expect(mockDraftStream).not.toHaveBeenCalled();
   });
 
+  it("dropping into the specimen from document mode drops the file provenance (honesty)", async () => {
+    // mythos c1: loadSpecimen replaced the draft text but left liveDraftProvenance
+    // attached, so verifying the specimen after a document upload would certify
+    // specimen text against a file it never came from. The ⌘K load-specimen verb
+    // is reachable even in document mode; it must null the provenance.
+    extractDraft.mockResolvedValue(EXTRACTION);
+    render(<LecternView />);
+    pickDocument();
+    await screen.findByText("brief.pdf");
+    expect(liveDraftProvenance.value).not.toBeNull();
+    // Fire the palette load-specimen verb (reachable in doc mode).
+    fireEvent(window, new CustomEvent("cachet:command", { detail: { id: "load-specimen" } }));
+    expect(liveDraftProvenance.value).toBeNull();
+  });
+
   it("does not verify against the retrieval corpus for a document draft (no doc_ids)", async () => {
     // The self-verification-trap guard, from the UI side: a document draft is
     // checked as TEXT, never as a source, so verify carries no doc_ids.
