@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cachet-verify"
+version = "0.1.0"
+description = "The deterministic Cachet attestation kernel: verify(claim, sources) -> verified | altered | could_not_check. Three states, no confidence float, honest refusal, tamper-evident certificates, zero-egress loopback daemon."
+readme = "README.md"
+requires-python = ">=3.10"
+# The kernel's entire third-party runtime closure. Everything else is stdlib.
+# The AFM subject labeler's `ai.afm_client` import is lazy and try/except-guarded
+# to a regex fallback, so it is NOT a hard dependency; the `services.retrieval`
+# reference in validators is TYPE_CHECKING-only. Verified 2026-07-05.
+dependencies = [
+    "python-dateutil>=2.8",
+    "eyecite~=2.7",
+]
+
+[project.scripts]
+cachet-verify = "cachet_verify.__main__:main"
+
+[tool.setuptools]
+# The source is the repo's real `cachet_verify/` tree, reached through the
+# `cachet_verify` symlink in this directory. There is NO copy: this package and
+# the app share one source of truth, which is the whole point of the ADR-0014
+# extraction (a copy is what drifts and mints a false verdict).
+packages = ["cachet_verify", "cachet_verify.engine"]
+
+[tool.setuptools.package-data]
+# The conformance corpus is the executable honesty spec; conformance.py loads it
+# by a path relative to its own __file__, so it must ship inside the wheel.
+cachet_verify = ["conformance_corpus/*.jsonl"]
