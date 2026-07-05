@@ -97,16 +97,31 @@ install ran the full deterministic path with neither present.
      `from cachet_companion.verify import combine` working. Semantics identical.
      Also cleared two pre-existing `F841` lint errors that were failing the
      companion's forge `ruff check` invariant (unrelated to the migration).
-   - **Slices 3+ (residue, then parametric/quote) are NOT clean swaps.** The
-     companion's `parametric.py` is a single merged 470-line module where
-     quantity/count extraction is interleaved with money/magnitude/percent/date
-     in one `extract_anchors`, producing the companion's own `Anchor` type;
-     the kernel keeps `residue` separate (`ResidueAnchor`, its own span-skip and
-     year-shaped-integer handling). Routing just the residue half risks a subtle
-     verdict divergence not covered by the conformance corpus, so it needs a
-     careful refactor with differential testing (or a kernel-side stdlib
-     parametric entry the companion can adopt wholesale) — a focused follow-up,
-     not a quick swap. Left for its own session/PR.
+   - **Slice 3 (residue) landed in PR #1, via the differential-refactor route.**
+     `parametric.extract_anchors` now delegates quantity/count extraction to
+     `cachet_verify.residue.extract_residue_anchors` (which even takes a matching
+     `claimed_spans` arg); ~90 lines of duplicated residue machinery deleted
+     (`_UNIT_TABLE`, `_UNIT_WORDS`, `_QUANTITY`, `_GROUPED_COUNT`, `_PLAIN_COUNT`,
+     `_year_shaped`). Proven safe by a **3001-case differential** over
+     `extract_anchors` + `verify_parametric` — byte-identical before/after the
+     swap and after the dead-code deletion. Money/date/percent/duration
+     extraction and `_compare_sentence` stay local.
+   - **The residue swap surfaced a real kernel bug (the ADR paying off).**
+     `cachet_verify.residue._QUANTITY` had an unbounded `\d+` digit run — a
+     **ReDoS (CWE-1333)** reachable through the daemon's `/verify` claim text —
+     that the anchors engine and the companion's fork had already fixed but the
+     kernel's residue detector had drifted without. Hardened kernel-side (bound
+     to `\d{1,18}`/`(?:,\d{3}){1,8}`) with a residue ReDoS regression test, on
+     branch `kernel-residue-redos-fix` → **carrel PR #199**. No verdict change
+     (the 3001-case differential stays identical). The companion residue slice
+     depends on #199 landing: **merge #199 before `cachet-companion#1`.** This is
+     exactly the two-copies-drift the extraction exists to end — a fix on one
+     side that never reached the other, caught the moment they were unified.
+   - **Slice 4+ (parametric money/date half + `quote.py`) still NOT clean.** They
+     route through the kernel's eyecite-bearing `engine` modules, which have no
+     stdlib-clean parametric-only entry yet. The likely proper move is a
+     kernel-side parametric extractor the companion adopts wholesale — a focused
+     follow-up, differential-tested, its own PR.
 2. **Website mirror re-point — still open.**
    `~/Desktop/cachetverify` carries TWO pre-extraction copies of the kernel
    (`packages/cachet-kernel` and `site/api/_kernel`), both in the old
