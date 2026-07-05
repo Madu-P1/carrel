@@ -457,6 +457,284 @@ def check_quote_against_pool(quote: str, pool: NormalizedSourcePool) -> QuoteChe
     )
 
 
+# --- Adverse-frame demotion (Q1) --------------------------------------------
+#
+# Verbatim PRESENCE is not faithful QUOTATION. A lawyer can quote words that
+# appear in the cited source only inside a frame that REJECTS or merely
+# ATTRIBUTES the quoted proposition -- "Appellant argued that '<quote>'; the
+# court rejected that contention." The engine's verbatim check greens on
+# presence and cannot see that the source denies the proposition, so it must
+# DEMOTE such a quote from `verified` to could_not_check.
+#
+# This is refuse-leaning and creates NO new green path: it only downgrades a
+# would-be verified quote. Over-refusal is the failure mode to avoid, because a
+# clean-source verbatim quote is one of ADR-0013's provably-safe green anchors.
+# Two guards keep it conservative:
+#   1. It fires only when EVERY located occurrence of the quoted span in a
+#      confident source is adverse-framed; a single clean occurrence keeps the
+#      quote verified.
+#   2. If the span cannot be located contiguously in any confident source (a
+#      spliced / ellipsis-bridged quote), it does NOT demote -- it cannot read
+#      the frame, so it declines to refuse rather than guess (a documented
+#      residual, matching the truncation-variant residual).
+# All detection runs on the already-normalized confident-source pool: no source
+# text crosses any new boundary, so the zero-egress posture is unchanged.
+
+# The authority DISAPPROVING a proposition (rejected / reversed / found wanting).
+_REJECTION = re.compile(
+    r"\b(?:reject\w*|declin\w*|refus\w*|disagree\w*|unpersuasive|unavailing|"
+    r"meritless|without\s+merit|no\s+merit|not\s+persuaded|err\w*|erroneous|"
+    r"overrul\w*|revers\w*|vacat\w*|abrogat\w*|repudiat\w*|disapprov\w*|"
+    r"untenable|dismiss\w*)\b",
+    re.I,
+)
+
+# The quoted clause is ATTRIBUTED to an advocate -- an argument, not the court's
+# own statement: "<argue|contend|the contention> that '<quote>'". Anchored to
+# the END of the governing prefix so the attribution word must directly
+# introduce the quote's own "that"-clause (not a sibling clause elsewhere).
+_ATTRIB_INTRO = re.compile(
+    r"\b(?:argu\w*|contend\w*|contention|assert\w*|assertion|alleg\w*|allegation|"
+    r"claim\w*|urg\w*|maintain\w*|posit\w*|insist\w*|submit\w*|submission|"
+    r"suggest\w*|theor\w*|hypothe\w*|proposition|premise|notion|position|view)"
+    r"\s+that[\s\"'“”(]*$",
+    re.I,
+)
+
+# The quoted clause is the OBJECT of an authority-proposition noun that a
+# rejection in the SAME clause disapproves: "overrule the ... holding that
+# '<quote>'", "erred in holding that '<quote>'".
+_AUTH_PROP_INTRO = re.compile(
+    r"\b(?:holding|ruling|finding|conclusion|proposition|premise|doctrine|"
+    r"notion|view|theory|rule)\s+that[\s\"'“”(]*$",
+    re.I,
+)
+
+# The authority verb governing the quote is NEGATED or declined: "did not hold
+# that '<quote>'", "declined to find that '<quote>'". The negation IS the
+# rejection, so no separate rejection marker is required.
+_NEG_AUTHORITY = re.compile(
+    r"(?:\b(?:did|do|does|would|could|can|will|is|was|were|are|has|have|had|shall)"
+    r"\b\s+)?\b(?:not|never|n't)\b\s+(?:\w+\s+){0,2}?"
+    r"(?:hold|held|rule|ruled|find|found|conclude\w*|decide\w*|agree\w*|accept\w*|"
+    r"say|said|state\w*|reason\w*)\s+that[\s\"'“”(]*$"
+    r"|\b(?:declin\w*|refus\w*|fail\w*)\s+to\s+"
+    r"(?:hold|rule|find|conclude|agree|accept|recognize)\w*\s+that[\s\"'“”(]*$",
+    re.I,
+)
+
+# A non-binding voice (a dissent / concurrence) advancing the proposition.
+_DISSENT = re.compile(r"\b(?:dissent\w*|concurr\w*)\b", re.I)
+
+# The court ADOPTING a proposition (its own conclusion, however introduced): an
+# adopted argument is not adverse, even when the same sentence rejects something
+# ELSE. Vetoes the attribution path so "accepted the contention that '<quote>',
+# and rejected the laches defense" (a court-adopted quote) stays verified, and so
+# does a quote whose argument was rejected below but affirmed on appeal.
+_ADOPTION = re.compile(
+    r"\b(?:accept\w*|agree\w*|adopt\w*|credit\w*|embrac\w*|endors\w*|approve\w*|"
+    r"uph(?:o|e)ld\w*|affirm\w*|sustain\w*)\b",
+    re.I,
+)
+
+# A noun naming the ADVOCACY the quote is the content of. The attribution path
+# demotes only when a rejection lands on advocacy language (this is what the
+# rejection is ABOUT): "rejected that CONTENTION", "this ARGUMENT is
+# unpersuasive", "the CLAIM that '<quote>' is without merit". Bare "harmless-
+# error" / "dismissed for want of jurisdiction" carry no advocacy noun, so they
+# no longer over-refuse a faithful attributed quote.
+_ARG_NOUN = re.compile(
+    r"\b(?:argument|arguments|contention|contentions|claim|claims|assertion|"
+    r"assertions|allegation|allegations|theory|theories|position|positions|view|"
+    r"views|notion|notions|proposition|propositions|premise|premises|"
+    r"submission|submissions)\b",
+    re.I,
+)
+
+# Coordinating / subordinating breaks: the governing prefix is what remains
+# AFTER the last of these before the quote, so a rejection of a SIBLING clause
+# ("rejected the fraud claim but held that '<quote>'") never taints the quote's
+# own clause.
+_CLAUSE_BREAK = re.compile(
+    r";|,|\bbut\b|\byet\b|\bhowever\b|\balthough\b|\bwhereas\b|\bwhile\b", re.I
+)
+
+# A sentence terminator on normalized (whitespace-collapsed) source text.
+_SENTENCE_END = re.compile(r"[.!?][\"'”’)\]]*(?=\s|$)")
+
+# Abbreviations whose trailing period is NOT a sentence boundary. Without this,
+# "did not, per Corp. Inc., hold that '<quote>'" splits at "Corp."/"Inc." and the
+# negation is severed from the quote's sentence, so a genuinely negated-authority
+# quote silently escapes demotion. Matched case-insensitively on the word before
+# the period.
+_ABBREVIATIONS = frozenset(
+    "corp inc ltd co llc llp plc no nos vs v id ibid mr mrs ms dr st st jr sr "
+    "art arts sec secs cf eg ie etc al ex rev ed dept assn bros u.s".split()
+)
+
+# Bound on the source text inspected on EACH side of an occurrence when reading
+# its frame. The frame signals (attribution / negation / rejection of the
+# advocacy, the following sentence) are all LOCAL to the quote; a real sentence
+# is far shorter than this. Capping the window makes the per-occurrence cost
+# O(1) in the source size, so a pathological single-"sentence" paste with
+# thousands of anchor repeats can no longer drive quadratic work (CWE-1333 /
+# CWE-407): the whole scan stays linear in the source length.
+_FRAME_WINDOW = 800
+
+# Defense-in-depth occurrence budget (CWE-770): a genuine cited source never
+# repeats the SAME quoted span thousands of times. Past this many occurrences the
+# input is pathological (a DoS-shaped paste), so the detector stops assessing and
+# declines to demote -- the same over-refusal-safe direction it takes for an
+# unreadable frame. This caps the total per-request frame work regardless of
+# source size, independent of the adapter's sentence-pair ceiling (which counts
+# sentences, not repeats, so a single-"sentence" repeat-pad slips under it).
+_MAX_OCCURRENCES = 2_000
+
+
+def _governing_prefix(pre_quote: str) -> str:
+    """The clause that directly introduces the quote: the tail of the pre-quote
+    text after the last clause-break token. Keeps a sibling clause's rejection
+    from being read as governing THIS quote (the over-refusal guard for
+    'rejected X but held that "<quote>"')."""
+    last = 0
+    for m in _CLAUSE_BREAK.finditer(pre_quote):
+        last = m.end()
+    return pre_quote[last:]
+
+
+def _is_sentence_end(text: str, term_start: int) -> bool:
+    """True when the terminator at ``term_start`` in ``text`` really ends a
+    sentence (not an abbreviation's period like 'Corp.' or 'v.')."""
+    if text[term_start] != ".":
+        return True  # ! and ? are never abbreviation marks
+    before = text[:term_start]
+    word = re.search(r"([A-Za-z][A-Za-z.]*)$", before)
+    return not (word and word.group(1).lower().strip(".") in _ABBREVIATIONS)
+
+
+def _sentence_and_next(source: str, start: int, end: int) -> tuple[str, str, str]:
+    """Return (pre_quote, sentence, next_sentence) for an occurrence [start,end).
+
+    ``sentence`` is the whole sentence containing the occurrence (semicolons and
+    commas are kept INSIDE it, so a rejection after a semicolon still counts);
+    ``pre_quote`` is the sentence text before the occurrence; ``next_sentence``
+    is the following sentence (an attributed argument is often rejected in the
+    NEXT sentence: 'X argued that "..." We reject that contention.').
+
+    Only a BOUNDED window (``_FRAME_WINDOW`` chars each side) is inspected, so the
+    cost is independent of the source length -- the frame is always local to the
+    quote. Sentence boundaries are abbreviation-aware so a mid-sentence 'Corp.'
+    does not sever the frame."""
+    lo = max(0, start - _FRAME_WINDOW)
+    hi = min(len(source), end + _FRAME_WINDOW)
+
+    # Sentence start: just after the last real terminator in the left window.
+    sent_start = lo
+    for m in _SENTENCE_END.finditer(source, lo, start):
+        if _is_sentence_end(source, m.start()):
+            sent_start = m.end()
+
+    # Sentence end + next-sentence end: the first two real terminators at/after
+    # the occurrence, within the right window.
+    sent_end = hi
+    next_end = hi
+    seen_current = False
+    for m in _SENTENCE_END.finditer(source, end, hi):
+        if not _is_sentence_end(source, m.start()):
+            continue
+        if not seen_current:
+            sent_end = m.end()
+            seen_current = True
+        else:
+            next_end = m.end()
+            break
+
+    pre_quote = source[sent_start:start]
+    sentence = source[sent_start:sent_end].strip()
+    next_sentence = source[sent_end:next_end].strip() if seen_current else ""
+    return pre_quote, sentence, next_sentence
+
+
+def _occurrence_is_adverse(pre_quote: str, sentence: str, next_sentence: str) -> bool:
+    """True when this occurrence of the quote sits in a rejecting / attributing
+    frame. See the module note for the family of frames and the over-refusal
+    guards."""
+    gov = _governing_prefix(pre_quote)
+    # A negated / declined authority verb governing the quote: the negation is
+    # itself the rejection ("did not hold that '<quote>'").
+    if _NEG_AUTHORITY.search(gov):
+        return True
+    # An attributed argument whose ADVOCACY is rejected. The rejection must land
+    # on advocacy language (an argument/contention/claim...) in the same or the
+    # next sentence, and the court must not have ADOPTED it (an adopted argument,
+    # or one rejected-below-but-affirmed, is the court's own conclusion). This
+    # binds the rejection to the quoted proposition rather than to any incidental
+    # rejection word elsewhere in the sentence.
+    zone = f"{sentence} {next_sentence}"
+    if (
+        _ATTRIB_INTRO.search(gov)
+        and not _ADOPTION.search(zone)
+        and _REJECTION.search(zone)
+        and _ARG_NOUN.search(zone)
+    ):
+        return True
+    # The quote is the OBJECT of an authority-proposition noun disapproved in the
+    # SAME clause ("overrule the holding that '<quote>'", "erred in holding that").
+    if _AUTH_PROP_INTRO.search(gov) and _REJECTION.search(gov):
+        return True
+    # A non-binding voice advancing the proposition against a disagreeing court.
+    if _DISSENT.search(gov) and _REJECTION.search(sentence):
+        return True
+    return False
+
+
+def quote_adverse_framed(quote: str, pool: NormalizedSourcePool) -> bool:
+    """True when a would-be `verified` quote must DEMOTE to could_not_check.
+
+    The quote is located in the confident-source pool by its longest contiguous
+    anchor (the whole span, else its longest edit-split run), leading-letter
+    case flexed exactly as the presence check flexes it. It is adverse only when
+    that anchor is located AND every one of its occurrences is adverse-framed;
+    one clean occurrence, or an unlocatable (spliced) span, keeps it verified.
+    Pure; reads only the pre-normalized confident pool.
+
+    Cost is linear in the confident-source length: locating an anchor is one
+    ``finditer`` pass, and each occurrence's frame is read from a bounded window
+    (``_sentence_and_next``), so a large or repeat-padded source cannot drive
+    superlinear work. The scan short-circuits on the first clean occurrence."""
+    confident = pool.norm_confident
+    if not confident:
+        return False
+
+    anchors: list[str] = []
+    for variant in first_letter_variants(quote or ""):
+        norm = normalize_for_verbatim(variant)
+        if norm:
+            anchors.append(norm)
+    for run in split_runs(quote or ""):
+        for variant in first_letter_variants(run):
+            norm = normalize_for_verbatim(variant)
+            if norm:
+                anchors.append(norm)
+    # Longest first: assess the most substantive contiguous anchor that appears,
+    # so a short incidental sub-run occurring elsewhere never drives the verdict.
+    for anchor in sorted(dict.fromkeys(anchors), key=len, reverse=True):
+        located = False
+        examined = 0
+        for source in confident:
+            for m in re.finditer(re.escape(anchor), source, re.I):
+                examined += 1
+                if examined > _MAX_OCCURRENCES:
+                    return False  # pathological repeat-pad: decline to assess
+                located = True
+                pre_quote, sentence, next_sentence = _sentence_and_next(source, m.start(), m.end())
+                if not _occurrence_is_adverse(pre_quote, sentence, next_sentence):
+                    return False  # a clean occurrence exists: the quote stands
+        if located:
+            return True  # located, and every occurrence was adverse-framed
+    return False  # nothing located contiguously: cannot read the frame, do not refuse
+
+
 def check_quote_against_sources(quote: str, sources: list) -> QuoteCheckResult:
     """Check one quoted span against a pool of candidate sources.
 

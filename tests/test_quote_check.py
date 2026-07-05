@@ -21,6 +21,7 @@ from services.legal.quote_check import (
     check_quote_against_sources,
     extract_draft_quotes,
     prepare_source_pool,
+    quote_adverse_framed,
     split_runs,
 )
 
@@ -558,6 +559,208 @@ class WordLevelAutopsyTests(unittest.TestCase):
         altered, _, segs = self._kinds("applied as unconstitutional was statute the")
         self.assertTrue(any(s.kind == "altered" for s in segs))
         self.assertIn("statute", altered)  # whole-phrase fallback strikes everything
+
+
+class AdverseFrameDemotionTests(unittest.TestCase):
+    """Q1: a verbatim quote whose only source occurrence sits in a rejecting or
+    attributing frame must DEMOTE (`quote_adverse_framed` True); a clean-source
+    verbatim quote, or an adverse word about a DIFFERENT proposition, must not.
+
+    Cracks from the cachet-adversary round on the refuse-vs-over-refuse
+    tradeoff, locked as held-out cases. The detector only demotes a would-be
+    `verified` quote; it never greens anything.
+    """
+
+    QUOTE = "the covenant runs with the land"
+
+    def _adverse(self, source: str, quote: str | None = None) -> bool:
+        pool = prepare_source_pool([source])
+        return quote_adverse_framed(quote or self.QUOTE, pool)
+
+    # --- adverse frames: MUST demote --------------------------------------
+    def test_attributed_argument_rejected_same_sentence(self) -> None:
+        # The confirmed repro: "argued that <quote>; the court rejected ...".
+        self.assertTrue(
+            self._adverse(
+                "Appellant argued that the covenant runs with the land; "
+                "the court rejected that contention."
+            )
+        )
+
+    def test_contention_found_unpersuasive(self) -> None:
+        self.assertTrue(
+            self._adverse(
+                "Plaintiff contends that the covenant runs with the land, "
+                "but we find this argument unpersuasive."
+            )
+        )
+
+    def test_claim_without_merit(self) -> None:
+        self.assertTrue(
+            self._adverse("The claim that the covenant runs with the land is without merit.")
+        )
+
+    def test_assertion_not_persuaded(self) -> None:
+        self.assertTrue(
+            self._adverse(
+                "We are not persuaded by the assertion that the covenant runs with the land."
+            )
+        )
+
+    def test_negated_authority_did_not_hold(self) -> None:
+        self.assertTrue(
+            self._adverse("The court did not hold that the covenant runs with the land.")
+        )
+
+    def test_declined_to_find(self) -> None:
+        self.assertTrue(
+            self._adverse("The court declined to find that the covenant runs with the land.")
+        )
+
+    def test_overruled_prior_holding(self) -> None:
+        self.assertTrue(
+            self._adverse("We overrule the prior holding that the covenant runs with the land.")
+        )
+
+    def test_erred_in_holding(self) -> None:
+        self.assertTrue(
+            self._adverse("The trial court erred in holding that the covenant runs with the land.")
+        )
+
+    def test_attributed_argument_rejected_next_sentence(self) -> None:
+        # The rejection lands in the FOLLOWING sentence, still governing the
+        # attributed quote.
+        self.assertTrue(
+            self._adverse(
+                "Appellant argued that the covenant runs with the land. We reject that contention."
+            )
+        )
+
+    def test_dissent_would_hold_majority_disagrees(self) -> None:
+        self.assertTrue(
+            self._adverse(
+                "The dissent would hold that the covenant runs with the land, "
+                "but the majority disagrees."
+            )
+        )
+
+    # --- clean frames: MUST NOT demote (over-refusal is the failure mode) ---
+    def test_clean_holding_stays_verified(self) -> None:
+        self.assertFalse(self._adverse("The court held that the covenant runs with the land."))
+
+    def test_rejection_of_a_different_proposition_does_not_demote(self) -> None:
+        # "rejected the fraud claim" governs a SIBLING clause; the quote is held.
+        self.assertFalse(
+            self._adverse(
+                "The court rejected the fraud claim but held that the covenant runs with the land."
+            )
+        )
+
+    def test_authority_adopting_an_argument_stays_verified(self) -> None:
+        # An adopted (agreed-with) argument is the court's own conclusion.
+        self.assertFalse(
+            self._adverse(
+                "We agree with appellant's argument that the covenant runs with the land."
+            )
+        )
+
+    def test_clean_occurrence_in_its_own_sentence_stays_verified(self) -> None:
+        # A rejection about an unrelated view sits in a PRIOR sentence; the
+        # quote's own sentence carries no attribution and no rejection.
+        self.assertFalse(
+            self._adverse(
+                "The statute is unconstitutional, we reject that view. "
+                "Separately, the covenant runs with the land as settled law."
+            )
+        )
+
+    def test_no_confident_source_never_demotes(self) -> None:
+        # A partial (non-confident) source cannot ground a demotion.
+        pool = prepare_source_pool(
+            [SourceText(text="argued that the covenant runs with the land", complete=False)]
+        )
+        self.assertFalse(quote_adverse_framed(self.QUOTE, pool))
+
+    def test_unlocatable_spliced_span_never_demotes(self) -> None:
+        # The whole span is not contiguous in the source (an interior splice),
+        # so the frame cannot be read: decline to refuse rather than guess.
+        pool = prepare_source_pool(
+            ["Appellant argued that the covenant, in some cases, runs with the land."]
+        )
+        self.assertFalse(quote_adverse_framed(self.QUOTE, pool))
+
+    # --- Mythos-found over-refusals: an adopted argument, or a rejection about a
+    #     DIFFERENT proposition, must NOT demote a faithful quote -----------------
+    def test_adopted_contention_with_unrelated_rejection_stays_verified(self) -> None:
+        # Mythos correctness finding: the court ADOPTED the contention; the
+        # rejection is of a different defense in the same sentence.
+        self.assertFalse(
+            self._adverse(
+                "The panel accepted the contention that the covenant runs with the land, "
+                "and rejected the laches defense as untenable."
+            )
+        )
+
+    def test_argued_quote_with_rejected_below_but_affirmed_stays_verified(self) -> None:
+        # An argument rejected below but affirmed on appeal is the court's own
+        # conclusion; the adoption veto keeps it verified.
+        self.assertFalse(
+            self._adverse(
+                "The argument that the covenant runs with the land, though rejected below, "
+                "was affirmed on appeal."
+            )
+        )
+
+    def test_non_merits_rejection_words_do_not_demote(self) -> None:
+        # Mythos correctness finding: "harmless-error" / "dismissed for want of
+        # jurisdiction" carry no advocacy noun the rejection lands on, so an
+        # attributed quote is not over-refused.
+        self.assertFalse(
+            self._adverse(
+                "The appellant argued that the covenant runs with the land "
+                "under a harmless-error standard."
+            )
+        )
+        self.assertFalse(
+            self._adverse(
+                "Appellant argued that the covenant runs with the land before the "
+                "appeal was dismissed for want of jurisdiction."
+            )
+        )
+
+    def test_rejected_advocacy_noun_still_demotes(self) -> None:
+        # The over-refusal fix must not blunt a genuine catch: a rejection that
+        # DOES land on advocacy language still demotes.
+        self.assertTrue(
+            self._adverse(
+                "Appellant's argument that the covenant runs with the land is "
+                "unpersuasive and rejected."
+            )
+        )
+
+    def test_pathological_repeat_pad_is_bounded_and_never_demotes(self) -> None:
+        # Mythos security finding (CWE-770/1333): a repeat-padded source must not
+        # drive superlinear work. Past the occurrence budget the detector bails
+        # to could-not-assess (never demotes), and it returns promptly.
+        import time
+
+        source = "did not hold that the covenant runs with the land and " * 40_000
+        pool = prepare_source_pool([source])
+        started = time.monotonic()
+        result = quote_adverse_framed(self.QUOTE, pool)
+        elapsed = time.monotonic() - started
+        self.assertFalse(result)
+        self.assertLess(elapsed, 5.0, "adverse-frame scan must stay bounded on a repeat-pad")
+
+    def test_abbreviation_does_not_split_the_frame(self) -> None:
+        # A mid-sentence legal abbreviation ("Corp.") must not sever the frame:
+        # the rejection after the abbreviation still governs the attributed quote.
+        self.assertTrue(
+            self._adverse(
+                "Appellant argued that the covenant runs with the land, a contention "
+                "the Corp. Inc. panel rejected as meritless."
+            )
+        )
 
 
 if __name__ == "__main__":
