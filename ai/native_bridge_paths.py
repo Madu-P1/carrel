@@ -1,15 +1,17 @@
 """Shared discovery for Carrel's Swift sidecar binaries.
 
-Two bridges live in macos-app/:
+Three bridges live in macos-app/:
 
 * `EinsteinIngestionBridge` (PDF + Vision OCR), called by
   `services/extraction/native_bridge.py`.
 * `EinsteinAFMBridge` (Apple Foundation Models), called by
   `ai/afm_client.py`.
+* `EinsteinEncodeBridge` (NLContextualEmbedding sentence encoder),
+  called by `services/retrieval/embeddings.py::AppleContextualEmbedder`.
 
-Both are produced by `swift build` and copied into `dist/` (or the
+All are produced by `swift build` and copied into `dist/` (or the
 .app bundle's `Contents/MacOS/` in production builds). This module
-centralizes the candidate-path walk so neither caller hardcodes its
+centralizes the candidate-path walk so no caller hardcodes its
 own list.
 """
 
@@ -48,6 +50,7 @@ def _candidates_for(name: str) -> list[Path]:
 
 INGESTION_BRIDGE_CANDIDATES: list[Path] = _candidates_for("EinsteinIngestionBridge")
 AFM_BRIDGE_CANDIDATES: list[Path] = _candidates_for("EinsteinAFMBridge")
+ENCODE_BRIDGE_CANDIDATES: list[Path] = _candidates_for("EinsteinEncodeBridge")
 
 
 def find_binary(candidates: list[Path]) -> Path | None:

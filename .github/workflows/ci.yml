@@ -272,7 +272,8 @@ jobs:
         run: |
           swift build --package-path macos-app \
             --product EinsteinDesktop \
-            --product EinsteinIngestionBridge
+            --product EinsteinIngestionBridge \
+            --product EinsteinEncodeBridge
       - name: Build EinsteinAFMBridge without the FoundationModels macro plugin
         # Regression guard. Without -DCARREL_AFM the @Generable / @Guide
         # path is compiled out, so the AFM bridge must build on a
