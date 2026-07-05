@@ -170,37 +170,98 @@ class SourceIndex:
     for the single-claim path). The index is pure data -- no I/O, no network --
     so sharing it cannot change any verdict, only skip recomputation. The
     equivalence suite pins that.
+
+    Inverted maps (L1, 2026-07-05) let a single claim retrieve only the source
+    sentences that could possibly affect its verdict, instead of scanning every
+    sentence. They are a candidate FILTER, never a ranker: no scores, no top-K,
+    so a candidate can never be silently dropped. The candidate set for a claim
+    is EXACTLY the set the old full scan would have kept plus the normalized-
+    restatement matches (see ``candidate_ids``), so verdicts are byte-identical
+    -- the change is cost, never correctness (tests.test_kernel_candidate_index
+    pins the superset property; the whole cachet_verify suite pins equivalence).
+
+    - ``token_ids``: content token -> the sentence ids containing it. Retrieves
+      every source sentence sharing fact vocabulary with the claim.
+    - ``digit_ids``: every digit-bearing sentence id. The old prefilter kept ALL
+      digit sentences (a value carrier with reworded surface still had to reach
+      the adjudicator's carrier rule), so the candidate set must too.
+    - ``norm_ids``: normalized sentence text -> ids. Guarantees a normalized-
+      exact restatement of the claim is always a candidate, even when it carries
+      no content token (e.g. a polarity-only sentence).
     """
 
     records: tuple[SourceText, ...]
     pool: object  # NormalizedSourcePool (opaque here; owned by quote_check)
     sentences: tuple[_SentenceEntry, ...]
+    token_ids: dict[str, frozenset[int]]
+    digit_ids: frozenset[int]
+    norm_ids: dict[str, frozenset[int]]
 
     @property
     def sentence_count(self) -> int:
         return len(self.sentences)
 
+    def candidate_ids(self, claim_tokens: frozenset[str], norm_claim: str) -> frozenset[int]:
+        """The sentence ids a claim must be compared against: those sharing a
+        content token, EVERY digit-bearing sentence, and any normalized-exact
+        restatement. This is a superset of every sentence the per-sentence legs
+        could produce a non-None outcome for (clause candidates are gated by
+        ``_sentence_relevant`` = token|digit; a residue outcome needs a residue
+        anchor, which is digit-bearing; a restatement is a norm match), so
+        iterating it and keeping the existing guards is byte-identical to the
+        old full scan -- only cheaper. Order is deterministic (sorted) so the
+        adjudicator sees candidates in a stable order, as the sentence-order
+        scan did."""
+        ids: set[int] = set(self.digit_ids)
+        for token in claim_tokens:
+            hit = self.token_ids.get(token)
+            if hit:
+                ids |= hit
+        if norm_claim:
+            norm_hit = self.norm_ids.get(norm_claim)
+            if norm_hit:
+                ids |= norm_hit
+        return frozenset(ids)
+
 
 def build_source_index(sources: Sequence[SourceInput]) -> SourceIndex:
     records = tuple(_coerce_sources(sources))
     entries: list[_SentenceEntry] = []
+    token_ids: dict[str, set[int]] = {}
+    digit_ids: set[int] = set()
+    norm_ids: dict[str, set[int]] = {}
     for record in records:
         for sentence in split_sentences(record.text):
             serv_spans = tuple((a.start, a.end) for a in extract_anchors(sentence))
             res_anchors = tuple(extract_residue_anchors(sentence, claimed_spans=list(serv_spans)))
+            idx = len(entries)
+            tokens = _content_tokens(sentence)
+            has_digit = any(ch.isdigit() for ch in sentence)
+            normalized = _normalize(sentence)
             entries.append(
                 _SentenceEntry(
                     text=sentence,
-                    normalized=_normalize(sentence),
-                    tokens=_content_tokens(sentence),
-                    has_digit=any(ch.isdigit() for ch in sentence),
+                    normalized=normalized,
+                    tokens=tokens,
+                    has_digit=has_digit,
                     serv_spans=serv_spans,
                     res_anchors=res_anchors,
                     all_spans=serv_spans + tuple((a.start, a.end) for a in res_anchors),
                 )
             )
+            for token in tokens:
+                token_ids.setdefault(token, set()).add(idx)
+            if has_digit:
+                digit_ids.add(idx)
+            if normalized:
+                norm_ids.setdefault(normalized, set()).add(idx)
     return SourceIndex(
-        records=records, pool=prepare_source_pool(list(records)), sentences=tuple(entries)
+        records=records,
+        pool=prepare_source_pool(list(records)),
+        sentences=tuple(entries),
+        token_ids={k: frozenset(v) for k, v in token_ids.items()},
+        digit_ids=frozenset(digit_ids),
+        norm_ids={k: frozenset(v) for k, v in norm_ids.items()},
     )
 
 
@@ -256,7 +317,12 @@ def _clause_leg(claim: str, index: SourceIndex) -> tuple[str, str, str, bool] | 
     candidates: list[ClauseCandidate] = []
     claim_tokens = _content_tokens(claim)
     topical_conflict = not claim_tokens  # nothing to compare on: keep the veto
-    for entry in index.sentences:
+    # Retrieve only the candidate sentences instead of scanning every one; the
+    # ``_sentence_relevant`` guard below still runs, so the set of clause
+    # candidates is byte-identical to the old full scan (candidate_ids is a
+    # superset of the relevant set). Sorted for a stable candidate order.
+    for cid in sorted(index.candidate_ids(claim_tokens, _normalize(claim))):
+        entry = index.sentences[cid]
         if not _sentence_relevant(claim_tokens, entry):
             continue
         verdict = verify_claim_against_clause(claim, entry.text)
@@ -344,6 +410,7 @@ def verify_claim(
     res_spans = [(a.start, a.end) for a in claim_res]
     claim_all_spans = serv_spans + res_spans
     norm_claim = _normalize(claim)
+    claim_tokens = _content_tokens(claim)
 
     if not claim_serv and not claim_res:
         # Anchor-free near-copy flip leg (live-smoke gap, 2026-07-02): a claim
@@ -390,8 +457,27 @@ def verify_claim(
         )
         return attest(checks)
 
-    # Bound the per-claim work: one claim vs every source sentence.
-    if _too_large(1, index.sentence_count):
+    # Bound the per-claim work by the CANDIDATE count, not the total source
+    # size (L1, 2026-07-05). The old bound refused any source past ~4,000
+    # sentences outright, so a long document could not be checked at all; the
+    # candidate set is the sentences that could actually affect this claim's
+    # verdict, so a long prose document with sparse figures now verifies while
+    # a genuinely degenerate claim (matching a huge fraction of the source)
+    # still refuses honestly. candidate_ids is a superset of every sentence the
+    # per-sentence legs act on, so bounding it can only refuse MORE
+    # conservatively than the old full-scan bound, never less.
+    #
+    # O(1) lower-bound short-circuit FIRST: candidates always contain every
+    # digit-bearing sentence, so a source with more figures than the bound is
+    # oversize without materializing the set. This keeps a dense-figure source
+    # (or a near-copy document, where every sentence is a candidate) a fast
+    # refusal -- preserving the anti-wedge guarantee the old draft-level bound
+    # gave -- while a sparse-figure long document sails past it.
+    if _too_large(1, len(index.digit_ids)):
+        checks.append(_oversize_refusal(claim))
+        return attest(checks)
+    claim_candidates = index.candidate_ids(claim_tokens, norm_claim)
+    if _too_large(1, len(claim_candidates)):
         checks.append(_oversize_refusal(claim))
         return attest(checks)
 
@@ -399,7 +485,12 @@ def verify_claim(
 
     residue_outcomes: list[ResidueComparison] = []
     restated = False
-    for entry in index.sentences:
+    # Same candidate set as the clause leg: a residue outcome needs a residue
+    # anchor (digit-bearing -> in the candidate set) and a restatement is a
+    # normalized match (-> in the candidate set), so iterating candidates and
+    # keeping the identical body is byte-identical to the old full scan.
+    for cid in sorted(claim_candidates):
+        entry = index.sentences[cid]
         if norm_claim and entry.normalized == norm_claim:
             restated = True
         if claim_res:
@@ -541,16 +632,14 @@ def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation
     if not sentences:
         return DraftAttestation(state="could_not_check")
     index = build_source_index(sources)
-    # Bound the whole-draft work: draft sentences x source sentences. Past the
-    # ceiling the draft refuses as one honest could_not_check rather than
-    # wedging the caller (mythos final-sweep, high). Guarding here AND in
-    # verify_claim means the daemon /attest and /verify surfaces share the
-    # bound -- no wire divergence.
-    if _too_large(len(sentences), index.sentence_count):
-        return DraftAttestation(
-            state="could_not_check",
-            claims=(ClaimAttestation(claim=draft, attestation=attest([_oversize_refusal(draft)])),),
-        )
+    # No whole-draft multiplicative refusal (L1, 2026-07-05). The old bound
+    # (draft_sentences x source_sentences > 4,000) refused an entire long draft
+    # as one blob before checking any claim, so a 500-page brief could not be
+    # verified at all. Each verify_claim now self-bounds by its OWN candidate
+    # count, so a degenerate claim refuses individually (honest, granular) while
+    # the rest of a long draft is checked. The daemon /attest and /verify
+    # surfaces still share the identical PER-CLAIM bound, so there is no wire
+    # divergence -- attest_draft only aggregates their verdicts.
     claims = tuple(
         ClaimAttestation(claim=s, attestation=verify_claim(s, sources, index=index))
         for s in sentences

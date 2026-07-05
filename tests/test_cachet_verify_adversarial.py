@@ -90,9 +90,15 @@ class ResourceBoundTests(unittest.TestCase):
     def test_oversize_near_copy_draft_refuses_fast(self) -> None:
         import time
 
-        # A near-copy document where every sentence is relevant (the prefilter
-        # cannot help): draft x source sentence-pairs blow past the ceiling.
-        block = "\n".join(f"Item {i}: the payment covers {i} units." for i in range(300))
+        # A near-copy document where every sentence is a candidate (all digit-
+        # bearing) AND the source is past the ceiling, so the per-claim O(1)
+        # lower-bound refuses each claim without running the legs. This is the
+        # anti-wedge guarantee under the L1 candidate index: a genuinely huge
+        # near-copy document still refuses near-instantly rather than doing the
+        # superlinear sentence-pair fan-out (mythos final-sweep, high). (A
+        # SPARSE-figure long document, by contrast, now processes -- see
+        # tests.test_kernel_candidate_index.)
+        block = "\n".join(f"Item {i}: the payment covers {i} units." for i in range(4500))
         t0 = time.perf_counter()
         d = attest_draft(block, [block])
         elapsed = time.perf_counter() - t0
