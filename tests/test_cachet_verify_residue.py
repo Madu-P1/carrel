@@ -9,6 +9,7 @@ false red.
 
 from __future__ import annotations
 
+import time
 import unittest
 from decimal import Decimal
 
@@ -190,6 +191,26 @@ class ResidueAdapterIntegrationTests(unittest.TestCase):
             ["The rubric awards a 9 g for clarity."],
         )
         self.assertNotEqual("altered", a.state)
+
+
+class ResidueComplexityTests(unittest.TestCase):
+    """A long anchorless digit run must not make residue extraction quadratic.
+
+    `_QUANTITY`'s number sub-pattern is length-bounded so an unbounded `\\d+`
+    cannot backtrack super-linearly before the required trailing unit. Regression
+    guard for the CWE-1333 ReDoS ADR-0014 surfaced: the companion's parametric
+    fork carried this bound; the kernel's residue detector had drifted without it.
+    """
+
+    def test_long_digit_run_stays_linear(self) -> None:
+        start = time.perf_counter()
+        extract_residue_anchors("9" * 40_000)
+        self.assertLess(time.perf_counter() - start, 2.0)
+
+    def test_long_grouped_run_stays_linear(self) -> None:
+        start = time.perf_counter()
+        extract_residue_anchors(("1," + "234," * 200) + "5 mg")
+        self.assertLess(time.perf_counter() - start, 2.0)
 
 
 if __name__ == "__main__":
