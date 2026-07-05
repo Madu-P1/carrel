@@ -60,24 +60,42 @@ fallback, reached only when `CARREL_SUBJECT_LABELER=afm`; `engine/validators.py`
 `services.retrieval.typed_hybrid` import is `TYPE_CHECKING`-only. The isolated
 install ran the full deterministic path with neither present.
 
-## What remains of ADR-0014 (cross-repo, DESTRUCTIVE — needs go-ahead)
+## Operator decisions (2026-07-05)
 
-Not done here, deliberately, because each deletes or overwrites code in another
-repo:
+- **Git history:** branch protection forbids force-pushing `main`, so the
+  extraction (`c90d11af8`) and packaging (`a8afc3c7c`) commits **stay on main**
+  (both green); all remaining ADR-0014 work goes through PRs. The redundant
+  `cachet-kernel-extraction` branch was deleted.
+- **Companion dependency posture:** the companion depends on the **full**
+  `cachet-verify`, accepting its offline pure-Python deps (`eyecite`,
+  `dateutil`), rather than a stdlib-only `cachet-verify-core`. Confirmed on
+  corrected facts: the companion's verify bridge was previously **100% stdlib**
+  (the eyecite/dateutil references in it are comments, not imports). Zero-egress
+  is preserved — the kernel makes no network call.
 
-1. **Companion adopts the packaged kernel and its vendored fork is deleted.**
-   `~/Desktop/cachet-companion/cachet_companion/verify/*` (~5,000 lines) is a
-   **superset** of `cachet_verify` (it carries citation/validity/cloud seams
-   the kernel does not). This is a real migration, not a delete: the
-   companion-only surfaces must be re-homed as adapters over the kernel before
-   the fork can go. The drift guard is holding in the meantime (conformance
-   corpus + `nearcopy.py` byte-identical across repos, checked 2026-07-05).
-2. **Website mirror re-point.** `~/Desktop/cachetverify/packages/cachet-kernel`
-   is a path-preserving *copy* of the pre-extraction closure (still has the old
-   `src/services`, `src/ai` layout). It should become a dependency on this
-   `cachet-verify` distribution, or at minimum be re-synced to the new
-   `cachet_verify/engine/` layout. Its `pyproject` also under-declares deps
-   (omits `eyecite`), which this package fixes.
+## Cross-repo progress
 
-Both are the next ADR-0014 increments; both are destructive/cross-repo and are
-left for an explicit go-ahead.
+1. **Companion — slice 1 landed as a draft PR** (`cachet-companion#1`, branch
+   `adopt-kernel-nearcopy`). The companion deletes its byte-identical
+   `verify/nearcopy.py` and imports `verify_near_copy_flip` from the packaged
+   kernel; the old byte-identity sync test becomes an import-source assertion;
+   `requirements.txt` (the companion's first dependency) editable-installs the
+   kernel from the sibling Codex checkout. `script/verify.sh` RESULT: PASS (all
+   10 stages: 567 python / 329 node / held-out de-id gate / 7 egress
+   invariants). Scout scope + remaining slices below.
+   - The kernel's full `verify_claim`/`attest_draft` API is **not**
+     dependency-light (it pulls eyecite+dateutil via `engine.anchors`); only
+     `contract`, `residue`, `nearcopy` import with zero heavy deps. So the
+     migration goes stdlib-clean-first: **slice 1 nearcopy (done)** → combine →
+     residue → then the parametric/quote paths (which route through the
+     eyecite-bearing engine modules — the decision slice, now unblocked by the
+     accept-eyecite posture). Companion-only seams (citation, caselaw, holding,
+     validity, cloud, clause) are NOT duplication and stay.
+2. **Website mirror re-point — still open.**
+   `~/Desktop/cachetverify` carries TWO pre-extraction copies of the kernel
+   (`packages/cachet-kernel` and `site/api/_kernel`), both in the old
+   `src/{services,ai}` layout, and the site's `api/verify.py` runs one live on
+   Vercel. Re-syncing/re-pointing them to depend on `cachet-verify` is the next
+   scoped PR; it touches the deployed verify endpoint, so it gets its own
+   careful change. Its `pyproject` also under-declares deps (omits `eyecite`),
+   which this package fixes.
