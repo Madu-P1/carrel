@@ -63,6 +63,7 @@ from services.legal.structural_integrity import (
 )
 from services.bound_pairs import detect_bound_pair_conflicts
 from services.date_duration_conflict import detect_date_duration_conflicts
+from services.enumeration_count import detect_enumeration_conflicts
 from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
@@ -1313,6 +1314,30 @@ def build_deterministic_envelope(
                     span=_bp["span"],
                     start=_bp["start"],
                     end=_bp["end"],
+                )
+            )
+        )
+    # Enumeration count vs enumerated list. A lead-in declaring N items ("the following three
+    # (3) conditions:") whose enumerated markers count a different number is a FLAGGED
+    # enumeration_count_conflict; a truncated/undeterminable list is COULD_NOT_CHECK; a matching
+    # count yields nothing. detect returns dicts carrying frame_start + declared_surface (the
+    # detector keeps no single end offset), so the span/offset are adapted from those here.
+    try:
+        _en_findings = detect_enumeration_conflicts(draft)
+    except (ValueError, TypeError):
+        _en_findings = []
+    for _en in _en_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="enumeration_count_conflict"
+                    if _en["verdict"] == "contradicted"
+                    else "enumeration_count_unresolved",
+                    disposition=FLAGGED if _en["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_en["detail"],
+                    span=_en["declared_surface"],
+                    start=_en["frame_start"],
+                    end=_en["frame_end"],
                 )
             )
         )
