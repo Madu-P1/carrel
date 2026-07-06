@@ -65,6 +65,7 @@ from services.bound_pairs import detect_bound_pair_conflicts
 from services.crossref_integrity import detect_crossref_defects
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.enumeration_count import detect_enumeration_conflicts
+from services.temporal_graph import detect_temporal_contradictions
 from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
@@ -79,6 +80,14 @@ from services.retrieval.typed_hybrid import search_typed_hybrid
 from services.retrieval.validators import verbatim_run_present
 
 _DETERMINISTIC_MODEL = "deterministic-v1"
+
+# Temporal cycle detection is superlinear on the sealed synchronous /api/verify path
+# (Bellman-Ford re-run per finding over up to _MAX_CONSTRAINTS edges), so an adversarial
+# many-cycle draft could hang the request (Mythos 2026-07-06, CWE-400). Bound it to drafts
+# under this size, chosen so the worst case stays well under a second; realistic legal drafts
+# sit far below it, and a larger draft still gets every OTHER detector (only this one
+# expensive check is skipped).
+_TEMPORAL_MAX_CHARS = 50_000
 
 # courts-db id shape ("scotus", "ca9", "nysupct.newyork"): lowercase
 # alphanumerics and dots, no spaces or slashes.
@@ -1367,6 +1376,34 @@ def build_deterministic_envelope(
                     span=_cr["span"],
                     start=_cr["start"],
                     end=_cr["end"],
+                )
+            )
+        )
+    # Document-scale temporal ordering. When the stated before/after ordering constraints
+    # among events form an impossible cycle ("A before B" and "B before A"), it is a FLAGGED
+    # temporal_conflict; an ambiguous/uncomputable date is COULD_NOT_CHECK; a consistent
+    # ordering yields nothing. The detector's span is a curated cycle description and its
+    # start/end are the envelope of the involved clauses, so use its own span (not
+    # draft[start:end], which would span the whole region).
+    if len(draft) <= _TEMPORAL_MAX_CHARS:
+        try:
+            _tg_findings = detect_temporal_contradictions(draft)
+        except (ValueError, TypeError):
+            _tg_findings = []
+    else:
+        _tg_findings = []
+    for _tg in _tg_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="temporal_conflict"
+                    if _tg["verdict"] == "contradicted"
+                    else "temporal_unresolved",
+                    disposition=FLAGGED if _tg["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_tg["detail"],
+                    span=_tg["span"],
+                    start=_tg["start"],
+                    end=_tg["end"],
                 )
             )
         )
