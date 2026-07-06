@@ -62,6 +62,7 @@ from services.legal.structural_integrity import (
     check_structural_integrity,
 )
 from services.bound_pairs import detect_bound_pair_conflicts
+from services.crossref_integrity import detect_crossref_defects
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.enumeration_count import detect_enumeration_conflicts
 from services.words_figures import check_words_figures
@@ -1338,6 +1339,34 @@ def build_deterministic_envelope(
                     span=_en["declared_surface"],
                     start=_en["frame_start"],
                     end=_en["frame_end"],
+                )
+            )
+        )
+    # Cross-reference / defined-term integrity. A reference to a section/exhibit that has no
+    # matching heading in the document ("as provided in Section 9" with no Section 9) is a
+    # FLAGGED crossref_conflict; an undefined defined-term is a COULD_NOT_CHECK review prompt;
+    # a resolving reference yields nothing. The finding already carries real start/end/span
+    # (verbatim citation). The engine quotes the reference, never guesses the intended target.
+    try:
+        _cr_findings = detect_crossref_defects(draft)
+    except (ValueError, TypeError):
+        _cr_findings = []
+    for _cr in _cr_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="crossref_conflict"
+                    if _cr["verdict"] == "contradicted"
+                    else "crossref_unresolved",
+                    disposition=FLAGGED if _cr["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_cr["detail"],
+                    # Use the detector's OWN curated span (a coherent verbatim context). Its
+                    # start/end are a first-to-last-occurrence envelope for multi-occurrence
+                    # kinds (undefined-term, dup-definition), so draft[start:end] would garble
+                    # across sentences -- the detector's span is the honest, coherent evidence.
+                    span=_cr["span"],
+                    start=_cr["start"],
+                    end=_cr["end"],
                 )
             )
         )
