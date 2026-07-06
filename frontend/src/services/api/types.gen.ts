@@ -2113,6 +2113,52 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * CrossDocumentFigureRef
+         * @description One located figure inside one document. A cross-document finding carries
+         *     two or more of these; each names its OWN document and offsets, because a
+         *     cross-document conflict is inherently multi-document and a single span could
+         *     not say truthfully where each side lives.
+         */
+        CrossDocumentFigureRef: {
+            /** Document */
+            document: string;
+            /** Surface */
+            surface: string;
+            /** Normalized */
+            normalized: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Snippet */
+            snippet: string;
+        };
+        /**
+         * CrossDocumentFindingItem
+         * @description One cross-document conflict: a defined term bound to irreconcilable values
+         *     across two or more source documents. Distinct from StructuralFindingItem
+         *     (single-draft, single-span). `disposition` is "flagged" (contradicted) or
+         *     "could_not_check" (could_not_verify); there is no green state. The engine
+         *     reports the disagreement verbatim and never decides which document controls.
+         */
+        CrossDocumentFindingItem: {
+            /** Kind */
+            kind: string;
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "flagged" | "could_not_check";
+            /** Term */
+            term: string;
+            /** Dimension */
+            dimension: string;
+            /** Detail */
+            detail: string;
+            /** Figures */
+            figures?: components["schemas"]["CrossDocumentFigureRef"][];
+        };
         /** DeleteResponse */
         DeleteResponse: {
             /** Deleted */
@@ -3217,6 +3263,8 @@ export interface components {
             coverage?: components["schemas"]["VerifyCoverageItem"] | null;
             /** Structural Findings */
             structural_findings?: components["schemas"]["StructuralFindingItem"][];
+            /** Cross Document Findings */
+            cross_document_findings?: components["schemas"]["CrossDocumentFindingItem"][];
         };
         /** VerifySummaryItem */
         VerifySummaryItem: {

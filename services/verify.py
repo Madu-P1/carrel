@@ -130,6 +130,12 @@ class VerifyResult:
     # Draft-level, sibling to quote_results; empty on the LLM path and whenever the
     # engine surfaced nothing.
     structural_findings: tuple[Dict[str, Any], ...] = ()
+    # Foundry cross_document: conflicts BETWEEN source documents (a defined term
+    # bound to irreconcilable values across two or more doc_ids). Its own channel,
+    # not structural_findings, because the finding is inherently multi-document
+    # ({kind, disposition, term, dimension, detail, figures}). Empty on the LLM
+    # path, on single-document verifies, and whenever the sources agree.
+    cross_document_findings: tuple[Dict[str, Any], ...] = ()
 
 
 def _verify_framed_question(draft: str) -> str:
@@ -596,6 +602,7 @@ def verify_result_to_payload(result: VerifyResult) -> Dict[str, Any]:
         "unplaced": list(result.unplaced),
         "coverage": dict(result.coverage) if result.coverage is not None else None,
         "structural_findings": [dict(f) for f in result.structural_findings],
+        "cross_document_findings": [dict(f) for f in result.cross_document_findings],
     }
 
 
@@ -614,6 +621,7 @@ def _verify_result_from_envelope(
     model_name = str(envelope.get("model") or envelope.get("answer_model") or "")
     engine_error = envelope.get("error")
     structural_findings = tuple(envelope.get("structural_findings") or [])
+    cross_document_findings = tuple(envelope.get("cross_document_findings") or [])
 
     # Coverage honesty: the deterministic envelope emits exactly one claim per
     # draft sentence, so its claims ARE the denominator. Count them here, before
@@ -743,6 +751,7 @@ def _verify_result_from_envelope(
         unplaced=tuple(i for i in unplaced_local if i in treated_indices),
         coverage=coverage,
         structural_findings=structural_findings,
+        cross_document_findings=cross_document_findings,
     )
 
 

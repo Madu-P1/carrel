@@ -430,6 +430,35 @@ class StructuralFindingItem(BaseModel):
     target: Optional[str] = None
 
 
+class CrossDocumentFigureRef(BaseModel):
+    """One located figure inside one document. A cross-document finding carries
+    two or more of these; each names its OWN document and offsets, because a
+    cross-document conflict is inherently multi-document and a single span could
+    not say truthfully where each side lives."""
+
+    document: str
+    surface: str
+    normalized: str
+    start: int
+    end: int
+    snippet: str
+
+
+class CrossDocumentFindingItem(BaseModel):
+    """One cross-document conflict: a defined term bound to irreconcilable values
+    across two or more source documents. Distinct from StructuralFindingItem
+    (single-draft, single-span). `disposition` is "flagged" (contradicted) or
+    "could_not_check" (could_not_verify); there is no green state. The engine
+    reports the disagreement verbatim and never decides which document controls."""
+
+    kind: str
+    disposition: Literal["flagged", "could_not_check"]
+    term: str
+    dimension: str
+    detail: str
+    figures: List[CrossDocumentFigureRef] = Field(default_factory=list)
+
+
 class VerifyResponse(BaseModel):
     draft_text: str
     claim_verdicts: List[VerifyClaimVerdictItem] = Field(default_factory=list)
@@ -458,6 +487,12 @@ class VerifyResponse(BaseModel):
     # defined-term usage, internal contradictions). Draft-level, a sibling to
     # quote_results. Empty when the engine surfaced nothing.
     structural_findings: List[StructuralFindingItem] = Field(default_factory=list)
+    # Foundry cross_document: conflicts BETWEEN the source documents (a defined term
+    # bound to irreconcilable values across two or more of the doc_ids under audit).
+    # Its own channel, not structural_findings, because a cross-document finding is
+    # inherently multi-document and does not fit the single-span shape. Empty on the
+    # LLM path, on single-document verifies, and whenever the sources agree.
+    cross_document_findings: List[CrossDocumentFindingItem] = Field(default_factory=list)
 
 
 class DraftExtractionResponse(BaseModel):

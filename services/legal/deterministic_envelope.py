@@ -62,6 +62,7 @@ from services.legal.structural_integrity import (
     check_structural_integrity,
 )
 from services.bound_pairs import detect_bound_pair_conflicts
+from services.cross_document import detect_cross_document_contradictions
 from services.crossref_integrity import detect_crossref_defects
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.enumeration_count import detect_enumeration_conflicts
@@ -89,6 +90,13 @@ _DETERMINISTIC_MODEL = "deterministic-v1"
 # sit far below it, and a larger draft still gets every OTHER detector (only this one
 # expensive check is skipped).
 _TEMPORAL_MAX_CHARS = 50_000
+
+# cross_document runs fact-ledger extraction over the FULL text of every source
+# document, so bound the total corpus text it will scan (the detector already caps
+# document COUNT at _MAX_DOCS=32; this caps total SIZE). A corpus above this skips the
+# cross-document pass; every other detector still runs on the draft. Generous relative
+# to real contract sets, tight enough to keep the synchronous /api/verify path bounded.
+_CROSS_DOC_MAX_CHARS = 400_000
 
 # courts-db id shape ("scotus", "ca9", "nysupct.newyork"): lowercase
 # alphanumerics and dots, no spaces or slashes.
@@ -666,6 +674,46 @@ def _source_alias_table(
         return None
     source_text = "\n".join(row[0] for row in rows if row[0])
     return build_alias_table(source_text) or None
+
+
+def _load_documents_by_id(
+    conn: sqlite3.Connection | None, doc_ids: Sequence[str] | None
+) -> list[tuple[str, str]]:
+    """Reconstruct each source document's full text from the nodes table, as one
+    ``(doc_id, text)`` pair per document in caller order.
+
+    Offline by construction: reads node verbatim text from the local DB, no network.
+    Returns ``[]`` (the cross-document pass stays inert) when there is no connection,
+    fewer than two documents are in scope, the nodes table is absent, or the total
+    text would exceed ``_CROSS_DOC_MAX_CHARS``. A chunks-path or single-document verify
+    is then byte-identical to before. The reconstructed text is the concatenation of a
+    document's nodes in reading order, so a finding's offsets index THAT text, not the
+    original upload (same reading-order reconstruction _source_alias_table relies on).
+    """
+    if conn is None or not doc_ids or len(doc_ids) < 2:
+        return []
+    placeholders = ",".join("?" for _ in doc_ids)
+    try:
+        rows = conn.execute(
+            f"SELECT doc_id, verbatim_text FROM nodes WHERE doc_id IN ({placeholders}) "
+            "ORDER BY doc_id, reading_order",
+            list(doc_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    texts: dict[str, list[str]] = {}
+    for doc_id, verbatim in rows:
+        if doc_id and verbatim:
+            texts.setdefault(doc_id, []).append(verbatim)
+    seen: set[str] = set()
+    ordered: list[tuple[str, str]] = []
+    for d in doc_ids:
+        if d in texts and d not in seen:
+            seen.add(d)
+            ordered.append((d, "\n".join(texts[d])))
+    if len(ordered) < 2 or sum(len(t) for _, t in ordered) > _CROSS_DOC_MAX_CHARS:
+        return []
+    return ordered
 
 
 # Strip a trailing corporate suffix so "Acme Inc." and "Acme, Inc" normalize to the
@@ -1455,6 +1503,42 @@ def build_deterministic_envelope(
             )
         )
 
+    # Cross-document: conflicts BETWEEN the source documents (a defined term bound to
+    # irreconcilable values across two or more of the doc_ids under audit). Rides its OWN
+    # channel, not structural_findings, because a cross-document finding is inherently
+    # multi-document (each figure names its own document + offsets). Sources-only: the
+    # draft itself is covered by the intra-draft detectors above. Inert on < 2 documents,
+    # a chunks-path DB, or an oversized corpus (the loader returns []).
+    cross_document_findings: list[dict] = []
+    _cd_docs = _load_documents_by_id(conn, doc_ids)
+    if _cd_docs:
+        try:
+            for _cd in detect_cross_document_contradictions(_cd_docs):
+                cross_document_findings.append(
+                    {
+                        "kind": _cd["kind"],
+                        "disposition": FLAGGED
+                        if _cd["verdict"] == "contradicted"
+                        else COULD_NOT_CHECK,
+                        "term": _cd["term"],
+                        "dimension": _cd["dimension"],
+                        "detail": _cd["detail"],
+                        "figures": [
+                            {
+                                "document": _f["document"],
+                                "surface": _f["surface"],
+                                "normalized": _f["normalized"],
+                                "start": _f["start"],
+                                "end": _f["end"],
+                                "snippet": _f["snippet"],
+                            }
+                            for _f in _cd.get("figures", ())
+                        ],
+                    }
+                )
+        except (ValueError, TypeError, KeyError):
+            cross_document_findings = []
+
     return {
         "claims": claims,
         "unsupported_spans": [],
@@ -1462,4 +1546,5 @@ def build_deterministic_envelope(
         "error": None,
         "provider": "deterministic",
         "structural_findings": structural_findings,
+        "cross_document_findings": cross_document_findings,
     }
