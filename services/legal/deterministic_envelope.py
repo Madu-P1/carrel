@@ -61,6 +61,7 @@ from services.legal.structural_integrity import (
     StructuralFinding,
     check_structural_integrity,
 )
+from services.bound_pairs import detect_bound_pair_conflicts
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
@@ -1288,6 +1289,30 @@ def build_deterministic_envelope(
                     span=_dd["span"],
                     start=_dd["start"],
                     end=_dd["end"],
+                )
+            )
+        )
+    # Inverted floor/ceiling bound pairs join the same register, identical shape-safe
+    # pattern. A constraint whose floor exceeds its ceiling ("not less than sixty (60) nor
+    # more than thirty (30) days") is unsatisfiable -- a FLAGGED bound_pair_conflict. An
+    # incomparable/qualified pair is COULD_NOT_CHECK; a consistent pair yields nothing. The
+    # engine names both bounds, never which was intended. detect returns dicts.
+    try:
+        _bp_findings = detect_bound_pair_conflicts(draft)
+    except (ValueError, TypeError):
+        _bp_findings = []
+    for _bp in _bp_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="bound_pair_conflict"
+                    if _bp["verdict"] == "contradicted"
+                    else "bound_pair_unresolved",
+                    disposition=FLAGGED if _bp["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_bp["detail"],
+                    span=_bp["span"],
+                    start=_bp["start"],
+                    end=_bp["end"],
                 )
             )
         )
