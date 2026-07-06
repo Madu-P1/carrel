@@ -1522,6 +1522,108 @@
   color: var(--text-primary);
 }
 
+/* Cross-document conflict panel: a sibling to the Structure check. Same monochrome
+   register. Oxblood (--verify-flag) for a proven conflict (the same term bound to
+   irreconcilable values across sources), the quiet hairline for a not-comparable refusal.
+   Each finding carries a figure sub-list naming which document said which surface, so the
+   reviewer can point at the source. No green, no numbers. */
+.crossDocPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+}
+
+.crossDocPanelTitle {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.crossDocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.crossDocItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--hairline);
+}
+
+/* Proven conflict (two sources, irreconcilable values): oxblood, like the other flags. */
+.crossDocFlag {
+  border-left-color: var(--verify-flag);
+}
+
+/* Not-comparable refusal (competing values the engine would not convert): quiet ink. */
+.crossDocReview {
+  border-left-color: color-mix(in srgb, var(--text-tertiary) 60%, transparent);
+}
+
+.crossDocStatus {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.crossDocFlag .crossDocStatus {
+  color: var(--verify-flag);
+}
+
+.crossDocDetail {
+  margin: 0;
+  font-family: var(--font-serif-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+/* The figure sub-list: one line per document, the document name in quiet ink and the
+   verbatim surface in primary ink, so the reviewer sees which source said what at a glance.
+   The surrounding line is on hover (title) only, to keep the panel quiet. */
+.crossDocFigures {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crossDocFigure {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.crossDocFigureDoc {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.crossDocFigureSurface {
+  font-family: var(--font-serif-body);
+  color: var(--text-primary);
+}
+
 /* ============================================================
    Cachet PR5b (Direction A): Workspace / Margin / Examination
    The cold record: document body + pinned margin rail + unplaced

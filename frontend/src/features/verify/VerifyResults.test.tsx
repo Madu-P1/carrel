@@ -2,7 +2,12 @@ import { fireEvent, render, screen, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { caseLineRegister } from "./ExaminationDrawer";
-import { VerifyResults, structuralStatusLabel, verdictSummaryRegister } from "./VerifyResults";
+import {
+  VerifyResults,
+  crossDocumentStatusLabel,
+  structuralStatusLabel,
+  verdictSummaryRegister
+} from "./VerifyResults";
 import type { ClaimDisposition } from "./claimDisposition";
 import { initialStreamState, reduceStreamEvent } from "./streamProgress";
 import type { VerifyEngine } from "./useVerify";
@@ -139,6 +144,66 @@ describe("VerifyResults — SI-5 structure check panel", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       structuralStatusLabel({ kind: "future_kind", disposition: "could_not_check" } as any)
     ).toBe("Could not check");
+  });
+});
+
+describe("VerifyResults — cross-document conflict panel", () => {
+  const conflictFinding = {
+    kind: "cross_document_conflict",
+    disposition: "flagged",
+    label: "Purchase Price",
+    dimension: "money_usd",
+    detail:
+      'The term "Purchase Price" is bound to conflicting values: agreement.pdf states $5,000; amendment.pdf states $6,000.',
+    figures: [
+      { document: "agreement.pdf", surface: "$5,000", normalized: "5000", start: 0, end: 6, snippet: "…" },
+      { document: "amendment.pdf", surface: "$6,000", normalized: "6000", start: 0, end: 6, snippet: "…" }
+    ]
+  };
+  const refuseFinding = {
+    kind: "cross_document_unresolved",
+    disposition: "could_not_check",
+    label: "Fee",
+    dimension: "money_eur+money_usd",
+    detail: 'The term "Fee" carries values in different currencies that cannot be compared.',
+    figures: [
+      { document: "a.pdf", surface: "€40,000", normalized: "40000", start: 0, end: 7, snippet: "…" },
+      { document: "b.pdf", surface: "$35,000", normalized: "35000", start: 0, end: 7, snippet: "…" }
+    ]
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function engineWithCrossDoc(findings: any[]): VerifyEngine {
+    const engine = engineWith([noRecordClaim]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (engine.response as any).cross_document_findings = findings;
+    return engine;
+  }
+
+  it("renders a conflict in the oxblood register and a refusal quietly, naming both documents", () => {
+    render(<VerifyResults engine={engineWithCrossDoc([conflictFinding, refuseFinding])} draft="" />);
+    expect(screen.getByText("Cross-document check")).toBeTruthy();
+    const flagged = screen.getByText("Conflicting values").closest("li");
+    expect(flagged?.className).toContain(styles.crossDocFlag);
+    const review = screen.getByText("Not comparable").closest("li");
+    expect(review?.className).toContain(styles.crossDocReview);
+    expect(review?.className).not.toContain(styles.crossDocFlag);
+    // The figure sub-list names which document said which surface.
+    expect(screen.getByText("agreement.pdf")).toBeTruthy();
+    expect(screen.getByText("$5,000")).toBeTruthy();
+    expect(screen.getByText("amendment.pdf")).toBeTruthy();
+  });
+
+  it("renders no panel when there are no cross-document findings", () => {
+    render(<VerifyResults engine={engineWithCrossDoc([])} draft="" />);
+    expect(screen.queryByText("Cross-document check")).toBeNull();
+  });
+
+  it("labels a conflict and a refusal", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(crossDocumentStatusLabel(conflictFinding as any)).toBe("Conflicting values");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(crossDocumentStatusLabel(refuseFinding as any)).toBe("Not comparable");
   });
 });
 

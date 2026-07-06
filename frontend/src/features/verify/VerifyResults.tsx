@@ -5,6 +5,7 @@ import { ProviderQualityGateBanner } from "@/features/shared";
 import {
   briefs as briefsApi,
   type VerifyClaimVerdict,
+  type VerifyCrossDocumentFinding,
   type VerifyQuoteResult,
   type VerifyQuoteSegment,
   type VerifyStructuralFinding
@@ -385,6 +386,68 @@ function StructuralPanel({ findings }: StructuralPanelProps) {
   );
 }
 
+/** The mono-uppercase status label for a cross-document finding. A flagged item is a
+ * proven conflict (two sources bind the same term to irreconcilable values);
+ * could_not_check means the engine found competing values but would not compare across
+ * kinds, such as different currencies. */
+export function crossDocumentStatusLabel(finding: VerifyCrossDocumentFinding): string {
+  return finding.disposition === "flagged" ? "Conflicting values" : "Not comparable";
+}
+
+interface CrossDocumentPanelProps {
+  findings: VerifyCrossDocumentFinding[];
+}
+
+/**
+ * Cross-document conflict panel. Lists the engine's inter-document findings — a proven
+ * conflict (the same term bound to irreconcilable values across two or more sources) wears
+ * the oxblood register; a not-comparable refusal (competing values the engine would not
+ * convert across kinds, such as currencies) wears the quiet hairline. A sibling to the
+ * Structure check. Returns null when the engine surfaced nothing. No green, no confidence
+ * numbers, by design. Each figure names its own document + verbatim surface so the reviewer
+ * can point at which source said what; the surrounding line is on hover only, to stay quiet.
+ */
+function CrossDocumentPanel({ findings }: CrossDocumentPanelProps) {
+  if (findings.length === 0) return null;
+  return (
+    <section className={styles.crossDocPanel} aria-label="Cross-document check">
+      <h2 className={styles.crossDocPanelTitle}>Cross-document check</h2>
+      <ul className={styles.crossDocList}>
+        {findings.map((finding, i) => (
+          <li
+            key={`${finding.label}-${finding.dimension}-${i}`}
+            className={[
+              styles.crossDocItem,
+              finding.disposition === "flagged" ? styles.crossDocFlag : styles.crossDocReview
+            ].join(" ")}
+          >
+            <span className={styles.crossDocStatus}>{crossDocumentStatusLabel(finding)}</span>
+            <p className={styles.crossDocDetail}>{finding.detail}</p>
+            <ul className={styles.crossDocFigures}>
+              {(finding.figures ?? []).map((fig, j) => (
+                <li
+                  key={`${fig.document}-${j}`}
+                  className={styles.crossDocFigure}
+                  title={fig.snippet || undefined}
+                >
+                  <span className={styles.crossDocFigureDoc}>{fig.document}</span>
+                  <span className={styles.crossDocFigureSurface}>{fig.surface}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.scopeNote}>
+        This compares your source documents against each other: where two or more bind the same
+        term to a value, it checks the values agree. A flag is a proven conflict. A "not comparable"
+        item means the engine found competing values but would not convert across kinds, such as
+        different currencies, rather than guess. It never decides which document controls.
+      </p>
+    </section>
+  );
+}
+
 /**
  * A null/undefined/non-object entry in claim_verdicts or a streamed claims
  * batch (a malformed payload, a dropped SSE frame) must not crash the verdict
@@ -642,6 +705,7 @@ export function VerifyResults({
     [streaming, draft]
   );
   const structuralFindings = response?.structural_findings ?? [];
+  const crossDocumentFindings = response?.cross_document_findings ?? [];
 
   return (
     <div
@@ -850,6 +914,7 @@ export function VerifyResults({
           <QuotePanel quotes={quoteResults} />
 
           {settled && <StructuralPanel findings={structuralFindings} />}
+          {settled && <CrossDocumentPanel findings={crossDocumentFindings} />}
 
           {settled ? (
             // Render the draft as the document either way. With claim cards it shows
