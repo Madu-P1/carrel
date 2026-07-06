@@ -55,7 +55,13 @@ from services.legal.quote_check import (
     split_runs,
 )
 from services.legal.sentences import split_sentences, split_sentences_with_groups
-from services.legal.structural_integrity import check_structural_integrity
+from services.legal.structural_integrity import (
+    COULD_NOT_CHECK,
+    FLAGGED,
+    StructuralFinding,
+    check_structural_integrity,
+)
+from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
     T1Assessment,
@@ -1228,6 +1234,37 @@ def build_deterministic_envelope(
     # above; it only adds its own register. A draft with no structural defects yields
     # an empty list, never a green claim.
     structural_findings = [asdict(f) for f in check_structural_integrity(draft)]
+    # Words-vs-figures intra-span self-contradictions join the same additive register,
+    # built THROUGH StructuralFinding so the dict shape is identical by construction (kind,
+    # disposition, detail, span, start, end, target) and can never drift from the
+    # StructuralFindingItem API contract. A DEFINITE conflict (the draft states one number
+    # two ways, e.g. "thirty (40)") is FLAGGED -- confirmed, real weight, stronger than SI's
+    # own could_not_check internal_contradiction. It is NEVER a claim-vs-source verdict
+    # (there is no source) and never picks a winner (which value is right stays the human's
+    # call). An ambiguous/unparsed pair is a COULD_NOT_CHECK review prompt, never a confirmed
+    # contradiction. A consistent pair yields nothing (the detector is silent), so this can
+    # only add findings, never a green. The call is guarded: an oversized/non-str draft that
+    # the detector refuses must degrade to "no finding" (honest: we could not check), never
+    # crash the sealed verdict path into a bare 500.
+    try:
+        _wf_findings = check_words_figures(draft)
+    except (ValueError, TypeError):
+        _wf_findings = []
+    for _wf in _wf_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="words_figures_conflict"
+                    if _wf.verdict == "contradicted"
+                    else "words_figures_unresolved",
+                    disposition=FLAGGED if _wf.verdict == "contradicted" else COULD_NOT_CHECK,
+                    detail=_wf.detail,
+                    span=_wf.span,
+                    start=_wf.start,
+                    end=_wf.end,
+                )
+            )
+        )
 
     return {
         "claims": claims,
