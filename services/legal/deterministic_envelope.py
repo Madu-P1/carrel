@@ -61,6 +61,7 @@ from services.legal.structural_integrity import (
     StructuralFinding,
     check_structural_integrity,
 )
+from services.date_duration_conflict import detect_date_duration_conflicts
 from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
 from services.legal.t1_selector import (
@@ -1262,6 +1263,31 @@ def build_deterministic_envelope(
                     span=_wf.span,
                     start=_wf.start,
                     end=_wf.end,
+                )
+            )
+        )
+    # Date-range vs stated-duration self-contradictions join the same register, identical
+    # shape-safe pattern. A period whose endpoint dates cannot match the stated duration
+    # under any recognized counting convention (e.g. "Jan 1 to Jun 30 ... a period of nine
+    # (9) months") is a FLAGGED date_duration_conflict; an underdetermined one is
+    # COULD_NOT_CHECK; a consistent period yields nothing. The engine computes the span but
+    # never picks which figure is right. detect_date_duration_conflicts returns dicts.
+    try:
+        _dd_findings = detect_date_duration_conflicts(draft)
+    except (ValueError, TypeError):
+        _dd_findings = []
+    for _dd in _dd_findings:
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="date_duration_conflict"
+                    if _dd["verdict"] == "contradicted"
+                    else "date_duration_unresolved",
+                    disposition=FLAGGED if _dd["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_dd["detail"],
+                    span=_dd["span"],
+                    start=_dd["start"],
+                    end=_dd["end"],
                 )
             )
         )
