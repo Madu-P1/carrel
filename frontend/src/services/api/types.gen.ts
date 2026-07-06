@@ -2136,10 +2136,11 @@ export interface components {
         };
         /**
          * CrossDocumentFindingItem
-         * @description One cross-document conflict: a defined term bound to irreconcilable values
-         *     across two or more source documents. Distinct from StructuralFindingItem
-         *     (single-draft, single-span). `disposition` is "flagged" (contradicted) or
-         *     "could_not_check" (could_not_verify); there is no green state. The engine
+         * @description One cross-document conflict: a quoted defined term or a section/colon label
+         *     bound to irreconcilable values across two or more source documents. Distinct
+         *     from StructuralFindingItem (single-draft, single-span). `label` is the bound
+         *     term or label the figures disagree on. `disposition` is "flagged" (contradicted)
+         *     or "could_not_check" (could_not_verify); there is no green state. The engine
          *     reports the disagreement verbatim and never decides which document controls.
          */
         CrossDocumentFindingItem: {
@@ -2150,8 +2151,8 @@ export interface components {
              * @enum {string}
              */
             disposition: "flagged" | "could_not_check";
-            /** Term */
-            term: string;
+            /** Label */
+            label: string;
             /** Dimension */
             dimension: string;
             /** Detail */

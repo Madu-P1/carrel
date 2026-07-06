@@ -62,7 +62,7 @@ from services.legal.structural_integrity import (
     check_structural_integrity,
 )
 from services.bound_pairs import detect_bound_pair_conflicts
-from services.cross_document import detect_cross_document_contradictions
+from services.crossdoc_ledger import detect_crossdoc_contradictions
 from services.crossref_integrity import detect_crossref_defects
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.enumeration_count import detect_enumeration_conflicts
@@ -1503,29 +1503,36 @@ def build_deterministic_envelope(
             )
         )
 
-    # Cross-document: conflicts BETWEEN the source documents (a defined term bound to
-    # irreconcilable values across two or more of the doc_ids under audit). Rides its OWN
-    # channel, not structural_findings, because a cross-document finding is inherently
-    # multi-document (each figure names its own document + offsets). Sources-only: the
-    # draft itself is covered by the intra-draft detectors above. Inert on < 2 documents,
-    # a chunks-path DB, or an oversized corpus (the loader returns []).
+    # Cross-document: conflicts BETWEEN the source documents (a quoted defined term or a
+    # section/colon label bound to irreconcilable values across two or more of the doc_ids
+    # under audit). Rides its OWN channel, not structural_findings, because a cross-document
+    # finding is inherently multi-document (each figure names its own document + offsets).
+    # Sources-only: the draft itself is covered by the intra-draft detectors above. Inert on
+    # < 2 documents, a chunks-path DB, or an oversized corpus (the loader returns []). The
+    # detector is crossdoc_ledger (a strict superset of the earlier cross_document, measured
+    # 2026-07-07): it also binds section/colon labels, calendar dates, and refuses across
+    # currencies. Its dicts carry {verdict, kind, label, dimension, detail, figures[doc_id,
+    # surface, normalized, start, end, snippet, ...]}; the kind is canonicalized here to the
+    # channel's stable cross_document_conflict / cross_document_unresolved, matching the
+    # verdict-derived kind pattern of the sibling single-draft detectors.
     cross_document_findings: list[dict] = []
     _cd_docs = _load_documents_by_id(conn, doc_ids)
     if _cd_docs:
         try:
-            for _cd in detect_cross_document_contradictions(_cd_docs):
+            for _cd in detect_crossdoc_contradictions(_cd_docs):
+                _cd_contra = _cd["verdict"] == "contradicted"
                 cross_document_findings.append(
                     {
-                        "kind": _cd["kind"],
-                        "disposition": FLAGGED
-                        if _cd["verdict"] == "contradicted"
-                        else COULD_NOT_CHECK,
-                        "term": _cd["term"],
+                        "kind": "cross_document_conflict"
+                        if _cd_contra
+                        else "cross_document_unresolved",
+                        "disposition": FLAGGED if _cd_contra else COULD_NOT_CHECK,
+                        "label": _cd["label"],
                         "dimension": _cd["dimension"],
                         "detail": _cd["detail"],
                         "figures": [
                             {
-                                "document": _f["document"],
+                                "document": _f["doc_id"],
                                 "surface": _f["surface"],
                                 "normalized": _f["normalized"],
                                 "start": _f["start"],

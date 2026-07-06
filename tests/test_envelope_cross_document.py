@@ -1,14 +1,20 @@
 """Integration: cross-document conflicts ride their own envelope channel.
 
-Wired 2026-07-07 (Foundry campaign, first multi-document detector). A defined term
-bound to irreconcilable values across two or more SOURCE documents (the doc_ids under
-audit) surfaces as a FLAGGED cross_document_conflict on the envelope's
-``cross_document_findings`` key -- NOT structural_findings, because the finding is
-inherently multi-document (each figure names its own document + offsets). Consistent
+Wired 2026-07-07 (Foundry campaign, first multi-document detector). A quoted defined
+term or a section/colon label bound to irreconcilable values across two or more SOURCE
+documents (the doc_ids under audit) surfaces as a FLAGGED cross_document_conflict on the
+envelope's ``cross_document_findings`` key -- NOT structural_findings, because the finding
+is inherently multi-document (each figure names its own document + offsets). Consistent
 sources, a single document, and a chunks-path DB (no conn) all surface NOTHING (the
 no-false-accusation guard + backward compatibility). Every finding must satisfy
-CrossDocumentFindingItem or /api/verify's response_model 500s. The detector's own logic
-is in tests/test_cross_document.py.
+CrossDocumentFindingItem or /api/verify's response_model 500s.
+
+The detector is services.crossdoc_ledger (detect_crossdoc_contradictions), chosen over
+the earlier services.cross_document after a 2026-07-07 measurement showed it a strict
+superset: identical on cross_document's corpus, plus section/colon labels, calendar
+dates, and cross-currency refusals, with zero regressions. Its own logic is covered by
+tests/test_crossdoc_ledger.py (88 tests). The wire canonicalizes its kind to the
+channel's stable cross_document_conflict / cross_document_unresolved.
 """
 
 import sqlite3
@@ -88,6 +94,27 @@ class CrossDocumentEnvelopeWiring(unittest.TestCase):
         conn = _conn_with({"docA.pdf": DOC_A, "docB.pdf": DOC_B_CONFLICT})
         for f in _cd(DRAFT, conn=conn, doc_ids=["docA.pdf", "docB.pdf"]):
             self.assertIn(f["disposition"], ("flagged", "could_not_check"))
+
+    def test_section_colon_label_conflict_is_flagged(self):
+        # SUPERSET capability (crossdoc_ledger over cross_document): a section/colon
+        # label -- not a quoted defined term -- bound to conflicting values still flags.
+        conn = _conn_with(
+            {"docA.pdf": "Termination Fee: $5,000", "docB.pdf": "Termination Fee: $6,000"}
+        )
+        fs = _cd(DRAFT, conn=conn, doc_ids=["docA.pdf", "docB.pdf"])
+        self.assertTrue(any(f["disposition"] == "flagged" for f in fs))
+        self.assertEqual(fs[0]["label"], "Termination Fee")
+
+    def test_cross_currency_refuses_never_flags(self):
+        # SUPERSET + HONESTY: two figures in different currencies are incomparable, so
+        # the engine REFUSES (could_not_check) -- it never flags a conflict it cannot
+        # prove, and never stays falsely silent on the disagreement.
+        conn = _conn_with(
+            {"docA.pdf": 'The "Fee" means €40,000.', "docB.pdf": 'The "Fee" means $35,000.'}
+        )
+        fs = _cd(DRAFT, conn=conn, doc_ids=["docA.pdf", "docB.pdf"])
+        self.assertTrue(fs)
+        self.assertTrue(all(f["disposition"] == "could_not_check" for f in fs))
 
 
 if __name__ == "__main__":
