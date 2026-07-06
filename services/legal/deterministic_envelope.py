@@ -65,6 +65,7 @@ from services.bound_pairs import detect_bound_pair_conflicts
 from services.crossref_integrity import detect_crossref_defects
 from services.date_duration_conflict import detect_date_duration_conflicts
 from services.enumeration_count import detect_enumeration_conflicts
+from services.table_footing import detect_footing_conflicts
 from services.temporal_graph import detect_temporal_contradictions
 from services.words_figures import check_words_figures
 from services.legal.t1_gate import load_runtime_thresholds, t1_permitted
@@ -1404,6 +1405,52 @@ def build_deterministic_envelope(
                     span=_tg["span"],
                     start=_tg["start"],
                     end=_tg["end"],
+                )
+            )
+        )
+    # Table footing: a stated Total that does not equal the exact sum of the line items is a
+    # FLAGGED table_footing_conflict; a non-summable table (mixed currency, all-percent) is
+    # COULD_NOT_CHECK; a footing table yields nothing. The detector is LINE-based (its rows
+    # carry line numbers, no char offsets), so convert line -> char span here using the draft's
+    # own line boundaries, matching the detector's text.splitlines() exactly (keepends handles
+    # CRLF). span = draft[start:end] is the real table region.
+    try:
+        _tf_findings = detect_footing_conflicts(draft)
+    except (ValueError, TypeError):
+        _tf_findings = []
+    _tf_content: list[str] = []
+    _tf_line_off: list[int] = []
+    if _tf_findings:
+        _tf_content = draft.splitlines()
+        _tf_acc = 0
+        for _tf_k in draft.splitlines(keepends=True):
+            _tf_line_off.append(_tf_acc)
+            _tf_acc += len(_tf_k)
+    for _tf in _tf_findings:
+        _tf_lines = [
+            r["line"]
+            for r in _tf.get("rows", ())
+            if isinstance(r, dict)
+            and isinstance(r.get("line"), int)
+            and 0 <= r["line"] < len(_tf_line_off)
+        ]
+        if _tf_lines:
+            _tf_lo, _tf_hi = min(_tf_lines), max(_tf_lines)
+            _tf_start = _tf_line_off[_tf_lo]
+            _tf_end = _tf_line_off[_tf_hi] + len(_tf_content[_tf_hi])
+        else:
+            _tf_start = _tf_end = 0
+        structural_findings.append(
+            asdict(
+                StructuralFinding(
+                    kind="table_footing_conflict"
+                    if _tf["verdict"] == "contradicted"
+                    else "table_footing_unresolved",
+                    disposition=FLAGGED if _tf["verdict"] == "contradicted" else COULD_NOT_CHECK,
+                    detail=_tf["detail"],
+                    span=draft[_tf_start:_tf_end],
+                    start=_tf_start,
+                    end=_tf_end,
                 )
             )
         )
