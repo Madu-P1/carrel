@@ -55,7 +55,6 @@ async def lifespan(app: FastAPI):
 
     maybe_run_backfill()
     _resume_ingestion_jobs()
-    _kick_startup_calendar_sync()
     log_event(
         LOGGER,
         logging.INFO,
@@ -64,47 +63,7 @@ async def lifespan(app: FastAPI):
         data_dir=str(DATA_DIR),
         db_path=str(DB_PATH),
     )
-    try:
-        yield
-    finally:
-        from services.calendar.sync_queue import shutdown_calendar_sync_queue
-
-        shutdown_calendar_sync_queue()
-
-
-def _kick_startup_calendar_sync() -> None:
-    """Async refresh any stale calendar feed at app startup.
-
-    Stale = last_synced_at is null OR > 30 minutes ago. Submitted to
-    the same background pool used by /api/plan's SWR loop so we don't
-    spawn a second pool. Errors are logged and swallowed; one bad feed
-    must not block boot.
-    """
-    try:
-        from routes.plan import _kick_background_sync
-        from services.calendar import repository
-
-        with db_module.get_db() as conn:
-            stale = repository.list_stale_feeds(conn, threshold_minutes=30)
-
-        for feed in stale:
-            _kick_background_sync(feed.id)
-
-        if stale:
-            log_event(
-                LOGGER,
-                logging.INFO,
-                "calendar_startup_sync_kicked",
-                stale_feed_count=len(stale),
-            )
-    except Exception as exc:
-        # Defensive: any failure here must not prevent app startup.
-        log_event(
-            LOGGER,
-            logging.WARNING,
-            "calendar_startup_sync_skipped",
-            reason=exc.__class__.__name__,
-        )
+    yield
 
 
 def _resume_ingestion_jobs() -> None:

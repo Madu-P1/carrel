@@ -20,7 +20,6 @@ interface PdfToolbarProps {
   leftPanelOpen: boolean;
   outlineOpen: boolean;
   pageCount: number;
-  onCreateCard: () => void;
   onOpenSearch: () => void;
   onToggleAppSidebar: () => void;
   onToggleOutline: () => void;
@@ -57,7 +56,6 @@ export function PdfToolbar({
   leftPanelOpen,
   outlineOpen,
   pageCount,
-  onCreateCard,
   onOpenSearch,
   onToggleAppSidebar,
   onToggleOutline,
@@ -280,13 +278,6 @@ export function PdfToolbar({
             <Icon name="focus" size={14} />
           </button>
         </Tooltip>
-        <Button
-          onClick={onCreateCard}
-          size="sm"
-          variant="secondary"
-        >
-          New card
-        </Button>
         <Button
           keyHint="⌘F"
           leadingIcon={<Icon name="search" size={14} />}

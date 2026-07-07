@@ -3,10 +3,8 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import type { DocumentDetail, EvidenceResolution } from "@/services/api/endpoints";
 import { notes as notesApi } from "@/services/api/endpoints";
 import { createQuery } from "@/lib/query";
-import { Button, Icon, Stack, Tabs } from "@/design-system";
+import { Stack, Tabs } from "@/design-system";
 import type { TabItem } from "@/design-system";
-
-import { CardAiDraftDialog } from "@/features/study/CardAiDraftDialog";
 
 import { ChunksList } from "./ChunksList";
 import { ConceptsList } from "./ConceptsList";
@@ -25,9 +23,6 @@ interface SourcePanelProps {
   detail: DocumentDetail;
   docId: string;
   selectedEvidence?: EvidenceResolution | null;
-  /** Opens the manual New Card dialog (mounted by the Reader). Omitted
-   *  for non-PDF sources, which hides the New Card button. */
-  onCreateCard?: () => void;
 }
 
 /**
@@ -49,7 +44,7 @@ interface SourcePanelProps {
  * Scripted empty states per tab (no blank voids allowed). "Related"
  * always renders the empty state for now — the feature ships later.
  */
-export function SourcePanel({ detail, docId, selectedEvidence = null, onCreateCard }: SourcePanelProps) {
+export function SourcePanel({ detail, docId, selectedEvidence = null }: SourcePanelProps) {
   const chunks = detail.chunks ?? [];
   const concepts = detail.concepts ?? [];
 
@@ -69,7 +64,7 @@ export function SourcePanel({ detail, docId, selectedEvidence = null, onCreateCa
   const noteRecords = notesQuery.data.value?.notes ?? [];
 
   const [tab, setTab] = useState<TabId>(selectedEvidence ? "related" : "chunks");
-  const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  
   const currentPage = readerState.currentPage.value || null;
 
   useEffect(() => {
@@ -89,34 +84,6 @@ export function SourcePanel({ detail, docId, selectedEvidence = null, onCreateCa
   return (
     <div className={styles.panel}>
       <MetadataStripe doc={detail.document} />
-      {/*
-        PR 0a — auto-card-generation on upload is off. Users now opt
-        into AI card drafting from the document detail surface. The
-        button reuses the existing CardAiDraftDialog (which posts to
-        /api/srs/cards/ai-draft); no tier check today.
-      */}
-      <Stack direction="horizontal" gap={2}>
-        {onCreateCard ? (
-          <Button onClick={onCreateCard} variant="secondary">
-            New card
-          </Button>
-        ) : null}
-        <Button
-          leadingIcon={<Icon name="sparkle" />}
-          onClick={() => setAiDraftOpen(true)}
-          variant="secondary"
-        >
-          Draft cards with AI
-        </Button>
-      </Stack>
-      <CardAiDraftDialog
-        onCardsCreated={() => {
-          // Card creation is its own surface; the source panel doesn't
-          // own the card list. Closing is handled by the dialog itself.
-        }}
-        onClose={() => setAiDraftOpen(false)}
-        open={aiDraftOpen}
-      />
       <Tabs
         ariaLabel="Source panel sections"
         items={items}

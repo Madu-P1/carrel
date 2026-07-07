@@ -15,8 +15,7 @@ const files = [
   "design-system/primitives/ScrollArea/ScrollArea.module.css",
   "design-system/primitives/Card/Card.module.css",
   "design-system/primitives/Text/Text.module.css",
-  "app/shell/AppShell.module.css",
-  "features/ask/AskView.module.css"
+  "app/shell/AppShell.module.css"
 ].map((file) => resolve(root, file));
 
 function read(path: string): string {

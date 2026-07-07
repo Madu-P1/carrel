@@ -1,10 +1,8 @@
 import { Icon } from "@/design-system";
 
-import { SubjectRail } from "@/features/notes/components/SubjectRail";
-
 import { BrandMark } from "./BrandMark";
 import { buildSidebarSections, type SidebarNavItem } from "./sidebarSections";
-import { appShell, toggleLeft, toggleNotesRailMode } from "./useAppShell";
+import { toggleLeft } from "./useAppShell";
 import { useSidebarSignals } from "./useSidebarSignals";
 import styles from "./WorkspaceSidebar.module.css";
 
@@ -29,11 +27,9 @@ interface WorkspaceSidebarProps {
  *
  * Zones (top to bottom):
  *   1. Brand — app identity, always visible.
- *   2. Navigate — the four workspace destinations with live signals:
- *      Library shows total source count; Study shows SRS due count.
- *      Active item gets a 2px accent rail, hover lifts, idle stays quiet.
- *   3. Today — at-a-glance status for the current day. "N cards due · M new
- *      sources today" with a one-click jump into the review flow. Hides
+ *   2. Navigate — the workspace destinations. Active item gets a 2px
+ *      accent rail, hover lifts, idle stays quiet.
+ *   3. Today — at-a-glance status: source count in the library. Hides
  *      itself when there's nothing to say instead of showing filler.
  *   4. Provider footer — trust signal. Shows whether the app is running on
  *      cloud (Claude) or local (Ollama), plus the specific model id.
@@ -49,15 +45,6 @@ export function WorkspaceSidebar({
   collapsed = false
 }: WorkspaceSidebarProps) {
   const signals = useSidebarSignals();
-  const dueCount = signals.dueCount ?? 0;
-
-  // When the user is on /notes AND the rail-replacement signal is on
-  // (default), the rail's middle nav section swaps to the Notes
-  // Workspace+Subjects content. The brand mark, TodayPanel, and
-  // ProviderFooter persist — only the middle section changes. Clicking
-  // the brand mark toggles between the two modes.
-  const isNotesRailActive =
-    pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
 
   const sections = buildSidebarSections(items);
 
@@ -70,14 +57,9 @@ export function WorkspaceSidebar({
 
   return (
     <div
-      className={[
-        styles.sidebar,
-        collapsed ? styles.sidebarCollapsed : "",
-        isNotesRailActive ? styles.sidebarNotesMode : ""
-      ]
+      className={[styles.sidebar, collapsed ? styles.sidebarCollapsed : ""]
         .filter(Boolean)
         .join(" ")}
-      data-notes-rail={isNotesRailActive ? "true" : "false"}
     >
       {/*
        * Sidebar brand: icon-only. Clicking it collapses the sidebar —
@@ -93,103 +75,50 @@ export function WorkspaceSidebar({
        */}
       <header className={styles.brand}>
         <BrandMark
-          ariaLabel={
-            pathname.startsWith("/notes")
-              ? isNotesRailActive
-                ? "Show workspace navigation"
-                : "Return to Notes rail"
-              : collapsed
-                ? "Expand sidebar"
-                : "Collapse sidebar"
-          }
-          onClick={() => {
-            // On /notes, the brand mark toggles between two rail
-            // CONTENTS within the same physical rail slot:
-            //   - Notes Workspace+Subjects (default when entering /notes)
-            //   - Global workspace navigation
-            // The logo itself never moves — only what's underneath
-            // swaps with a fade. Off /notes the click reverts to the
-            // existing collapse-toggle behavior.
-            if (pathname.startsWith("/notes")) {
-              toggleNotesRailMode();
-              return;
-            }
-            toggleLeft();
-          }}
-          title={
-            pathname.startsWith("/notes")
-              ? isNotesRailActive
-                ? "Show workspace navigation"
-                : "Return to Notes rail"
-              : collapsed
-                ? "Expand sidebar (⌘B)"
-                : "Collapse sidebar (⌘B)"
-          }
+          ariaLabel={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={() => toggleLeft()}
+          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
         />
       </header>
 
-      {isNotesRailActive ? (
-        <div className={styles.notesRailSlot} aria-label="Notes navigation">
-          <SubjectRail />
-        </div>
-      ) : (
-        <nav className={styles.nav} aria-label="Workspace navigation">
-          {sections.map((section) => (
-            <div className={styles.navSection} key={section.label}>
-              <span className={styles.sectionLabel}>{section.label}</span>
-              <ul className={styles.navList}>
-                {section.items.map((item) => {
-                  const active = isItemActive(item);
-                  const badge =
-                    item.key === "study" && dueCount > 0 ? dueCount : null;
-                  return (
-                    <li key={item.path}>
-                      <button
-                        type="button"
-                        className={[
-                          styles.navItem,
-                          active ? styles.navItemActive : ""
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        onClick={() => onNavigate(item.path)}
-                        aria-current={active ? "page" : undefined}
-                        aria-label={`Open ${item.label}${
-                          item.key === "study" && badge !== null
-                            ? `, ${badge} due`
-                            : ""
-                        }`}
-                      >
-                        <span className={styles.navIcon} aria-hidden>
-                          <Icon name={item.icon} size={16} />
-                        </span>
-                        <span className={styles.navLabel}>{item.label}</span>
-                        {badge !== null && (
-                          <span
-                            className={styles.navBadge}
-                            aria-label={`${badge} cards due`}
-                          >
-                            {badge}
-                          </span>
-                        )}
-                        <span className={styles.navHint} aria-hidden>
-                          {item.commandHint}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
-      )}
+      <nav className={styles.nav} aria-label="Workspace navigation">
+        {sections.map((section) => (
+          <div className={styles.navSection} key={section.label}>
+            <span className={styles.sectionLabel}>{section.label}</span>
+            <ul className={styles.navList}>
+              {section.items.map((item) => {
+                const active = isItemActive(item);
+                return (
+                  <li key={item.path}>
+                    <button
+                      type="button"
+                      className={[
+                        styles.navItem,
+                        active ? styles.navItemActive : ""
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => onNavigate(item.path)}
+                      aria-current={active ? "page" : undefined}
+                      aria-label={`Open ${item.label}`}
+                    >
+                      <span className={styles.navIcon} aria-hidden>
+                        <Icon name={item.icon} size={16} />
+                      </span>
+                      <span className={styles.navLabel}>{item.label}</span>
+                      <span className={styles.navHint} aria-hidden>
+                        {item.commandHint}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
 
-      <TodayPanel
-        dueCount={signals.dueCount}
-        docCount={signals.docCount}
-        onStartReview={() => onNavigate("/study")}
-      />
+      <TodayPanel docCount={signals.docCount} />
 
       <ProviderFooter
         provider={signals.provider}
@@ -200,16 +129,13 @@ export function WorkspaceSidebar({
 }
 
 interface TodayPanelProps {
-  dueCount: number | null;
   docCount: number | null;
-  onStartReview: () => void;
 }
 
-function TodayPanel({ dueCount, docCount, onStartReview }: TodayPanelProps) {
-  const hasReview = typeof dueCount === "number" && dueCount > 0;
+function TodayPanel({ docCount }: TodayPanelProps) {
   const hasLibrary = typeof docCount === "number" && docCount > 0;
 
-  if (!hasReview && !hasLibrary) {
+  if (!hasLibrary) {
     // Nothing concrete to report yet — we don't render a filler panel.
     // The nav above is enough information density.
     return null;
@@ -219,29 +145,10 @@ function TodayPanel({ dueCount, docCount, onStartReview }: TodayPanelProps) {
     <section className={styles.today} aria-label="Today">
       <span className={styles.sectionLabel}>Today</span>
       <div className={styles.todayStats}>
-        {hasReview ? (
-          <span className={styles.todayStat}>
-            <strong>{dueCount}</strong> card{dueCount === 1 ? "" : "s"} due
-          </span>
-        ) : hasLibrary ? (
-          <span className={styles.todayStat}>No cards due.</span>
-        ) : null}
-        {hasLibrary ? (
-          <span className={styles.todayStatMuted}>
-            {docCount} source{docCount === 1 ? "" : "s"} in library
-          </span>
-        ) : null}
+        <span className={styles.todayStatMuted}>
+          {docCount} source{docCount === 1 ? "" : "s"} in library
+        </span>
       </div>
-      {hasReview && (
-        <button
-          type="button"
-          className={styles.todayAction}
-          onClick={onStartReview}
-        >
-          <span>Start review</span>
-          <Icon name="arrow-right" size={14} />
-        </button>
-      )}
     </section>
   );
 }

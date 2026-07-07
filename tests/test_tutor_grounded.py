@@ -6,8 +6,6 @@ from unittest import mock
 
 import main
 from ai.router import ClaudeCallResult
-from api_models import TutorQueryRequest
-from routes.tutor import tutor_query
 from services import tutor as tutor_service
 from services.retrieval.hybrid import ScoredHit
 
@@ -748,70 +746,6 @@ class GroundedTutorTests(unittest.TestCase):
 
         self.assertTrue(response.misconceptions)
         self.assertTrue(response.next_steps)
-
-    def test_route_envelope_preserves_legacy_fields_and_adds_grounded_shape(self) -> None:
-        with main.get_db() as conn:
-            self._insert_document(conn, "doc-a", "bio-a.txt", "Biology")
-            self._insert_chunk(
-                conn,
-                "chunk-1",
-                "doc-a",
-                "Mitosis separates duplicated chromosomes.",
-                section="Mitosis",
-                page_num=3,
-            )
-            self._insert_concept(conn, "concept-a", "doc-a", "Cell Division")
-            conn.commit()
-
-        hits = [
-            self._hit("chunk-1", "doc-a", "Mitosis", "Mitosis separates duplicated chromosomes.")
-        ]
-        router = StubRouter(
-            self._tool_result(
-                {
-                    "summary": "Mitosis separates duplicated chromosomes.",
-                    "claims": [
-                        {
-                            "text": "Mitosis separates duplicated chromosomes.",
-                            "citations": [
-                                {
-                                    "chunk_index": 1,
-                                    "quote": "Mitosis separates duplicated chromosomes.",
-                                }
-                            ],
-                        }
-                    ],
-                    "unsupported_spans": [],
-                }
-            )
-        )
-
-        with mock.patch("services.tutor.search_hybrid", return_value=hits):
-            # Tutor now pulls its provider from ai.providers.get_default_provider.
-            # The stub router satisfies AIProvider structurally, so substitution works.
-            with mock.patch("services.tutor.get_default_provider", return_value=router):
-                with mock.patch.dict(os.environ, {"GROUNDED_TUTOR": "on"}, clear=False):
-                    response = tutor_query(
-                        TutorQueryRequest(
-                            question="What happens in mitosis?",
-                            doc_id="doc-a",
-                            concept_id="concept-a",
-                            subject_name="Biology",
-                            confidence=35,
-                        )
-                    )
-
-        self.assertEqual("Mitosis separates duplicated chromosomes.", response["answer"])
-        self.assertTrue(response["grounded"])
-        self.assertEqual("chunk-1", response["citations"][0]["node_id"])
-        self.assertEqual("doc-a", response["citations"][0]["document_id"])
-        self.assertEqual("Mitosis separates duplicated chromosomes.", response["claims"][0]["text"])
-        self.assertIn("unsupported_spans", response)
-        self.assertIn("scaffolds", response)
-        self.assertIn("scaffold_steps", response)
-        self.assertIn("citation_drop_count", response)
-        self.assertIn("citation_repair_count", response)
-        self.assertEqual("claude-sonnet-4-6", response["model"])
 
     def test_structural_quote_passes_through_when_heuristic_flag_off(self) -> None:
         """Gate 1 (T2) regression-preservation: with RETRIEVAL_CHUNKS_HEURISTIC

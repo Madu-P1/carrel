@@ -7,7 +7,6 @@ import {
   buildActions,
   filterActions,
   type PaletteAction,
-  type PaletteContext
 } from "./actions";
 import styles from "./CommandPalette.module.css";
 
@@ -27,19 +26,16 @@ interface CommandPaletteProps {
    *  should dispatch it through the menu bus so the action routing stays in
    *  one place (AppShell). */
   onSelect: (action: PaletteAction) => void;
-  /** Context used to surface power-user shortcuts ("End current session",
-   *  etc.) alongside the static nav/view/help actions. */
-  context?: PaletteContext;
 }
 
-export function CommandPalette({ onSelect, context }: CommandPaletteProps) {
+export function CommandPalette({ onSelect }: CommandPaletteProps) {
   const open = paletteOpen.value;
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => filterActions(query, context), [query, context]);
+  const results = useMemo(() => filterActions(query), [query]);
 
   // Reset state when the palette opens.
   useEffect(() => {
@@ -174,7 +170,7 @@ export function CommandPalette({ onSelect, context }: CommandPaletteProps) {
         </div>
         <div className={styles.footer}>
           <Text tone="tertiary" variant="caption">
-            ↑↓ navigate · ⏎ run · esc close · {buildActions(context).length} commands
+            ↑↓ navigate · ⏎ run · esc close · {buildActions().length} commands
           </Text>
         </div>
       </div>

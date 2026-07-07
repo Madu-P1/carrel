@@ -1,5 +1,4 @@
 import { navigateTo } from "@/app/shell/useAppShell";
-import { sessions } from "@/services/api/endpoints";
 import type { MenuCommand } from "@/services/native/menu";
 
 export interface PaletteAction {
@@ -14,27 +13,11 @@ export interface PaletteAction {
   run?: () => void;
 }
 
-/**
- * Context the palette uses to decide which actions are relevant.
- * Extend by adding more state — e.g., `hasDueCards`, `lastReaderDocId`,
- * `lastQuestionId`. The palette then surfaces power-user-workflow
- * shortcuts that reflect THIS user's current state, not a static menu.
- */
-export interface PaletteContext {
-  /** Id of the currently-active session, if any. Powers "End session". */
-  activeSessionId?: string;
-  /** Objective label, for the action's user-facing copy. */
-  activeSessionObjective?: string;
-}
-
 const STATIC_ACTIONS: PaletteAction[] = [
-  { id: "nav.dashboard", label: "Go to Dashboard", hint: "⌘1", group: "Navigate", command: "nav.dashboard", keywords: ["home", "overview", "today"] },
-  { id: "nav.session", label: "Go to Session", hint: "⌘2", group: "Navigate", command: "nav.session", keywords: ["focus", "deep work", "pomodoro", "timer"] },
-  { id: "nav.library", label: "Go to Library", hint: "⌘3", group: "Navigate", command: "nav.library", keywords: ["sources", "docs"] },
-  { id: "nav.reader", label: "Go to Reader", hint: "⌘4", group: "Navigate", command: "nav.reader", keywords: ["pdf", "document"] },
-  { id: "nav.ask", label: "Go to Ask", hint: "⌘5", group: "Navigate", command: "nav.ask", keywords: ["tutor", "chat", "question"] },
-  { id: "nav.study", label: "Go to Study", hint: "⌘6", group: "Navigate", command: "nav.study", keywords: ["srs", "flashcards", "review"] },
-  { id: "nav.plan", label: "Go to Plan", hint: "⌘7", group: "Navigate", command: "nav.plan", keywords: ["calendar", "schedule", "coach", "week"] },
+  { id: "nav.library", label: "Go to Library", hint: "⌘1", group: "Navigate", command: "nav.library", keywords: ["sources", "docs", "vault"] },
+  { id: "nav.reader", label: "Go to Reader", hint: "⌘2", group: "Navigate", command: "nav.reader", keywords: ["pdf", "document"] },
+  { id: "nav.verify", label: "Go to Verify", hint: "⌘3", group: "Navigate", keywords: ["draft", "check", "citations"], run: () => navigateTo("/verify") },
+  { id: "nav.shelf", label: "Go to Shelf", hint: "⌘4", group: "Navigate", keywords: ["briefs", "saved", "sealed"], run: () => navigateTo("/shelf") },
   { id: "view.toggleLeftSidebar", label: "Toggle Left Sidebar", hint: "⌘B", group: "View", command: "view.toggleLeftSidebar", keywords: ["nav"] },
   { id: "view.toggleRightPanel", label: "Toggle Right Panel", hint: "⌘⌥B", group: "View", command: "view.toggleRightPanel", keywords: ["inspector", "source"] },
   { id: "view.toggleTheme", label: "Toggle Theme", hint: "⌘⇧T", group: "View", command: "view.toggleTheme", keywords: ["dark", "light"] },
@@ -44,35 +27,10 @@ const STATIC_ACTIONS: PaletteAction[] = [
   { id: "help.shortcuts", label: "Keyboard Shortcuts", hint: "?", group: "Help", command: "help.shortcuts", keywords: ["keys", "hotkeys", "cheat sheet", "help"] }
 ];
 
-/**
- * Build the full action list given current app context. Context-sensitive
- * actions (e.g., "End current session") appear at the top of the palette
- * under the Context group so they're the first thing a user sees.
- */
-export function buildActions(context: PaletteContext = {}): PaletteAction[] {
-  const contextual: PaletteAction[] = [];
-  if (context.activeSessionId) {
-    contextual.push({
-      id: "context.end-session",
-      label: context.activeSessionObjective
-        ? `End session: ${context.activeSessionObjective}`
-        : "End current session",
-      group: "Context",
-      keywords: ["stop", "finish", "complete", "done"],
-      run: async () => {
-        // endpoints + useAppShell already ship in the main chunk via other
-        // feature modules, so dynamic import here was dead optimization.
-        try {
-          await sessions.complete(context.activeSessionId!);
-          window.location.hash = "";
-          navigateTo("/session");
-        } catch (err) {
-          console.error("end-session from palette failed", err);
-        }
-      }
-    });
-  }
-  return [...contextual, ...STATIC_ACTIONS];
+/** Build the full action list. Context-sensitive actions were removed with
+ *  the Carrel extraction; the registry is static for now. */
+export function buildActions(): PaletteAction[] {
+  return [...STATIC_ACTIONS];
 }
 
 /** Backwards-compat default export used by existing tests that import
@@ -101,11 +59,8 @@ export function scoreAction(action: PaletteAction, query: string): number {
   return 0;
 }
 
-export function filterActions(
-  query: string,
-  context: PaletteContext = {}
-): PaletteAction[] {
-  return buildActions(context)
+export function filterActions(query: string): PaletteAction[] {
+  return buildActions()
     .map((action) => ({ action, score: scoreAction(action, query) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)

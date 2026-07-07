@@ -1,11 +1,6 @@
 import { render, screen } from "@testing-library/preact";
 import { describe, expect, test } from "vitest";
 
-import { AnswerSummary } from "../../src/features/ask/components/AnswerSummary";
-import {
-  DEMO_ANSWER,
-  DEMO_PROVIDER_GATE_REJECTED,
-} from "../../src/features/ask/fixtures/grounded-answer.fixture";
 import { ProviderQualityGateBanner } from "../../src/features/shared/ProviderQualityGateBanner";
 
 describe("ProviderQualityGateBanner", () => {
@@ -45,49 +40,5 @@ describe("ProviderQualityGateBanner", () => {
     render(<ProviderQualityGateBanner provider="afm" surface="verification" />);
 
     expect(screen.queryByRole("button")).toBeNull();
-  });
-});
-
-describe("AnswerSummary provenance badge", () => {
-  test("renders the ProvenanceBadge when provider is set", () => {
-    render(
-      <AnswerSummary
-        summary={DEMO_ANSWER.answer}
-        citations={DEMO_ANSWER.citations}
-        cacheHit={DEMO_ANSWER.cache_hit}
-        latencyMs={DEMO_ANSWER.latency_ms}
-        model={DEMO_ANSWER.model}
-        provider="claude"
-      />
-    );
-
-    expect(screen.getByText("Claude")).toBeDefined();
-  });
-
-  test("omits the ProvenanceBadge when provider is empty", () => {
-    render(
-      <AnswerSummary
-        summary={DEMO_ANSWER.answer}
-        citations={DEMO_ANSWER.citations}
-        cacheHit={DEMO_ANSWER.cache_hit}
-        latencyMs={DEMO_ANSWER.latency_ms}
-        model={DEMO_ANSWER.model}
-        provider=""
-      />
-    );
-
-    expect(screen.queryByText("Claude")).toBeNull();
-    expect(screen.queryByText("Apple Intelligence")).toBeNull();
-    expect(screen.queryByText("Unavailable")).toBeNull();
-  });
-});
-
-describe("DEMO_PROVIDER_GATE_REJECTED fixture", () => {
-  test("matches the fail-loud contract", () => {
-    expect(DEMO_PROVIDER_GATE_REJECTED.error).toBe("provider_below_quality_bar");
-    expect(DEMO_PROVIDER_GATE_REJECTED.grounded).toBe(false);
-    expect(DEMO_PROVIDER_GATE_REJECTED.answer).toBe("");
-    expect(DEMO_PROVIDER_GATE_REJECTED.model).toBe("");
-    expect(DEMO_PROVIDER_GATE_REJECTED.provider).toBe("afm");
   });
 });

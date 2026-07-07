@@ -2,20 +2,11 @@ import { LocationProvider, Route, Router, useLocation } from "preact-iso";
 
 import { ErrorBoundary } from "@/design-system";
 import { DemoPage } from "@/design-system/__demo__/DemoPage";
-import { AskView } from "@/features/ask/AskView";
 import { VerifyView } from "@/features/verify/VerifyView";
 import { ShelfView } from "@/features/shelf/ShelfView";
-import { ConceptGraphView } from "@/features/concepts/ConceptGraphView";
-import { DashboardView } from "@/features/dashboard/DashboardView";
 import { LibraryView } from "@/features/library/LibraryView";
-import { NoteEditor } from "@/features/notes/NoteEditor";
-import { NotesPage } from "@/features/notes/NotesPage";
 import { NotFoundView } from "@/features/NotFoundView";
-import { PlanView } from "@/features/plan/PlanView";
 import { ReaderView } from "@/features/reader/ReaderView";
-import { SearchView } from "@/features/search/SearchView";
-import { SessionView } from "@/features/session/SessionView";
-import { StudyView } from "@/features/study/StudyView";
 
 import { appShell } from "./shell/useAppShell";
 import { AppShell, BundledAppShell } from "./shell/AppShell";
@@ -39,8 +30,9 @@ import { AppShell, BundledAppShell } from "./shell/AppShell";
  */
 
 function parseBundledRoute(path: string): URL {
-  // Default landing is the Dashboard. Historically this defaulted to
-  // /library; changed when the Dashboard home landed.
+  // Default landing is the Library — the vault/upload surface that feeds
+  // Verify. (The study-era Dashboard home was removed with the Carrel
+  // extraction; Codex is Cachet's home.)
   return new URL(path || "/", "https://carrel.local");
 }
 
@@ -102,11 +94,6 @@ function BrowserVerifyRoute() {
   return <VerifyView key={brief ?? "live"} briefId={brief} />;
 }
 
-function BrowserNoteEditorRoute({ id }: { id?: string }) {
-  if (!id) return <NotesPage />;
-  return <NoteEditor id={id} />;
-}
-
 function renderBundledRoute(rawPath: string) {
   const path = parseBundledRoute(rawPath).pathname;
 
@@ -120,10 +107,6 @@ function renderBundledRoute(rawPath: string) {
     );
   }
 
-  if (path.startsWith("/ask")) {
-    return <AskView />;
-  }
-
   if (path.startsWith("/verify")) {
     // Key on the brief id so switching briefs (or brief -> live) remounts the
     // verify subtree, re-reading the cert seal seed instead of keeping a stale one.
@@ -135,49 +118,8 @@ function renderBundledRoute(rawPath: string) {
     return <ShelfView />;
   }
 
-  if (path.startsWith("/study")) {
-    return <StudyView />;
-  }
-
-  if (path.startsWith("/library")) {
-    return <LibraryView />;
-  }
-
-  if (path.startsWith("/search")) {
-    return <SearchView />;
-  }
-
-  if (path.startsWith("/concepts")) {
-    return <ConceptGraphView />;
-  }
-
-  if (path.startsWith("/session")) {
-    return <SessionView />;
-  }
-
-  if (path.startsWith("/plan")) {
-    return <PlanView />;
-  }
-
-  if (path.startsWith("/notes")) {
-    // /notes/:id renders the full-page Note Editor; /notes renders the
-    // list view. We split here in bundled mode (no preact-iso router).
-    const noteIdMatch = parseBundledRoute(path).pathname.match(
-      /^\/notes\/([^/?#]+)/
-    );
-    if (noteIdMatch?.[1]) {
-      try {
-        return <NoteEditor id={decodeURIComponent(noteIdMatch[1])} />;
-      } catch {
-        return <NoteEditor id={noteIdMatch[1]} />;
-      }
-    }
-    return <NotesPage />;
-  }
-
-  // Default landing is the Dashboard — the legacy home the user asked for,
-  // rebuilt on the new frontend.
-  return <DashboardView />;
+  // Default landing is the Library — the vault/upload surface feeding Verify.
+  return <LibraryView />;
 }
 
 /*
@@ -195,19 +137,11 @@ function BoundedRoutes() {
   return (
     <ErrorBoundary resetKey={path}>
       <Router>
-        <Route component={DashboardView} path="/" />
-        <Route component={SessionView} path="/session" />
+        <Route component={LibraryView} path="/" />
         <Route component={LibraryView} path="/library" />
         <Route component={BrowserReaderRoute} path="/reader/:id?" />
-        <Route component={AskView} path="/ask" />
         <Route component={BrowserVerifyRoute} path="/verify" />
         <Route component={ShelfView} path="/shelf" />
-        <Route component={StudyView} path="/study" />
-        <Route component={SearchView} path="/search" />
-        <Route component={ConceptGraphView} path="/concepts" />
-        <Route component={PlanView} path="/plan" />
-        <Route component={NotesPage} path="/notes" />
-        <Route component={BrowserNoteEditorRoute} path="/notes/:id" />
         <Route component={NotFoundView} default />
       </Router>
     </ErrorBoundary>

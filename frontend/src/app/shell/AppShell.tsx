@@ -6,7 +6,6 @@ import { Box, Button, Card, Divider, Icon, ScrollArea, Stack, Text, ToastHost } 
 import { WorkspaceSidebar, type SidebarNavItem } from "./WorkspaceSidebar";
 import { CommandPalette, openPalette } from "@/features/palette/CommandPalette";
 import { JobsTray } from "@/features/shell/JobsTray";
-import { focusAskInput } from "@/features/ask/focusRegistry";
 import type { PaletteAction } from "@/features/palette/actions";
 import { events } from "@/services/metrics/events";
 import {
@@ -54,43 +53,25 @@ interface ShellFrameProps extends AppShellProps {
 }
 
 export const navLinks: SidebarNavItem[] = [
-  { key: "dashboard", label: "Dashboard", commandHint: "⌘1", icon: "dashboard", path: "/" },
-  { key: "session", label: "Sessions", commandHint: "⌘2", icon: "session", path: "/session" },
-  { key: "library", label: "Library", commandHint: "⌘3", icon: "library", path: "/library" },
-  // Notes sits right after Library: when a user thinks "where are my
-  // notes?" the mental path is Library → my notes about library items.
-  // No ⌘ hotkey for now — the 1-9 slots are taken; adding ⌘⇧N is a
-  // polish follow-up that also touches keyboard-shortcut registration.
-  { key: "notes", label: "Notes", commandHint: "", icon: "notes", path: "/notes" },
-  { key: "reader", label: "Reader", commandHint: "⌘4", icon: "reader", path: "/reader" },
-  { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  // Carrel V2 Stage 1 — Verify-mode entry. No ⌘ hotkey yet (1-9
-  // slots are full); ⌘⇧V is the natural addition in a polish pass.
-  { key: "verify", label: "Verify Draft", commandHint: "", icon: "verify", path: "/verify" },
+  // "/" lands on the Library — the vault/upload surface that feeds Verify.
+  { key: "library", label: "Library", commandHint: "⌘1", icon: "library", path: "/" },
+  { key: "reader", label: "Reader", commandHint: "⌘2", icon: "reader", path: "/reader" },
+  // Verify-mode entry — the product's core surface.
+  { key: "verify", label: "Verify Draft", commandHint: "⌘3", icon: "verify", path: "/verify" },
   // Cachet PR6 — the Shelf: saved briefs. Sits right after Verify (you
-  // verify a draft, then it lands on the Shelf). No ⌘ hotkey yet (1-9 are
-  // full); the `doc` glyph is a mechanical placeholder, a bespoke Shelf mark
-  // is a PR6b craft item.
-  { key: "shelf", label: "Shelf", commandHint: "", icon: "shelf", path: "/shelf" },
-  { key: "study", label: "Flashcards", commandHint: "⌘6", icon: "flashcards", path: "/study" },
-  { key: "search", label: "Search", commandHint: "⌘7", icon: "search", path: "/search" },
-  { key: "concepts", label: "Concepts", commandHint: "⌘8", icon: "graph", path: "/concepts" },
-  { key: "plan", label: "Plan", commandHint: "⌘9", icon: "plan", path: "/plan" }
+  // verify a draft, then it lands on the Shelf).
+  { key: "shelf", label: "Shelf", commandHint: "⌘4", icon: "shelf", path: "/shelf" }
 ];
 
 const FIRST_LAUNCH_EVENT_KEY = "carrel.metrics.first-launch-recorded";
 
 function routeLabel(path: string): string {
   if (path === "/") {
-    return "Dashboard";
+    return "Library";
   }
 
   if (path.startsWith("/reader")) {
     return "Reader";
-  }
-
-  if (path.startsWith("/ask")) {
-    return "Ask";
   }
 
   if (path.startsWith("/verify")) {
@@ -101,49 +82,22 @@ function routeLabel(path: string): string {
     return "Shelf";
   }
 
-  if (path.startsWith("/study")) {
-    return "Flashcards";
-  }
-
   if (path.startsWith("/library")) {
     return "Library";
-  }
-
-  if (path.startsWith("/search")) {
-    return "Search";
-  }
-
-  if (path.startsWith("/concepts")) {
-    return "Concepts";
-  }
-
-  if (path.startsWith("/plan")) {
-    return "Plan";
-  }
-
-  if (path.startsWith("/notes")) {
-    return "Notes";
   }
 
   return "Workspace";
 }
 
 function routeMotionIndex(path: string): number {
+  // Indices follow the sidebar order (Library, Reader, Verify, Shelf) so
+  // forward/back transitions read as moving along the rail.
   if (path === "/") return 0;
-  if (path.startsWith("/session")) return 1;
-  if (path.startsWith("/library")) return 2;
-  // Notes lives next to Library in the sidebar; pin its motion index
-  // there too so forward/back transitions read as "moving along the
-  // study row" rather than across the app.
-  if (path.startsWith("/notes")) return 3;
-  if (path.startsWith("/reader")) return 4;
-  if (path.startsWith("/ask")) return 5;
-  if (path.startsWith("/study")) return 6;
-  if (path.startsWith("/search")) return 7;
-  if (path.startsWith("/concepts")) return 8;
-  if (path.startsWith("/plan")) return 9;
-  if (path.startsWith("/shelf")) return 11;
-  return 10;
+  if (path.startsWith("/library")) return 0;
+  if (path.startsWith("/reader")) return 1;
+  if (path.startsWith("/verify")) return 2;
+  if (path.startsWith("/shelf")) return 3;
+  return 4;
 }
 
 function useRouteMotion(pathname: string): "backward" | "forward" | "none" {
@@ -222,12 +176,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
   const theme = appShell.theme.value;
   const pathname = pathnameFromRoute(path);
   const isReaderFocusMode = pathname.startsWith("/reader") && readerState.focusMode.value;
-  // Notes-page rail-mode: the AppShell rail stays visible; its middle
-  // nav section swaps to the Notes Workspace+Subjects content via
-  // WorkspaceSidebar. The wrapper gets data-stillwater="true" so the
-  // Notes token palette (--np-*) cascades to the slotted content.
-  const isNotesRailMode =
-    pathname.startsWith("/notes") && appShell.notesRailReplacement.value;
   const activeLabel = routeLabel(pathname);
   const routeMotion = useRouteMotion(pathname);
   const panelContent = appShell.rightPanelContent.value;
@@ -330,25 +278,15 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
     return onMenuCommand((cmd) => {
       switch (cmd) {
         case "nav.dashboard":
+          // Legacy native-menu command; the dashboard was removed with the
+          // Carrel extraction. "/" now lands on the Library.
           navigateTo("/");
-          break;
-        case "nav.session":
-          navigateTo("/session");
           break;
         case "nav.library":
           navigateTo("/library");
           break;
         case "nav.reader":
           navigateTo("/reader");
-          break;
-        case "nav.ask":
-          navigateTo("/ask");
-          break;
-        case "nav.study":
-          navigateTo("/study");
-          break;
-        case "nav.plan":
-          navigateTo("/plan");
           break;
         case "view.toggleLeftSidebar":
           toggleLeft();
@@ -400,7 +338,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           openPalette();
           break;
         case "file.new":
-          navigateTo("/session");
+          navigateTo("/verify");
           break;
         case "file.import":
           navigateTo("/library");
@@ -459,17 +397,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           openShortcutsOverlay();
         }
         return;
-      }
-
-      // `/` — focus the Ask input. Navigate to /ask if not already there,
-      // then focus the field. Matches the cross-app "/ to search" idiom
-      // from Linear, GitHub, Raycast.
-      if (event.key === "/") {
-        event.preventDefault();
-        navigateTo("/ask");
-        window.setTimeout(() => {
-          focusAskInput();
-        }, 60);
       }
     };
     window.addEventListener("keydown", handler);
@@ -530,7 +457,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
             .filter(Boolean)
             .join(" ")}
           data-collapsed={!isLeftOpen ? "true" : "false"}
-          data-stillwater={isNotesRailMode ? "true" : "false"}
           data-testid="left-sidebar"
         >
           <div className={styles.leftRailInner}>
@@ -630,14 +556,6 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
         </aside>
       </div>
       <CommandPalette
-        context={
-          appShell.activeSession.value
-            ? {
-                activeSessionId: appShell.activeSession.value.id,
-                activeSessionObjective: appShell.activeSession.value.objective
-              }
-            : undefined
-        }
         onSelect={(action: PaletteAction) => {
           if (action.run) {
             action.run();

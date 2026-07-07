@@ -12,7 +12,6 @@ import { ApiError } from "@/services/api/client";
 import { documents, evidence, type EvidenceResolution } from "@/services/api/endpoints";
 import { events } from "@/services/metrics/events";
 import { Stack, Text } from "@/design-system";
-import { CardCreateDialog } from "@/features/study/CardCreateDialog";
 
 import { useCardFlight } from "./hooks/useCardFlight";
 import { useChunkDeepLink } from "./hooks/useChunkDeepLink";
@@ -65,7 +64,6 @@ function ReaderDocumentView({
   const pdfState = usePdfDocument(fileUrl, chunks);
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceResolution | null>(null);
-  const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const findRequestSerial = readerState.findRequestSerial.value;
   const focusMode = readerState.focusMode.value;
   const leftPanelOpen = appShell.leftOpen.value;
@@ -88,7 +86,6 @@ function ReaderDocumentView({
     setSearchOpen(true);
     void events.track("reader.find_used", { mode }, "reader");
   }, []);
-  const openCardDialog = useCallback(() => setCardDialogOpen(true), []);
 
   // SM-2: if the user arrived via citation chip click, spawn a ghost and
   // animate it to the target chunk. T06 re-keyed the flight on `node_id`
@@ -224,13 +221,12 @@ function ReaderDocumentView({
         detail={detail}
         docId={id}
         selectedEvidence={selectedEvidence}
-        onCreateCard={isPdf ? openCardDialog : undefined}
       />
     );
     return () => {
       clearRightPanelContent();
     };
-  }, [detail, id, selectedEvidence, isPdf, openCardDialog]);
+  }, [detail, id, selectedEvidence, isPdf]);
 
   useEffect(() => {
     if (!isPdf || findRequestSerial === 0) return;
@@ -320,7 +316,6 @@ function ReaderDocumentView({
             fileType={fileType}
             flightRef={toolbarFlightRef}
             leftPanelOpen={leftPanelOpen}
-            onCreateCard={openCardDialog}
             onOpenSearch={() => openSearch("toolbar")}
             onToggleAppSidebar={toggleLeft}
             onToggleOutline={toggleReaderOutline}
@@ -339,13 +334,6 @@ function ReaderDocumentView({
           </div>
         </div>
       </div>
-      <CardCreateDialog
-        open={cardDialogOpen}
-        activeSubject={null}
-        docId={id}
-        onClose={() => setCardDialogOpen(false)}
-        onCreated={() => {}}
-      />
     </div>
   );
 }

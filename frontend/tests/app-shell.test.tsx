@@ -90,47 +90,32 @@ test("shell resize handles adjust the left and right bars", async () => {
   expect(appShell.rightPanelWidth.value).toBe(SHELL_PANEL_WIDTHS.right.max);
 });
 
-test("menu dispatch navigates to Ask route", async () => {
-  await renderAppReady();
 
-  dispatchMenuCommand("nav.ask");
-
-  expect(await screen.findByText(/Ask a question about your sources/i)).toBeDefined();
-});
-
-test("file new command opens the Session surface", async () => {
+test("file new command opens the Verify surface", async () => {
   await renderAppReady();
 
   dispatchMenuCommand("file.new");
 
-  expect(await screen.findByText(/Set the focus/i)).toBeDefined();
-});
-
-test("slash shortcut focuses Ask via the stable focus target", async () => {
-  await renderAppReady();
-
-  fireEvent.keyDown(document.body, { key: "/" });
-
-  const field = await screen.findByLabelText(/Question/i);
   await waitFor(() => {
-    expect(document.activeElement).toBe(field);
+    expect(appShell.currentRoute.value).toContain("/verify");
   });
 });
+
 
 test("route changes carry directional page transition state", async () => {
   await renderAppReady();
 
   expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("none");
 
-  dispatchMenuCommand("nav.ask");
+  dispatchMenuCommand("nav.reader");
 
-  expect(await screen.findByText(/Ask a question about your sources/i)).toBeDefined();
+  expect(await screen.findByText(/No source selected yet\./i)).toBeDefined();
   expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("forward");
   expect(screen.getByTestId("page-transition").className).toContain(shellStyles.pageTransitionForward);
 
-  dispatchMenuCommand("nav.dashboard");
+  dispatchMenuCommand("nav.library");
 
-  expect(await screen.findByText(/Your study environment is ready/i)).toBeDefined();
+  expect(await screen.findByText(/No sources yet\./i)).toBeDefined();
   expect(screen.getByTestId("page-transition").getAttribute("data-route-motion")).toBe("backward");
   expect(screen.getByTestId("page-transition").className).toContain(shellStyles.pageTransitionBackward);
 });
@@ -228,9 +213,6 @@ test("router renders each route without crashing", async () => {
   const cases: Array<[string, RegExp]> = [
     ["/library", /No sources yet\./i],
     ["/reader", /No source selected yet\./i],
-    ["/ask", /Ask a question about your sources/i],
-    // StudyView: shows the caught-up empty state when /api/srs/due returns [] (default mock).
-    ["/study", /You.*caught up/i],
     ["/missing", /This workspace page does not exist yet/i]
   ];
 

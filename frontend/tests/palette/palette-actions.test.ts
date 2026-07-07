@@ -8,8 +8,8 @@ describe("palette actions registry", () => {
     for (const expected of [
       "nav.library",
       "nav.reader",
-      "nav.ask",
-      "nav.study",
+      "nav.verify",
+      "nav.shelf",
       "view.toggleLeftSidebar",
       "view.toggleRightPanel",
       "view.toggleTheme",
@@ -22,14 +22,14 @@ describe("palette actions registry", () => {
   });
 
   test("scoreAction returns 0 for a clear miss", () => {
-    const nav = paletteActions.find((a) => a.id === "nav.ask")!;
+    const nav = paletteActions.find((a) => a.id === "nav.verify")!;
     expect(scoreAction(nav, "zzzzzqxxxx")).toBe(0);
   });
 
   test("exact label match scores higher than prefix match", () => {
-    const ask = paletteActions.find((a) => a.id === "nav.ask")!;
-    const exactScore = scoreAction(ask, "go to ask");
-    const prefixScore = scoreAction(ask, "go to");
+    const verify = paletteActions.find((a) => a.id === "nav.verify")!;
+    const exactScore = scoreAction(verify, "go to verify");
+    const prefixScore = scoreAction(verify, "go to");
     expect(exactScore).toBeGreaterThan(prefixScore);
   });
 
@@ -42,9 +42,9 @@ describe("palette actions registry", () => {
   });
 
   test("keyword match shows up when label doesn't contain the query", () => {
-    const ask = paletteActions.find((a) => a.id === "nav.ask")!;
-    expect(scoreAction(ask, "tutor")).toBeGreaterThan(0);
-    expect(scoreAction(ask, "chat")).toBeGreaterThan(0);
+    const verify = paletteActions.find((a) => a.id === "nav.verify")!;
+    expect(scoreAction(verify, "draft")).toBeGreaterThan(0);
+    expect(scoreAction(verify, "citations")).toBeGreaterThan(0);
   });
 
   test("filterActions empty query returns everything", () => {

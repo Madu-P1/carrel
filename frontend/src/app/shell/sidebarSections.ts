@@ -13,37 +13,9 @@
 export interface SidebarNavItem {
   label: string;
   commandHint: string;
-  icon:
-    | "library"
-    | "doc"
-    | "ask"
-    | "study"
-    | "dashboard"
-    | "sparkle"
-    | "command"
-    | "search"
-    | "graph"
-    | "reader"
-    | "notes"
-    | "flashcards"
-    | "session"
-    | "plan"
-    | "verify"
-    | "shelf";
+  icon: "library" | "doc" | "sparkle" | "command" | "reader" | "verify" | "shelf";
   path: string;
-  key:
-    | "dashboard"
-    | "session"
-    | "library"
-    | "reader"
-    | "ask"
-    | "verify"
-    | "study"
-    | "search"
-    | "concepts"
-    | "plan"
-    | "notes"
-    | "shelf";
+  key: "library" | "reader" | "verify" | "shelf";
 }
 
 /**
@@ -52,12 +24,10 @@ export interface SidebarNavItem {
  * group is caught at runtime by sidebarSections.test.ts.
  */
 export const SIDEBAR_SECTION_GROUPS: { label: string; keys: SidebarNavItem["key"][] }[] = [
-  { label: "Overview", keys: ["dashboard"] },
-  { label: "Study", keys: ["session", "study", "library", "reader", "ask", "notes"] },
-  // Cachet V2 surfaces: verify a draft, then it lands on the Shelf. Grouping
-  // and label are open to PR6b refinement.
-  { label: "Verify", keys: ["verify", "shelf"] },
-  { label: "Tools", keys: ["search", "concepts", "plan"] }
+  // Sources feed Verify: upload into the Library vault, read, then verify;
+  // sealed briefs land on the Shelf.
+  { label: "Sources", keys: ["library", "reader"] },
+  { label: "Verify", keys: ["verify", "shelf"] }
 ];
 
 /**
