@@ -1,4 +1,4 @@
-# Cachet
+# Cachet Engine
 
 Cachet is an independent, local-first deterministic verification engine for high-stakes AI output. This repo is the Cachet engine + verify-source home. It also carries a source-grounded study/research frontend (drop in PDFs, notes, slides; get a concept graph, SRS cards, grounded answers that cite back to page-level spans) as the substrate the verification surfaces are built on.
 

@@ -1,4 +1,4 @@
-# Cachet — Project Context for Claude
+# Cachet Engine — Project Context for Claude
 
 Cachet is an independent, local-first deterministic verification engine for high-stakes AI output, with a source-grounded study/research frontend as its substrate. SQLite storage, FastAPI backend, Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval. The Einstein-era native macOS Swift shell (the app plus its PDF/OCR and Apple Foundation Models sidecars) was extracted out of this repo on 2026-07-07 — a full-history clone lives at `~/Desktop/Carrel`. This repo is now the Cachet engine + verify-source home. Descends from Einstein Tutor → Carrel; some internal identifiers (the legacy `com.madu.Einstein…` bundle id, the `data/einstein_tutor.db` path, the `X-Carrel-Local-Token` header) remain on their legacy names — see `docs/notes/2026-04-29-carrel-rename.md` for the exact strings and deferred-rename list.
 
