@@ -36,7 +36,17 @@ from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from services.retrieval.typed_hybrid import RetrievedNode
+    # Structural stand-in for the retrieval node this validator reads. The
+    # kernel is frozen self-contained (PyInstaller bundles cachet_verify only),
+    # so it must not import from ``services`` even under TYPE_CHECKING -- a
+    # type-only import can still be dragged into the freeze by the module graph.
+    # This validator only ever touches ``node.verbatim_text``; a Protocol names
+    # exactly that contract without a cross-package import.
+    from typing import Protocol
+
+    class RetrievedNode(Protocol):
+        verbatim_text: str
+
 
 # Fuzzy similarity floor. Raised from 0.70 to 0.95 in PR-D1.
 QUOTE_SIMILARITY_FLOOR = 0.95

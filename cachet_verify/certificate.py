@@ -104,6 +104,13 @@ def issue_certificate(
         "source_sha256s": [sha256_hex(s.text.encode("utf-8")) for s in source_records],
         "state": attestation.state,
         "claims": _attestation_body(attestation),
+        # Self-contradiction detectors, ADDITIVE and INSIDE the sealed body so
+        # they are tamper-evident like every other field (editing a finding
+        # breaks the fingerprint). Always present (empty lists when nothing
+        # fired) so issuance stays deterministic. schema_version is unchanged:
+        # these are new keys, never a changed shape of an existing one.
+        "structural_findings": [dict(f) for f in attestation.structural_findings],
+        "cross_document_findings": [dict(f) for f in attestation.cross_document_findings],
     }
     provenance = _clean_provenance(draft_provenance)
     if provenance is not None:

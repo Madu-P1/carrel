@@ -18,7 +18,7 @@ Pipeline:
           -> verbatim_run_present  (each run must be an exact normalized
                                     substring of the source pool; reuses the
                                     engine's normalizer + dash-fold +
-                                    footnote-strip from services.retrieval)
+                                    footnote-strip from the retrieval layer)
 
 What it attests: the words shown in quotation marks appear in the cited source
 as written. What it does NOT attest: whether an omission (an ellipsis) changes
