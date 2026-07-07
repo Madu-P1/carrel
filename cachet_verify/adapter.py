@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from .contract import SCHEMA_VERSION, Attestation, CheckResult, attest, combine
+from .detectors import scan_cross_document, scan_draft
 from .engine.anchors import extract_anchors
 from .engine.contract_verify import (
     ClauseCandidate,
@@ -715,6 +716,14 @@ class DraftAttestation:
     state: str
     claims: tuple[ClaimAttestation, ...] = field(default_factory=tuple)
     schema_version: int = SCHEMA_VERSION
+    # Self-contradiction detectors, additive to the attestation. ``structural``
+    # is the seven intra-draft detectors over the draft (words-vs-figures,
+    # date/duration, bound pairs, enumeration count, crossref integrity,
+    # temporal ordering, table footing); ``cross_document`` is the ledger over
+    # the sources. Each is a tuple of finding dicts; empty when nothing fired.
+    # A detector failure degrades to () and never affects the state/claims above.
+    structural_findings: tuple[dict, ...] = field(default_factory=tuple)
+    cross_document_findings: tuple[dict, ...] = field(default_factory=tuple)
 
 
 def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation:
@@ -776,4 +785,26 @@ def attest_draft(draft: str, sources: Sequence[SourceInput]) -> DraftAttestation
         CheckResult(state=c.attestation.state, provenance="deterministic", subject=c.claim)
         for c in claims
     ]
-    return DraftAttestation(state=combine(synthetic), claims=claims)
+    # Self-contradiction pass, ADDITIVE. Source-free intra-draft detectors plus
+    # the cross-document ledger. The whole pass is guarded so a detector failure
+    # yields empty findings and never breaks the state/claims verdict above; the
+    # detectors themselves are also independently guarded internally. Cross-doc
+    # ids are synthesized in source order (SourceText carries no id), which is
+    # all the ledger needs -- unique, non-blank labels for its per-doc figures.
+    try:
+        structural_findings = tuple(scan_draft(draft))
+    except Exception:
+        structural_findings = ()
+    try:
+        source_records = _coerce_sources(sources)
+        cross_document_findings = tuple(
+            scan_cross_document([(f"source_{i + 1}", s.text) for i, s in enumerate(source_records)])
+        )
+    except Exception:
+        cross_document_findings = ()
+    return DraftAttestation(
+        state=combine(synthetic),
+        claims=claims,
+        structural_findings=structural_findings,
+        cross_document_findings=cross_document_findings,
+    )
