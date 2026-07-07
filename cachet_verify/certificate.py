@@ -157,8 +157,19 @@ def revalidate_certificate(cert: dict, draft: str, sources: Sequence[SourceInput
     ]
     if seal_ok and draft_ok and sources_ok:
         fresh = attest_draft(draft, sources)
-        verdicts_ok = _attestation_body(fresh) == cert.get("claims") and fresh.state == cert.get(
-            "state"
+        # Reproduce the sealed findings too, not just the per-claim verdicts. The port
+        # (2026-07-07) added structural_findings / cross_document_findings to the sealed,
+        # fingerprinted body; without re-deriving them here, an editor who strips a shipped
+        # FLAGGED self-contradiction and recomputes the fingerprint would still revalidate as
+        # authentic (Mythos-caught false-green on the exhibit). They are deterministically
+        # reproducible from the unchanged draft/sources, so they revalidate exactly like claims.
+        fresh_structural = [dict(f) for f in fresh.structural_findings]
+        fresh_cross = [dict(f) for f in fresh.cross_document_findings]
+        verdicts_ok = (
+            _attestation_body(fresh) == cert.get("claims")
+            and fresh.state == cert.get("state")
+            and fresh_structural == (cert.get("structural_findings") or [])
+            and fresh_cross == (cert.get("cross_document_findings") or [])
         )
     else:
         verdicts_ok = False

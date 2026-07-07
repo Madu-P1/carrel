@@ -114,3 +114,43 @@ class CertificateSealsFindingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TamperEvidenceOnSealedFindings(unittest.TestCase):
+    """Mythos 2026-07-07: the sealed structural_findings/cross_document_findings must
+    revalidate like claims, so a stripped FLAGGED catch cannot be re-fingerprinted into
+    an authentic-looking certificate (a false-green on the exhibit)."""
+
+    def _cert_and_inputs(self):
+        from cachet_verify.adapter import SourceText
+        from cachet_verify.certificate import attest_and_issue
+
+        draft = "The initial term is thirty (40) days from the Effective Date."
+        sources = [SourceText("The initial term is thirty days.")]
+        return attest_and_issue(draft, sources, "2026-07-07T00:00:00Z"), draft, sources
+
+    def test_stripping_a_sealed_finding_fails_revalidation(self):
+        import copy
+
+        from cachet_verify.certificate import (
+            canonical_json,
+            revalidate_certificate,
+            sha256_hex,
+        )
+
+        cert, draft, sources = self._cert_and_inputs()
+        self.assertTrue(cert.get("structural_findings"), "precondition: a finding was sealed")
+        # The attack: strip the flagged finding and recompute the self-consistency seal.
+        tampered = copy.deepcopy(cert)
+        tampered["structural_findings"] = []
+        body = {k: v for k, v in tampered.items() if k != "fingerprint"}
+        tampered["fingerprint"] = sha256_hex(canonical_json(body))
+        result = revalidate_certificate(tampered, draft, sources)
+        self.assertFalse(result["valid"], "a stripped finding must not revalidate as authentic")
+        self.assertFalse(result["verdicts_reproduced"])
+
+    def test_honest_certificate_still_revalidates(self):
+        from cachet_verify.certificate import revalidate_certificate
+
+        cert, draft, sources = self._cert_and_inputs()
+        self.assertTrue(revalidate_certificate(cert, draft, sources)["valid"])
