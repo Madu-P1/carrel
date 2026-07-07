@@ -48,7 +48,7 @@ export function LibraryEmptyState({ onDemoLoaded }: LibraryEmptyStateProps) {
                   }
                 })
                 .catch(() => {
-                  toast.error("Demo load failed", "Carrel could not create the sample library.");
+                  toast.error("Demo load failed", "Cachet could not create the sample library.");
                 });
             }}
           >

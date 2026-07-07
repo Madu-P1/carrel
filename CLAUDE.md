@@ -1,63 +1,21 @@
-# Carrel — Project Context for Claude
+# Cachet — Project Context for Claude
 
-Local-first, source-grounded AI study and research workspace for macOS. Native Swift + SwiftUI shell wraps a WKWebView loading a bundled Preact + TypeScript + Vite app. SQLite storage, FastAPI backend, Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval. Renamed from Einstein Tutor; some internal identifiers (`com.madu.EinsteinDesktop` bundle, `EinsteinDesktop.app`, `data/einstein_tutor.db`) remain on the legacy names — see `docs/notes/2026-04-29-carrel-rename.md` for the deferred-rename list.
+Cachet is an independent, local-first deterministic verification engine for high-stakes AI output, with a source-grounded study/research frontend as its substrate. SQLite storage, FastAPI backend, Claude API for grounded answers with hybrid FTS5 + sqlite-vec retrieval. The Einstein-era native macOS Swift shell (the app plus its PDF/OCR and Apple Foundation Models sidecars) was extracted out of this repo on 2026-07-07 — a full-history clone lives at `~/Desktop/Carrel`. This repo is now the Cachet engine + verify-source home. Descends from Einstein Tutor → Carrel; some internal identifiers (the legacy `com.madu.Einstein…` bundle id, the `data/einstein_tutor.db` path, the `X-Carrel-Local-Token` header) remain on their legacy names — see `docs/notes/2026-04-29-carrel-rename.md` for the exact strings and deferred-rename list.
 
 ## Stack
 
-- **Native shell:** Swift + SwiftPM, macOS 14+. `macos-app/Sources/EinsteinDesktopApp/`. WKWebView loads the bundled `app.new.html`. Menu bar.
-- **OCR sidecar:** `EinsteinIngestionBridge` executable using PDFKit + Vision for PDF text + OCR extraction.
-- **Frontend:** `frontend/` — Preact 10, TypeScript strict, Vite 6, CSS Modules + design tokens. Pinned via pnpm 9.12.0. Builds to `macos-app/Resources/app.new.html` via `frontend/scripts/build-macos.mjs`.
-- **Backend:** FastAPI + Pydantic. `main.py` is 71 LOC of wiring only. Real logic in `routes/*` and `services/*`. `services/ingestion/` and `services/extraction/` are packages, not monoliths.
+- **Frontend:** `frontend/` — Preact 10, TypeScript strict, Vite 6, CSS Modules + design tokens. Pinned via pnpm 9.12.0. `pnpm build:macos` bundles a single self-contained `dist/app.new.html` (+ `dist/assets.new/`) via `frontend/scripts/build-macos.mjs`. The bundle is served under `file://` or by the local backend; the native shell that used to embed it in a WKWebView now lives in the extracted `~/Desktop/Carrel` repo.
+- **Backend:** FastAPI + Pydantic. `main.py` is wiring only. Real logic in `routes/*` and `services/*`. `services/ingestion/` and `services/extraction/` are packages, not monoliths. Run locally with `./script/build_and_run.sh` (builds the frontend bundle, serves the backend on 127.0.0.1:8000).
 - **DB:** SQLite with WAL + FTS5 + sqlite-vec. Versioned migrations in `migrations/NNNN_*.sql` applied by `db.py::apply_migrations`. Schema is migrations-sourced; `schema.sql` is legacy.
-- **AI:** Claude API via `ai/router.py`. Models: `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (deep). Local default on macOS 26+ Apple Silicon with Apple Intelligence enabled and en_US locale: Apple Foundation Models via `ai/afm_client.py` and the `EinsteinAFMBridge` Swift sidecar. Ollama (`ai/ollama.py`) is the legacy fallback for macOS 14/15 or Intel Macs. Provider auto-resolution lives in `ai/providers.py`. Structured output via `request_tool_call` with forced tool use on Claude; system-prompt enforcement + post-hoc JSON parse on AFM and Ollama (neither has runtime guided-generation as of their respective public APIs). All calls return typed `ClaudeCallResult` with latency + token + cache metrics. Silent fallback to heuristic is forbidden; failures are visible. **Build note:** the `EinsteinAFMBridge` sidecar needs the FoundationModels macro plugin (`@Generable` / `@Guide`), which ships in full Xcode 26+, not the Command Line Tools. `build_and_run.sh` builds it only on a capable toolchain (passing `-DCARREL_AFM`) and skips it otherwise, so Carrel still installs and runs on Claude or Ollama. See the `EinsteinAFMBridge/main.swift` header.
+- **AI:** Claude API via `ai/router.py`. Models: `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (deep). Apple Foundation Models (`ai/afm_client.py`) and Ollama (`ai/ollama.py`) are local fallbacks; note the Swift AFM bridge sidecar lived in the now-extracted native shell, so on-device AFM is unavailable from this repo alone. Provider auto-resolution lives in `ai/providers.py`. Structured output via `request_tool_call` with forced tool use on Claude; system-prompt enforcement + post-hoc JSON parse on AFM and Ollama. All calls return typed `ClaudeCallResult` with latency + token + cache metrics. Silent fallback to heuristic is forbidden; failures are visible.
 - **Retrieval:** Hybrid FTS5 + vector via `services/retrieval/hybrid.py` with Reciprocal Rank Fusion. Quote validation at citation resolve time.
-
-## Build macOS Apps capability bundle
-
-The OpenAI `Build macOS Apps` plugin has been extracted for Claude use at
-`docs/extracted/build-macos-apps/`. When working on Carrel's native macOS shell,
-SwiftPM package, AppKit/SwiftUI UI, signing, tests, telemetry, packaging, or
-runtime launch behavior, treat that folder as a local skill bundle.
-
-Claude slash commands wired for this bundle:
-
-- `/macos-app`: general macOS app skill selection and execution.
-- `/build-and-run-macos-app`: setup or use the local build/run/debug workflow.
-- `/test-macos-app`: run and classify macOS SwiftPM/Xcode test failures.
-- `/fix-codesign-error`: inspect signing, entitlements, sandbox, hardened
-  runtime, Gatekeeper, packaging, and notarization failures.
-
-Minimum usage rule: before non-trivial edits under `macos-app/`, read
-`docs/extracted/build-macos-apps/PORTING_NOTES.md` and the relevant
-`skills/*/SKILL.md`. Use the narrowest matching skill:
-
-| Task | Skill file |
-|---|---|
-| Build, launch, debug, logs, Run button | `skills/build-run-debug/SKILL.md` |
-| SwiftPM package workflow | `skills/swiftpm-macos/SKILL.md` |
-| SwiftUI scenes, commands, menus, settings, split views | `skills/swiftui-patterns/SKILL.md` |
-| Large SwiftUI view cleanup | `skills/view-refactor/SKILL.md` |
-| AppKit bridge, panels, responder chain, pasteboard | `skills/appkit-interop/SKILL.md` |
-| Window chrome, placement, restoration, borderless windows | `skills/window-management/SKILL.md` |
-| Liquid Glass adoption or custom chrome removal | `skills/liquid-glass/SKILL.md` |
-| Unified logging / `OSLog.Logger` | `skills/telemetry/SKILL.md` |
-| macOS test triage | `skills/test-triage/SKILL.md` |
-| Signing, entitlements, sandbox, Gatekeeper | `skills/signing-entitlements/SKILL.md` |
-| Packaging, archives, notarization readiness | `skills/packaging-notarization/SKILL.md` |
-
-This is a skills-first bundle, not an MCP server. Claude should apply the skill
-instructions with normal repo tools: `Read`, `Grep`, `Edit`, `Bash`,
-`xcodebuild`, `swift build`, `swift test`, `lldb`, `codesign`, `spctl`,
-`plutil`, and `log stream`. For SwiftPM GUI apps, launch staged `.app` bundles
-with `/usr/bin/open -n`; raw executable launch is for CLI products only.
+- **Verification engine:** the Cachet deterministic verify engine lives in `cachet_verify/` and `services/` (verify surfaces), exercised by the `tests.test_cachet_verify_*` and `tests.test_verify` suites. This is the repo's product identity.
 
 ## Key directories
 
 | Path | Role |
 |---|---|
-| `macos-app/Sources/EinsteinDesktopApp/` | Swift shell, menu, native bridge |
-| `macos-app/Sources/EinsteinIngestionBridge/` | PDF + OCR sidecar CLI |
-| `macos-app/Resources/` | Bundled HTML (`app.new.html`) + assets |
+| `cachet_verify/` | Deterministic Cachet verification kernel |
 | `frontend/src/app/` | Shell + routing (preact-iso) |
 | `frontend/src/design-system/` | Tokens, primitives, motion. See `DESIGN.md`. |
 | `frontend/src/features/{library,reader,ask,study}/` | Feature views |
@@ -83,17 +41,13 @@ corepack pnpm --dir /Users/madu/Desktop/Codex/frontend test
 corepack pnpm --dir /Users/madu/Desktop/Codex/frontend build:macos
 ./.venv/bin/python -m ruff check /Users/madu/Desktop/Codex/ai /Users/madu/Desktop/Codex/services /Users/madu/Desktop/Codex/evals /Users/madu/Desktop/Codex/tests /Users/madu/Desktop/Codex/main.py /Users/madu/Desktop/Codex/db.py /Users/madu/Desktop/Codex/routes /Users/madu/Desktop/Codex/api_models.py /Users/madu/Desktop/Codex/benchmarks
 ./.venv/bin/python -m ruff format --check /Users/madu/Desktop/Codex/ai /Users/madu/Desktop/Codex/services /Users/madu/Desktop/Codex/evals /Users/madu/Desktop/Codex/tests /Users/madu/Desktop/Codex/main.py /Users/madu/Desktop/Codex/db.py /Users/madu/Desktop/Codex/routes /Users/madu/Desktop/Codex/api_models.py /Users/madu/Desktop/Codex/benchmarks
-./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded tests.test_retrieval_hybrid tests.test_retrieval_vector tests.test_retrieval_fts tests.test_db_migrations tests.test_phase0_foundation tests.test_phase0_batch_b tests.test_einstein_tutor tests.test_learning_os tests.test_evals_runner tests.test_memory_pressure tests.test_verify tests.test_verify_stream tests.test_quote_check tests.test_t1_offline_model tests.test_t1_selector tests.test_citations_eyecite tests.test_anchors tests.test_legal_sentences tests.test_offline_foundation tests.test_local_caselaw tests.test_deterministic_envelope tests.test_contract_verify tests.test_contract_verify_integration tests.test_zero_egress tests.test_demo_corpus tests.test_align tests.test_briefs tests.test_briefs_routes tests.test_t1_calibration tests.test_t1_wiring tests.test_t1_dark_path tests.test_document_vaults tests.test_document_vaults_routes tests.test_document_delete_cascade tests.test_cachet_verify_kernel tests.test_kernel_residue_parity tests.test_cachet_verify_seam tests.test_cachet_verify_certificate tests.test_cachet_verify_residue tests.test_cachet_verify_conformance tests.test_cachet_verify_zero_egress tests.test_redos_guard tests.test_structural_integrity -v./script/build_and_run.sh --verify
+./.venv/bin/python -m unittest tests.test_ai_router tests.test_tutor_grounded tests.test_retrieval_hybrid tests.test_retrieval_vector tests.test_retrieval_fts tests.test_db_migrations tests.test_phase0_foundation tests.test_phase0_batch_b tests.test_einstein_tutor tests.test_learning_os tests.test_evals_runner tests.test_memory_pressure tests.test_verify tests.test_verify_stream tests.test_quote_check tests.test_t1_offline_model tests.test_t1_selector tests.test_citations_eyecite tests.test_anchors tests.test_legal_sentences tests.test_offline_foundation tests.test_local_caselaw tests.test_deterministic_envelope tests.test_contract_verify tests.test_contract_verify_integration tests.test_zero_egress tests.test_demo_corpus tests.test_align tests.test_briefs tests.test_briefs_routes tests.test_t1_calibration tests.test_t1_wiring tests.test_t1_dark_path tests.test_document_vaults tests.test_document_vaults_routes tests.test_document_delete_cascade tests.test_cachet_verify_kernel tests.test_kernel_residue_parity tests.test_cachet_verify_seam tests.test_cachet_verify_certificate tests.test_cachet_verify_residue tests.test_cachet_verify_conformance tests.test_cachet_verify_zero_egress tests.test_redos_guard tests.test_structural_integrity -v
+./script/build_and_run.sh --verify
 ./.venv/bin/python -m benchmarks.phase0 --compare /Users/madu/Desktop/Codex/data/benchmarks/baseline.json --fail-on-regression
 ./.venv/bin/python -m benchmarks.t1_calibration
-swift test --package-path /Users/madu/Desktop/Codex/macos-app
 ```
 
-Optional pre-release step (skipped on CI and on machines without Apple Foundation Models). Requires macOS 26+ Apple Silicon, Apple Intelligence enabled, en_US primary locale, and a built bridge under `macos-app/.build` or a packaged `.app`:
-
-```bash
-CARREL_RUN_AFM_INTEGRATION=1 ./.venv/bin/python -m unittest tests.integration.test_afm_real_bridge -v
-```
+The native macOS shell (and its `swift test` suite + Apple Foundation Models integration step) was extracted out of this repo on 2026-07-07; those steps no longer run here. `./script/build_and_run.sh --verify` now builds the frontend bundle and health-checks the backend only.
 
 Every PR lands green on the full chain or it does not land.
 
@@ -177,7 +131,6 @@ Carrel was repositioned on **2026-05-22** as an **independent AI verification la
 
 ## Open debts tracked
 
-- Swift-side menu dispatch test coverage was informal. XCTest scaffold added 2026-05-16 (`macos-app/Tests/EinsteinDesktopTests/`, 75/75 green) now covers `UploadMimeTypes.swift`, `LocalApiToken.swift`, `LaunchTelemetry` end to end (`format(milliseconds:)`, `markLaunch()`, `markInteractive(route:performanceNowMilliseconds:)` via a `dup2`-based `StderrCapture` harness), and `MainMenuBuilder.swift` end to end (every submenu's structure + key equivalents + command-bus wiring; `WebViewBridgeDispatcher.escapeForJSStringLiteral`; `WebViewRegistry` register/unregister/current). The `MainMenuBuilder` coverage surfaced and fixed a latent bug in `install()` where `NSApp.windowsMenu`/`helpMenu` were never wiring because `mainMenu.item(withTitle:)?.submenu` returned nil (outer `NSMenuItem` titles were empty). Item closed.
 - Command palette (⌘K with action registry) is stubbed in `AppShell` but not implemented. Deferred from Phase 2 MVP.
 - FLIP animations are approximated (not layout-perfect) when the source card and target header have very different aspect ratios. Acceptable for MVP; revisit if visual QA surfaces issues.
 - ~~Toast primitive doesn't accept action buttons.~~ **Resolved.** The `ToastInput.action` field (label + onClick) shipped in `frontend/src/design-system/primitives/Toast/Toast.tsx`; the suggestion-dismiss flow in `frontend/src/features/plan/PlanView.tsx::handleDismissSuggestion` wires the Undo action to `restoreSuggestion(id)` and toasts success/error. Vitest coverage at `Toast.test.tsx::"Clicking a toast action runs the callback and dismisses the toast"`.

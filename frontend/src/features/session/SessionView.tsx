@@ -336,7 +336,7 @@ function Header() {
       <span className={styles.eyebrow}>Session engine</span>
       <h1 className={styles.title}>Set the focus.</h1>
       <p className={styles.subtitle}>
-        Pick the depth, set the corpus, name the objective. Carrel
+        Pick the depth, set the corpus, name the objective. Cachet
         tracks the session and surfaces mastery deltas when you end.
       </p>
     </header>

@@ -33,7 +33,7 @@ import styles from "./AskView.module.css";
 // would force every user to pay for both code paths in the bundle.
 const CARDS_MODE = import.meta.env.VITE_RETRIEVAL_USE_NODES === "true";
 
-// Subject-agnostic sample that demonstrates Carrel's strength
+// Subject-agnostic sample that demonstrates Cachet's strength
 // (citation-grounded synthesis across whatever the user has imported)
 // without assuming they have biology sources. Pre-rename this used to
 // be a biology-specific question, which read as a mismatch in any
@@ -51,7 +51,7 @@ function AskEmptyState({ onPrimaryAction }: { onPrimaryAction: () => void }) {
           <Badge tone="info">Source-grounded</Badge>
           <h3 className={styles.emptyStateHeadline}>Ask a question about your sources</h3>
           <Text className={styles.emptyStateHelper}>
-            Carrel retrieves supporting chunks first, then answers only with what those sources can actually support.
+            Cachet retrieves supporting chunks first, then answers only with what those sources can actually support.
           </Text>
           <div>
             <Button

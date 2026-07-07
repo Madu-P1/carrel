@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const dist = join(root, "dist");
-const resources = resolve(root, "..", "macos-app", "Resources");
+// The native macOS shell was extracted out of this repo on 2026-07-07.
+// The bundle now lands in the repo-root dist/ directory rather than the
+// old native-shell Resources path.
+const resources = resolve(root, "..", "dist");
 const htmlPath = join(dist, "index.html");
 const outHtmlPath = join(resources, "app.new.html");
 const outAssetsPath = join(resources, "assets.new");
@@ -27,8 +30,8 @@ const jsSource = readFileSync(jsPath, "utf8").replace(
 const cssRaw = readFileSync(cssPath, "utf8");
 
 // Vite emits CSS url()s relative to dist/assets/. When the CSS is inlined into
-// macos-app/Resources/app.new.html, relative URLs now resolve against
-// Resources/, but the bundled assets are copied into Resources/assets.new/.
+// the bundled app.new.html, relative URLs now resolve against the bundle
+// output dir, but the bundled assets are copied into assets.new/ beside it.
 // Rewrite bare-relative url() paths so they land in assets.new/ under file://.
 // We only touch url(./filename.ext) and url(filename.ext) forms; absolute URLs,
 // data: URIs, and already-assets.new/-prefixed paths are left alone.
@@ -128,7 +131,7 @@ const bundledHtml = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Einstein</title>
+    <title>Cachet</title>
     <link rel="preconnect" href="http://127.0.0.1:8000" />
     <style>
 ${css}
@@ -178,7 +181,7 @@ if (bundledHtml.includes("sourceMappingURL=")) {
 }
 
 // No asset path should reference the pre-bundle Vite output directory, because
-// ./assets/ is not copied into macos-app/Resources/ — only ./assets.new/ is.
+// ./assets/ is not copied into the bundle output dir — only ./assets.new/ is.
 if (bundledHtml.includes('src="./assets/index.js"')) {
   throw new Error('Bundled HTML integrity check failed: stale "./assets/index.js" reference found');
 }

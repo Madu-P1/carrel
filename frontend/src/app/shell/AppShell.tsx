@@ -64,7 +64,7 @@ export const navLinks: SidebarNavItem[] = [
   { key: "notes", label: "Notes", commandHint: "", icon: "notes", path: "/notes" },
   { key: "reader", label: "Reader", commandHint: "⌘4", icon: "reader", path: "/reader" },
   { key: "ask", label: "Ask Library", commandHint: "⌘5", icon: "ask", path: "/ask" },
-  // Carrel V2 Stage 1 — Verify-mode entry. No ⌘ hotkey yet (1-9
+  // Cachet V2 Stage 1 — Verify-mode entry. No ⌘ hotkey yet (1-9
   // slots are full); ⌘⇧V is the natural addition in a polish pass.
   { key: "verify", label: "Verify Draft", commandHint: "", icon: "verify", path: "/verify" },
   // Cachet PR6 — the Shelf: saved briefs. Sits right after Verify (you
@@ -487,7 +487,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           <BrandMark />
           <Stack gap={1}>
             <Text as="h1" variant="h2" weight="semibold">
-              Carrel
+              Cachet
             </Text>
             <Text tone="secondary">{activeLabel}</Text>
           </Stack>

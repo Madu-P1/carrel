@@ -66,7 +66,7 @@ export function AskCardList({ response, pending, error, onOpen, onRetry }: AskCa
             No typed nodes in your library yet
           </Text>
           <Text tone="secondary">
-            Carrel reads documents into a typed tree (headings, body
+            Cachet reads documents into a typed tree (headings, body
             paragraphs, footnotes, etc.) before answering. Set
             INGEST_USE_DOCLING=true in the backend env, then re-ingest
             your sources from the Library view.
@@ -84,7 +84,7 @@ export function AskCardList({ response, pending, error, onOpen, onRetry }: AskCa
             No matching passages
           </Text>
           <Text tone="secondary">
-            Carrel searched {response.library.total_nodes.toLocaleString()}{" "}
+            Cachet searched {response.library.total_nodes.toLocaleString()}{" "}
             indexed passages and found nothing close enough to surface.
             Try rephrasing the question or adding more context.
           </Text>

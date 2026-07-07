@@ -37,7 +37,7 @@ function quitCarrel(): void {
 /**
  * PR-S1: shows a blocking overlay when the local backend can't be reached.
  *
- * Carrel is a local-first macOS app — the Python service runs as a child of
+ * Cachet is a local-first macOS app — the Python service runs as a child of
  * the Swift host and ships the request-scoped local-API token via
  * WKUserScript. If the supervisor hasn't booted the Python yet (or the
  * Python died and hasn't respawned), every /api/* call would 403. Instead
@@ -87,7 +87,7 @@ export function BackendBootCheck() {
             Retry
           </Button>
           <Button onClick={quitCarrel} variant="ghost">
-            Quit Carrel
+            Quit Cachet
           </Button>
         </Stack>
       }
@@ -97,10 +97,10 @@ export function BackendBootCheck() {
     >
       <Stack gap={3}>
         <Text>
-          Carrel uses a local Python service to keep your data on device. It looks like it didn't start.
+          Cachet uses a local Python service to keep your data on device. It looks like it didn't start.
         </Text>
         <Text tone="secondary">
-          If this keeps happening, restart Carrel from the menu bar or check Console.app for "Carrel" errors.
+          If this keeps happening, restart Cachet from the menu bar or check Console.app for "Cachet" errors.
         </Text>
       </Stack>
     </Dialog>

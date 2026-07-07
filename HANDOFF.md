@@ -1,4 +1,4 @@
-# Carrel — repo entry point
+# Cachet — repo entry point
 
 Picking up `/Users/madu/Desktop/Codex` after the **2026-05-22 V2
 strategic pivot** repositioned the product as an **independent AI

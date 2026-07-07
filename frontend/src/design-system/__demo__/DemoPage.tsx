@@ -21,7 +21,7 @@ export function DemoPage() {
     <main className={styles.page}>
       <Stack gap={8}>
         <Stack gap={3}>
-          <Badge tone="info">Carrel Design System</Badge>
+          <Badge tone="info">Cachet Design System</Badge>
           <Text as="h1" variant="display" weight="bold">
             PR-E1 Demo Surface
           </Text>
