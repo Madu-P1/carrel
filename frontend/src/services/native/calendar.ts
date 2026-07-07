@@ -33,7 +33,7 @@ declare global {
 
 export class CalendarBridgeUnavailableError extends Error {
   constructor() {
-    super("Native calendar bridge unavailable (open Carrel in the desktop app to add events).");
+    super("Native calendar bridge unavailable (open Cachet in the desktop app to add events).");
     this.name = "CalendarBridgeUnavailableError";
   }
 }

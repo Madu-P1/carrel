@@ -23,8 +23,8 @@ export function EvidenceInspector({ evidence }: { evidence: EvidenceResolution }
       <blockquote className={styles.evidenceQuote}>{evidence.quote_text}</blockquote>
       <Text tone="secondary">
         {exact
-          ? "Carrel resolved this citation to a precise source span."
-          : "Carrel resolved this citation to the nearest source chunk. Treat the highlighted passage as approximate."}
+          ? "Cachet resolved this citation to a precise source span."
+          : "Cachet resolved this citation to the nearest source chunk. Treat the highlighted passage as approximate."}
       </Text>
       <Button
         onClick={() => {
@@ -37,7 +37,7 @@ export function EvidenceInspector({ evidence }: { evidence: EvidenceResolution }
             confidence: evidence.confidence
           })
             .then(() => toast.success("Anchor saved", evidence.document_name))
-            .catch(() => toast.error("Save failed", "Carrel could not save this evidence as an Anchor."));
+            .catch(() => toast.error("Save failed", "Cachet could not save this evidence as an Anchor."));
         }}
         variant="secondary"
       >

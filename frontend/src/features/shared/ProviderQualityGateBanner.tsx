@@ -49,8 +49,8 @@ export function ProviderQualityGateBanner({
             Claude is required for {surface}.
           </Text>
           <Text tone="secondary">
-            Carrel routes {surface} through the Claude API because the
-            stakes are too high for a fallback model. Right now Carrel
+            Cachet routes {surface} through the Claude API because the
+            stakes are too high for a fallback model. Right now Cachet
             is using {providerName}, so the engine refused to answer
             rather than risk a hollow or hallucinated result.
           </Text>
@@ -65,7 +65,7 @@ export function ProviderQualityGateBanner({
               your environment (a <code className={styles.code}>.env</code>
               {" "}file at the repo root works).
             </li>
-            <li>Restart Carrel so the new key is picked up at boot.</li>
+            <li>Restart Cachet so the new key is picked up at boot.</li>
           </ol>
         </div>
       </Stack>

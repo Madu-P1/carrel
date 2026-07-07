@@ -27,7 +27,7 @@ interface BrandMarkProps {
   /** Optional click handler. When provided, the mark renders as an
    *  interactive <button> with hover/focus affordances. */
   onClick?: (event: JSX.TargetedMouseEvent<HTMLButtonElement>) => void;
-  /** Accessible label when interactive. Defaults to "Carrel". */
+  /** Accessible label when interactive. Defaults to "Cachet". */
   ariaLabel?: string;
   /** Tooltip on hover. Useful for conveying the click action ("Toggle
    *  sidebar"). */
@@ -40,14 +40,14 @@ export function BrandMark({ onClick, ariaLabel, title }: BrandMarkProps = {}) {
   const visual = showFallback ? (
     // Two-letter monogram fallback when the logo asset is missing or is
     // still the placeholder. Matches the form of the existing PNG mark
-    // ("ET" two-letter monogram on dark navy). Swap to the actual Carrel
+    // ("ET" two-letter monogram on dark navy). Swap to the actual Cachet
     // logo asset and this fallback only renders during dev before the
     // image lands.
     <span className={styles.fallbackMark}>Cr</span>
   ) : (
     <img
       src={logoUrl}
-      alt="Carrel"
+      alt="Cachet"
       className={styles.markImage}
       width={44}
       height={44}
@@ -81,7 +81,7 @@ export function BrandMark({ onClick, ariaLabel, title }: BrandMarkProps = {}) {
         type="button"
         className={frameClass}
         onClick={onClick}
-        aria-label={ariaLabel ?? "Carrel"}
+        aria-label={ariaLabel ?? "Cachet"}
         title={title}
       >
         {visual}
@@ -90,7 +90,7 @@ export function BrandMark({ onClick, ariaLabel, title }: BrandMarkProps = {}) {
   }
 
   return (
-    <div className={frameClass} aria-label={ariaLabel ?? "Carrel"}>
+    <div className={frameClass} aria-label={ariaLabel ?? "Cachet"}>
       {visual}
     </div>
   );

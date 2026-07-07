@@ -47,7 +47,7 @@ mkdir -p "$(dirname "$LATEST")"
   # Filter machine-state noise that should be gitignored but isn't:
   # autonomous-loop audit/score logs, claude-flow caches, HALT marker.
   # We're surfacing IN-FLIGHT WORK, not state files.
-  NOISE_RE='^(\.claude/logs/|\.claude-flow/|\.claude/HALT$|frontend/\.claude-flow/|macos-app/\.claude-flow/)'
+  NOISE_RE='^(\.claude/logs/|\.claude-flow/|\.claude/HALT$|frontend/\.claude-flow/)'
   staged=$(git diff --name-only --cached 2>/dev/null | grep -vE "$NOISE_RE" | head -50 || true)
   modified=$(git diff --name-only 2>/dev/null | grep -vE "$NOISE_RE" | head -50 || true)
   untracked=$(git ls-files --others --exclude-standard 2>/dev/null | grep -vE "$NOISE_RE" | head -50 || true)
@@ -106,14 +106,9 @@ mkdir -p "$(dirname "$LATEST")"
   pgrep -alf "[a]utonomous-watchdog" 2>/dev/null | head -5 || echo "(none other than this one)"
   printf '```\n\n'
 
-  echo "**Carrel backend (uvicorn on :8000):**"
+  echo "**Cachet backend (uvicorn on :8000):**"
   printf '```\n'
   lsof -nP -iTCP:8000 -sTCP:LISTEN 2>/dev/null | head -5 || echo "(port 8000 not listening)"
-  printf '```\n\n'
-
-  echo "**EinsteinDesktop.app:**"
-  printf '```\n'
-  pgrep -alf "[E]insteinDesktop" 2>/dev/null | head -3 || echo "(not running)"
   printf '```\n\n'
 
   echo "## Last status memo from prior routine session"

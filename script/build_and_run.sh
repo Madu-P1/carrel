@@ -1,47 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Make sure standalone-installed tools are reachable. The pnpm and bun
-# installers add to ~/.zshrc, but build_and_run.sh is often invoked in
-# a session where the shell rc updates haven't taken effect yet — for
-# example, immediately after `./install.sh` exits without restarting
-# the terminal. Prepend each known install location if it exists; the
-# `command -v` checks downstream then resolve normally.
+# Build the frontend bundle and run the Cachet backend.
 #
-# Crucially, this ALSO makes Node visible. pnpm-standalone places its
-# bundled Node at ~/Library/pnpm/bin/node, and the build:macos script
-# invokes `node` directly. Without this prepend, the build fails at
-# "exec: node: not found" inside tsc's binstub.
+# The Einstein-era native macOS shell (the Swift app plus its PDF/OCR
+# and Apple Foundation Models sidecars) was extracted out of this repo
+# on 2026-07-07; the repo is now the Cachet verification engine +
+# verify-source home. This
+# script therefore only builds the frontend bundle and serves the
+# FastAPI backend on 127.0.0.1:8000.
+#
+# Make sure standalone-installed tools are reachable. The pnpm and bun
+# installers add to ~/.zshrc, but this script is often invoked in a
+# session where the shell rc updates haven't taken effect yet. Prepend
+# each known install location if it exists; the `command -v` checks
+# downstream then resolve normally. This ALSO makes Node visible: the
+# build:macos script invokes `node` directly.
 [[ -d "$HOME/Library/pnpm/bin" ]] && export PATH="$HOME/Library/pnpm/bin:$PATH"
 [[ -d "$HOME/.local/share/pnpm" ]] && export PATH="$HOME/.local/share/pnpm:$PATH"
 [[ -d "$HOME/.bun/bin" ]] && export PATH="$HOME/.bun/bin:$PATH"
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 
 MODE="run"
-APP_NAME="EinsteinDesktop"
-BUNDLE_ID="com.madu.EinsteinDesktop"
-MIN_SYSTEM_VERSION="14.0"
 BACKEND_URL="http://127.0.0.1:8000/api/health"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/macos-app"
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
-APP_CONTENTS="$APP_BUNDLE/Contents"
-APP_MACOS="$APP_CONTENTS/MacOS"
-APP_RESOURCES="$APP_CONTENTS/Resources"
-APP_BINARY="$APP_MACOS/$APP_NAME"
-INFO_PLIST="$APP_CONTENTS/Info.plist"
-BACKEND_PIDFILE="$DIST_DIR/einstein-backend.pid"
-BACKEND_LOG="$DIST_DIR/einstein-backend.log"
+BACKEND_PIDFILE="$DIST_DIR/cachet-backend.pid"
+BACKEND_LOG="$DIST_DIR/cachet-backend.log"
 
 usage() {
-  echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+  echo "usage: $0 [run|--logs|--verify]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    run|--debug|debug|--logs|logs|--telemetry|telemetry|--verify|verify)
+    run|--logs|logs|--verify|verify)
       MODE="$1"
       shift
       ;;
@@ -86,46 +80,11 @@ wait_for_backend() {
   return 1
 }
 
-ensure_local_api_token() {
-  # PR-S1 + S4 follow-up: bash launcher must agree with Swift on the
-  # local-API token. Swift's LocalApiToken.resolve() reads/writes a
-  # mode-0600 file at this path; we mirror that contract here so a
-  # uvicorn spawned by this script uses the same token the WKWebView
-  # gets injected with. Without this, every fetch from the bundled
-  # frontend 403's because Python generated a fresh random token at
-  # boot that does not match what Swift hands to the WebView.
-  local token_dir="$HOME/Library/Application Support/Carrel"
-  local token_path="$token_dir/local-api-token"
-
-  if [[ ! -f "$token_path" ]]; then
-    mkdir -p "$token_dir"
-    # URL-safe base64 over 32 random bytes — matches secrets.token_urlsafe(32)
-    # on the Python side and Swift's LocalApiToken.resolve() output.
-    local generated
-    generated="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")')"
-    (umask 077 && printf '%s' "$generated" > "$token_path")
-  fi
-
-  CARREL_LOCAL_API_TOKEN="$(cat "$token_path")"
-  export CARREL_LOCAL_API_TOKEN
-}
-
 ensure_backend() {
   mkdir -p "$DIST_DIR"
 
-  ensure_local_api_token
-
-  # Kill any uvicorn process bound to our slot, not just the one named in
-  # the pidfile. Two earlier failure modes prompted this:
-  #   1. The pidfile was stale (last build crashed before writing it) so
-  #      the previous backend kept running and the new launch saw "port
-  #      already bound" — opaque under `nohup`.
-  #   2. A previous backend launched against a different Python (e.g.,
-  #      brew vs venv) had stale imports that returned 200 on /health
-  #      but EPERM on every other route. The "is it healthy?" probe
-  #      below would return 0, the script would re-use the broken
-  #      backend, and the dashboard would render "Could not load."
-  # Always nuke first; the start cost is ~1s and predictability beats it.
+  # Always nuke any prior backend bound to our slot first; the start
+  # cost is ~1s and predictability beats reusing a possibly-stale one.
   if [[ -f "$BACKEND_PIDFILE" ]]; then
     local old_pid
     old_pid="$(cat "$BACKEND_PIDFILE" 2>/dev/null || true)"
@@ -188,9 +147,6 @@ prepare_frontend_resources() {
   # Pick whichever JS runner is on PATH. pnpm is the project's declared
   # packageManager and what CI uses, so prefer it. bun and npm stay as
   # fallbacks for devs who already have them set up.
-  #
-  # The PATH prepend at the top of this script means standalone-installed
-  # pnpm and bun are reachable here even in non-restarted shells.
   local runner=""
   if command -v pnpm >/dev/null 2>&1; then
     runner="pnpm"
@@ -206,10 +162,8 @@ prepare_frontend_resources() {
     exit 1
   fi
 
-  # Self-heal: if node_modules is missing (fresh clone, deleted by mistake,
-  # SKIP_LAUNCH path of install.sh), populate it before the build. This
-  # catches the "tsc: command not found" failure mode that surfaces when
-  # the build script reaches for tsc inside a missing node_modules/.bin.
+  # Self-heal: if node_modules is missing (fresh clone), populate it
+  # before the build. Catches the "tsc: command not found" failure mode.
   if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
     echo "frontend/node_modules missing — running install (~30-60s on first run)..."
     case "$runner" in
@@ -220,7 +174,7 @@ prepare_frontend_resources() {
     esac
   fi
 
-  # Build the macOS bundle.
+  # Build the frontend bundle (writes dist/app.new.html + dist/assets.new).
   case "$runner" in
     pnpm) pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
     corepack-pnpm) corepack pnpm --dir "$ROOT_DIR/frontend" build:macos ;;
@@ -229,164 +183,17 @@ prepare_frontend_resources() {
   esac
 }
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-
 prepare_frontend_resources
-
-# Regenerate AppIcon.icns if icon-source.png was updated since the last
-# build. Noops quietly when icon-source.png is absent.
-"$ROOT_DIR/script/generate-icon.sh" || true
-
-# Build the Swift targets. EinsteinDesktop (the app shell) and
-# EinsteinIngestionBridge (PDF / OCR) are REQUIRED and have no macOS-26
-# dependency, so they build on any toolchain. EinsteinAFMBridge wraps
-# Apple's FoundationModels framework, whose @Generable / @Guide macros
-# need the FoundationModelsMacros compiler plugin. That plugin ships
-# inside full Xcode, NOT the standalone Command Line Tools. Building it
-# in the same `swift build` as the core targets is exactly what made
-# installs fail on Command-Line-Tools-only Macs: one failing target
-# aborted the whole build under `set -e`. Core targets now build alone.
-swift build --package-path "$PROJECT_DIR" \
-  --product EinsteinDesktop \
-  --product EinsteinIngestionBridge
-BUILD_DIR="$(swift build --package-path "$PROJECT_DIR" --show-bin-path)"
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
-
-# Optional: the Apple Foundation Models bridge. `xcode-select -p`
-# resolves under /Library/Developer/CommandLineTools when only the
-# Command Line Tools are installed; full Xcode resolves elsewhere. AFM
-# also needs macOS 26+. When either is missing we skip the bridge:
-# ai/native_bridge_paths.py tolerates a missing binary, AFM reports
-# unavailable, and Carrel runs on Claude or Ollama.
-AFM_BUILT=0
-afm_developer_dir="$(xcode-select -p 2>/dev/null || true)"
-afm_macos_major="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"
-if [[ -n "$afm_developer_dir" && "$afm_developer_dir" != *"CommandLineTools"* \
-      && "${afm_macos_major:-0}" -ge 26 ]]; then
-  if swift build --package-path "$PROJECT_DIR" \
-       --product EinsteinAFMBridge -Xswiftc -DCARREL_AFM; then
-    AFM_BUILT=1
-  else
-    echo "warn: EinsteinAFMBridge failed to build; Carrel will run on Claude or Ollama." >&2
-  fi
-else
-  echo "note: skipping the Apple Intelligence bridge (it needs full Xcode 26+)." >&2
-  echo "note: Carrel will install and run on Claude or Ollama. To add on-device" >&2
-  echo "note: Apple Intelligence later: install Xcode from the App Store, run" >&2
-  echo "note: 'sudo xcode-select -s /Applications/Xcode.app', then re-run this script." >&2
-fi
-
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
-cp "$BUILD_BINARY" "$APP_BINARY"
-
-# Bundle the Swift sidecar binaries beside the main executable so a
-# DMG-distributed .app finds them via CARREL_BUNDLE_MACOS (set in
-# BackendSupervisor.swift, read by ai/native_bridge_paths.py). Without
-# these copies dev mode still works (the helper falls through to
-# .build/debug), but Vision OCR and Apple Foundation Models both break
-# the moment a user lacks a Codex checkout.
-cp "$BUILD_DIR/EinsteinIngestionBridge" "$APP_MACOS/EinsteinIngestionBridge"
-chmod +x "$APP_MACOS/EinsteinIngestionBridge"
-# The AFM bridge is bundled only when it was built (see the toolchain
-# gate above). A missing binary is not an error: ai/native_bridge_paths.py
-# tolerates it and AFM reports unavailable, so the app falls back cleanly.
-if [[ $AFM_BUILT -eq 1 ]]; then
-  cp "$BUILD_DIR/EinsteinAFMBridge" "$APP_MACOS/EinsteinAFMBridge"
-  chmod +x "$APP_MACOS/EinsteinAFMBridge"
-fi
-if [[ -f "$PROJECT_DIR/Resources/app.new.html" ]]; then
-  cp "$PROJECT_DIR/Resources/app.new.html" "$APP_RESOURCES/app.new.html"
-fi
-if [[ -d "$PROJECT_DIR/Resources/assets.new" ]]; then
-  cp -R "$PROJECT_DIR/Resources/assets.new" "$APP_RESOURCES/assets.new"
-fi
-# Floating companion cube — the WKWebView in FloatingCompanionWindow.swift
-# loads this via Bundle.main.url(forResource: "companion-floating", ...).
-# Without the copy the lookup returns nil at applicationDidFinishLaunching
-# time and the cube never appears (the Swift side logs an error to OSLog
-# but the user just sees nothing). Package.swift's executableTarget does
-# not declare resources, so the manual cp is the only path into the
-# bundle today.
-if [[ -f "$PROJECT_DIR/Resources/companion-floating.html" ]]; then
-  cp "$PROJECT_DIR/Resources/companion-floating.html" "$APP_RESOURCES/companion-floating.html"
-fi
-if [[ -d "$ROOT_DIR/assets/demo-library" ]]; then
-  mkdir -p "$APP_RESOURCES/demo-library"
-  cp -R "$ROOT_DIR/assets/demo-library/." "$APP_RESOURCES/demo-library/"
-fi
-# Bundle the app icon when the generator produced one. Missing icon is not
-# a build failure — just an unbranded Dock tile until the asset is added.
-ICON_PRESENT=0
-if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
-  cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
-  ICON_PRESENT=1
-fi
-chmod +x "$APP_BINARY"
-
-ICON_PLIST_ENTRY=""
-if [[ $ICON_PRESENT -eq 1 ]]; then
-  # Both keys are required for older and newer macOS. CFBundleIconFile is
-  # the classic key; CFBundleIconName is for asset-catalog-based icons but
-  # a plain .icns with the same basename resolves fine here.
-  ICON_PLIST_ENTRY=$'  <key>CFBundleIconFile</key>\n  <string>AppIcon</string>\n  <key>CFBundleIconName</key>\n  <string>AppIcon</string>\n'
-fi
-
-cat >"$INFO_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDisplayName</key>
-  <string>Carrel</string>
-  <key>CFBundleExecutable</key>
-  <string>$APP_NAME</string>
-${ICON_PLIST_ENTRY}  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
-  <key>CFBundleName</key>
-  <string>Carrel</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>$MIN_SYSTEM_VERSION</string>
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSAllowsArbitraryLoadsInWebContent</key>
-    <true/>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-  </dict>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-</dict>
-</plist>
-PLIST
-
-launch_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
-}
-
 ensure_backend
 
 case "$MODE" in
   run)
-    launch_app
-    ;;
-  --debug|debug)
-    lldb -- "$APP_BINARY"
+    echo "Backend running on http://127.0.0.1:8000 — frontend bundle at $DIST_DIR/app.new.html"
     ;;
   --logs|logs)
-    launch_app
-    /usr/bin/log stream --info --style compact --predicate "process == \"$APP_NAME\""
-    ;;
-  --telemetry|telemetry)
-    launch_app
-    /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
+    tail -f "$BACKEND_LOG"
     ;;
   --verify|verify)
-    launch_app
-    sleep 2
-    pgrep -x "$APP_NAME" >/dev/null
     curl -fsS "$BACKEND_URL" >/dev/null
     ;;
   *)

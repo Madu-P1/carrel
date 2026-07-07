@@ -1,10 +1,10 @@
-# Carrel
+# Cachet
 
-Local-first, source-grounded AI study and research workspace for macOS. Drop in PDFs, notes, slides. Get a concept graph, SRS cards, grounded tutor answers that cite back to page-level spans, and a coach that proposes study blocks against your real calendar.
+Cachet is an independent, local-first deterministic verification engine for high-stakes AI output. This repo is the Cachet engine + verify-source home. It also carries a source-grounded study/research frontend (drop in PDFs, notes, slides; get a concept graph, SRS cards, grounded answers that cite back to page-level spans) as the substrate the verification surfaces are built on.
 
-> A "carrel" is a small enclosed study booth in a library. The product is named after the room it tries to feel like.
+> **Native shell extracted 2026-07-07.** The Einstein-era native macOS Swift shell (the app plus its PDF/OCR and Apple Foundation Models sidecars) was moved out of this repo; a full-history clone lives at `~/Desktop/Carrel`. This repo now builds a frontend bundle served under `file://` or by the local backend, not a packaged `.app`.
 
-> **Renamed from Einstein Tutor.** Some internal identifiers (the macOS app bundle `EinsteinDesktop.app`, `com.madu.EinsteinDesktop` bundle ID, and the `data/einstein_tutor.db` SQLite file) are still on the old names because renaming them is a system-level / data-migration concern. See `docs/notes/2026-04-29-carrel-rename.md` for the full deferral list.
+> **Descends from Einstein Tutor → Carrel.** Some internal identifiers (the legacy `com.madu.Einstein…` app bundle ID, the `data/einstein_tutor.db` SQLite file, the `X-Carrel-Local-Token` API header) are still on the old names because renaming them is a system-level / data-migration concern. See `docs/notes/2026-04-29-carrel-rename.md` for the full deferral list.
 
 **Trying Carrel for the first time?** One paste with your Anthropic key:
 
@@ -32,13 +32,13 @@ Without the env var, install runs fine but stops short of launching and tells yo
 
 Architecture overview: [CLAUDE.md](CLAUDE.md). Design system: [DESIGN.md](DESIGN.md).
 
-## Quick start — macOS app
+## Quick start — frontend bundle + backend
 
 ```bash
 ./script/build_and_run.sh
 ```
 
-Builds the Swift shell + Vite frontend bundle, starts the FastAPI backend on `127.0.0.1:8000`, and launches `EinsteinDesktop.app`.
+Builds the Vite frontend bundle to `dist/app.new.html` and starts the FastAPI backend on `127.0.0.1:8000`. Open `dist/app.new.html` in a browser, or point the extracted native shell (`~/Desktop/Carrel`) at this backend.
 
 ## Quick start — backend only
 
@@ -47,7 +47,7 @@ python3 -m uvicorn main:app --reload
 # then http://127.0.0.1:8000
 ```
 
-Useful for iterating on routes, ingestion, or the legacy web shell without rebuilding the Swift app.
+Useful for iterating on routes, ingestion, or the verify engine without rebuilding the frontend.
 
 ## AI provider
 

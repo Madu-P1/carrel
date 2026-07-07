@@ -414,7 +414,7 @@ function ShellFrame({ children, navigate, path }: ShellFrameProps) {
           <BrandMark />
           <Stack gap={1}>
             <Text as="h1" variant="h2" weight="semibold">
-              Carrel
+              Cachet
             </Text>
             <Text tone="secondary">{activeLabel}</Text>
           </Stack>

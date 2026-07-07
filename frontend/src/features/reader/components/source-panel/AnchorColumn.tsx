@@ -23,7 +23,7 @@ function CardDraftDrawer({
     setSelected(0);
     void anchors.draftCards(anchor.id)
       .then((response) => setDrafts(response.cards))
-      .catch(() => toast.error("Draft failed", "Carrel could not draft cards from this Anchor."));
+      .catch(() => toast.error("Draft failed", "Cachet could not draft cards from this Anchor."));
   }, [anchor]);
 
   const draft = drafts[selected];
@@ -50,7 +50,7 @@ function CardDraftDrawer({
                   onPromoted();
                   onClose();
                 })
-                .catch(() => toast.error("Save failed", "Carrel could not promote this Anchor."));
+                .catch(() => toast.error("Save failed", "Cachet could not promote this Anchor."));
             }}
           >
             Save card

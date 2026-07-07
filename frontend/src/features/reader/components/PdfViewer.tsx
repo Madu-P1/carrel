@@ -238,7 +238,7 @@ export function PdfViewer({ docId, pdfState }: PdfViewerProps) {
                   readerState.selectedText.value = "";
                   toast.success("Anchor saved", "The highlight is now available in the Anchor Column.");
                 })
-                .catch(() => toast.error("Save failed", "Carrel could not save this highlight."));
+                .catch(() => toast.error("Save failed", "Cachet could not save this highlight."));
             }}
           >
             Save anchor

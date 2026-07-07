@@ -64,7 +64,7 @@ function JobRow({ job }: { job: IngestionJob }) {
             variant="secondary"
             onClick={() => {
               void retryJob(job.id).catch(() => {
-                toast.error("Retry failed", "Carrel could not queue this import again.");
+                toast.error("Retry failed", "Cachet could not queue this import again.");
               });
             }}
           >
@@ -87,7 +87,7 @@ function JobRow({ job }: { job: IngestionJob }) {
           variant="ghost"
           onClick={() => {
             void deleteJob(job.id).catch(() => {
-              toast.error("Delete failed", "Carrel could not remove this job.");
+              toast.error("Delete failed", "Cachet could not remove this job.");
             });
           }}
         >
